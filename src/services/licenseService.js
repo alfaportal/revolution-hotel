@@ -840,6 +840,16 @@ async function updateClient(id, body) {
   return normalizeClientRow(data);
 }
 
+function isMissingRelation(error) {
+  const code = String(error?.code || "");
+  const msg = String(error?.message || error?.details || "");
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    /does not exist|schema cache|Could not find the table/i.test(msg)
+  );
+}
+
 /** Fshin rreshta që mund të bllokojnë DELETE te clients (FK pa CASCADE në prod). */
 async function deleteClientDependentRows(db, clientId) {
   const targets = [
@@ -850,9 +860,7 @@ async function deleteClientDependentRows(db, clientId) {
   for (const [table, column] of targets) {
     const { error } = await db.from(table).delete().eq(column, clientId);
     if (!error) continue;
-    const msg = String(error.message || "");
-    const missingTable = error.code === "42P01" || /does not exist/i.test(msg);
-    if (!missingTable) throw error;
+    if (!isMissingRelation(error)) throw error;
   }
 }
 
@@ -867,11 +875,7 @@ async function deleteClient(id, productHint) {
   }
   // Licencat e klientit — fshi para rreshtit të klientit (FK)
   const { error: licErr } = await db.from("licenses").delete().eq("client_id", id);
-  if (licErr) {
-    const msg = String(licErr.message || "");
-    const missingTable = licErr.code === "42P01" || /does not exist/i.test(msg);
-    if (!missingTable) throw licErr;
-  }
+  if (licErr && !isMissingRelation(licErr)) throw licErr;
   await db.from("users").delete().eq("client_id", id).eq("roli", "client_admin");
   const { error } = await db.from("clients").delete().eq("id", id);
   if (error) throw error;
