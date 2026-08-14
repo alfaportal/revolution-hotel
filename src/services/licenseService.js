@@ -1199,8 +1199,6 @@ async function resetLicenseDevice(id) {
   const licenseId = String(id || "").trim();
   if (!licenseId) throw new Error("ID e liçencës mungon.");
 
-  await clearAllTerminals(licenseId);
-
   const { db } = await dbForLicenseId(licenseId);
   const patch = {
     device_id: "",
@@ -1210,24 +1208,24 @@ async function resetLicenseDevice(id) {
     last_activated_at: null,
     terminal_limit_grace_at: null,
   };
-  const { data, error } = await db
+  let { data, error } = await db
     .from("licenses")
     .update(patch)
     .eq("id", licenseId)
     .select("*, clients(emri, tipi)")
     .single();
   if (error) {
-    const { data: fallback, error: err2 } = await db
+    const fallback = await db
       .from("licenses")
       .update({ device_id: "", last_validation_error: "" })
       .eq("id", licenseId)
       .select("*, clients(emri, tipi)")
       .single();
-    if (err2) throw err2;
-    if (!fallback) throw new Error("Liçenca nuk u gjet.");
-    return fallback;
+    if (fallback.error) throw fallback.error;
+    data = fallback.data;
   }
   if (!data) throw new Error("Liçenca nuk u gjet.");
+  await clearAllTerminals(licenseId);
   return data;
 }
 

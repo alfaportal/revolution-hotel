@@ -7,6 +7,16 @@ function normalizeDeviceId(deviceId) {
   return String(deviceId || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
+function isMissingRelation(error) {
+  const code = String(error?.code || "");
+  const msg = String(error?.message || error?.details || "");
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    /does not exist|schema cache|Could not find the table/i.test(msg)
+  );
+}
+
 function getMaxTerminals(license) {
   return Math.max(1, Number(license?.max_terminals) || 1);
 }
@@ -61,7 +71,10 @@ async function listTerminalsOrdered(licenseId) {
     .select("id, device_id, device_hostname, last_ip, first_activated_at, last_seen_at")
     .eq("license_id", licenseId)
     .order("first_activated_at", { ascending: true });
-  if (error) throw error;
+  if (error) {
+    if (isMissingRelation(error)) return [];
+    throw error;
+  }
   return (data || []).map(mapTerminalRow);
 }
 
@@ -144,7 +157,8 @@ async function startTerminalLimitGrace(licenseId) {
 
 async function clearAllTerminals(licenseId) {
   const db = await dbOf(licenseId);
-  await db.from("license_terminals").delete().eq("license_id", licenseId);
+  const { error } = await db.from("license_terminals").delete().eq("license_id", licenseId);
+  if (error && !isMissingRelation(error)) throw error;
   await clearTerminalLimitGrace(licenseId);
 }
 
@@ -198,6 +212,18 @@ async function resolveTerminalAccess(license, deviceId, hostname, ip) {
               "Terminali juaj është i regjistruar. Kontaktoni Revolution Invest nëse duhen më shumë pajisje.",
           }
         : {}),
+    };
+  }
+
+  /* Super Admin Lësho PC: device_id bosh — ky PC merr vendin, edhe nëse rreshtat e vjetër mbetën. */
+  if (!normalizeDeviceId(license.device_id) && terminals.length >= maxTerminals) {
+    await clearAllTerminals(license.id);
+    await insertTerminal(license.id, id, { hostname, ip });
+    return {
+      allowed: true,
+      is_new: true,
+      active_count: 1,
+      max_terminals: maxTerminals,
     };
   }
 
