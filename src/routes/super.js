@@ -456,7 +456,7 @@ router.post(
   "/dashboard/clients",
   asyncHandler(async (req, res) => {
     const product = normalizeProductLine(
-      req.body?.product_line || req.body?.industry_type || req.query.product,
+      req.body?.product_line || req.body?.industry_type || req.query.product || homeProduct(),
     );
     const {
       generateHardwareLicenseKey,
