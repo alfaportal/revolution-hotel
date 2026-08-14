@@ -50,6 +50,8 @@ const {
   updateClient,
   deleteLicense,
   deleteClient,
+  listLicensesForClient,
+  resetLicenseDevice,
   revokeLicenseRemote,
   reactivateLicenseRemote,
   requestWipeDataForLicense,
@@ -424,6 +426,34 @@ router.delete(
       targetId: id,
     }).catch(() => {});
     res.json({ ok: true, product_line: "kafene" });
+  }),
+);
+
+/** Lësho PC — fshi terminalet e zëna (1 PC = 1 çelës pas reinstalimit). */
+router.post(
+  "/dashboard/clients/:id/reset-device",
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id || "").trim();
+    const product = normalizeProductLine(
+      req.query.product || req.body?.product_line || homeProduct(),
+    );
+    if (product === "security") {
+      const err = new Error("Security nuk përdor terminalet e këtij serveri.");
+      err.status = 400;
+      throw err;
+    }
+    const licenses = await listLicensesForClient(id, product);
+    for (const lic of licenses) {
+      await resetLicenseDevice(lic.id);
+    }
+    await logAdminActivity({
+      ...activityFromReq(req),
+      action: "client_reset_device",
+      targetType: "client",
+      targetId: id,
+      details: { licenses: licenses.length },
+    }).catch(() => {});
+    res.json({ ok: true, reset: licenses.length, product_line: product });
   }),
 );
 
