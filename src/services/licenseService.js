@@ -478,7 +478,13 @@ async function validateLicense({
   const ip = sanitizeClientIp(client_ip);
   const now = new Date().toISOString();
 
-  const terminalAccess = await resolveTerminalAccess(license, deviceId, host, ip);
+  const terminalAccess = await resolveTerminalAccess(
+    license,
+    deviceId,
+    host,
+    ip,
+    hardware_id || hwForCheck,
+  );
   if (!terminalAccess.allowed) {
     return fail(
       terminalAccess.code || "TERMINAL_LIMIT_EXCEEDED",

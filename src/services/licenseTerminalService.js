@@ -173,7 +173,7 @@ function blockedResult(activeCount, maxTerminals) {
   };
 }
 
-async function resolveTerminalAccess(license, deviceId, hostname, ip) {
+async function resolveTerminalAccess(license, deviceId, hostname, ip, hardwareId) {
   const id = normalizeDeviceId(deviceId);
   /* 1 PC = 1 çelës: pa device_id → refuzo (mos anashkalo) */
   if (!id) {
@@ -187,15 +187,20 @@ async function resolveTerminalAccess(license, deviceId, hostname, ip) {
     };
   }
 
-  await migrateLegacyTerminal(license);
   const maxTerminals = getMaxTerminals(license);
   let terminals = await listTerminalsOrdered(license.id);
-  let slotIndex = terminals.findIndex(t => t.device_id === id);
+  let slotIndex = terminals.findIndex((t) => t.device_id === id);
+
+  if (slotIndex < 0 && terminals.length === 0 && normalizeDeviceId(license.device_id) === id) {
+    await migrateLegacyTerminal(license);
+    terminals = await listTerminalsOrdered(license.id);
+    slotIndex = terminals.findIndex((t) => t.device_id === id);
+  }
 
   if (slotIndex >= 0) {
     await touchTerminal(license.id, id, { hostname, ip });
     terminals = await listTerminalsOrdered(license.id);
-    slotIndex = terminals.findIndex(t => t.device_id === id);
+    slotIndex = terminals.findIndex((t) => t.device_id === id);
     if (terminals.length <= maxTerminals) await clearTerminalLimitGrace(license.id);
 
     const overSlot = slotIndex >= maxTerminals;
@@ -215,8 +220,15 @@ async function resolveTerminalAccess(license, deviceId, hostname, ip) {
     };
   }
 
-  /* Super Admin Lësho PC: device_id bosh — ky PC merr vendin, edhe nëse rreshtat e vjetër mbetën. */
-  if (!normalizeDeviceId(license.device_id) && terminals.length >= maxTerminals) {
+  const hwReq = String(hardwareId || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 16);
+  const hwLic = String(license.hardware_id || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 16);
+  const sameHardware = hwReq.length === 16 && hwLic.length === 16 && hwReq === hwLic;
+  const takeOver =
+    maxTerminals <= 1
+    || !normalizeDeviceId(license.device_id)
+    || sameHardware;
+
+  if (terminals.length >= maxTerminals && takeOver) {
     await clearAllTerminals(license.id);
     await insertTerminal(license.id, id, { hostname, ip });
     return {
@@ -238,7 +250,6 @@ async function resolveTerminalAccess(license, deviceId, hostname, ip) {
     };
   }
 
-  /* Terminal i ri kur limiti u mbush — BLLOKIM (pa insert, pa grace që shton PC) */
   await startTerminalLimitGrace(license.id);
   return blockedResult(terminals.length, maxTerminals);
 }
