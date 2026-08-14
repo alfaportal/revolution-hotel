@@ -3,7 +3,7 @@ node_modules/
 .env.products
 .DS_Store
 *.log
-data/
+/data/
 public/downloads/*.exe
 public/downloads/*.msi
 public/downloads/*.dmg
