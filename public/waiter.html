@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kamarieri">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="manifest" href="/waiter-manifest.json">
+  <link rel="icon" type="image/png" href="/logo-source.png">
+  <link rel="apple-touch-icon" href="/logo-source.png">
+  <title>Kamarieri — Revolution Invest POS</title>
+  <link rel="stylesheet" href="/css/staff-brand.css">
+  <link rel="stylesheet" href="/css/waiter.css?v=8">
+  <link rel="stylesheet" href="/css/menu-pos.css?v=16">
+  <link rel="stylesheet" href="/css/waiter-phone-truffle.css?v=3">
+</head>
+<body>
+  <div id="waiter-splash" class="waiter-splash" role="status" aria-live="polite">
+    <img class="waiter-splash-logo" src="/logo-source.png" width="72" height="72" alt="Revolution Invest POS">
+    <p class="waiter-splash-label">Revolution Invest POS</p>
+  </div>
+  <script>
+    (function () {
+      var p = new URLSearchParams(location.search);
+      if (!p.get("key")) {
+        document.addEventListener("DOMContentLoaded", function () {
+          document.body.innerHTML =
+            '<div style="max-width:420px;margin:3rem auto;padding:1.5rem;font-family:system-ui,sans-serif;text-align:center;line-height:1.5">' +
+            "<h1 style=\"margin:0 0 1rem\">Kamarieri</h1>" +
+            "<p>Linku <strong>nuk është i plotë</strong> — mungon <code>?key=...</code>.</p>" +
+            "<p style=\"color:#64748b;font-size:0.95rem\">Shkoni te paneli i pronarit → <strong>Kamarierët</strong> → kopjoni linkun personal të secilit kamarier (butoni Kopjo).</p>" +
+            "</div>";
+        });
+      }
+    })();
+  </script>
+  <div id="screen-pin" class="screen active staff-login-screen">
+    <div class="staff-login-shell">
+      <aside class="staff-login-brand">
+        <img class="staff-revolution-logo" src="/logo-source.png" width="52" height="52" alt="Revolution Invest POS">
+        <p class="staff-brand-label">Revolution Invest POS</p>
+        <span id="conn-status-pin" class="conn-status is-online" aria-live="polite">Online</span>
+        <img id="venue-logo" class="staff-venue-logo hidden" width="64" height="64" alt="">
+        <h2 class="staff-venue-name" id="login-venue-name">Kamarieri</h2>
+        <p class="staff-venue-location" id="login-venue-sub">Duke ngarkuar…</p>
+        <p class="staff-powered">Powered by Revolution Invest POS</p>
+      </aside>
+      <section class="staff-login-panel">
+        <h1 id="login-welcome">Mirë se vini</h1>
+        <p class="staff-login-lead" id="login-sub">Shkruani PIN-in tuaj (4 shifra)</p>
+        <div class="login-box pin-box">
+          <div id="login-err" class="err hidden"></div>
+          <div id="pin-display" class="pin-display" aria-live="polite">••••</div>
+          <div class="pin-keypad" id="pin-keypad">
+            <button type="button" class="pin-key" data-digit="1">1</button>
+            <button type="button" class="pin-key" data-digit="2">2</button>
+            <button type="button" class="pin-key" data-digit="3">3</button>
+            <button type="button" class="pin-key" data-digit="4">4</button>
+            <button type="button" class="pin-key" data-digit="5">5</button>
+            <button type="button" class="pin-key" data-digit="6">6</button>
+            <button type="button" class="pin-key" data-digit="7">7</button>
+            <button type="button" class="pin-key" data-digit="8">8</button>
+            <button type="button" class="pin-key" data-digit="9">9</button>
+            <button type="button" class="pin-key pin-key-muted" id="pin-clear">C</button>
+            <button type="button" class="pin-key" data-digit="0">0</button>
+            <button type="button" class="pin-key pin-key-muted" id="pin-back">⌫</button>
+          </div>
+          <button type="button" class="btn btn-primary pin-submit" id="btn-pin-login">Hyr</button>
+          <p class="hint" id="sync-hint"></p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="screen-tables" class="screen">
+    <div class="staff-app-bar">
+      <img src="/logo-source.png" width="28" height="28" alt="">
+      <span>Revolution Invest POS</span>
+      <span id="conn-status-tables" class="conn-status is-online" aria-live="polite">Online</span>
+      <span class="staff-app-venue" id="bar-venue-name">—</span>
+    </div>
+    <div class="waiter-header">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem">
+        <div>
+          <h1 id="tables-title">Tavolinat</h1>
+          <div class="sub" id="tables-waiter"></div>
+          <div class="sub" id="tables-sub">Tavolinat tuaja — rifreskohet automatikisht</div>
+          <div class="tables-live-bar" id="tables-live-bar" aria-live="polite">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span class="live-label">Live</span>
+            <span id="tables-order-count">0 porosi</span>
+            <span class="live-sep" aria-hidden="true">·</span>
+            <span id="tables-refreshed">Rifreskuar: —</span>
+          </div>
+        </div>
+        <div class="waiter-header-actions">
+          <button type="button" class="btn btn-calc-mini" data-open-calc aria-label="Kalkulatorë" title="Kalkulatorë">🧮</button>
+          <button type="button" class="btn btn-ghost hidden" id="btn-back-desktop">← Kasa</button>
+          <button type="button" class="btn btn-ghost" id="btn-logout">Kyçu</button>
+        </div>
+      </div>
+    </div>
+    <div class="waiter-main">
+      <div id="tables-err" class="err hidden"></div>
+      <div id="tables-online-banner" class="tables-online-banner hidden" aria-live="polite"></div>
+      <div id="tables-grid" class="tables-grid"></div>
+    </div>
+  </div>
+
+  <div id="screen-order" class="screen">
+    <div class="staff-app-bar">
+      <img src="/logo-source.png" width="28" height="28" alt="">
+      <span>Revolution Invest POS</span>
+      <span id="conn-status-order" class="conn-status is-online" aria-live="polite">Online</span>
+      <span class="staff-app-venue" id="order-bar-venue">—</span>
+    </div>
+    <div class="waiter-header">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem">
+        <button type="button" class="btn btn-ghost" id="btn-back">← Tavolinat</button>
+        <h1 id="order-title" style="margin:0;font-size:1.1rem">T1</h1>
+        <div class="waiter-header-actions">
+          <button type="button" class="btn btn-calc-mini" data-open-calc aria-label="Kalkulatorë" title="Kalkulatorë">🧮</button>
+          <span id="cart-badge" class="cart-badge hidden">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="waiter-main order-main">
+      <div id="order-err" class="err hidden"></div>
+      <div class="order-layout menu-pos-wrap">
+        <div id="menu-grid" class="menu-photo-grid"></div>
+      </div>
+    </div>
+    <div id="cart-bar" class="cart-bar hidden" aria-live="polite">
+      <div class="cart-bar-head">
+        <span class="cart-bar-title">🛒 Shporta</span>
+        <span id="cart-count-label" class="cart-count-label">0 artikuj</span>
+      </div>
+      <div id="cart-lines" class="cart-lines"></div>
+      <div class="cart-total">
+        <span>Totali</span>
+        <span id="cart-total">0.00 €</span>
+      </div>
+      <div id="cart-msg" class="cart-msg hidden"></div>
+      <button type="button" class="btn btn-send-order" id="btn-send">Dërgo Porosinë</button>
+      <div id="cart-table-bill" class="cart-table-bill hidden">
+        <span>Totali në tavolinë</span>
+        <span id="cart-table-total">0.00 €</span>
+      </div>
+      <div id="cart-pay-row" class="cart-pay-row hidden">
+        <p class="cart-pay-label">Mbyll tavolinën — zgjidh pagesën</p>
+        <div class="cart-pay-btns">
+          <button type="button" class="btn btn-pay-cash" id="btn-pay-cash">Cash</button>
+          <button type="button" class="btn btn-pay-card" id="btn-pay-card">Kartë</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="success-toast" class="success-toast hidden" role="status" aria-live="polite">
+    <div id="success-toast-msg"></div>
+  </div>
+
+  <div id="receipt-modal" class="receipt-modal hidden">
+    <div class="receipt-sheet" id="receipt-print"></div>
+    <div class="receipt-actions no-print">
+      <button type="button" class="btn btn-primary" id="btn-print">Printo</button>
+      <button type="button" class="btn btn-ghost" id="btn-receipt-done">Mbyll</button>
+    </div>
+  </div>
+
+  <div id="accept-modal" class="accept-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="accept-modal-title">
+    <div class="accept-modal-backdrop" id="accept-modal-backdrop"></div>
+    <div class="accept-modal-card">
+      <h2 id="accept-modal-title">Porosi e re</h2>
+      <div class="accept-modal-source" id="accept-modal-source"></div>
+      <div class="accept-modal-table-row">Tavolina: <strong id="accept-modal-table">—</strong></div>
+      <ul class="accept-modal-items" id="accept-modal-items"></ul>
+      <div class="accept-modal-total">Totali: <strong id="accept-modal-total">0.00 €</strong></div>
+      <div class="accept-modal-actions">
+        <button type="button" id="accept-modal-accept" class="accept-btn-yes">PRANO</button>
+        <button type="button" id="accept-modal-refuse" class="accept-btn-no">REFUZO</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="online-close-modal" class="accept-modal online-close-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="online-close-modal-title">
+    <div class="accept-modal-backdrop" id="online-close-modal-backdrop"></div>
+    <div class="accept-modal-card">
+      <h2 id="online-close-modal-title">Online 1</h2>
+      <div class="accept-modal-source" id="online-close-modal-source"></div>
+      <ul class="accept-modal-items" id="online-close-modal-items"></ul>
+      <div class="accept-modal-total">Totali: <strong id="online-close-modal-total">0.00 €</strong></div>
+      <div class="accept-modal-actions online-close-actions">
+        <button type="button" id="online-close-modal-cash" class="accept-btn-pay-cash">Cash</button>
+        <button type="button" id="online-close-modal-card" class="accept-btn-pay-card">Kartë</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="waiter-desktop-footer" class="waiter-desktop-footer hidden">
+    <button type="button" class="btn btn-calc-desktop" data-open-calc>🧮 Kalkulatorë</button>
+  </div>
+
+  <div id="calc-modal" class="calc-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="calc-modal-title">
+    <div class="calc-modal-backdrop" id="calc-modal-backdrop"></div>
+    <div class="calc-modal-card">
+      <div class="calc-modal-head">
+        <h2 id="calc-modal-title">Kalkulatorë</h2>
+        <button type="button" class="calc-modal-close" id="calc-modal-close" aria-label="Mbyll">✕</button>
+      </div>
+      <div class="calc-display" id="calc-display" aria-live="polite">0.00</div>
+      <div class="calc-keys" id="calc-keys">
+        <button type="button" class="calc-key" data-calc="7">7</button>
+        <button type="button" class="calc-key" data-calc="8">8</button>
+        <button type="button" class="calc-key" data-calc="9">9</button>
+        <button type="button" class="calc-key calc-key-op" data-calc="/">÷</button>
+        <button type="button" class="calc-key" data-calc="4">4</button>
+        <button type="button" class="calc-key" data-calc="5">5</button>
+        <button type="button" class="calc-key" data-calc="6">6</button>
+        <button type="button" class="calc-key calc-key-op" data-calc="*">×</button>
+        <button type="button" class="calc-key" data-calc="1">1</button>
+        <button type="button" class="calc-key" data-calc="2">2</button>
+        <button type="button" class="calc-key" data-calc="3">3</button>
+        <button type="button" class="calc-key calc-key-op" data-calc="-">−</button>
+        <button type="button" class="calc-key calc-key-fn" data-calc="C">C</button>
+        <button type="button" class="calc-key" data-calc="0">0</button>
+        <button type="button" class="calc-key" data-calc=".">.</button>
+        <button type="button" class="calc-key calc-key-op" data-calc="+">+</button>
+        <button type="button" class="calc-key calc-key-eq" data-calc="=">=</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/offlineQueue.js?v=1"></script>
+  <script src="/js/order-alarm-sound.js?v=1"></script>
+  <script src="/js/menuCatalog.js?v=1"></script>
+  <script src="/js/menu-pos.js?v=17"></script>
+  <script src="/js/waiter-calculator.js?v=1"></script>
+  <script src="/js/waiter.js?v=59"></script>
+</body>
+</html>

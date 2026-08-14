@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="robots" content="index,follow">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Dyqani</title>
+  <link rel="stylesheet" href="/css/s.css?v=2">
+  <link rel="apple-touch-icon" id="apple-icon" href="/icons/icon-192.png">
+  <script>
+    (function () {
+      const parts = location.pathname.split("/").filter(Boolean);
+      const slug = parts[0] === "s" ? parts[1] : "";
+      if (!slug) return;
+      const link = document.createElement("link");
+      link.rel = "manifest";
+      link.href = "/s/" + encodeURIComponent(slug) + "/manifest.json";
+      document.head.appendChild(link);
+    })();
+  </script>
+</head>
+<body>
+  <div id="pwa-banner" class="pwa-banner hidden" role="region" aria-label="Instalo aplikacionin">
+    <button type="button" class="pwa-banner-close" id="pwa-close" aria-label="Mbyll">×</button>
+    <div class="pwa-banner-title">📲 Shto në ekranin kryesor</div>
+    <p class="pwa-banner-hint" id="pwa-hint"></p>
+    <button type="button" class="pwa-banner-btn hidden" id="pwa-install-btn">Instalo</button>
+  </div>
+
+  <div id="screen-loading" class="screen active">
+    <div class="loader"></div>
+    <p>Duke ngarkuar produktet…</p>
+  </div>
+
+  <div id="screen-error" class="screen hidden">
+    <div class="error-card">
+      <h1>Faqja nuk u gjet</h1>
+      <p id="error-msg">Dyqani nuk është i disponueshëm.</p>
+    </div>
+  </div>
+
+  <div id="screen-main" class="screen hidden">
+    <header class="shop-header" id="shop-header">
+      <div class="shop-header-inner">
+        <div class="shop-brand">
+          <img id="header-logo" class="shop-logo hidden" alt="" width="40" height="40">
+          <div>
+            <h1 id="biz-name" class="shop-name">Dyqani</h1>
+            <p class="shop-tagline" id="biz-tagline" hidden></p>
+          </div>
+        </div>
+        <div class="shop-search-wrap">
+          <input type="search" id="product-search" class="shop-search" placeholder="Kërko produkt…" autocomplete="off" enterkeyhint="search">
+        </div>
+      </div>
+    </header>
+
+    <section class="shop-hero hidden" id="shop-hero">
+      <img id="hero-cover" class="shop-hero-img" alt="">
+      <div class="shop-hero-overlay"></div>
+      <div class="shop-hero-text">
+        <p id="hero-desc"></p>
+      </div>
+    </section>
+
+    <div class="promo-banner hidden" id="daily-offer-banner" role="status">
+      <span aria-hidden="true">🔥</span>
+      <span id="daily-offer-text"></span>
+    </div>
+
+    <section class="shop-info hidden" id="shop-info">
+      <div class="shop-info-grid">
+        <div class="shop-info-item hidden" id="info-address">
+          <span class="shop-info-icon">📍</span>
+          <div>
+            <div class="shop-info-label">Adresa</div>
+            <div id="val-address"></div>
+            <a class="shop-link-btn" id="btn-maps-address" href="#" target="_blank" rel="noopener">Hap në Maps</a>
+          </div>
+        </div>
+        <div class="shop-info-item hidden" id="info-phone">
+          <span class="shop-info-icon">📞</span>
+          <div>
+            <div class="shop-info-label">Telefoni</div>
+            <a class="shop-info-value" id="val-phone" href="#"></a>
+          </div>
+        </div>
+      </div>
+      <div class="shop-contact hidden" id="contact-actions">
+        <a class="shop-wa-btn hidden" id="btn-whatsapp" href="#" target="_blank" rel="noopener">💬 WhatsApp</a>
+        <div class="shop-social hidden" id="social-links"></div>
+      </div>
+    </section>
+
+    <section class="shop-gallery hidden" id="gallery-section">
+      <h2 class="shop-section-title">Galeria</h2>
+      <div class="shop-gallery-grid" id="gallery-grid"></div>
+    </section>
+
+    <section class="shop-products">
+      <div class="shop-products-head">
+        <h2 class="shop-section-title">Produktet</h2>
+        <span class="shop-product-count" id="product-count"></span>
+      </div>
+      <div class="cat-pills-wrap">
+        <nav class="cat-pills" id="cat-pills"></nav>
+      </div>
+      <div class="product-grid" id="product-grid"></div>
+      <p class="product-empty hidden" id="product-empty">Nuk u gjet asnjë produkt.</p>
+    </section>
+
+    <footer style="text-align:center; padding:10px; font-size:12px; color:#888; margin-top:20px;">
+      Powered by <a href="https://revolution-pos.com" style="color:#fff; font-weight:bold;">Revolution POS</a>
+    </footer>
+
+    <div class="shop-order-bar hidden" id="order-bar">
+      <a class="shop-order-btn" id="btn-order" href="#">🛒 Porosit online</a>
+    </div>
+  </div>
+
+  <div id="photo-lightbox" class="photo-lightbox hidden" role="dialog" aria-modal="true">
+    <button type="button" class="photo-lightbox-close" id="photo-close" aria-label="Mbyll">×</button>
+    <img id="photo-lightbox-img" alt="">
+    <div id="photo-lightbox-caption"></div>
+  </div>
+
+  <script src="/js/s.js?v=1"></script>
+</body>
+</html>

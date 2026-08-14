@@ -1,0 +1,305 @@
+/* QR / Takeaway — dark theme matching POS Truffle */
+:root {
+  --bg: #1a1a2e;
+  --bg-soft: #12121f;
+  --card: #ffffff;
+  --text: #ffffff;
+  --muted: #a1a1b5;
+  --accent: #ff6b35;
+  --accent-dark: #e85a28;
+  --burgundy: #ff6b35;
+  --gold: #ff6b35;
+  --gold-light: #ff8f66;
+  --border: rgba(255, 255, 255, 0.1);
+  --radius: 12px;
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+body,
+body.order-page {
+  background: #1a1a2e !important;
+  color: #fff !important;
+  font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+}
+
+#screen-loading,
+#screen-error,
+#screen-main,
+#screen-order,
+#screen-success {
+  background: #1a1a2e;
+  color: #fff;
+}
+
+.loader {
+  border-color: rgba(255, 255, 255, 0.15);
+  border-top-color: #ff6b35;
+}
+
+.error-card,
+.success-card {
+  background: #2d2d44;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 12px;
+}
+
+.error-card h1,
+.success-card h1 {
+  color: #fff;
+}
+
+.error-card p,
+.success-card p {
+  color: #a1a1b5;
+}
+
+/* Header / hero */
+.hero {
+  background: #12121f !important;
+  min-height: 0;
+  padding: 1.25rem 1rem 1.35rem;
+}
+
+.hero:not(.has-cover) .hero-overlay {
+  background: transparent !important;
+}
+
+.hero h1 {
+  color: #fff !important;
+  font-family: "Inter", system-ui, sans-serif !important;
+  font-weight: 800;
+}
+
+.hero-desc {
+  color: #a1a1b5 !important;
+}
+
+.hero-cta,
+.order-submit-btn,
+a.hero-cta {
+  background: #ff6b35 !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 12px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 6px 18px rgba(255, 107, 53, 0.35) !important;
+}
+
+.hero-cta:hover,
+.order-submit-btn:hover:not(:disabled) {
+  background: #e85a28 !important;
+}
+
+.order-submit-btn:disabled {
+  opacity: 0.45;
+}
+
+.order-header {
+  background: #12121f !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.order-header h1 {
+  color: #fff !important;
+  font-family: "Inter", system-ui, sans-serif !important;
+}
+
+.order-subtitle,
+.order-back-link {
+  color: #a1a1b5 !important;
+}
+
+.order-back-link:hover {
+  color: #ff6b35 !important;
+}
+
+.section-title,
+.order-panel-title {
+  color: #fff !important;
+  font-family: "Inter", system-ui, sans-serif !important;
+}
+
+.menu-section,
+.order-main,
+.order-panel,
+.info-section {
+  background: transparent !important;
+  color: #fff;
+}
+
+.order-panel {
+  background: #12121f !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.order-field span,
+.info-label,
+.order-cart-hint {
+  color: #a1a1b5 !important;
+}
+
+.order-field input,
+.order-type-btn {
+  background: #2d2d44 !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 10px !important;
+}
+
+.order-type-btn.active {
+  background: #ff6b35 !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+/* Category pills — one horizontal scroll row */
+.cat-nav-wrap,
+.order-cat-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #1a1a2e !important;
+  padding: 0.45rem 0 0.65rem !important;
+  margin: 0 0 0.5rem !important;
+}
+
+.cat-nav,
+.order-cat-nav.cat-nav,
+#order-cat-nav.cat-nav,
+#cat-nav {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0.4rem !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  padding: 0.2rem 0.1rem 0.35rem !important;
+  background: transparent !important;
+}
+
+.cat-nav::-webkit-scrollbar,
+#order-cat-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.cat-nav::-webkit-scrollbar-thumb,
+#order-cat-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+}
+
+.cat-tab,
+#order-cat-nav button,
+.order-cat-nav button {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+  border: none !important;
+  border-radius: 999px !important;
+  background: #2d2d44 !important;
+  color: #fff !important;
+  padding: 0.45rem 1rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  font-family: inherit !important;
+  cursor: pointer;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0 !important;
+}
+
+.cat-tab-icon,
+.menu-tab-icon {
+  display: none !important;
+}
+
+.cat-tab.active,
+#order-cat-nav button.active,
+.order-cat-nav button.active {
+  background: #ff6b35 !important;
+  color: #fff !important;
+}
+
+.cat-nav-indicator {
+  display: none !important;
+}
+
+/* Product cards */
+.pub-menu-card,
+.order-menu-item {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16) !important;
+  overflow: hidden;
+  color: #111827 !important;
+}
+
+.pub-menu-name,
+.order-menu-item-name {
+  color: #111827 !important;
+}
+
+.pub-menu-price,
+.pub-menu-price.is-gold,
+.order-menu-item-price {
+  color: #ff6b35 !important;
+  background: transparent !important;
+}
+
+.order-menu-item-add {
+  color: #6b7280 !important;
+}
+
+.pub-menu-empty,
+.order-menu-empty {
+  color: #a1a1b5 !important;
+}
+
+.pub-menu-media,
+.pub-menu-photo-btn,
+.order-menu-item-photo {
+  background: #fff !important;
+}
+
+/* Cart bar */
+.order-cart {
+  background: #12121f !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+.order-cart-head,
+.order-cart-total {
+  color: #fff !important;
+}
+
+.order-cart-total strong,
+#cart-total {
+  color: #ff6b35 !important;
+}
+
+.info-card {
+  background: #12121f !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+.daily-offer-banner {
+  background: #2d2d44 !important;
+  color: #fff !important;
+  border-color: rgba(255, 107, 53, 0.35) !important;
+}
+
+.maps-open-btn {
+  background: rgba(255, 107, 53, 0.15) !important;
+  color: #ff6b35 !important;
+  border-color: rgba(255, 107, 53, 0.35) !important;
+}

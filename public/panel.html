@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Revolution Invest POS — Super Admin</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RI Admin">
+  <link rel="manifest" href="/admin-manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/css/panel.css?v=29">
+</head>
+<body>
+  <script>
+    document.getElementById("modal-qr")?.remove();
+  </script>
+  <div id="pwa-install-banner" class="pwa-install-banner hidden" role="region" aria-label="Instalo panelin">
+    <button type="button" class="pwa-install-close" id="pwa-install-close" aria-label="Mbyll">×</button>
+    <div class="pwa-install-title">Shto Super Admin në ekranin kryesor</div>
+    <p class="pwa-install-hint" id="pwa-install-hint"></p>
+  </div>
+
+  <div id="view-login" class="login-wrap">
+    <div class="login-card">
+      <h1>Revolution Invest POS</h1>
+      <p>Panel Super Admin — vetëm për administratorët e platformës</p>
+      <div id="login-error" class="alert alert-error hidden"></div>
+      <p style="font-size:0.85rem;color:var(--muted);margin:0 0 1rem;line-height:1.45">
+        Vetëm <strong>Super Admin</strong> — jo email i pronarit.
+        Zakonisht: <code style="font-size:0.9em">admin@revolutioninvest.com</code>
+      </p>
+      <form id="form-login">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="username" placeholder="admin@revolutioninvest.com">
+        <label for="password">Fjalëkalimi</label>
+        <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••">
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Hyr</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="view-app" class="hidden">
+    <header class="header">
+      <div>
+        <h1>Revolution Invest POS</h1>
+        <div class="sub">Qasje e plotë — restorant &amp; kafene, nga çdo pajisje</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <span id="user-label" style="color:var(--muted);font-size:0.9rem"></span>
+        <button class="btn btn-ghost btn-sm" id="btn-logout">Dil</button>
+      </div>
+    </header>
+
+    <div class="container">
+      <div id="admin-load-error" class="alert alert-error hidden" style="margin:0 1.5rem 1rem"></div>
+      <div id="trial-expiry-banner" class="trial-expiry-banner hidden" role="alert"></div>
+      <div id="stock-alert-banner" class="stock-alert-banner hidden" role="alert"></div>
+      <div class="stats" id="stats"></div>
+
+      <div class="tabs nav-grid admin-tabs">
+        <button type="button" class="tab nav-tile active" data-tab="klientet" id="tab-klientet">
+          <span class="nav-icon" aria-hidden="true">👥</span>
+          <span class="nav-label">Klientët <span id="tab-klientet-badge" class="tab-badge hidden"></span></span>
+        </button>
+        <button type="button" class="tab nav-tile" data-tab="licensat">
+          <span class="nav-icon" aria-hidden="true">🔑</span>
+          <span class="nav-label">Liçensat</span>
+        </button>
+        <button type="button" class="tab nav-tile" data-tab="pronaret">
+          <span class="nav-icon" aria-hidden="true">🏪</span>
+          <span class="nav-label">Pronarët</span>
+        </button>
+        <button type="button" class="tab nav-tile" data-tab="logu">
+          <span class="nav-icon" aria-hidden="true">📋</span>
+          <span class="nav-label">Log aktiviteti</span>
+        </button>
+        <button type="button" class="tab nav-tile" data-tab="ai-usage">
+          <span class="nav-icon" aria-hidden="true">🤖</span>
+          <span class="nav-label">AI Usage</span>
+        </button>
+        <button type="button" class="tab nav-tile" data-tab="shto">
+          <span class="nav-icon" aria-hidden="true">➕</span>
+          <span class="nav-label">Shto</span>
+        </button>
+      </div>
+
+      <div id="panel-klientet" class="panel-section">
+        <div class="card">
+          <div class="card-title">Të gjithë klientët</div>
+          <div class="overflow-x">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Emri</th><th>Tipi</th><th>Pakoja</th><th>Telefoni</th><th>Email</th><th>Adresa</th><th>Liç.</th><th>Regj.</th><th>Linqet</th><th class="col-actions">Veprime</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-clients"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-licensat" class="panel-section hidden">
+        <div class="card license-pair-hint admin-only-card">
+          <strong>Vetëm Super Admin.</strong> Pronarët <em>nuk</em> shohin kodin e licencës as ID e pajisjes.
+        </div>
+
+        <div class="card license-quick-create admin-only-card">
+          <div class="card-title">Gjenero LICENSE_KEY nga ID e klientit</div>
+          <p class="field-hint" style="margin-bottom:0.75rem">
+            <strong>Dy opsione për ID:</strong> (1) shkruaj ID-në nga ekrani «Aktivizo KAFENE», ose (2) shtyp Gjenero ID.
+            Pastaj <strong>Gjenero kod</strong> → kopjoja klientit (WhatsApp/SMS). Pastaj Ruaj.
+          </p>
+          <div id="msg-license-mobile" class="alert hidden"></div>
+          <form id="form-license-mobile">
+            <label>Klienti *</label>
+            <select id="lm-client" required></select>
+            <label>ID e pajisjes (HARDWARE_ID)</label>
+            <div class="link-actions" style="margin-bottom:0.35rem">
+              <input type="text" id="lm-device-id" class="mono" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-lm-gen-device" title="Gjenero ID të ri">Gjenero ID</button>
+            </div>
+            <label for="lm-license-type">Lloji i licencës</label>
+            <select id="lm-license-type" style="margin-bottom:0.5rem;width:100%">
+              <option value="trial">Trial (7 ditë)</option>
+              <option value="annual" selected>Vjetor (1 vit nga sot)</option>
+            </select>
+            <button type="button" class="btn btn-accent" id="btn-lm-gen-key" style="margin:0.5rem 0;width:100%">Gjenero kod nga ID</button>
+            <label>Çelësi i licencës (LICENSE_KEY)</label>
+            <div class="link-actions">
+              <input type="text" id="lm-celesi" class="mono" placeholder="Gjenerohet automatikisht nga ID" autocomplete="off" autocapitalize="characters" spellcheck="false">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-lm-copy-key" title="Kopjo">Kopjo</button>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.75rem">Ruaj / Krijo liçencën</button>
+          </form>
+        </div>
+
+        <div id="license-mobile-list" class="license-mobile-list" aria-live="polite"></div>
+
+        <div class="card licenses-desktop-table">
+          <div class="card-title card-title-row">
+            <span>Të gjitha liçensat</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-licenses" title="Rifresko listën">Rifresko</button>
+          </div>
+          <p class="field-hint licenses-live-hint">Te çdo rresht: «Gjenero ID» ose shkruaj manualisht → «Ruaj ID». POS-i mund të dërgojë ID tjetër kur aktivizon (multi-terminal).</p>
+          <div class="overflow-x">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Klienti</th><th>App</th><th>Kodi</th><th>ID Pajisjes</th><th>Kompjuteri</th><th>Aktivizuar</th><th>IP</th><th>Terminale</th><th>Statusi</th><th>Nga</th><th>Deri</th><th class="col-actions">Veprime</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-licenses"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-pronaret" class="panel-section hidden">
+        <div class="card">
+          <div class="card-title">Pronarët e restoranteve / kafeneve</div>
+          <p class="admin-only-note">Vetëm Super Admin — pronarët nuk shohin liçensa, ID pajisjesh apo këtë listë.</p>
+          <div class="overflow-x">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Emri</th><th>Email</th><th>Restoranti</th><th>Llogaria</th><th>Regj.</th><th class="col-actions">Veprime</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-owners"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-logu" class="panel-section hidden">
+        <div class="card admin-only-card">
+          <div class="card-title">Kodi emergjence ditor (panel Pronari në POS)</div>
+          <p id="emergency-code-hint" class="field-hint" style="margin-bottom:0.5rem">Duke ngarkuar...</p>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+            <code id="emergency-daily-code" style="font-size:1.4rem;letter-spacing:0.2em;padding:0.35rem 0.75rem;background:#1e293b;border-radius:8px">—</code>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-emergency">Rifresko</button>
+          </div>
+          <p class="field-hint" style="margin:0.75rem 0 0;color:var(--muted)">
+            Te POS: Hyrje → Pronari → <strong>Kod emergjence</strong> → shkruaj këtë kod 6-shifror. Hap panelin e lokalit kur fjalëkalimi i pronarit nuk dihet.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-title">Log aktiviteti</div>
+          <div class="overflow-x">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Koha</th><th>Veprimi</th><th>Objekti</th><th>Admin</th><th>Detaje</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-activity"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-ai-usage" class="panel-section hidden">
+        <div class="card admin-only-card">
+          <div class="card-title">AI Usage</div>
+          <p class="field-hint" style="margin-bottom:1rem">
+            Përdorimi i AI për çdo klient — thirrje, tokenë, kosto EUR (Anthropic) dhe breakdown sipas veçorisë.
+          </p>
+          <div id="ai-usage-msg" class="alert hidden"></div>
+          <div class="form-row" style="align-items:flex-end;margin-bottom:1rem">
+            <div>
+              <label for="ai-usage-month">Muaj / vit</label>
+              <input type="month" id="ai-usage-month">
+            </div>
+            <div class="link-actions" style="margin-bottom:0">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-ai-usage-load">Shfaq</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-ai-usage-csv">Eksport CSV</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-ai-usage-csv-detail">CSV detaje</button>
+            </div>
+          </div>
+          <div class="overflow-x">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Lokal</th>
+                  <th>Calls këtë muaj</th>
+                  <th>Tokens total</th>
+                  <th>Kosto EUR</th>
+                  <th>Limit tokenësh</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tbl-ai-usage"></tbody>
+              <tfoot id="tbl-ai-usage-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-shto" class="panel-section hidden">
+        <div class="card">
+          <div class="card-title">Shto klient të ri</div>
+          <p class="field-hint" style="margin-bottom:1rem">
+            Klienti, liçenca dhe llogaria e pronarit krijohen njëherësh me një klik.
+          </p>
+          <div id="msg-client" class="alert hidden"></div>
+          <form id="form-client">
+            <p class="field-hint" style="margin-bottom:0.75rem"><strong>Biznesi</strong></p>
+            <div class="form-row">
+              <div>
+                <label>Emri *</label>
+                <input type="text" id="c-emri" required placeholder="p.sh. Restorant Drita">
+              </div>
+              <div>
+                <label>Tipi</label>
+                <select id="c-tipi">
+                  <option value="kafene">Kafene</option>
+                  <option value="restorant">Restorant</option>
+                  <option value="bar">Bar</option>
+                  <option value="pub_lounge">Pub/Lounge</option>
+                  <option value="piceri">Piceri</option>
+                  <option value="fast_food">Fast Food</option>
+                  <option value="kebab">Kebab</option>
+                  <option value="pasticeri">Pastiçeri/Ëmbëltore</option>
+                  <option value="akullore">Akullore</option>
+                  <option value="gjeltore">Gjeltore</option>
+                </select>
+              </div>
+              <div class="package-tier-field">
+                <label>Pakoja</label>
+                <div id="c-package-tier" class="package-tier-picker" data-tier-field="c-package-tier"></div>
+              </div>
+              <div>
+                <label>Telefoni</label>
+                <input type="text" id="c-telefoni" placeholder="+383 ...">
+              </div>
+              <div>
+                <label>Email</label>
+                <input type="email" id="c-email" placeholder="info@...">
+              </div>
+            </div>
+            <label>Adresa</label>
+            <input type="text" id="c-adresa" placeholder="Rruga, qyteti">
+
+            <hr style="margin:1.25rem 0;border:none;border-top:1px solid var(--border)">
+            <p class="field-hint license-device-hint" style="margin-bottom:0.75rem">
+              <strong>Liçenca</strong> — çelësi gjenerohet automatikisht sipas tipit të biznesit.
+            </p>
+            <div class="form-row">
+              <div>
+                <label>Muaj vlefshmërie</label>
+                <input type="number" id="c-muaj" value="12" min="1" max="120">
+              </div>
+              <div>
+                <label>ID e pajisjes <span class="label-muted">(opsionale)</span></label>
+                <input type="text" id="c-device-id" class="mono" placeholder="Nga ekrani POS — ose lëreni bosh" autocomplete="off" autocapitalize="characters">
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="c-max-terminals">Nr. terminaleve</label>
+                <select id="c-max-terminals" name="max_terminals">
+                  <option value="1" selected>1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="99">5+</option>
+                </select>
+              </div>
+              <div>
+                <label for="c-base-price">Çmimi bazë (€)</label>
+                <input type="number" id="c-base-price" name="base_price" min="0" step="0.01" value="0">
+              </div>
+              <div>
+                <label for="c-terminal-price">Çmimi shtesë/terminal (€)</label>
+                <input type="number" id="c-terminal-price" name="terminal_price" min="0" step="0.01" value="0">
+              </div>
+            </div>
+            <p class="field-hint license-price-total" id="c-price-total">Totali: 0.00€ (bazë + 0 × terminal)</p>
+
+            <hr style="margin:1.25rem 0;border:none;border-top:1px solid var(--border)">
+            <p class="field-hint license-device-hint" style="margin-bottom:0.75rem">
+              <strong>Llogaria e pronarit</strong> — pronari hyn në <code>/owner/login</code> me email dhe fjalëkalim.
+            </p>
+            <div class="form-row">
+              <div>
+                <label>Emri i pronarit *</label>
+                <input type="text" id="c-owner-emri" required placeholder="p.sh. Agron">
+              </div>
+              <div>
+                <label>Email i pronarit *</label>
+                <input type="email" id="c-owner-email" required placeholder="agron@restorant.com" autocomplete="off">
+              </div>
+              <div>
+                <label>Fjalëkalimi i pronarit *</label>
+                <input type="password" id="c-owner-password" required minlength="6" placeholder="min. 6 karaktere" autocomplete="new-password">
+              </div>
+            </div>
+            <div class="link-actions" style="margin-top:0.5rem;margin-bottom:1rem">
+              <input type="text" id="owner-login-url" readonly style="flex:1;font-family:monospace;font-size:16px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-owner-url">Kopjo</button>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Ruaj klientin</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-client-hub" class="modal hidden">
+    <div class="modal-backdrop" id="hub-backdrop"></div>
+    <div class="modal-card modal-card-wide">
+      <div class="hub-head">
+        <h2 id="hub-title" class="modal-title">Menaxho klientin</h2>
+        <button type="button" class="btn btn-ghost btn-sm" id="hub-close">Mbyll</button>
+      </div>
+      <p class="field-hint admin-only-note" style="margin-top:0">
+        <strong>Vetëm Super Admin</strong> — menu, biznes, fiskale, linqe. Ndryshimet shkojnë direkt te tabletat e porosive.
+      </p>
+      <div class="hub-tabs">
+        <button type="button" class="hub-tab active" data-hub-tab="menu">Menuja</button>
+        <button type="button" class="hub-tab" data-hub-tab="biznesi">Biznesi</button>
+        <button type="button" class="hub-tab" data-hub-tab="fiskale">Fiskale</button>
+        <button type="button" class="hub-tab" data-hub-tab="linqe">Linqe</button>
+        <button type="button" class="hub-tab" data-hub-tab="qr">QR Tavolinat</button>
+      </div>
+      <div id="hub-msg" class="alert hidden"></div>
+
+      <div id="hub-panel-menu" class="hub-panel">
+        <div class="hub-menu-add filter-row">
+          <div>
+            <label>Emri</label>
+            <input type="text" id="hub-menu-name" placeholder="Emri i artikullit">
+          </div>
+          <div>
+            <label>Kategoria</label>
+            <input type="text" id="hub-menu-category" list="hub-category-list" placeholder="Kategoria">
+            <datalist id="hub-category-list"></datalist>
+          </div>
+          <div>
+            <label>Çmimi (€)</label>
+            <input type="number" id="hub-menu-price" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="hub-menu-add">Shto</button>
+        </div>
+        <p id="hub-menu-sync" class="field-hint"></p>
+        <div class="overflow-x">
+          <table class="admin-table hub-menu-table">
+            <thead>
+              <tr><th>Emri</th><th>Kategoria</th><th>Çmimi</th><th>Statusi</th><th class="col-actions">Veprime</th></tr>
+            </thead>
+            <tbody id="hub-menu-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="hub-panel-biznesi" class="hub-panel hidden">
+        <div class="form-row">
+          <div><label>Emri në faturë</label><input type="text" id="hub-restaurant-name"></div>
+          <div><label>Nr. tavolinave</label><input type="number" id="hub-table-count" min="1" max="30"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Adresa</label><input type="text" id="hub-address"></div>
+          <div><label>Telefoni</label><input type="text" id="hub-phone"></div>
+        </div>
+        <div class="form-row">
+          <div><label>NUI</label><input type="text" id="hub-nui"></div>
+          <div><label>Nr. TVSH</label><input type="text" id="hub-tvsh"></div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Gjerësia faturës</label>
+            <select id="hub-receipt-width">
+              <option value="80">80 mm</option>
+              <option value="58">58 mm</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="hub-save-biznesi">Ruaj biznesin</button>
+      </div>
+
+      <div id="hub-panel-fiskale" class="hub-panel hidden">
+        <p class="hub-fiscal-intro">
+          Konfiguroni arkën fiskale ATK për këtë biznes. POS lidhet me arkën përmes portit COM në kompjuterin lokal ku është instaluar.
+        </p>
+        <div class="hub-fiscal-form">
+          <div class="hub-fiscal-field">
+            <label for="hub-fiscal-nr">Numri fiskal (Nr.Fisk)</label>
+            <input type="text" id="hub-fiscal-nr" placeholder="p.sh. 123456789" autocomplete="off">
+            <p class="hub-field-note">Numri i regjistrimit fiskal nga ATK — shfaqet në faturat e printuara dhe raportet Z.</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="hub-fiscal-com">Porti COM</label>
+            <input type="text" id="hub-fiscal-com" class="mono" placeholder="p.sh. COM3" autocomplete="off" autocapitalize="characters">
+            <p class="hub-field-note">Porti serial (USB) ku lidhet POS me arkën fiskale. Gjeni në Menaxherin e Pajisjeve të Windows (p.sh. COM3, COM4).</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="hub-fiscal-operator">Operatori / përgjegjësi</label>
+            <input type="text" id="hub-fiscal-operator" placeholder="p.sh. Agron Berisha" autocomplete="off">
+            <p class="hub-field-note">Emri i operatorit që regjistrohet në arkë dhe shfaqet në faturat fiskale si përgjegjës i shitjes.</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="hub-fiscal-model">Modeli i arkës fiskale</label>
+            <input type="text" id="hub-fiscal-model" placeholder="p.sh. Fiscal Albania FA-500" autocomplete="off">
+            <p class="hub-field-note">Marka dhe modeli i arkës (opsionale) — për referencë teknike dhe mbështetje.</p>
+          </div>
+        </div>
+        <label class="hub-check hub-fiscal-check">
+          <input type="checkbox" id="hub-fiscal-enabled" checked>
+          <span>Arka fiskale aktive — çaktivizoni vetëm nëse biznesi nuk përdor ATK për momentin</span>
+        </label>
+        <div class="hub-fiscal-actions">
+          <button type="button" class="btn btn-primary" id="hub-save-fiskale">Ruaj settings fiskale</button>
+        </div>
+      </div>
+
+      <div id="hub-panel-linqe" class="hub-panel hidden">
+        <p class="field-hint">Hapni linkun <strong>Banak</strong> në monitor të banakut — aty vijnë porositë QR, kamarier, online dhe POS. Kuzhina është vetëm për ushqim.</p>
+        <div class="link-row-hub" id="hub-row-bar">
+          <label>Banak — porosi</label>
+          <div class="link-actions"><input type="text" id="hub-link-bar" readonly><button type="button" class="btn btn-ghost btn-sm" data-hub-copy="hub-link-bar">Kopjo</button></div>
+        </div>
+        <div class="link-row-hub" id="hub-row-waiter">
+          <label>Kamarier</label>
+          <div class="link-actions"><input type="text" id="hub-link-waiter" readonly><button type="button" class="btn btn-ghost btn-sm" data-hub-copy="hub-link-waiter">Kopjo</button></div>
+        </div>
+        <div class="link-row-hub" id="hub-row-kitchen">
+          <label>Kuzhina (KDS) — ushqim</label>
+          <div class="link-actions"><input type="text" id="hub-link-kitchen" readonly><button type="button" class="btn btn-ghost btn-sm" data-hub-copy="hub-link-kitchen">Kopjo</button></div>
+        </div>
+        <div class="link-row-hub" id="hub-row-kiosk">
+          <label>Tavolinë (Kiosk)</label>
+          <div class="link-actions"><input type="text" id="hub-link-kiosk" readonly><button type="button" class="btn btn-ghost btn-sm" data-hub-copy="hub-link-kiosk">Kopjo</button></div>
+        </div>
+        <div class="link-row-hub" id="hub-row-public">
+          <label>Faqja publike</label>
+          <div class="link-actions"><input type="text" id="hub-link-public" readonly><button type="button" class="btn btn-ghost btn-sm" data-hub-copy="hub-link-public">Kopjo</button></div>
+        </div>
+        <p id="hub-links-empty" class="field-hint hidden">Kjo paketë nuk përfshin asnjë link (KDS, Kiosk, Kamarier ose faqe publike). Ndryshoni paketën në Ndrysho klientin.</p>
+        <button type="button" class="btn btn-ghost btn-sm" id="hub-regenerate-links">Rigjenero kodet e aksesit</button>
+      </div>
+
+      <div id="hub-panel-qr" class="hub-panel hidden">
+        <div class="hub-qr-head">
+          <p class="field-hint">
+            QR kodet janë <strong>unike për këtë lokal</strong> — slug:
+            <code id="hub-qr-slug">—</code>.
+            Çdo tavolinë lidhet me URL të vet: <code>/menu/[slug]/[nr]</code>.
+          </p>
+          <button type="button" class="btn btn-primary btn-sm" id="hub-print-all-qrs">Printo të gjitha (PDF)</button>
+        </div>
+        <p id="hub-qr-msg" class="field-hint"></p>
+        <div class="hub-qr-scroll">
+          <table class="admin-table hub-qr-table">
+            <thead>
+              <tr>
+                <th>Tavolina</th>
+                <th>URL</th>
+                <th>QR</th>
+                <th>Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="hub-qr-body">
+              <tr><td colspan="4" style="color:var(--muted)">Hapni këtë skedë për të ngarkuar QR kodet e lokalit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-edit" class="modal hidden">
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-card">
+      <h2 id="modal-title" class="modal-title">Ndrysho</h2>
+      <div id="modal-error" class="alert alert-error hidden"></div>
+      <form id="modal-form"></form>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="modal-cancel">Anulo</button>
+        <button type="submit" form="modal-form" class="btn btn-primary" id="modal-save">Ruaj</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/panel.js?v=43"></script>
+</body>
+</html>

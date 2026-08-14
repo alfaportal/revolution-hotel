@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Master Admin — Revolution Invest</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/dashboard.css?v=30">
+</head>
+<body>
+  <div id="view-login" class="login-wrap">
+    <div class="login-card">
+      <h1>Master Admin</h1>
+      <p>Paneli i unifikuar — Kafene, Security &amp; më shumë. Pronarët: <code>/owner/login</code>.</p>
+      <div id="login-error" class="alert alert-error hidden"></div>
+      <form id="form-login">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="username" placeholder="admin@revolutioninvest.com">
+        <label for="password">Fjalëkalimi</label>
+        <input type="password" id="password" required autocomplete="current-password">
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Hyr</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="view-app" class="hidden">
+    <div class="backdrop" id="nav-backdrop"></div>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand-mark">RI</div>
+          <div>
+            <h1>Revolution Invest</h1>
+            <span>Master Admin</span>
+          </div>
+        </div>
+        <nav class="nav-list" id="nav-list">
+          <button type="button" class="nav-item active" data-section="pasqyra"><span class="nav-ico">📊</span> Pasqyra</button>
+          <button type="button" class="nav-item" data-section="klientet"><span class="nav-ico">👥</span> Klientët</button>
+          <button type="button" class="nav-item" data-section="licencat"><span class="nav-ico">🔑</span> Licencat</button>
+          <button type="button" class="nav-item" data-section="ai"><span class="nav-ico">🤖</span> AI Usage</button>
+          <button type="button" class="nav-item" data-section="faturimi"><span class="nav-ico">🧾</span> Faturimi</button>
+          <button type="button" class="nav-item" data-section="raportet"><span class="nav-ico">⚠️</span> Probleme</button>
+          <button type="button" class="nav-item" data-section="cilesimet"><span class="nav-ico">⚙️</span> Cilësimet</button>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="user" id="user-label">—</div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-logout" style="width:100%">Dil</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div style="display:flex;align-items:flex-start;gap:0.75rem">
+            <button type="button" class="hamburger" id="btn-hamburger" aria-label="Menu">☰</button>
+            <div>
+              <h2 id="page-title">Pasqyra</h2>
+              <p id="page-sub">Përmbledhje e platformës</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-tabs" id="product-tabs" role="tablist" aria-label="Produkti">
+          <button type="button" class="product-tab active" data-product="hotel" role="tab" aria-selected="true">HOTEL</button>
+        </div>
+        <p class="product-tabs-hint" id="product-tabs-hint">
+          Ky server është vetëm REVOLUTION HOTEL. Supabase i POS / Security / MARKET nuk përdoret.
+        </p>
+        <p id="product-bridge-msg" class="product-bridge-msg hidden"></p>
+
+        <!-- PASQYRA -->
+        <section class="section active" id="sec-pasqyra">
+          <div class="kpi-row">
+            <div class="kpi"><div class="lbl">Klientë aktiv</div><div class="val" id="kpi-active">—</div></div>
+            <div class="kpi"><div class="lbl">Licenca aktive</div><div class="val" id="kpi-licenses">—</div></div>
+            <div class="kpi"><div class="lbl">Trial</div><div class="val" id="kpi-trial">—</div></div>
+            <div class="kpi"><div class="lbl">Shitjet sot</div><div class="val" id="kpi-sales">—</div></div>
+            <div class="kpi warn"><div class="lbl">Me probleme</div><div class="val" id="kpi-problems">—</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Shitjet javore (krejt klientët)</div>
+            <div class="chart" id="chart-weekly"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Klientë me probleme</div>
+            <ul class="problem-list" id="problem-list"></ul>
+          </div>
+        </section>
+
+        <!-- KLIENTËT -->
+        <section class="section" id="sec-klientet">
+          <div class="card">
+            <div class="card-title">
+              <span>Shto klient të ri</span>
+            </div>
+            <form id="form-new-client" class="form-grid">
+              <div class="field">
+                <label for="nc-product">Produkti / Industria</label>
+                <select id="nc-product" required>
+                  <option value="kafene">REVOLUTION POS (shitje)</option>
+                  <option value="security">REVOLUTION SECURITY (punëtorë)</option>
+                  <option value="hotel">REVOLUTION HOTEL</option>
+                  <option value="furra">REVOLUTION FURRA</option>
+                  <option value="market">REVOLUTION MARKET</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="nc-emri">Emri i biznesit</label>
+                <input id="nc-emri" required placeholder="p.sh. Café Roma" autocomplete="organization">
+              </div>
+              <div class="field nc-kafene-only">
+                <label for="nc-tipi">Veprimtaria — REVOLUTION POS</label>
+                <select id="nc-tipi">
+                  <option value="kafene">Kafene</option>
+                  <option value="restorant">Restorant</option>
+                  <option value="bar">Bar / Pub</option>
+                  <option value="klub_nate">Klub nate / Diskotekë</option>
+                  <option value="piceri">Piceri</option>
+                  <option value="fast_food">Fast Food Kiosk</option>
+                  <option value="dyqan_pijesh">Dyqan pijesh</option>
+                </select>
+              </div>
+              <div class="field nc-tier-only">
+                <label for="nc-pako">Pako</label>
+                <select id="nc-pako">
+                  <option value="pako_3">Pako 1</option>
+                  <option value="pako_4">Pako 2</option>
+                  <option value="pako_2">Pako 3</option>
+                  <option value="pako_5">Pako 4 (AI)</option>
+                </select>
+              </div>
+              <div class="field nc-hotel-only hidden">
+                <label for="nc-hotel-tipi">Veprimtaria — REVOLUTION HOTEL</label>
+                <select id="nc-hotel-tipi">
+                  <option value="hotel">Hotel</option>
+                  <option value="motel">Motel</option>
+                  <option value="hostel">Hostel</option>
+                  <option value="resort">Resort</option>
+                  <option value="ville_me_qira">Villë me qira</option>
+                </select>
+              </div>
+              <div class="field nc-furra-only hidden">
+                <label for="nc-furra-tipi">Veprimtaria — REVOLUTION FURRA</label>
+                <select id="nc-furra-tipi">
+                  <option value="furre_buke">Furrë Buke</option>
+                  <option value="pasticeri">Pastiçeri / Ëmbëltore</option>
+                </select>
+              </div>
+              <div class="field nc-market-only hidden">
+                <label for="nc-market-tipi">Veprimtaria — Ushqimore / Tregtare</label>
+                <select id="nc-market-tipi">
+                  <option value="minimarket">Mini-market / Market</option>
+                  <option value="pilar">Pilar (dyqan i vogël lagje)</option>
+                  <option value="supermarket">Supermarket</option>
+                  <option value="dyqan_ushqimor">Dyqan ushqimor</option>
+                  <option value="manav">Dyqan pemë-perimesh (manav)</option>
+                  <option value="bulmetore">Dyqan bulmetore</option>
+                  <option value="kasap">Dyqan mishit (kasap)</option>
+                  <option value="dyqan_peshku">Dyqan peshku</option>
+                </select>
+              </div>
+              <div class="field nc-security-only hidden">
+                <label for="nc-veprimtari">Veprimtaria — REVOLUTION SECURITY</label>
+                <select id="nc-veprimtari">
+                  <option value="kompani_sigurie">Kompani sigurie (roje, patrullime)</option>
+                  <option value="pastrim">Kompani pastrimi (pastrues nëpër objekte)</option>
+                  <option value="ndertimtari">Ndërtimtari (punëtorë kantiere)</option>
+                  <option value="transport_logjistike">Transport / Logjistikë (shoferë, dërgesa)</option>
+                  <option value="sherbime_teknike">Shërbime teknike (elektricistë, hidraulikë, servis)</option>
+                  <option value="mirembajtje_nderte">Mirëmbajtje ndërtesash (maintenance)</option>
+                  <option value="agjenci_punesimi">Agjenci punësimi (punëtorë të dërguar te klientët)</option>
+                  <option value="bujqesi">Bujqësi (punëtorë sezone)</option>
+                  <option value="kuriere_dergesa">Kurierë / Dërgesa</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="nc-email">Email</label>
+                <input id="nc-email" type="email" placeholder="opsionale">
+              </div>
+              <div class="field">
+                <label for="nc-tel">Telefon</label>
+                <input id="nc-tel" type="tel" placeholder="opsionale">
+              </div>
+
+              <div class="field full nc-license-block">
+                <div class="card-title" style="margin:0.25rem 0 0.5rem;font-size:1rem">
+                  <span>Licenca / Aktivizimi (16 shenja)</span>
+                </div>
+                <p style="color:var(--muted);font-size:0.88rem;margin:0 0 0.75rem">
+                  Ngjit ID nga ekrani «Aktivizo» te klienti, ose gjenero ID + licencë këtu. Ruhet së bashku me klientin.
+                </p>
+              </div>
+              <div class="field">
+                <label for="nc-license-type">Lloji i licencës</label>
+                <select id="nc-license-type">
+                  <option value="trial">Trial (7 ditë)</option>
+                  <option value="annual" selected>Vjetor (1 vit)</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="nc-hw-id">ID pajisjes (16 shenja)</label>
+                <div class="nc-input-row">
+                  <input id="nc-hw-id" class="mono" type="text" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+                  <button type="button" class="btn btn-ok" id="btn-nc-gen-id">Gjenero ID</button>
+                </div>
+              </div>
+              <div class="field full">
+                <label for="nc-license-key">Çelësi i licencës (16 shenja)</label>
+                <div class="nc-input-row">
+                  <input id="nc-license-key" class="mono" type="text" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+                  <button type="button" class="btn btn-primary" id="btn-nc-gen-key">Gjenero Licencë</button>
+                </div>
+              </div>
+              <div class="field full" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-nc-copy-pair">Kopjo ID + Licencë</button>
+              </div>
+              <div class="field full">
+                <label class="chk-row"><input type="checkbox" id="nc-license" checked> Ruaj klientin me këtë licencë</label>
+              </div>
+              <div class="field full">
+                <button type="submit" class="btn btn-primary" id="btn-nc-submit">Regjistro klientin</button>
+                <span id="nc-msg" style="margin-left:0.75rem;color:var(--muted);font-size:0.9rem"></span>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-title">
+              <span id="clients-list-title">Klientët sipas sektorit</span>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-clients">Rifresko</button>
+            </div>
+            <input type="search" class="search-bar" id="clients-search" placeholder="Kërko klientin e këtij produkti…" enterkeyhint="search" autocomplete="off">
+            <div id="clients-sectors"></div>
+          </div>
+        </section>
+
+        <!-- LICENCAT -->
+        <section class="section" id="sec-licencat">
+          <div class="card">
+            <div class="card-title">Licencat</div>
+            <p style="color:var(--muted);margin:0 0 0.75rem;font-size:0.9rem">
+              1) Gjenero ID · 2) Gjenero Licencë · 3) <strong>Ruaj</strong> · 4) Kopjo — vetëm produkti aktiv
+            </p>
+            <input type="search" class="search-bar" id="licenses-search" placeholder="Kërko licencë / klient (vetëm ky produkt)…" enterkeyhint="search" autocomplete="off">
+            <div class="field" style="margin-bottom:0.75rem">
+              <label for="gen-license-type">Lloji</label>
+              <select id="gen-license-type">
+                <option value="trial">Trial (7 ditë)</option>
+                <option value="annual" selected>Vjetor (1 vit)</option>
+              </select>
+            </div>
+            <div class="license-cards mobile-only" id="licenses-cards"></div>
+            <div class="table-wrap desktop-only">
+              <table class="sa-table">
+                <thead>
+                  <tr>
+                    <th>Klienti</th><th>ID</th><th>Licenca</th><th>Statusi</th><th></th>
+                  </tr>
+                </thead>
+                <tbody id="licenses-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Link Setup</div>
+            <div class="field">
+              <label for="setup-ttl">Orë (default 168 = 7 ditë)</label>
+              <input id="setup-ttl" type="number" min="1" max="720" value="168">
+            </div>
+            <button type="button" class="btn btn-ok" id="btn-setup-link">Gjenero link</button>
+            <div id="setup-link-result" style="margin-top:0.75rem;word-break:break-all;color:var(--accent)"></div>
+          </div>
+        </section>
+
+        <!-- AI USAGE -->
+        <section class="section" id="sec-ai">
+          <div class="toolbar">
+            <input type="month" id="ai-month">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-ai-load">Filtro</button>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi"><div class="lbl">Tokena total</div><div class="val" id="ai-tokens-total">—</div></div>
+            <div class="kpi"><div class="lbl">Kosto total</div><div class="val" id="ai-cost-total">—</div></div>
+            <div class="kpi"><div class="lbl">Thirrje</div><div class="val" id="ai-calls-total">—</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Harxhimi i tokenave me kohë</div>
+            <div class="chart" id="chart-ai"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Sipas klientit</div>
+            <div class="table-wrap">
+              <table class="sa-table">
+                <thead>
+                  <tr><th>Klienti</th><th>Tokena</th><th>Kosto</th><th>Thirrje</th><th>Data e fundit</th></tr>
+                </thead>
+                <tbody id="ai-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- FATURIMI -->
+        <section class="section" id="sec-faturimi">
+          <div class="card">
+            <div class="card-title">
+              <span>Pagesa bankare (licenca)</span>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-bank-pay-refresh">Rifresko</button>
+            </div>
+            <p style="color:var(--muted);font-size:0.9rem;margin:0 0 0.75rem">
+              Fatura PDF me vulë/datë dërgohet me email <strong>vetëm pasi të konfirmoni</strong> që pagesa ka ardhur në bankë.
+            </p>
+            <div id="bank-pay-cards" class="bank-pay-cards" aria-live="polite"></div>
+            <div class="table-wrap desktop-only">
+              <table class="sa-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Biznesi</th>
+                    <th>Pako</th>
+                    <th>Shuma</th>
+                    <th>Email</th>
+                    <th>Statusi</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="bank-pay-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Gjenero faturë</div>
+            <div class="form-grid">
+              <div class="field full">
+                <label for="inv-client">Klienti (ID)</label>
+                <select id="inv-client"></select>
+              </div>
+              <div class="field">
+                <label for="inv-from">Nga</label>
+                <input type="date" id="inv-from">
+              </div>
+              <div class="field">
+                <label for="inv-to">Deri</label>
+                <input type="date" id="inv-to">
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btn-inv-create" style="margin-top:0.75rem">Gjenero faturë</button>
+          </div>
+          <div class="card">
+            <div class="card-title">Faturat</div>
+            <div class="table-wrap">
+              <table class="sa-table">
+                <thead>
+                  <tr><th>Nr</th><th>Klienti</th><th>Periudha</th><th>Totali</th><th>Statusi</th><th></th></tr>
+                </thead>
+                <tbody id="inv-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- PROBLEME (ish-Raportet — pa shitje) -->
+        <section class="section" id="sec-raportet">
+          <div class="card">
+            <div class="card-title">
+              <span>Probleme</span>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-rep-load">Rifresko</button>
+            </div>
+            <p class="prob-help">
+              Këtu rregullon <strong>problemin</strong> (offline, print, fiskale, licencë e skaduar…).
+              ID, email dhe çelësi i licencës ndryshohen vetëm te <strong>Klientët</strong> — jo këtu.
+            </p>
+            <div class="kpi-row" id="problems-kpi">
+              <button type="button" class="kpi warn kpi-jump" data-prob-jump="program" id="kpi-btn-program">
+                <div class="lbl">Program</div>
+                <div class="val" id="prob-kpi-program">—</div>
+                <div class="kpi-hint">Prek për detaje</div>
+              </button>
+              <button type="button" class="kpi warn kpi-jump" data-prob-jump="offline" id="kpi-btn-offline">
+                <div class="lbl">Offline &gt;48h</div>
+                <div class="val" id="prob-kpi-offline">—</div>
+                <div class="kpi-hint">Prek për detaje</div>
+              </button>
+              <button type="button" class="kpi warn kpi-jump" data-prob-jump="license" id="kpi-btn-license">
+                <div class="lbl">Licencë skaduar</div>
+                <div class="val" id="prob-kpi-license">—</div>
+                <div class="kpi-hint">Prek për detaje</div>
+              </button>
+              <button type="button" class="kpi warn kpi-jump" data-prob-jump="print" id="kpi-btn-print">
+                <div class="lbl">Print</div>
+                <div class="val" id="prob-kpi-print">—</div>
+                <div class="kpi-hint">Prek për detaje</div>
+              </button>
+              <button type="button" class="kpi warn kpi-jump" data-prob-jump="fiscal" id="kpi-btn-fiscal">
+                <div class="lbl">Fiskale</div>
+                <div class="val" id="prob-kpi-fiscal">—</div>
+                <div class="kpi-hint">Prek për detaje</div>
+              </button>
+            </div>
+          </div>
+          <div class="card" id="card-prob-program" data-prob-card="program">
+            <div class="card-title">Probleme me programin</div>
+            <ul class="problem-list" id="prob-program"></ul>
+          </div>
+          <div class="card" id="card-prob-offline" data-prob-card="offline">
+            <div class="card-title">Offline më shumë se 48 orë</div>
+            <ul class="problem-list" id="prob-offline"></ul>
+          </div>
+          <div class="card" id="card-prob-license" data-prob-card="license">
+            <div class="card-title">Licencë e skaduar</div>
+            <ul class="problem-list" id="prob-license"></ul>
+          </div>
+          <div class="card" id="card-prob-print" data-prob-card="print">
+            <div class="card-title">Gabime printimi</div>
+            <ul class="problem-list" id="prob-print"></ul>
+          </div>
+          <div class="card" id="card-prob-fiscal" data-prob-card="fiscal">
+            <div class="card-title">Gabime fiskale</div>
+            <ul class="problem-list" id="prob-fiscal"></ul>
+          </div>
+          <div class="card">
+            <div class="card-title">Histori problemesh (me datë)</div>
+            <div class="table-wrap">
+              <table class="sa-table">
+                <thead><tr><th>Data</th><th>Klienti</th><th>Lloji</th><th>Mesazhi</th></tr></thead>
+                <tbody id="prob-history-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- CILËSIMET -->
+        <section class="section" id="sec-cilesimet">
+          <div class="card">
+            <div class="card-title">Të dhënat e adminit &amp; çmimet</div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="set-name">Emri i adminit</label>
+                <input id="set-name">
+              </div>
+              <div class="field">
+                <label for="set-email">Email</label>
+                <input id="set-email" type="email">
+              </div>
+              <div class="field">
+                <label for="set-p1">Çmimi Pako 1 € — Standard (POS, KDS, kamarier, cloud, kiosk)</label>
+                <input id="set-p1" type="number" min="0" step="0.01">
+              </div>
+              <div class="field">
+                <label for="set-p2">Çmimi Pako 2 € — Pro (+ porosi online)</label>
+                <input id="set-p2" type="number" min="0" step="0.01">
+              </div>
+              <div class="field">
+                <label for="set-p3">Çmimi Pako 3 € — Full (krejt pa AI)</label>
+                <input id="set-p3" type="number" min="0" step="0.01">
+              </div>
+              <div class="field">
+                <label for="set-p4">Çmimi Pako 4 € — AI Profesionale (krejt + AI)</label>
+                <input id="set-p4" type="number" min="0" step="0.01">
+              </div>
+              <div class="field full">
+                <label for="set-ai">Çmimi AI për 1000 tokena (€) — vetëm Pako 4</label>
+                <input id="set-ai" type="number" min="0" step="0.0001">
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btn-settings-save" style="margin-top:0.85rem">Ruaj</button>
+            <div id="settings-msg" class="alert alert-ok hidden" style="margin-top:0.75rem"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="drawer-root" class="hidden">
+    <div class="drawer-backdrop" id="drawer-backdrop"></div>
+    <aside class="drawer" id="drawer">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        <h3 id="drawer-title">Klienti</h3>
+        <button type="button" class="btn btn-ghost btn-sm" id="drawer-close">Mbyll</button>
+      </div>
+      <p class="sub" id="drawer-sub"></p>
+      <div id="drawer-body"></div>
+    </aside>
+  </div>
+
+  <div id="prob-resolve-root" class="hidden">
+    <div class="drawer-backdrop" id="prob-resolve-backdrop"></div>
+    <aside class="drawer prob-resolve-drawer" id="prob-resolve-drawer">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        <h3 id="prob-resolve-title">Rregullo problemin</h3>
+        <button type="button" class="btn btn-ghost btn-sm" id="prob-resolve-close">Mbyll</button>
+      </div>
+      <p class="sub" id="prob-resolve-sub"></p>
+      <div id="prob-resolve-body"></div>
+    </aside>
+  </div>
+
+  <script src="/admin/dashboard.js?v=30"></script>
+</body>
+</html>
