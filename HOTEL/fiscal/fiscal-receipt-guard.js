@@ -1,6 +1,6 @@
 /**
  * fiscal/fiscal-receipt-guard.js — mbrojtje absolute e formatit të kuponit fiskal.
- * E MBROJTUR: mos ndrysho STRUCTURE_SPEC / RECEIPT_FORMAT_HASH pa aprovim + FISCAL-REQUIREMENTS.md.
+ * E MBROJTUR: mos ndrysho STRUCTURE_SPEC / RECEIPT_FORMAT_HASH pa aprovim të pronarit.
  */
 const crypto = require("crypto");
 const { isFiscalEnabled } = require("./fiscal-config");
@@ -76,7 +76,7 @@ function assertFormatSpecIntegrity() {
   if (computed !== RECEIPT_FORMAT_HASH) {
     throw new Error(
       "RECEIPT_FORMAT_HASH nuk përputhet me STRUCTURE_SPEC — " +
-        "formati i kuponit u ndryshua pa aprovim. Lexo FISCAL-REQUIREMENTS.md / Rregulli #15."
+        "formati i kuponit u ndryshua pa aprovim — kërkohet aprovim i pronarit para ndryshimit të STRUCTURE_SPEC."
     );
   }
   return true;

@@ -2,10 +2,10 @@
  * Modaliteti i faturës — Auto (kamarieri zgjedh), Termik, ose Fiskal.
  *
  * Dy burime, gjithmonë të dukshme, kurrë me kod të fshehtë:
- *  - LOKAL: admini e vendos te KAFENE (admin.html) — ruhet në SQLite.
- *  - CLOUD: pronari e vendos nga telefoni (paneli i tij) — KAFENE e LEXON
+ *  - LOKAL: admini e vendos te HOTEL (admin.html) — ruhet në SQLite.
+ *  - CLOUD: pronari e vendos nga telefoni (paneli i tij) — HOTEL e LEXON
  *    periodikisht (cloud-auto-sync.js -> cloudSync.fetchRegisterModeFromCloud)
- *    dhe e ruan në cache lokal. KAFENE nuk shkruan kurrë te cloud për këtë.
+ *    dhe e ruan në cache lokal. HOTEL nuk shkruan kurrë te cloud për këtë.
  *
  * Nëse pronari e ka detyruar një modalitet nga telefoni (cloud mode != "auto"),
  * ai mbizotëron mbi settings-in lokal — kështu ndërrimi nga telefoni prek

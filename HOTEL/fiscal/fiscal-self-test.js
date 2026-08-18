@@ -1,6 +1,6 @@
 /**
  * fiscal/fiscal-self-test.js — test lokal i plotë i modulit fiskal.
- * NUK dërgon te ATK. Printon kupon provë në printerin termik të KAFENE (opsionale).
+ * NUK dërgon te ATK. Printon kupon provë në printerin termik të HOTEL (opsionale).
  * Fshin vetëm rreshta TEST pas testit.
  */
 const crypto = require("crypto");
@@ -632,7 +632,7 @@ function testWriteOnce() {
       .slice(0, 16)
       .padEnd(16, "0");
 
-    // INSERT provë (pa pragma — wrapper i KAFENE nuk ka sqlite.pragma)
+    // INSERT provë (pa pragma — wrapper i HOTEL nuk ka sqlite.pragma)
     const insertedId = insertFiscalReceipt({
       sale_id: 0,
       nuikf,

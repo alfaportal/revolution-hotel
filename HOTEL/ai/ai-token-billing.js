@@ -1,5 +1,5 @@
 /**
- * AI faturimi — FIKUR për hotel (pa cloud / pa tokena kafene).
+ * AI faturimi — FIKUR për hotel (pa cloud / pa tokena hotel).
  */
 function currentMonth() {
   const d = new Date();

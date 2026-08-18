@@ -1,6 +1,6 @@
 /**
  * fiscal/fiscal-i18n.js — HAPI 11: shqip (sq) + serbisht (sr) për modulin fiskal.
- * Ndikon VETËM kuponin fiskal + UI SEF — jo tekstet e tjera të KAFENE.
+ * Ndikon VETËM kuponin fiskal + UI SEF — jo tekstet e tjera të HOTEL.
  */
 const { getFiscalSettings, saveFiscalSettings } = require("./fiscal-config");
 

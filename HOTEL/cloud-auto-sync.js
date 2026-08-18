@@ -54,7 +54,7 @@ function hasCachedKitchenAccess(db) {
 }
 
 function getStatus(_db) {
-  /* Hotel: gjithmonë offline — pa cloud kafene. */
+  /* Hotel: gjithmonë offline — pa cloud hotel. */
   const msg = "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.";
   return {
     ok: true,
@@ -212,7 +212,7 @@ async function runCatalogPush(db, { force = false } = {}) {
   }
 }
 
-/** Sync i plotë — FIKUR për hotel (pa cloud kafene). */
+/** Sync i plotë — FIKUR për hotel (pa cloud hotel). */
 async function runFullSync(_db) {
   applyStatus({
     configured: false,
@@ -227,7 +227,7 @@ async function runFullSync(_db) {
 }
 
 function scheduleCatalogPush(_db) {
-  /* Hotel: pa catalog push te cloud kafene. */
+  /* Hotel: pa catalog push te cloud hotel. */
   return;
 }
 
@@ -236,7 +236,7 @@ function pushCatalogDebounced(db) {
 }
 
 function startCloudAutoSync(db) {
-  /* Hotel: zero sync me cloud-in e kafenes. */
+  /* Hotel: zero sync me cloud-in e hotelit. */
   if (!db || started) return;
   started = true;
   boundDb = db;

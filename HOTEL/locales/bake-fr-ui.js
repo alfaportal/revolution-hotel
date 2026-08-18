@@ -1,5 +1,5 @@
 /**
- * Bake French into UI files for KAFENE France builds.
+ * Bake French into UI files for HOTEL France builds.
  * ONLY exact full-string replacements (literals + HTML text) — never partial/substring.
  */
 const fs = require("fs");

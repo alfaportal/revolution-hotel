@@ -62,7 +62,7 @@ Nuk ka kamarier tjetër të regjistruar — mbyllni pa dorëzim.
 ` ).join(""); const vatOpts = ["18", "8", "0"].map(v => `
 = 0 ? "+" : "") + formatEuro(diff); val.className = diff
 '; } else { lista.innerHTML = porosia.map((it, idx) => `
-Emri i kafenes, tavolinat dhe të dhënat fiskale për ATK
+Emri i hotelit, tavolinat dhe të dhënat fiskale për ATK
 '; return; } if (!filtered.length) { grid.innerHTML = '
 Zgjidhni tavolinën — jeshil = lirë, portokalli = e zënë
 '; return null; } select.innerHTML = shifts.map(s => `
@@ -70,7 +70,7 @@ Zgjidhni tavolinën — jeshil = lirë, portokalli = e zënë
 Nuk ka nderrim aktiv (hapeni nga paneli i kamarierit)
 '; return; } body.innerHTML = data.tables.map(t => `
 Regjistroni blerjet dhe rritni stokun automatikisht
-Emri i kafenes, tavolinat dhe fjalëkalimi i adminit
+Emri i hotelit, tavolinat dhe fjalëkalimi i adminit
 '; return; } body.innerHTML = invoices.map(inv => `
 Nuk ka promocione ende. Klikoni «+ Promocion i ri».
 { const nentotal = it.price * it.quantity; return `
@@ -332,7 +332,7 @@ Paratë e nisjes
 Duke ngarkuar…
 Totali zbritur
 PIN (4 shifra)
-Emri i kafenes
+Emri i hotelit
 Skano kartelën
 Shto tavolinën
 Promocion i ri

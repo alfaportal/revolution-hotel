@@ -4983,7 +4983,7 @@ app.get("/api/cloud-sync", auth, adminOnly, async (_req, res) => {
 });
 
 app.put("/api/cloud-sync", auth, adminOnly, async (_req, res) => {
-  /* Hotel: mos ruaj / mos sync me cloud kafene. */
+  /* Hotel: mos ruaj / mos sync me cloud hotel. */
   res.json({
     ok: true,
     connected: false,
@@ -5678,7 +5678,7 @@ app.put("/api/license", auth, adminOnly, async (req, res) => {
   try {
     const result = await license.activateWithKey(eapp, license_key);
     const normalized = String(license_key || "").trim().toUpperCase().replace(/\s+/g, "");
-    /* Hotel: mos ruaj çelës kafene / mos sync cloud. */
+    /* Hotel: mos ruaj çelës hotel / mos sync cloud. */
     res.json(result);
   } catch (e) {
     res.status(400).json({ gabim: e.message });

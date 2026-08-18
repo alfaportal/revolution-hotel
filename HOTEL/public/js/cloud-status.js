@@ -17,6 +17,6 @@
     const el = document.getElementById(elementId);
     if (!el) return;
     applyHotelOffline(el);
-    /* Pa polling te /api/cloud — zero lidhje me cloud kafene. */
+    /* Pa polling te /api/cloud — zero lidhje me cloud hotel. */
   };
 })();

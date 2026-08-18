@@ -1,7 +1,7 @@
 /**
  * Revolution HOTEL — cloud URL (i çaktivizuar).
  * Hoteli punon VETËM me SQLite lokal derisa të ketë serverin e vet.
- * Asnjë URL kafene / cloud i jashtëm.
+ * Asnjë URL hotel / cloud i jashtëm.
  */
 function trimTrailingSlash(url) {
   return String(url || "").trim().replace(/\/+$/, "");

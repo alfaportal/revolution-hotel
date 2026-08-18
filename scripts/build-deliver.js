@@ -13,7 +13,7 @@ const ALWAYS_REMOVE = new Set(["win-unpacked", "builder-debug.yml", "latest.yml"
 const LEGACY_JUNK = [
   /^Revolution POS Setup \d/i,
   /^Revolution POS Setup \d.*\.blockmap$/i,
-  /^Sistemi i Kafenes Setup/i,
+  /^Revolution HOTEL Setup/i,
 ];
 
 function rimraf(p) {

@@ -1,6 +1,6 @@
 /**
  * AI paneli i Naserit — përdorimi i tokenëve (lexohet nga cloud Super Admin).
- * Desktop KAFENE nuk është paneli i Naserit; eksporton helper për dokumentim / proxy.
+ * Desktop HOTEL nuk është paneli i Naserit; eksporton helper për dokumentim / proxy.
  */
 const aiCloud = require("../ai-cloud");
 

@@ -23,7 +23,7 @@
       "Kosova NUK publikon listë zyrtare me mijëra emra produktesh. Ligji klasifikon sipas kategorive.",
       "Normat ATK për kupon: A=0% eksport, C=0% lirim, D=8% reduktuar, E=18% standarde.",
       "Kur ka dyshim → verifiko te ATK Interactive Tax Guide / ligji. Mos hamendëso për produkte të përpunuara (p.sh. sallam).",
-      "Ky skedar është burim pune për Revolution POS (KAFENE, HOTEL, FURRA, etj.)."
+      "Ky skedar është burim pune për Revolution HOTEL."
     ]
   },
   "vat_letters": {
@@ -45,7 +45,7 @@
     "hs": "Harmonized System — kod ndërkombëtar i mallrave (dogana)",
     "cn": "Combined Nomenclature — varianti europian/doganor i HS",
     "why": "Ligji i TVSH klasifikon sipas llojit të mallit (shpesh i lidhur me kodin doganor), JO sipas emrit të markës.",
-    "when_needed": "Market / import / saktësi e lartë. Për kafene/hotel shpesh mjafton kategoria + emri.",
+    "when_needed": "Market / import / saktësi e lartë. Për hotel shpesh mjafton kategoria + emri.",
     "examples": [
       { "code": "2203", "means": "Birra", "typical_vat": "E · 18%" },
       { "code": "0401", "means": "Qumësht", "typical_vat": "D · 8%" },
@@ -65,20 +65,6 @@
     ]
   },
   "project_templates": {
-    "KAFENE": {
-      "description": "Kafene / restorant / bar / piceri",
-      "menu_categories": [
-        { "name": "Kafe", "default_letter": "E", "default_rate": 18 },
-        { "name": "Pije", "default_letter": "E", "default_rate": 18 },
-        { "name": "Alkool", "default_letter": "E", "default_rate": 18 },
-        { "name": "Ushqim", "default_letter": "E", "default_rate": 18 },
-        { "name": "Ëmbëlsira", "default_letter": "E", "default_rate": 18 },
-        { "name": "Ushqim bazë (Neni 26)", "default_letter": "D", "default_rate": 8 },
-        { "name": "Duhan", "default_letter": "E", "default_rate": 18 }
-      ],
-      "smart_mapping": true,
-      "seed_from_products_filter": ["Kafe / bar", "Pije", "Alkool", "Ëmbëlsira", "Snacks", "Ushqim i gatshëm", "Ushqim bazë"]
-    },
     "HOTEL": {
       "description": "Hotel / motel / resort + F&B",
       "menu_categories": [

@@ -35,7 +35,7 @@ let lastHealth = {
   checked_at: null,
 };
 
-/** Hotel: asnjë thirrje te serveri i kafenes. */
+/** Hotel: asnjë thirrje te serveri i hotelit. */
 const HOTEL_CLOUD_DISABLED = true;
 
 function bindCloudHealthDb(db) {

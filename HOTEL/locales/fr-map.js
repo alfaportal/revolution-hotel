@@ -1,5 +1,5 @@
 /**
- * Albanian → French for KAFENE France.
+ * Albanian → French for HOTEL France.
  * Exact-match only (see i18n.js / bake-fr-ui.js).
  */
 module.exports = {
@@ -62,7 +62,7 @@ module.exports = {
   "Zgjidhni tavolinën — jeshil = libre, portokalli = occupée": "Choisissez la table — vert = libre, orange = occupée",
   "p.sh. kamarieri numëroi gabim, kthim para klientit, etj.": "ex. le serveur a mal compté, rendu d'argent au client, etc.",
   "Zgjidhni tavolinën — jeshil = lirë, portokalli = e zënë": "Choisissez la table — vert = libre, orange = occupée",
-  "Emri i kafenes, tavolinat dhe të dhënat fiskale për ATK": "Nom du café, tables et données fiscales",
+  "Emri i hotelit, tavolinat dhe të dhënat fiskale për ATK": "Nom de l'hôtel, tables et données fiscales",
   ") garanton që QR-et nuk ngatërrohen me lokale të tjera.": ") garantit que les QR ne se confondent pas avec d'autres établissements.",
   "Shkruani kodin 6-shifror ditor me tastierën më poshtë.": "Saisissez le code quotidien à 6 chiffres avec le clavier ci-dessous.",
   "Nuk u gjet asnjë port COM. Lidhni arkën me USB/serial.": "Aucun port COM trouvé. Connectez la caisse via USB/série.",
@@ -70,7 +70,7 @@ module.exports = {
   "Shkruani PIN-in (4 shifra) ose skanoni kartelën RFID": "Saisissez le PIN (4 chiffres) ou scannez la carte RFID",
   "Regjistroni blerjet dhe rritni stokun automatikisht": "Enregistrez les achats et augmentez le stock automatiquement",
   "Numëroni paratë në kuletë dhe barazoni me raportin.": "Comptez l'argent en caisse et rapprochez avec le rapport.",
-  "Emri i kafenes, tavolinat dhe fjalëkalimi i adminit": "Nom du café, tables et mot de passe admin",
+  "Emri i hotelit, tavolinat dhe fjalëkalimi i adminit": "Nom de l'hôtel, tables et mot de passe admin",
   "Pranuar në cloud — rifreskoni tavolinën nëse duhet.": "Acceptée dans le cloud — actualisez la table si besoin.",
   " — provoni Cilësimet → Cloud → Sinkronizo gjithçka.": " — essayez Paramètres → Cloud → Tout synchroniser.",
   "Licenca nuk është aktive. Vendosni çelësin e saktë.": "La licence n'est pas active. Saisissez la clé correcte.",
@@ -414,7 +414,7 @@ module.exports = {
   "Fiskale & printer": "Fiscal & imprimante",
   "Tavolinat & Zonat": "Tables & Zones",
   "Emri i kamarierit": "Nom du serveur",
-  "Sistemi i Kafenes": "Revolution POS",
+  "Sistemi i Hotelit": "Revolution HOTEL",
   "Revolution POS": "Revolution POS",
   "Duke kontrolluar…": "Vérification…",
   "Serveri nuk u nis": "Le serveur n'a pas démarré",
@@ -542,7 +542,7 @@ module.exports = {
   "Promocion i ri": "Nouvelle promotion",
   "Ora nga (ops.)": "Heure de début (facult.)",
   "Skano kartelën": "Scanner la carte",
-  "Emri i kafenes": "Nom du café",
+  "Emri i hotelit": "Nom de l'hôtel",
   "Gabim eksporti": "Erreur d'export",
   "Gabim printimi": "Erreur d'impression",
   "Porosi online:": "Commandes en ligne :",
@@ -782,7 +782,7 @@ module.exports = {
   "Apliko": "Appliquer",
   "POROSI": "COMMANDES",
   "Filtro": "Filtrer",
-  "Kafene": "Café",
+  "Hotel": "Hôtel",
   "Admini": "Administrateur",
   "Refuzo": "Refuser",
   "Sukses": "Succès",
