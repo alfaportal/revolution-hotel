@@ -79,10 +79,10 @@ const DEFAULT_REGION = {
 const baseBuild = require("./package.json").build || {};
 
 function platformLabel() {
-  const market = BUILD_FR ? "FR" : "KS";
-  if (BUILD_MAC) return `macOS dmg [${market}]`;
-  if (BUILD_LINUX) return `Linux AppImage [${market}]`;
-  return `Windows nsis [${market}]`;
+  const region = BUILD_FR ? "FR" : "KS";
+  if (BUILD_MAC) return `macOS dmg [${region}]`;
+  if (BUILD_LINUX) return `Linux AppImage [${region}]`;
+  return `Windows nsis [${region}]`;
 }
 
 function writeTierFile(dir, { tier, label, newTier, ai }) {
@@ -102,7 +102,7 @@ function writeTierFile(dir, { tier, label, newTier, ai }) {
 
 function writeRegionFile(dir, region) {
   const body =
-    "/** Region / market — baked by build-packages.js */\n" +
+    "/** Region — baked by build-packages.js */\n" +
     "module.exports = " +
     JSON.stringify(region, null, 2) +
     ";\n";

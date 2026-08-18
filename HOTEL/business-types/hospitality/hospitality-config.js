@@ -1,11 +1,11 @@
 /**
- * hospitality — kafene / restorant / bar
+ * hospitality — hotel / restorant / bar
  * Cilët module aktivizohen për këtë lloj biznesi.
  * NUK zhvendos kod ekzistues — vetëm konfigurim.
  */
 module.exports = {
   businessType: "hospitality",
-  labels: ["kafene", "restorant", "bar"],
+  labels: ["hotel", "restorant", "bar"],
   modules: {
     tables: true,
     orders: true,

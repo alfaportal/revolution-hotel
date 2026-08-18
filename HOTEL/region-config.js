@@ -1,4 +1,4 @@
-/** Region / market — baked by build-packages.js */
+/** Region — baked by build-packages.js */
 module.exports = {
   "region": "ks",
   "locale": "sq",

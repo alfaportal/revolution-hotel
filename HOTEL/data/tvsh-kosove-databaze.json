@@ -45,7 +45,7 @@
     "hs": "Harmonized System — kod ndërkombëtar i mallrave (dogana)",
     "cn": "Combined Nomenclature — varianti europian/doganor i HS",
     "why": "Ligji i TVSH klasifikon sipas llojit të mallit (shpesh i lidhur me kodin doganor), JO sipas emrit të markës.",
-    "when_needed": "Market / import / saktësi e lartë. Për hotel shpesh mjafton kategoria + emri.",
+    "when_needed": "Import / saktësi e lartë. Për hotel shpesh mjafton kategoria + emri.",
     "examples": [
       { "code": "2203", "means": "Birra", "typical_vat": "E · 18%" },
       { "code": "0401", "means": "Qumësht", "typical_vat": "D · 8%" },

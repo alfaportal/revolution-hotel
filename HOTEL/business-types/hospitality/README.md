@@ -1,6 +1,6 @@
 # hospitality
 
-Lloji i biznesit: **kafene**, **restorant**, **bar**.
+Lloji i biznesit: **hotel**, **restorant**, **bar**.
 
 Modulet specifike për këtë kategori konfiguroren në `hospitality-config.js`.
 
