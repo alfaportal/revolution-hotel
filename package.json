@@ -1,0 +1,16 @@
+{
+  "name": "hotel-system-workspace",
+  "private": true,
+  "type": "module",
+  "description": "Build scripts për Revolution HOTEL",
+  "scripts": {
+    "build": "npm --prefix HOTEL run build:packages",
+    "build:hotel": "npm --prefix HOTEL run build:packages -- 4",
+    "build:packages": "npm --prefix HOTEL run build:packages",
+    "build:prepare": "node scripts/obfuscate-build.mjs HOTEL --prepare-only",
+    "build:portable-internal": "node scripts/obfuscate-build.mjs HOTEL --portable-internal"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  }
+}

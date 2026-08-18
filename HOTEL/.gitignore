@@ -1,0 +1,5 @@
+node_modules/
+restaurant.db
+restaurant.db-wal
+restaurant.db-shm
+node_setup.msi

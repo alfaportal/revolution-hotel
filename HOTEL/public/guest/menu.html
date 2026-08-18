@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menyja — Hotel</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --txt:#f1f5f9; --muted:#94a3b8; --acc:#FF6B35; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--txt); padding:1rem; }
+    h1 { font-size:1.35rem; margin:0 0 0.35rem; }
+    .sub { color:var(--muted); margin:0 0 1rem; font-size:0.9rem; }
+    .cat { color:var(--acc); font-weight:700; margin:1.1rem 0 0.45rem; font-size:0.85rem; letter-spacing:.04em; }
+    .item { display:flex; justify-content:space-between; gap:1rem; padding:0.65rem 0.75rem; background:var(--card); border-radius:10px; margin-bottom:0.45rem; }
+    .price { color:var(--acc); font-weight:700; white-space:nowrap; }
+    .err { color:#fca5a5; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Menyja</h1>
+  <p class="sub">Restoranti / Bari — çmimet nga hoteli</p>
+  <div id="list">Duke ngarkuar…</div>
+  <script>
+    (async () => {
+      const list = document.getElementById("list");
+      try {
+        const r = await fetch("/api/guest/menu");
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.gabim || "Gabim");
+        document.getElementById("title").textContent = d.hotel_name || "Menyja";
+        const byCat = {};
+        for (const it of d.items || []) {
+          const c = it.category || "Të tjera";
+          if (!byCat[c]) byCat[c] = [];
+          byCat[c].push(it);
+        }
+        const cats = Object.keys(byCat);
+        if (!cats.length) { list.innerHTML = "<p class='err'>Nuk ka artikuj.</p>"; return; }
+        list.innerHTML = cats.map((c) =>
+          `<div class="cat">${c}</div>` +
+          byCat[c].map((it) =>
+            `<div class="item"><span>${it.name}</span><span class="price">${Number(it.price).toFixed(2)} €</span></div>`
+          ).join("")
+        ).join("");
+      } catch (e) {
+        list.innerHTML = `<p class="err">${e.message || "Gabim"}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,566 @@
+Zgjidhni datën dhe orën e saktë (deri në sekondë). Raporti printohet si faturë termike — vetëm porositë e faktuara, jo regjistri i hyrjeve.
+Lista e plotë e printerëve të Windows (Tysso, Epson, Star, Xprinter, etj.). Mund të zgjidhni manualisht ose auto-zgjidh.
+s + i.quantity, 0); const total = (t.items || []).reduce((s, i) => s + i.price * i.quantity, 0); if (count) inner += `
+{ const pct = Math.round((r.total / max) * 100); const label = String(r.hour).padStart(2, "0") + ":00"; return `
+Çelësi lidhet me kompjuterin POS (jo me telefonin). Dërgojini shitësit ID-në e pajisjes për të marrë licencën.
+Hapni këto linke në telefon ose tablet (kërkojnë internet). Kopjoni dhe dërgojini stafit ose klientëve. Linku
+String(it.category || "").trim() === menuProductCatFilter); if (!menuItemsCache.length) { grid.innerHTML = '
+'; return; } list.innerHTML = reservationsCache.map(r => { const actions = r.status === "cancelled" ? "" : `
+s + i.quantity, 0); const total = (t.items || []).reduce((s, i) => s + i.price * i.quantity, 0); inner += `
+r.total), 1); el.innerHTML = rows.map(r => { const pct = Math.round((r.total / max) * 100); return `
+= 0.005) { diffRow.hidden = false; document.getElementById("shift-done-diff-label").textContent = d
+te  (me fallback automatik). POS vazhdon offline me SQLite kur nuk ka internet.
+) garanton që QR-et nuk ngatërrohen me lokale të tjera. Printoni dhe vendosni QR-në në tavolinë.
+{ btn.addEventListener("click", () => { if (btn.dataset.action === "back") { raw = raw.length
+{ if (waiterOnlineOrders.length) luajTingullPorosieWaiter(); }, 12000); } } else if (pending
+Zgjidhni printerin termik të instaluar në Windows dhe konfiguroni arkën fiskale (port COM).
+{ const diff = s.cash_difference; let diffHtml = "—"; if (diff != null) { const cls = diff
+Raporti i gjatë me të gjitha shitjet printohet automatikisht te printeri termik (banak).
+Regjistroni arkën fiskale (emër/numër, port COM, baud rate). Të dhënat ruhen në SQLite.
+Ngarkoni foto të menusë (printuar ose ekran). AI nxjerr emrat dhe çmimet automatikisht.
+Për kartelën RFID: pas shtimit, klikoni «Ndrysho punonjësin» dhe regjistroni kartelën.
+Gjendja e tanishme e nderrimit aktiv të kamarierit — printohet pa e mbyllur nderrimin.
+Mbyllni të gjitha tavolinat dhe porositë online/takeaway para se të mbyllni ndërrimin.
+Krijoni zona, shtoni ose fshini tavolina — ndryshimet shfaqen menjëherë te kamarierët
+Pijet shkojnë vetëm te banaku; ushqimi vetëm te kuzhina. Fatura gjithmonë te banaku.
+i.value)); if (applies === "category") { list.innerHTML = promoCategories.map(c => `
+Konfirmoni shumën me të cilën filloni — mund ta rregulloni nëse ka mospërputhje.
+` : ""; const footer = f.biz_footer || "Ju faleminderit për vizitën!"; return `
+0.005 ? "shift-report-over" : "shift-report-ok"; const label = Math.abs(diff)
+0.005 ? "shift-diff-over" : "shift-diff-ok"; lbl.textContent = Math.abs(diff)
+Rezervë automatik: backup. — vetëm Revolution e ndryshon.
+Përdoret kur kamarieri zgjedh «Kuponi Fiskal» gjatë mbylljes së tavolinës.
+{ if (e.key === "Enter") document.getElementById("hyr-admin").click(); });
+Nderrimet aktive, pa i mbyllur — mund ta printosh kurdo, nuk mbyll asgjë.
+Shfaqet në hyrje dhe fatura. Tavolinat menaxhohen te skeda «Tavolinat».
+'; const toggleLabel = it.active ? "Stop" : "Shfaq"; card.innerHTML = `
+`]; if (!data.item_summary || !data.item_summary.length) { rows.push(`
+Hyrjet, kërkimet dhe printimet regjistrohen me datë, orë dhe sekonda.
+Gjendja aktuale e produkteve — përditësohet automatikisht nga blerjet
+Konfiguroni biznesin, printerin, cloud-in dhe licencën e aplikacionit
+`); if (!data.by_category || !data.by_category.length) { rows.push(`
+Zgjidhni artikujt që paguhen tani — pjesa tjetër mbetet në tavolinë.
+`, ).join(""); } else { list.innerHTML = promoMenuItems.map(it => `
+Menaxhoni rezervimet — kamarieri sheh tavolinat e rezervuara me 🔒
+Dërgoni menunë ose raportin e sotshëm te printeri termik / fiskal.
+Happy hour, fundjavë, zbritje për kategori ose produkte specifike
+Çdo tavolinë ka QR unik — klienti skanon dhe porosit nga telefoni
+Nuk ka tavolina. Rritni numrin e tavolinave te Cilësimet → Lokal.
+` ).join(""); return shifts[0].id; } catch { select.innerHTML = '
+`; if (cloudLive) { const clo = cloudLive.order || {}; inner += `
+`); if (!data.by_waiter || !data.by_waiter.length) { rows.push(`
+Cili printer/arkë përdoret për faturat e mbylljes së tavolinave
+0); btn?.classList.toggle("login-feature-online--bar", pending
+`; const src = t.order.source_label || ""; if (src) inner += `
+Gjendja aktuale — klikoni një tavolinë për detaje ose mbyllje
+Për faturën fiskale (ATK Kosovë) — ruhen lokalisht në SQLite
+Printer termik Windows dhe konfigurimi i arkës fiskale (COM)
+Paratë e nisjes, shitjet dhe mospërputhjet cash për barazim
+Kamarierët printojnë pazarin e nderrimit kur mbyllin turnin
+Nuk ka kamarier tjetër të regjistruar — mbyllni pa dorëzim.
+`, ]; if (data.closing_cash_actual != null) { lines.push(`
+` ).join(""); const vatOpts = ["18", "8", "0"].map(v => `
+= 0 ? "+" : "") + formatEuro(diff); val.className = diff
+'; } else { lista.innerHTML = porosia.map((it, idx) => `
+Emri i kafenes, tavolinat dhe të dhënat fiskale për ATK
+'; return; } if (!filtered.length) { grid.innerHTML = '
+Zgjidhni tavolinën — jeshil = lirë, portokalli = e zënë
+'; return null; } select.innerHTML = shifts.map(s => `
+'); for (const it of data.item_summary) { rows.push(`
+Nuk ka nderrim aktiv (hapeni nga paneli i kamarierit)
+'; return; } body.innerHTML = data.tables.map(t => `
+Regjistroni blerjet dhe rritni stokun automatikisht
+Emri i kafenes, tavolinat dhe fjalëkalimi i adminit
+'; return; } body.innerHTML = invoices.map(inv => `
+Nuk ka promocione ende. Klikoni «+ Promocion i ri».
+{ const nentotal = it.price * it.quantity; return `
+'); for (const c of data.by_category) { rows.push(`
+Numëroni paratë në kuletë dhe barazoni me raportin.
+`; }).join(""); } catch (err) { body.innerHTML = `
+Gjithmonë Fiskal (ATK) — për të gjithë kamarierët
+Auto (HTML për A4/termik, tekst për arkë fiskale)
+` ).join(""); const tvshLine = f.tvsh_enabled ? `
+22 ? r.name.slice(0, 20) + "…" : r.name; return `
+'); for (const w of data.by_waiter) { rows.push(`
+Nuk ka veprime të regjistruara për këtë periudhë
+{ const busy = t.status === "occupied"; return `
+`; }).join("") + (allNotifyOrders.length > 4 ? `
+` : ""; const subtotalLine = f.tvsh_enabled ? `
+Nuk u ngarkuan kamarierët — mbyllni pa dorëzim.
+Regjistri i veprimeve (kush e preku programin)
+Kategoritë, artikujt dhe import me AI (Pako 4)
+TVSh, printer termik, kuzhina dhe arka fiskale
+initCloudStatusIndicator("cloud-status-pill");
+`; } if (t.reservation && isFree) { inner += `
+Tavolina e re shfaqet menjëherë te kamarierët
+`; } else { const statusBadge = it.active ? '
+'; return; } body.innerHTML = rows.map(r => `
+Nuk ka nderrime të mbyllura për këtë periudhë
+Shkruani kodin 6-shifror ditor (vetëm numra).
+Printeri kuzhine (porosi ushqimi — opsional)
+Emri i zonës shfaqet te paneli i kamarierëve
+Server online, linke kamarier/kuzhinë/kiosk
+Gjithmonë Termik — për të gjithë kamarierët
+Rezervimi shfaqet te kamarieri dhe në cloud
+`; }).join(""); body.innerHTML = lines || "
+Hapni këtë skedë për të ngarkuar QR kodet…
+Banak — porosi (QR, kamarier, online, POS)
+Kjo pyetje shfaqet vetëm një herë në ditë.
+Printeri fiskal (kupon fiskal — opsional)
+`; if (t.order?.waiter_name) { inner += `
+Sa para ke në kuletë në fillim të ditës?
+Aplikimi i TVSh-së në fatura dhe shitje
+Kiosk — klienti porosit vetë (tavolina)
+Stoku rritet automatikisht pas ruajtjes
+Nuk ka punonjës. Klikoni «+ Shto staf».
+ID e pajisjes dhe çelësi i aktivizimit
+Zgjidhni periudhën dhe klikoni Apliko
+Zgjidhni periudhën dhe klikoni Filtro
+Automatik — kamarieri zgjedh çdo herë
+Printeri banak (porosi pije + fatura)
+Nuk ka transaksione për këtë periudhë
+Link personal i kamarierit (telefon)
+`; } if (r.pending_sync) { return `
+Nuk ka rezervime për këtë periudhë.
+Nuk ka shitje ende në këtë nderrim.
+🔑 Kod emergjence (harruat PIN-in?)
+/menu/[slug-lokali]/[nr-tavolines]
+Zgjidhni muajin dhe klikoni Filtro
+{ dot.classList.toggle("filled", i
+Shitje Cash (Të Ardhura – Zbritje)
+e emrit dhe ngjyrën e kategorisë.
+Çdo tavolinë ka QR unik që çon te
+Raportet e nderrimeve (kamarierë)
+Zgjidh kamarierin (nderrim aktiv)
+Nuk ka produkte në këtë kategori.
+Nuk ka shpenzime në këtë periudhë
+Nuk ka të dhëna për këtë periudhë
+HTML (printer standard / termik)
+Faqja publike e menusë (website)
+` ).join(""); card.innerHTML = `
+================================
+*Faturë e gjeneruar nga sistemi*
+dot.classList.toggle("filled", i
+`); } else { const label = diff
+` + (status.default_printer ? `
+Skanoni kartën RFID për të hyrë
+Paratë në kuletë (fillimi juaj)
+Shko e merr porosinë te banaku.
+Top 15 produktet më të shitura
+r.total), 1); el.innerHTML = `
+Nuk ka shitje në këtë periudhë
+`; if (t.zone_name) inner += `
+Raporti Z — nderrim i mbyllur
+Nuk ka tavolina në këtë zonë.
+Të ardhurat ditore — 30 ditë
+Të ardhurat sipas kategorisë
+Çdo produkt identifikohet me
+Libri i blerjeve/shpenzimeve
+Duke kontrolluar licencën...
+Duke kontrolluar pajisjen...
+Emri / numri i arkës fiskale
+Linku i kamarierit (telefon)
+Kuzhina (KDS) — vetëm ushqim
+Raporti X — gjendja e tashme
+Arsyeja e diferencës në arkë
+Powered by Revolution Invest
+Në tavolinë (tashmë dërguar)
+`; if (isForeign) inner += `
+Modaliteti i faturës (arka)
+Duke kontrolluar lidhjen...
+Nuk ka fatura blerjeje ende
+{ const n = i + 1; return `
+`; if (isFree) { inner += `
+për ta fshehur nga menuja.
+Sinkronizo menuën te cloud
+Zbritje sipas promocioneve
+Fjalëkalimi i ri i adminit
+Tekst (arkë fiskale / POS)
+Server online (cloud sync)
+Zgjidh nderrimin e mbyllur
+` : ""; card.innerHTML = `
+`; })) .join(""); return `
+` : ""; body.innerHTML = `
+. Slug-u i lokalit tuaj (
+Ruaj të dhënat e biznesit
+Duke kontrolluar arkën...
+Printo raportin e sotshëm
+Nuk ka nderrim të mbyllur
+Shtoni artikuj nga menuja
+Paratë e pritshme në arkë
+Shitjet sipas orës — Sot
+emrin/kategorinë/çmimin,
+Të ardhurat sipas ditëve
+Duke ngarkuar tavolinat…
+`); } else { rows.push('
+Fillo me €0.00 në Kuletë
+`; if (items) inner += `
+{ if (Math.abs(e.deltaY)
+Emri i kategorisë së re
+— Auto / emri i arkës —
+Parapamje raport ditari
+Totali i porosisë së re
+Ndërrimi u dorëzua te —
+Nuk keni porosi aktive.
+Ora deri (orë:min:sek)
+Rigjenero QR nga cloud
+Printo të gjitha (PDF)
+Blerjet — Fatura Stoku
+Licenca e aplikacionit
+Printer & Arka Fiskale
+— Pa printer kuzhine —
+Server cloud (fiksuar)
+ID pajisje (device_id)
+Shto të gjithë në meny
+`; block.innerHTML = `
+"); if (Math.abs(diff)
+Ora nga (orë:min:sek)
+← Kthehu te cilësimet
+Auto (sipas pajisjes)
+Porosi të përfunduara
+Tavolina të shërbyera
+Nuk ka nderrim aktiv.
+Gabim gjatë ngarkimit
+REVOLUTION INVEST POS
+⚡ Porosia është GATI!
+← Kthehu te tavolinat
+Automatik (më i mirë)
+Dorëzo te (opsionale)
+Ndryshim nga dorëzimi
+Raporti i Kamarierit
+Rezervime tavolinash
+Promocione & Zbritje
+Tavolinat & QR Kodet
+Top shitjet — grafik
+Të dhënat e biznesit
+Duke skanuar menynë…
+Kategoria për import
+Faturë e re blerjeje
+— Zgjidh produktin —
+Promocioni / zbritja
+Kategoritë e menusë
+Shto artikull të ri
+Shto kamarier të ri
+SHPENZIME (30 DITË)
+Historia e blerjeve
+— Zgjidh pajisjen —
+A4 (laser / inkjet)
+Serveri cloud është
+Zgjidhni kategoritë
+`; }).join("") || '
+`; }).join("") || `
+Paneli i kamarierit
+✅ E mora — konfirmo
+ju dorëzoi kuletën.
+Kliko → hap & mbyll
+Produktet kryesore
+Menuja & produktet
+Përmbledhje Ditore
+Mënyra e printimit
+Ndrysho punonjësin
+Produkte specifike
+Skano menynë me AI
+`; }).join("") : '
+`); } lines.push("
+Totali në tavolinë
+Paratë e dorëzuara
+Fiskale & printer
+🔄 Rifresko Arkën
+Tavolinat & Zonat
+Emri i kamarierit
+Raporti i TVSH-së
+Çelësi i licencës
+A aplikohet TVSh?
+Rifresko statusin
+`); } rows.push("
+"); } rows.push(`
+Artikujt e shitur
+Paratë e numëruar
+Totali i zgjedhur
+Paneli i adminit
+Filtro periudhën
+Parapamje faturë
+Skano Meny me AI
++ Promocion i ri
+FATURA (30 DITË)
+Libri i shitjeve
+Mënyra e pagesës
+Lokal & llogaria
+Modaliteti aktiv
+Ruaj modalitetin
+Emri i tavolinës
+Lloji i zbritjes
+E gjithë porosia
+Promocioni aktiv
+Ruaj promocionin
+Totali i faturës
+Nuk ka produkte.
+Sipas kamarierit
+Sipas kategorisë
+LISTA E POROSIVE
+Kuptova — Vazhdo
+Pranoj ndërrimin
+Lokal & biznesi
+TË ARDHURAT SOT
+Për transaksion
+Printo raportin
++ Tavolinë e re
++ Shto rezervim
+ZBRITJE (PROMO)
++ Shpenzim i ri
+TVSh e mbledhur
+Ruaj shpenzimin
+Ruaj ndryshimet
+Printeri termik
+Formati i letër
+Rifresko listën
+— Zgjidh port —
+Printo porosinë
+Anullo porosinë
+Fshi punonjësin
+Emri i klientit
+Ruaj rezervimin
+Shumë fikse (€)
+Ora deri (ops.)
+`).join("") : '
+`; }).join("")}
+`).join("") : `
+`).join("") + `
+MONEDHA NË ARKË
+Mbyll nderrimin
+Paratë e nisjes
+Duke ngarkuar…
+Totali zbritur
+PIN (4 shifra)
+Emri i kafenes
+Skano kartelën
+Shto tavolinën
+Promocion i ri
+Ora nga (ops.)
+Duke redaktuar
+Nuk ka artikuj
+`, ).join("")}
+Nuk ka shitje.
+Paratë në arkë
+Porositë e mia
+Mirë se erdhe,
+Turni u Mbyll!
+Fond Fillestar
+Kuleta Aktuale
+Cloud & linke
+⚠ Stok i ulët
+Shto kategori
+Personalizuar
++ Faturë e re
+Emri i firmës
+Shitjet bruto
+Shpenzim i ri
+ID e pajisjes
+Ruaj licencën
+Testo lidhjen
+Printo menunë
+Kuponi Termik
+Kuponi Fiskal
+Shto rezervim
+Tavolinë e re
+Përqindje (%)
++ Shto rresht
+`; } return `
+`; inner += `
+Kliko → prano
+Kontabilisti
+POROSITË SOT
+Shiko Stokun
+Eksporto PDF
+Eksporto CSV
+Shitjet neto
+Të papritura
+Arka fiskale
+Hiq kartelën
+Emri i zonës
+Aplikohet te
+Ruaj faturën
+Data e sotme
+☁️ Në pritje
+Shitje kartë
+Shitje Kartë
+Vetëm shikim
+Të ardhurat
+Fshih/Shfaq
++ Zonë e re
+TË ARDHURAT
+Dorëzuar te
++ Shto staf
+Nr. faturës
+Termik 80mm
+Termik 58mm
+Auto-zgjidh
+Ndrysho PIN
+Ruaj arsyen
+Zgjidh foto
+Çmimi/njësi
+Pa të dhëna
+Stok i ulët
+⚠️ Konflikt
+`; return `
+Barazim: OK
+PËR DORËZIM
+Porosi e re
+Kalkulatorë
+QR TAVOLINA
+Tavolina T1
+Nda faturën
+Shitje cash
+Punonjësit
+Rezervimet
+Promocione
+Data & ora
+Përdoruesi
+Pamja live
+Të ardhura
+Promocioni
+Furnizuesi
+Norma TVSH
+Regjistroi
+TVSh (VAT)
+Test Print
+/kitchen/…
+Tavolina 1
+TVSh (18%)
+Shto zonën
+Shkarko QR
+Subtotali:
+Ruaj zonën
+Fshi zonën
+KLAIM E RE
+Pa zbritje
+Për pagesë
+Version: —
+Produktet
+MESATARJA
+Data deri
+Kamarieri
+Çmimi (€)
+shkronjat
+Raporti X
+Raporti Z
+Përdorime
+Diferenca
+FURNIZUES
+Shuma (€)
+Ruaj TVSh
+Porti COM
+Baud rate
+i fiksuar
+Subtotali
+Ruaj RFID
+Zonë e re
+Aktiv sot
+Nëntotali
+Në pritje
+QR Kodet
+Kjo javë
+Data nga
+Produkti
+Pritshme
+Numëruar
+Shërbime
+hapet te
+Telefoni
+Kategori
+Nga data
+Stoku: —
+Konfirmo
+PRITSHME
+NUMËRUAR
+pronari
+Pasqyra
+Blerjet
+Ky muaj
+Veprimi
+Veprime
+Mbyllur
+Pranimi
+Pastrim
+; linku
+Kuzhina
+Persona
+Shënime
+Deri më
+Joaktiv
+0 && sq
+` : ""}
+TOTALI:
+E HAPUR
+Zbritje
+−0.00 €
+ZBRITJE
+Paneli
+Detaje
+Apliko
+POROSI
+Filtro
+Tjetër
+TVSh %
+/bar/…
+TOTALI
+E LIRË
+E ZËNË
+') : '
+Pastro
+Hyrja,
+REFUZO
++€0.00
+Dilni
+Stoku
+Kërko
+Nesër
+Hapur
+Nisja
+Shuma
+Norma
+Kopjo
+Banak
+Vlera
+Skano
+Ruaje
+Aktiv
+' : '
+Total
+KARTË
+NISJA
+PRANO
+Roli
+TVSH
+Javë
+Muaj
+TVSh
+Qera
+Paga
+COM1
+COM2
+COM3
+COM4
+COM5
+COM6
+COM7
+COM8
+COM9
+Turi
+RFID
+CASH
+`, `
+LIRË
+Kyçu
+Lirë
+☁ …
+URL
+PIN
+PDF
+Hyr
+DIL
+QR
+te
+🔑
+🔔
+🧮

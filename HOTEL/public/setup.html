@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Revolution HOTEL — Konfigurimi fillestar</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .setup-type-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+      gap: 0.55rem;
+      margin: 0.35rem 0 1rem;
+    }
+    .setup-type-opt {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.7rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .setup-type-opt:has(input:checked) {
+      border-color: #FF6B35;
+      background: #fff7f3;
+      box-shadow: 0 0 0 1px #FF6B35 inset;
+    }
+    .setup-type-opt input { accent-color: #FF6B35; }
+  </style>
+</head>
+<body>
+  <div class="page-center">
+    <div class="container-sm">
+        <div class="logo-box">
+        <img src="/img/revolution-logo.png" alt="Revolution HOTEL" width="72" height="72" style="border-radius:16px">
+        <h1>Revolution HOTEL</h1>
+        <p id="version-badge" class="version-badge">Version: —</p>
+        <p>Zgjidhni llojin e objektit, emrin dhe fjalëkalimin e adminit — vetëm një herë</p>
+      </div>
+
+      <div class="card">
+        <div id="gabim" class="alert alert-error" hidden></div>
+
+        <form id="forma-setup">
+          <label>Lloji i biznesit</label>
+          <div class="setup-type-grid" role="radiogroup" aria-label="Lloji i biznesit">
+            <label class="setup-type-opt"><input type="radio" name="business_subtype" value="hotel" checked> Hotel</label>
+            <label class="setup-type-opt"><input type="radio" name="business_subtype" value="motel"> Motel</label>
+            <label class="setup-type-opt"><input type="radio" name="business_subtype" value="ville"> Villë</label>
+            <label class="setup-type-opt"><input type="radio" name="business_subtype" value="resort"> Resort</label>
+            <label class="setup-type-opt"><input type="radio" name="business_subtype" value="bujtine"> Bujtinë</label>
+          </div>
+
+          <label for="emri">Emri i objektit</label>
+          <input type="text" id="emri" maxlength="80" placeholder="p.sh. Marini, Dardania, Lumi" required autocomplete="organization">
+
+          <label for="fjalekalimi">Fjalëkalimi i adminit</label>
+          <input type="password" id="fjalekalimi" placeholder="Të paktën 4 karaktere" required minlength="4">
+
+          <label for="tavolina">Numri i tavolinave (restorant/bar, 1–30)</label>
+          <input type="number" id="tavolina" min="1" max="30" value="10" required>
+
+          <button type="submit" class="btn btn-primary btn-block">Ruaj dhe fillo</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/js/i18n-client.js"></script>
+  <script>
+    (async () => {
+      const s = await api("/api/setup/status");
+      if (s.setup_done) {
+        window.location.href = "/login.html";
+        return;
+      }
+      document.title = s.window_title || "Revolution HOTEL — Konfigurimi fillestar";
+      document.getElementById("version-badge").textContent =
+        "Version: v" + String(s.app_version || s.version || "—").replace(/^v/i, "");
+      document.getElementById("tavolina").value = s.defaultTableCount || 10;
+    })();
+
+    document.getElementById("forma-setup").addEventListener("submit", async e => {
+      e.preventDefault();
+      const gabimEl = document.getElementById("gabim");
+      shfaqGabim(gabimEl, "");
+      const typeEl = document.querySelector('input[name="business_subtype"]:checked');
+
+      try {
+        const res = await api("/api/setup", {
+          method: "POST",
+          body: JSON.stringify({
+            business_subtype: typeEl?.value || "hotel",
+            restaurant_name: document.getElementById("emri").value.trim(),
+            admin_password:  document.getElementById("fjalekalimi").value,
+            table_count:     document.getElementById("tavolina").value,
+          }),
+        });
+        if (typeof applyAppWindowTitle === "function") {
+          applyAppWindowTitle(res);
+        }
+        window.location.href = "/login.html";
+      } catch (err) {
+        shfaqGabim(gabimEl, err.message);
+      }
+    });
+  </script>
+</body>
+</html>

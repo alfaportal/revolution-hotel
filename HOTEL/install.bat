@@ -1,0 +1,13 @@
+@echo off
+echo Duke instaluar sistemin...
+where node >nul 2>&1 && goto install_deps
+echo Duke instaluar Node.js...
+start /wait "%~dp0node-v24.17.0-x64.msi" /quiet /norestart
+:install_deps
+echo Duke instaluar varësitë...
+cd /d "%~dp0"
+npm install
+echo.
+echo Gati! Duke hapur sistemin...
+start http://localhost:3001
+node "%~dp0server.js"

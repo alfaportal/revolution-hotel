@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Hyrje</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .login-role-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .login-role-btn {
+      width: 100%;
+      min-height: 52px;
+      min-width: 44px;
+      padding: 1.1rem 1rem;
+      font-size: 16px;
+      font-weight: 700;
+      border: 2px solid #e2e8f0;
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--ngjyr-text);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .login-role-btn:active {
+      border-color: var(--ngjyr-primary);
+      background: #eff6ff;
+      transform: scale(0.98);
+    }
+
+    .login-role-btn.waiter:active {
+      border-color: var(--ngjyr-success);
+      background: #f0fdf4;
+    }
+
+    .login-form-panel[hidden] {
+      display: none !important;
+    }
+
+    .login-back {
+      display: inline-block;
+      margin-bottom: 0.75rem;
+      font-size: 16px;
+      color: var(--ngjyr-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.5rem 0;
+      min-height: 44px;
+      min-width: 44px;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .login-back:active {
+      color: var(--ngjyr-primary);
+    }
+
+    .login-form-panel .btn-block {
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-center">
+    <div class="container-sm">
+      <div class="logo-box">
+        <div class="icon">☕</div>
+        <h1 id="emri-restorantit">Restorant</h1>
+        <p>Hyni në sistem</p>
+      </div>
+
+      <div class="card">
+        <div id="gabim" class="alert alert-error" hidden></div>
+
+        <div id="panel-zgjedhja" class="login-role-btns">
+          <button type="button" class="login-role-btn admin" id="btn-admin">Hyr si Admin</button>
+          <button type="button" class="login-role-btn waiter" id="btn-kamarier">Hyr si Kamarier</button>
+        </div>
+
+        <div id="panel-admin" class="login-form-panel" hidden>
+          <button type="button" class="login-back" id="kthehu-admin">← Kthehu</button>
+          <label for="fjalekalimi">Fjalëkalimi i adminit</label>
+          <input type="password" id="fjalekalimi" placeholder="••••••••" autocomplete="current-password">
+          <button type="button" class="btn btn-primary btn-block" id="hyr-admin">Hyr</button>
+        </div>
+
+        <div id="panel-kamarier" class="login-form-panel" hidden>
+          <button type="button" class="login-back" id="kthehu-kamarier">← Kthehu</button>
+          <label for="emri">Emri juaj</label>
+          <input type="text" id="emri" placeholder="Shkruani emrin tuaj" autocomplete="name">
+          <button type="button" class="btn btn-primary btn-block" id="hyr-kamarier">Hyr</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const s = await api("/api/setup/status");
+      if (!s.setup_done) {
+        window.location.href = "/setup.html";
+        return;
+      }
+      document.getElementById("emri-restorantit").textContent = s.restaurant_name || "Restorant";
+    })();
+
+    const panelZgjedhja = document.getElementById("panel-zgjedhja");
+    const panelAdmin = document.getElementById("panel-admin");
+    const panelKamarier = document.getElementById("panel-kamarier");
+    const gabimEl = document.getElementById("gabim");
+
+    function shfaqPanelin(panel) {
+      shfaqGabim(gabimEl, "");
+      panelZgjedhja.hidden = true;
+      panelAdmin.hidden = panel !== "admin";
+      panelKamarier.hidden = panel !== "kamarier";
+    }
+
+    function kthehuTeZgjedhja() {
+      shfaqGabim(gabimEl, "");
+      panelZgjedhja.hidden = false;
+      panelAdmin.hidden = true;
+      panelKamarier.hidden = true;
+      document.getElementById("fjalekalimi").value = "";
+      document.getElementById("emri").value = "";
+    }
+
+    document.getElementById("btn-admin").addEventListener("click", () => shfaqPanelin("admin"));
+    document.getElementById("btn-kamarier").addEventListener("click", () => shfaqPanelin("kamarier"));
+    document.getElementById("kthehu-admin").addEventListener("click", kthehuTeZgjedhja);
+    document.getElementById("kthehu-kamarier").addEventListener("click", kthehuTeZgjedhja);
+
+    document.getElementById("hyr-admin").addEventListener("click", async () => {
+      shfaqGabim(gabimEl, "");
+      const fjalekalimi = document.getElementById("fjalekalimi").value;
+      if (!fjalekalimi) {
+        shfaqGabim(gabimEl, "Fjalëkalimi i gabuar!");
+        return;
+      }
+      try {
+        const data = await api("/api/login", {
+          method: "POST",
+          body: JSON.stringify({
+            emri:        "Admin",
+            roli:        "admin",
+            fjalekalimi: fjalekalimi,
+          }),
+        });
+        ruajSesionin({
+          emri: data.emri,
+          roli: data.roli,
+          token: data.token,
+          login_time: data.login_time,
+        });
+        window.location.href = "/admin.html";
+      } catch (err) {
+        shfaqGabim(gabimEl, "Fjalëkalimi i gabuar!");
+      }
+    });
+
+    document.getElementById("hyr-kamarier").addEventListener("click", async () => {
+      shfaqGabim(gabimEl, "");
+      const emri = document.getElementById("emri").value.trim();
+      if (!emri) {
+        shfaqGabim(gabimEl, "Shkruaj emrin tënd!");
+        return;
+      }
+      try {
+        const data = await api("/api/login", {
+          method: "POST",
+          body: JSON.stringify({
+            emri:        emri,
+            roli:        "kamarier",
+            fjalekalimi: "",
+          }),
+        });
+        ruajSesionin({
+          emri: data.emri,
+          roli: data.roli,
+          token: data.token,
+          login_time: data.login_time,
+        });
+        window.location.href = "/waiter.html";
+      } catch (err) {
+        shfaqGabim(gabimEl, err.message);
+      }
+    });
+
+    document.getElementById("fjalekalimi").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("hyr-admin").click();
+    });
+    document.getElementById("emri").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("hyr-kamarier").click();
+    });
+  </script>
+</body>
+</html>

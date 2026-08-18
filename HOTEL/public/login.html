@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Revolution HOTEL</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/login-modern.css">
+</head>
+<body class="staff-login-screen">
+  <div class="staff-login-shell">
+    <aside class="staff-brand">
+      <div class="staff-brand-inner">
+        <div class="staff-brand-logo-wrap">
+          <img src="/img/revolution-logo.png" alt="Revolution Invest" class="staff-brand-logo-img" width="100" height="100">
+        </div>
+        <p class="staff-brand-tag" id="brand-firm-name">REVOLUTION HOTEL</p>
+        <h1 class="staff-brand-venue" id="brand-venue-name">Revolution HOTEL</h1>
+        <div class="staff-brand-foot">
+          <div class="staff-brand-powered">Powered by Revolution Invest</div>
+          <span class="app-version-pill" id="brand-app-version" hidden></span>
+          <span class="cloud-status-pill cloud-status-bad" id="cloud-status-pill" title="Cloud">☁ …</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="staff-main">
+      <div id="gabim" class="alert alert-error" hidden></div>
+
+      <div id="panel-kryesor" class="staff-panel">
+        <div class="staff-main-head">
+          <h1>Hyrje në sistem</h1>
+          <p>Zgjidhni rolin: pronari (fjalëkalim) ose kamarier (PIN 4 shifra).</p>
+        </div>
+
+        <div class="login-split">
+          <div class="login-col login-col-admin">
+            <h2 class="login-col-title">Pronari</h2>
+            <label for="fjalekalimi">Fjalëkalimi</label>
+            <input type="password" id="fjalekalimi" placeholder="Shkruani fjalëkalimin…" autocomplete="current-password">
+            <button type="button" class="btn-staff-primary" id="hyr-admin">Hyr si Pronari</button>
+            <button type="button" class="login-feature-tile login-feature-emergency" id="btn-emergency">
+              <span class="login-feature-icon" aria-hidden="true">🔑</span>
+              <span class="login-feature-label">Kod emergjence</span>
+              <span class="login-feature-hint">Harruat fjalëkalimin?</span>
+            </button>
+          </div>
+
+          <div class="login-col-divider" aria-hidden="true"></div>
+
+          <div class="login-col login-col-waiters">
+            <div class="login-feature-tile login-feature-online login-feature-online--info" id="btn-online-orders" role="status" aria-live="polite">
+              <span class="login-feature-icon" aria-hidden="true">🔔</span>
+              <span class="login-feature-label">Porosi të reja</span>
+              <span class="login-feature-hint" id="online-orders-hint">Duke kontrolluar…</span>
+              <ul class="login-online-preview" id="online-orders-preview" hidden></ul>
+              <span class="login-feature-badge" id="online-orders-badge" hidden>0</span>
+            </div>
+            <h2 class="login-col-title">Kamarier</h2>
+            <div class="pin-panel-wrap pin-panel-inline" id="pin-panel">
+              <p class="pin-hint" id="pin-hint-login">Shkruani PIN-in (4 shifra) ose skanoni kartelën RFID</p>
+              <div class="pin-display" id="pin-display" aria-hidden="true">
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+              </div>
+              <div class="numpad" id="numpad">
+                <button type="button" class="numpad-btn" data-digit="1">1</button>
+                <button type="button" class="numpad-btn" data-digit="2">2</button>
+                <button type="button" class="numpad-btn" data-digit="3">3</button>
+                <button type="button" class="numpad-btn" data-digit="4">4</button>
+                <button type="button" class="numpad-btn" data-digit="5">5</button>
+                <button type="button" class="numpad-btn" data-digit="6">6</button>
+                <button type="button" class="numpad-btn" data-digit="7">7</button>
+                <button type="button" class="numpad-btn" data-digit="8">8</button>
+                <button type="button" class="numpad-btn" data-digit="9">9</button>
+                <button type="button" class="numpad-btn action" data-action="back">←</button>
+                <button type="button" class="numpad-btn" data-digit="0">0</button>
+                <button type="button" class="numpad-btn empty" tabindex="-1" aria-hidden="true"></button>
+              </div>
+              <div class="pin-actions">
+                <button type="button" class="btn-pin-clear" id="pin-pastro">Pastro</button>
+                <button type="button" class="btn-pin-enter" id="pin-hyr">Hyr</button>
+              </div>
+              <button type="button" class="login-emergency-link" id="btn-emergency-waiter">🔑 Kod emergjence (harruat PIN-in?)</button>
+            </div>
+            <div class="login-rfid-section" id="login-rfid-section">
+              <div class="login-rfid-icon" aria-hidden="true">
+                <svg viewBox="0 0 64 40" width="52" height="33" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="1" width="62" height="38" rx="6" fill="#0f172a"/>
+                  <rect x="6" y="10" width="14" height="10" rx="2" fill="#fbbf24"/>
+                  <path d="M38 13a11 11 0 0 1 0 14" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                  <path d="M44.5 9a17.5 17.5 0 0 1 0 22" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                  <path d="M51 5a23.5 23.5 0 0 1 0 30" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <p class="login-rfid-text">Skanoni kartën RFID për të hyrë</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="online-order-toast" class="online-order-toast hidden" role="status" aria-live="polite">
+    <span class="online-order-toast-icon" aria-hidden="true">🔔</span>
+    <span id="online-order-toast-text">Porosi e re</span>
+    <button type="button" class="online-order-toast-dismiss" id="online-order-toast-dismiss" aria-label="Mbyll">×</button>
+  </div>
+
+  <div id="modal-emergency" class="login-modal" hidden>
+    <div class="login-modal-backdrop" data-close="modal-emergency"></div>
+    <div class="login-modal-box" role="dialog" aria-labelledby="modal-emergency-title">
+      <h3 id="modal-emergency-title">Kod emergjence</h3>
+      <p class="login-modal-lead" id="modal-emergency-lead">Shkruani kodin 6-shifror ditor (vetëm numra).</p>
+      <p class="login-modal-lead emergency-contact-hint" id="modal-emergency-contact" hidden></p>
+      <div id="emergency-waiter-pick" class="emergency-waiter-pick" hidden>
+        <label for="emergency-waiter-select">Kamarieri</label>
+        <select id="emergency-waiter-select" aria-label="Zgjidh kamarierin">
+          <option value="">— Zgjidh emrin tënd —</option>
+        </select>
+      </div>
+      <div class="pin-display emergency-code-display" id="emergency-code-display" aria-hidden="true">
+        <span class="pin-dot emergency-dot"></span>
+        <span class="pin-dot emergency-dot"></span>
+        <span class="pin-dot emergency-dot"></span>
+        <span class="pin-dot emergency-dot"></span>
+        <span class="pin-dot emergency-dot"></span>
+        <span class="pin-dot emergency-dot"></span>
+      </div>
+      <div class="numpad numpad-compact" id="emergency-numpad">
+        <button type="button" class="numpad-btn" data-em-digit="1">1</button>
+        <button type="button" class="numpad-btn" data-em-digit="2">2</button>
+        <button type="button" class="numpad-btn" data-em-digit="3">3</button>
+        <button type="button" class="numpad-btn" data-em-digit="4">4</button>
+        <button type="button" class="numpad-btn" data-em-digit="5">5</button>
+        <button type="button" class="numpad-btn" data-em-digit="6">6</button>
+        <button type="button" class="numpad-btn" data-em-digit="7">7</button>
+        <button type="button" class="numpad-btn" data-em-digit="8">8</button>
+        <button type="button" class="numpad-btn" data-em-digit="9">9</button>
+        <button type="button" class="numpad-btn action" data-em-action="clear">C</button>
+        <button type="button" class="numpad-btn" data-em-digit="0">0</button>
+        <button type="button" class="numpad-btn action" data-em-action="back">⌫</button>
+      </div>
+      <div id="emergency-modal-msg" class="alert alert-error emergency-modal-msg" hidden></div>
+      <div class="login-modal-actions">
+        <button type="button" class="btn-login-modal-cancel" data-close="modal-emergency">Anulo</button>
+        <button type="button" class="btn-login-modal-ok" id="emergency-submit">Hyr</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js?v=6"></script>
+  <script src="/js/i18n-client.js"></script>
+  <script>
+    try { sessionStorage.removeItem("rs_user"); } catch { /* */ }
+
+    let bizPhone = "";
+
+    (async () => {
+      function applyLoginBrand(s) {
+        if (!s) return;
+        const name = (s.restaurant_name || "").trim();
+        const lic = s.license || {};
+        const brandName = document.getElementById("brand-venue-name");
+        const firmName = document.getElementById("brand-firm-name");
+        if (typeof applyAppWindowTitle === "function") applyAppWindowTitle(s);
+        if (firmName) {
+          firmName.textContent = String(s.app_brand || lic.firm_name || "REVOLUTION HOTEL").toUpperCase();
+        }
+        const typeLabel = (s.business_subtype_label || s.business_type_label || "").trim();
+        const venueLabel = (
+          lic.client_name
+          || (typeLabel && name ? `${typeLabel} ${name}` : name)
+          || s.app_brand
+          || "Revolution HOTEL"
+        ).trim();
+        if (brandName) brandName.textContent = venueLabel;
+        if (typeof applyAppVersionBadge === "function") applyAppVersionBadge(s, "brand-app-version");
+        bizPhone = s.biz_phone || "";
+      }
+      try {
+        const cached = JSON.parse(localStorage.getItem("hotel_cache_setup") || "null");
+        if (cached) applyLoginBrand(cached);
+      } catch { /* ignore */ }
+      try {
+        const s = await api("/api/setup/status");
+        if (!s.setup_done) {
+          window.location.href = "/setup.html";
+          return;
+        }
+        try { localStorage.setItem("hotel_cache_setup", JSON.stringify(s)); } catch { /* ignore */ }
+        applyLoginBrand(s);
+      } catch {
+        /* Emri i biznesit/licenca janë vetëm kozmetikë — mos e blloko ekranin e hyrjes. */
+      }
+    })();
+
+    // Zilja e porosive duhet të punojë edhe nëse thirrja e mësipërme (emri/licenca)
+    // dështon ose vonon — prandaj nisen të pavarura.
+    setTimeout(() => rifreskoPorosiOnlineBadge(), 2500);
+    setInterval(rifreskoPorosiOnlineBadge, 8000);
+
+    let lastOnlinePending = null;
+    let onlineAlarmTimer = null;
+
+    let emergencyRole = "admin";
+    let emergencyCodeValue = "";
+    let emergencyBusy = false;
+    let emergencyStaffId = null;
+    const emergencyDots = [...document.querySelectorAll(".emergency-dot")];
+
+    function isEmergencyModalOpen() {
+      const m = document.getElementById("modal-emergency");
+      return !!(m && !m.hidden);
+    }
+
+    function resetEmergencyCode() {
+      emergencyCodeValue = "";
+      emergencyBusy = false;
+      emergencyDots.forEach((dot, i) => dot.classList.toggle("filled", false));
+      const msg = document.getElementById("emergency-modal-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    function updateEmergencyCodeDisplay() {
+      emergencyDots.forEach((dot, i) => dot.classList.toggle("filled", i < emergencyCodeValue.length));
+    }
+
+    function shfaqEmergencyGabim(text, kind) {
+      const msg = document.getElementById("emergency-modal-msg");
+      if (!msg) return;
+      if (!text) {
+        msg.hidden = true;
+        msg.textContent = "";
+        msg.className = "alert alert-error emergency-modal-msg";
+        return;
+      }
+      msg.textContent = text;
+      msg.hidden = false;
+      msg.className =
+        kind === "ok"
+          ? "alert emergency-modal-msg emergency-modal-info"
+          : "alert alert-error emergency-modal-msg";
+    }
+
+    function shtoEmergencyShifer(digit) {
+      if (emergencyBusy || emergencyCodeValue.length >= 6) return;
+      emergencyCodeValue += String(digit);
+      updateEmergencyCodeDisplay();
+      shfaqEmergencyGabim("");
+      if (emergencyCodeValue.length === 6) provoEmergencyLogin();
+    }
+
+    function emergencyBackspace() {
+      if (emergencyBusy) return;
+      emergencyCodeValue = emergencyCodeValue.slice(0, -1);
+      updateEmergencyCodeDisplay();
+      shfaqEmergencyGabim("");
+    }
+
+    function hapModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.hidden = false;
+    }
+
+    function mbyllModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.hidden = true;
+      if (id === "modal-emergency") {
+        resetEmergencyCode();
+      }
+    }
+
+    document.querySelectorAll("[data-close]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        mbyllModal(btn.dataset.close);
+      });
+    });
+
+    function formatEuroLogin(n) {
+      return (Number(n) || 0).toFixed(2) + " €";
+    }
+
+    function formatOrderTime(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString("sq-AL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      } catch {
+        return String(iso);
+      }
+    }
+
+    function luajTingullPorosie() {
+      if (typeof window.playOrderAlarmSound === "function") {
+        window.playOrderAlarmSound();
+      }
+    }
+
+    function shfaqOnlineToast(pending) {
+      const toast = document.getElementById("online-order-toast");
+      const text = document.getElementById("online-order-toast-text");
+      if (!toast || !text) return;
+      text.textContent = pending === 1 ? "Porosi e re!" : `${pending} porosi të reja!`;
+      toast.classList.remove("hidden");
+    }
+
+    function fshihOnlineToast() {
+      document.getElementById("online-order-toast")?.classList.add("hidden");
+    }
+
+    function ndalAlarmOnline() {
+      fshihOnlineToast();
+      if (onlineAlarmTimer) {
+        clearInterval(onlineAlarmTimer);
+        onlineAlarmTimer = null;
+      }
+    }
+
+    function filloAlarmOnline() {
+      if (onlineAlarmTimer) return;
+      if ((Number(lastOnlinePending) || 0) > 0) luajTingullPorosie();
+      onlineAlarmTimer = setInterval(() => {
+        if ((Number(lastOnlinePending) || 0) > 0) luajTingullPorosie();
+      }, 12000);
+    }
+
+    function perditesoOnlineTile(data) {
+      const btn = document.getElementById("btn-online-orders");
+      const badge = document.getElementById("online-orders-badge");
+      const hint = document.getElementById("online-orders-hint");
+      const preview = document.getElementById("online-orders-preview");
+      const pending = Number(data?.pending) || 0;
+      const barPending = Number(data?.bar_pending) || 0;
+      const allNotifyOrders = [];
+      const seen = new Set();
+      for (const o of [...(data?.orders || []), ...(data?.bar_orders || [])]) {
+        if (!o?.id || seen.has(String(o.id))) continue;
+        seen.add(String(o.id));
+        allNotifyOrders.push(o);
+      }
+      const displayCount = allNotifyOrders.length || Math.max(pending, barPending);
+      if (badge) {
+        badge.hidden = displayCount <= 0;
+        badge.textContent = String(Math.max(displayCount, 0));
+      }
+      btn?.classList.toggle("login-feature-online--alert", displayCount > 0);
+      btn?.classList.toggle("login-feature-online--bar", pending <= 0 && barPending > 0);
+      if (hint) {
+        if (!data?.connected) {
+          hint.textContent = data?.message || "Pa lidhje cloud";
+        } else if (displayCount > 0) {
+          hint.textContent = displayCount === 1
+            ? "1 porosi në pritje — hyr me PIN dhe pranoje"
+            : `${displayCount} porosi në pritje — hyr me PIN dhe pranoji`;
+        } else {
+          hint.textContent = "Nuk ka porosi të reja";
+        }
+      }
+      if (preview) {
+        if (displayCount > 0 && allNotifyOrders.length) {
+          preview.hidden = false;
+          preview.innerHTML = allNotifyOrders.slice(0, 4).map(o => {
+            const src = o.source_label || "Online";
+            const customer = o.customer_label || o.waiter_name || "Klient";
+            const items = (o.items || []).slice(0, 2).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
+            const total = formatEuroLogin(o.total || 0);
+            return `<li><strong>${src}</strong> · ${customer} · ${total}${items ? ` — ${items}` : ""}</li>`;
+          }).join("") + (allNotifyOrders.length > 4 ? `<li class="login-online-preview-more">+ ${allNotifyOrders.length - 4} ${typeof window.t === "function" ? window.t("tjetër…") : "tjetër…"}</li>` : "");
+        } else {
+          preview.hidden = true;
+          preview.innerHTML = "";
+        }
+      }
+      btn?.classList.toggle("login-feature-online--bar", pending <= 0 && barPending > 0);
+      const isFirstPoll = lastOnlinePending === null;
+      const isNew = !!data?.has_new
+        || (lastOnlinePending !== null && displayCount > lastOnlinePending)
+        || (isFirstPoll && displayCount > 0);
+      if (isNew && displayCount > 0) {
+        btn?.classList.add("login-feature-online--flash-once");
+        setTimeout(() => btn?.classList.remove("login-feature-online--flash-once"), 2400);
+        luajTingullPorosie();
+        shfaqOnlineToast(displayCount);
+        filloAlarmOnline();
+      } else if (displayCount <= 0) {
+        ndalAlarmOnline();
+      } else if (displayCount > 0) {
+        filloAlarmOnline();
+      }
+      lastOnlinePending = displayCount;
+    }
+
+    async function rifreskoPorosiOnlineBadge() {
+      try {
+        const data = await api("/api/login/online-orders");
+        perditesoOnlineTile(data);
+      } catch {
+        perditesoOnlineTile({ connected: false, pending: 0, orders: [], message: "Pa lidhje" });
+      }
+    }
+
+    async function loadEmergencyWaiters() {
+      const wrap = document.getElementById("emergency-waiter-pick");
+      const sel = document.getElementById("emergency-waiter-select");
+      if (!wrap || !sel) return;
+      emergencyStaffId = null;
+      sel.innerHTML = '<option value="">— Zgjidh emrin tënd —</option>';
+      try {
+        const data = await api("/api/login/waiters");
+        const waiters = data.waiters || [];
+        for (const w of waiters) {
+          const opt = document.createElement("option");
+          opt.value = String(w.id);
+          opt.textContent = w.name || `Kamarier #${w.id}`;
+          sel.appendChild(opt);
+        }
+        if (waiters.length === 1) {
+          sel.value = String(waiters[0].id);
+          emergencyStaffId = waiters[0].id;
+        }
+        wrap.hidden = waiters.length === 0;
+      } catch {
+        wrap.hidden = true;
+      }
+    }
+
+    async function requestEmergencyEmailToOwner(waiterName) {
+      try {
+        const data = await api("/api/login/emergency-request", {
+          method: "POST",
+          body: JSON.stringify({ waiter_name: waiterName || "" }),
+        });
+        return data.message || "Kodi u dërgua te pronari juaj — kontaktoni pronarin.";
+      } catch (err) {
+        return err.message || "Kodi u dërgua te pronari juaj — kontaktoni pronarin.";
+      }
+    }
+
+    async function hapEmergencyModal(role) {
+      emergencyRole = role || "admin";
+      const lead = document.getElementById("modal-emergency-lead");
+      const pick = document.getElementById("emergency-waiter-pick");
+      const contactHint = document.getElementById("modal-emergency-contact");
+      resetEmergencyCode();
+      shfaqGabim(gabimEl, "");
+
+      if (emergencyRole === "kamarier") {
+        lead.textContent = "Kodi u dërgua te pronari juaj — kontaktoni pronarin. Pastaj zgjidhni emrin dhe shkruani kodin 6-shifror.";
+        if (pick) pick.hidden = false;
+        await loadEmergencyWaiters();
+        const sel = document.getElementById("emergency-waiter-select");
+        const waiterLabel =
+          (sel?.selectedOptions && sel.selectedOptions[0] && sel.value
+            ? sel.selectedOptions[0].textContent
+            : "") || "";
+        const msg = await requestEmergencyEmailToOwner(waiterLabel);
+        if (contactHint) {
+          contactHint.textContent = "Merrni kodin nga pronari (email), pastaj shkruajeni këtu.";
+          contactHint.hidden = false;
+        }
+        shfaqEmergencyGabim(msg, "ok");
+      } else {
+        lead.textContent = "Shkruani kodin 6-shifror (nga email i pronarit / administratori).";
+        if (pick) pick.hidden = true;
+        emergencyStaffId = null;
+        if (contactHint) {
+          contactHint.textContent =
+            "Kodi emergjence dërgohet vetëm me email te pronari — nuk shfaqet në asnjë panel.";
+          contactHint.hidden = false;
+        }
+      }
+      hapModal("modal-emergency");
+    }
+
+    async function provoEmergencyLogin() {
+      const code = String(emergencyCodeValue || "").replace(/\D/g, "");
+      if (code.length !== 6) {
+        shfaqEmergencyGabim("Kodi duhet të jetë 6 shifra.");
+        return;
+      }
+      if (emergencyRole === "kamarier") {
+        const sel = document.getElementById("emergency-waiter-select");
+        const picked = sel?.value ? Number(sel.value) : emergencyStaffId;
+        if (!picked) {
+          shfaqEmergencyGabim("Zgjidhni emrin tuaj (kamarieri) para kodit.");
+          return;
+        }
+        emergencyStaffId = picked;
+      }
+      if (emergencyBusy) return;
+      emergencyBusy = true;
+      const btn = document.getElementById("emergency-submit");
+      btn.disabled = true;
+      shfaqEmergencyGabim("");
+      shfaqGabim(gabimEl, "");
+      try {
+        const body = { code, role: emergencyRole };
+        if (emergencyRole === "kamarier") {
+          body.staff_id = emergencyStaffId;
+          // PIN opsional — vetëm nëse e kanë shkruar ende (jo i detyrueshëm)
+          if (pinValue.length === 4) body.pin = pinValue;
+        }
+        const data = await api("/api/login/emergency", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        ruajSesionin({
+          emri: data.emri,
+          roli: data.roli,
+          token: data.token,
+          login_time: data.login_time,
+          staff_id: data.staff_id || null,
+        });
+        mbyllModal("modal-emergency");
+        window.location.href = data.roli === "admin" ? "/admin.html" : "/waiter.html";
+      } catch (err) {
+        shfaqEmergencyGabim(err.message || "Kodi emergjence i gabuar.");
+        emergencyCodeValue = "";
+        updateEmergencyCodeDisplay();
+      } finally {
+        emergencyBusy = false;
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById("btn-emergency").addEventListener("click", () => hapEmergencyModal("admin"));
+    document.getElementById("btn-emergency-waiter").addEventListener("click", () => hapEmergencyModal("kamarier"));
+    document.getElementById("emergency-waiter-select")?.addEventListener("change", (e) => {
+      const v = e.target.value;
+      emergencyStaffId = v ? Number(v) : null;
+      shfaqEmergencyGabim("");
+    });
+    document.getElementById("emergency-submit").addEventListener("click", provoEmergencyLogin);
+    document.getElementById("emergency-numpad")?.addEventListener("click", e => {
+      const btn = e.target.closest(".numpad-btn");
+      if (!btn || emergencyBusy) return;
+      const digit = btn.dataset.emDigit;
+      const action = btn.dataset.emAction;
+      if (digit != null) shtoEmergencyShifer(digit);
+      else if (action === "clear") resetEmergencyCode();
+      else if (action === "back") emergencyBackspace();
+    });
+    document.getElementById("online-order-toast-dismiss")?.addEventListener("click", fshihOnlineToast);
+    document.getElementById("btn-online-orders")?.addEventListener("click", fshihOnlineToast);
+
+    const gabimEl = document.getElementById("gabim");
+    const pinPanel = document.getElementById("pin-panel");
+    const pinDots = [...document.querySelectorAll("#pin-display .pin-dot")];
+
+    let pinValue = "";
+    let pinBusy = false;
+    let kbdBuffer = "";
+    let kbdIdleTimer = null;
+
+    function pastroKbdBuffer() {
+      clearTimeout(kbdIdleTimer);
+      kbdIdleTimer = null;
+      kbdBuffer = "";
+    }
+
+    function isAdminInputFocused() {
+      if (isEmergencyModalOpen()) return true;
+      const el = document.activeElement;
+      if (!el) return false;
+      if (el.id === "fjalekalimi") return true;
+      return !!el.closest?.(".login-col-admin");
+    }
+
+    function resetPin() {
+      pinValue = "";
+      pinBusy = false;
+      pastroKbdBuffer();
+      perditesoPinDisplay();
+      pinPanel?.classList.remove("shake");
+    }
+
+    function perditesoPinDisplay() {
+      pinDots.forEach((dot, i) => {
+        dot.classList.toggle("filled", i < pinValue.length);
+      });
+    }
+
+    function shakePinPanel(msg) {
+      shfaqGabim(gabimEl, msg);
+      pinPanel?.classList.remove("shake");
+      if (pinPanel) void pinPanel.offsetWidth;
+      pinPanel?.classList.add("shake");
+      resetPin();
+    }
+
+    async function hyrSiKamarier(data) {
+      ruajSesionin({
+        emri: data.emri,
+        roli: data.roli,
+        token: data.token,
+        login_time: data.login_time,
+        staff_id: data.staff_id || null,
+      });
+      window.location.replace("/waiter.html");
+    }
+
+    async function provoPinLogin() {
+      if (pinBusy || pinValue.length !== 4) return;
+      pinBusy = true;
+      shfaqGabim(gabimEl, "");
+      const pinToSend = pinValue;
+      const btnHyr = document.getElementById("pin-hyr");
+      if (btnHyr) btnHyr.disabled = true;
+      try {
+        const res = await fetch("/api/login/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: pinToSend }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.token) {
+          throw new Error(data.gabim || "PIN i gabuar!");
+        }
+        await hyrSiKamarier(data);
+      } catch (err) {
+        shakePinPanel(err.message || "PIN i gabuar!");
+      } finally {
+        pinBusy = false;
+        if (btnHyr) btnHyr.disabled = false;
+      }
+    }
+
+    async function provoKarteLogin(cardUid) {
+      if (pinBusy) return;
+      pinBusy = true;
+      shfaqGabim(gabimEl, "");
+      const btnHyr = document.getElementById("pin-hyr");
+      if (btnHyr) btnHyr.disabled = true;
+      try {
+        const res = await fetch("/api/login/card", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ card_uid: cardUid }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.token) {
+          throw new Error(data.gabim || "Kartela nuk njihet!");
+        }
+        await hyrSiKamarier(data);
+      } catch (err) {
+        shakePinPanel(err.message || "Kartela nuk njihet!");
+      } finally {
+        pinBusy = false;
+        if (btnHyr) btnHyr.disabled = false;
+      }
+    }
+
+    function shtoShifer(d) {
+      if (pinBusy || pinValue.length >= 4) return;
+      pinValue += d;
+      perditesoPinDisplay();
+      if (pinValue.length === 4) provoPinLogin();
+    }
+
+    document.getElementById("pin-pastro").addEventListener("click", resetPin);
+    document.getElementById("pin-hyr").addEventListener("click", () => {
+      if (pinValue.length === 4) provoPinLogin();
+      else shfaqGabim(gabimEl, "Shkruani 4 shifra PIN (ose përdorni tastierën).");
+    });
+
+    // Kamarieri fut PIN-in nga tastiera fizike ose skanon kartelën RFID (lexuesit RFID
+    // shkruajnë kodin si tastierë, shumë shpejt, e pasuar nga Enter). Të dyja rrugët
+    // kalojnë nga ky handler, prandaj grumbullojmë çdo shtypje në kbdBuffer dhe vendosim
+    // në Enter (ose pas një pauze të shkurtër) nëse është PIN 4-shifror apo kod kartele.
+    document.addEventListener("keydown", e => {
+      if (isEmergencyModalOpen() || isAdminInputFocused()) return;
+      if (pinBusy) return;
+      if (/^[0-9a-zA-Z]$/.test(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        kbdBuffer += e.key;
+        if (/^\d$/.test(e.key) && pinValue.length < 4) {
+          pinValue += e.key;
+          perditesoPinDisplay();
+        }
+        clearTimeout(kbdIdleTimer);
+        kbdIdleTimer = setTimeout(() => {
+          if (kbdBuffer.length === 4 && pinValue.length === 4) {
+            pastroKbdBuffer();
+            provoPinLogin();
+          }
+        }, 200);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        clearTimeout(kbdIdleTimer);
+        kbdBuffer = kbdBuffer.slice(0, -1);
+        pinValue = pinValue.slice(0, -1);
+        perditesoPinDisplay();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        clearTimeout(kbdIdleTimer);
+        const buf = kbdBuffer;
+        kbdBuffer = "";
+        if (buf.length > 4) {
+          provoKarteLogin(buf);
+        } else if (pinValue.length === 4) {
+          provoPinLogin();
+        }
+      }
+    }, true);
+
+    document.getElementById("numpad").addEventListener("click", e => {
+      const btn = e.target.closest(".numpad-btn");
+      if (!btn || btn.classList.contains("empty")) return;
+      const digit = btn.dataset.digit;
+      const action = btn.dataset.action;
+      if (isEmergencyModalOpen()) {
+        if (digit != null) shtoEmergencyShifer(digit);
+        else if (action === "back") emergencyBackspace();
+        return;
+      }
+      if (digit != null) shtoShifer(digit);
+      else if (action === "back") {
+        pinValue = pinValue.slice(0, -1);
+        perditesoPinDisplay();
+      }
+    });
+
+    document.getElementById("hyr-admin").addEventListener("click", async () => {
+      shfaqGabim(gabimEl, "");
+      const fjalekalimi = document.getElementById("fjalekalimi").value;
+      if (!fjalekalimi) {
+        shfaqGabim(gabimEl, "Fjalëkalimi i gabuar!");
+        return;
+      }
+      try {
+        const data = await api("/api/login", {
+          method: "POST",
+          body: JSON.stringify({
+            emri:        "Admin",
+            roli:        "admin",
+            fjalekalimi: fjalekalimi,
+          }),
+        });
+        ruajSesionin({
+          emri: data.emri,
+          roli: data.roli,
+          token: data.token,
+          login_time: data.login_time,
+        });
+        window.location.href = "/admin.html";
+      } catch {
+        shfaqGabim(gabimEl, "Fjalëkalimi i gabuar!");
+      }
+    });
+
+    document.getElementById("fjalekalimi").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("hyr-admin").click();
+    });
+  </script>
+  <script src="/js/order-alarm-sound.js"></script>
+  <script src="/js/cloud-status.js"></script>
+  <script>initCloudStatusIndicator("cloud-status-pill");</script>
+</body>
+</html>

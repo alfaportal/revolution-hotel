@@ -1,0 +1,372 @@
+/* Owner panel dark theme — Fiskalizimi model. Loaded last. v=20260716 */
+
+html.admin-app-root,
+body.admin-app {
+  --ngjyr-primary: #FF6B35 !important;
+  --ngjyr-primary-dark: #e85a28 !important;
+  --ngjyr-bg: #12121f !important;
+  --ngjyr-card: #1a1a2e !important;
+  --ngjyr-text: #e8e8ef !important;
+  --ngjyr-muted: #a0a0b8 !important;
+  --ngjyr-border: #2e2e45 !important;
+  --ngjyr-bg-soft: #252538 !important;
+  background: #12121f !important;
+  color: #e8e8ef !important;
+  font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+}
+
+body.admin-app a { color: #FF6B35 !important; }
+
+/* Shell */
+body.admin-app .admin-shell,
+body.admin-app .admin-main {
+  background: #12121f !important;
+}
+
+body.admin-app .admin-topbar {
+  background: #1a1a2e !important;
+  border-bottom: 1px solid #2e2e45 !important;
+  box-shadow: none !important;
+}
+body.admin-app .admin-topbar-brand { color: #fff !important; }
+body.admin-app .admin-topbar-sep { color: #3a3a55 !important; }
+body.admin-app .admin-topbar-crumb,
+body.admin-app .admin-topbar-clock { color: #a0a0b8 !important; }
+body.admin-app .admin-user-badge {
+  background: #252538 !important;
+  color: #e8e8ef !important;
+}
+body.admin-app .admin-user-badge .user-initial {
+  background: #FF6B35 !important;
+  color: #fff !important;
+}
+body.admin-app .admin-logout {
+  background: #252538 !important;
+  border: 1px solid #3a3a55 !important;
+  color: #c8c8d8 !important;
+}
+body.admin-app .admin-logout:hover {
+  background: rgba(220, 38, 38, 0.15) !important;
+  border-color: #ef4444 !important;
+  color: #fca5a5 !important;
+}
+
+body.admin-app .admin-tabbar {
+  background: #1a1a2e !important;
+  border-bottom: 2px solid #2e2e45 !important;
+}
+body.admin-app .admin-tab-btn {
+  color: #a0a0b8 !important;
+  background: transparent !important;
+}
+body.admin-app .admin-tab-btn:hover { color: #FF6B35 !important; }
+body.admin-app .admin-tab-btn.active {
+  color: #FF6B35 !important;
+  border-bottom-color: #FF6B35 !important;
+}
+
+body.admin-app .settings-subnav-global {
+  background: #12121f !important;
+  border-bottom: 1px solid #2e2e45 !important;
+}
+body.admin-app .settings-subnav-btn {
+  background: #1a1a2e !important;
+  border: 1px solid #2e2e45 !important;
+  color: #c8c8d8 !important;
+}
+body.admin-app .settings-subnav-btn:hover {
+  border-color: #FF6B35 !important;
+  color: #fff !important;
+}
+body.admin-app .settings-subnav-btn.active {
+  background: #FF6B35 !important;
+  border-color: #FF6B35 !important;
+  color: #fff !important;
+}
+
+/* Cards — every panel */
+body.admin-app .card,
+body.admin-app .stat-card,
+body.admin-app .settings-card,
+body.admin-app .reports-filter-card,
+body.admin-app .reports-chart-card,
+body.admin-app .dashboard-chart-card,
+body.admin-app .dashboard-kpi,
+body.admin-app .product-card,
+body.admin-app .staff-card,
+body.admin-app .purchase-card,
+body.admin-app .reservation-card,
+body.admin-app .promo-card,
+body.admin-app .admin-table-card,
+body.admin-app .admin-main-inner > .card {
+  background: #1a1a2e !important;
+  border: 1px solid rgba(255, 107, 53, 0.28) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22) !important;
+  color: #e8e8ef !important;
+}
+
+body.admin-app .card-title,
+body.admin-app .settings-card-title,
+body.admin-app .reports-panel-title,
+body.admin-app .tables-panel-title,
+body.admin-app .staff-panel-title,
+body.admin-app .purchases-panel-title,
+body.admin-app .settings-page-title,
+body.admin-app .dashboard-kpi-val,
+body.admin-app .stat-card .val,
+body.admin-app .staff-name,
+body.admin-app .admin-table-label,
+body.admin-app .product-card-name,
+body.admin-app .product-card-price,
+body.admin-app h1,
+body.admin-app h2,
+body.admin-app h3,
+body.admin-app .settings-subtitle {
+  color: #fff !important;
+}
+
+body.admin-app .card-title,
+body.admin-app .settings-card-head {
+  border-bottom-color: #2e2e45 !important;
+}
+
+body.admin-app .settings-card-desc,
+body.admin-app .settings-page-sub,
+body.admin-app .settings-field-hint,
+body.admin-app .field-hint,
+body.admin-app .dashboard-kpi-label,
+body.admin-app .dashboard-kpi-sub,
+body.admin-app .dashboard-empty,
+body.admin-app .tables-panel-header-sub,
+body.admin-app .dash-bar-label,
+body.admin-app .dash-col-label,
+body.admin-app .staff-meta,
+body.admin-app p {
+  color: #a0a0b8 !important;
+}
+
+body.admin-app .settings-hub-icon {
+  background: rgba(255, 107, 53, 0.2) !important;
+  color: #FF6B35 !important;
+}
+body.admin-app .settings-hub-btn {
+  background: #1a1a2e !important;
+  border: 1px solid rgba(255, 107, 53, 0.28) !important;
+}
+body.admin-app .settings-hub-btn strong { color: #fff !important; }
+body.admin-app .settings-hub-btn > span:last-child { color: #a0a0b8 !important; }
+body.admin-app .settings-hub-btn:hover {
+  border-color: #FF6B35 !important;
+  box-shadow: 0 8px 24px rgba(255, 107, 53, 0.18) !important;
+}
+
+body.admin-app .settings-danger-zone {
+  background: #2a1520 !important;
+  border-color: rgba(220, 38, 38, 0.45) !important;
+}
+body.admin-app .settings-danger-title { color: #fecaca !important; }
+body.admin-app .settings-danger-desc { color: #f5c2c2 !important; }
+
+/* Forms */
+body.admin-app label { color: #c8c8d8 !important; }
+body.admin-app input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+body.admin-app select,
+body.admin-app textarea {
+  background: #12121f !important;
+  border: 1px solid #2e2e45 !important;
+  color: #e8e8ef !important;
+}
+body.admin-app input:focus,
+body.admin-app select:focus,
+body.admin-app textarea:focus {
+  border-color: #FF6B35 !important;
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.18) !important;
+}
+body.admin-app input::placeholder,
+body.admin-app textarea::placeholder { color: #6b6b82 !important; }
+body.admin-app input:disabled,
+body.admin-app select:disabled,
+body.admin-app input[readonly] {
+  background: #252538 !important;
+  color: #7a7a90 !important;
+}
+
+/* Buttons */
+body.admin-app .btn-primary,
+body.admin-app .product-cat-tab.active,
+body.admin-app .reports-filter-btn.active,
+body.admin-app .ditari-filter.active,
+body.admin-app .reservation-filter.active {
+  background: #FF6B35 !important;
+  border-color: #FF6B35 !important;
+  color: #fff !important;
+}
+body.admin-app .btn-primary:hover,
+body.admin-app .btn-primary:active {
+  background: #e85a28 !important;
+  border-color: #e85a28 !important;
+}
+body.admin-app .btn-ghost,
+body.admin-app .product-cat-tab,
+body.admin-app .reports-filter-btn,
+body.admin-app .ditari-filter,
+body.admin-app .reservation-filter {
+  background: #252538 !important;
+  border: 1px solid #3a3a55 !important;
+  color: #c8c8d8 !important;
+}
+body.admin-app .btn-ghost:hover,
+body.admin-app .product-cat-tab:hover,
+body.admin-app .reports-filter-btn:hover {
+  background: rgba(255, 107, 53, 0.12) !important;
+  border-color: #FF6B35 !important;
+  color: #FF6B35 !important;
+}
+
+/* Tables */
+body.admin-app table th {
+  background: #12121f !important;
+  color: #a0a0b8 !important;
+  border-bottom-color: #2e2e45 !important;
+}
+body.admin-app table td {
+  color: #e8e8ef !important;
+  border-bottom-color: #2e2e45 !important;
+}
+body.admin-app tr:hover td,
+body.admin-app tr:active td {
+  background: #252538 !important;
+}
+body.admin-app .price-edit,
+body.admin-app .item-edit,
+body.admin-app button.price-edit,
+body.admin-app .price-cell .price-edit-trigger {
+  color: #FF6B35 !important;
+  border-bottom-color: #FF6B35 !important;
+}
+
+/* Charts */
+body.admin-app .dash-bar-track { background: #252538 !important; }
+body.admin-app .dash-bar-fill,
+body.admin-app .dash-bar-fill-cat,
+body.admin-app .dash-bar-fill-product,
+body.admin-app .dash-col-bar,
+body.admin-app .dash-col-bar-reports {
+  background: #FF6B35 !important;
+  background-image: none !important;
+}
+
+/* Status */
+body.admin-app .printer-status-box.pending {
+  background: #252538 !important;
+  border-color: #3a3a55 !important;
+  color: #a0a0b8 !important;
+}
+body.admin-app .printer-status-box.connected {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: #22c55e !important;
+  color: #86efac !important;
+}
+body.admin-app .printer-status-box.disconnected {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: #ef4444 !important;
+  color: #fca5a5 !important;
+}
+
+body.admin-app .admin-table-card.free {
+  background: #1a1a2e !important;
+  border-color: #2e2e45 !important;
+}
+body.admin-app .admin-table-card.occupied {
+  background: rgba(255, 107, 53, 0.12) !important;
+  border-color: #FF6B35 !important;
+}
+body.admin-app .admin-table-card.occupied .admin-table-label {
+  color: #FF6B35 !important;
+}
+body.admin-app .rooms-legend { color: #a0a0b8 !important; }
+body.admin-app .admin-room-card.free {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: #22c55e !important;
+}
+body.admin-app .admin-room-card.occupied {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: #ef4444 !important;
+}
+body.admin-app .admin-room-card.dirty {
+  background: rgba(234, 179, 8, 0.14) !important;
+  border-color: #eab308 !important;
+}
+body.admin-app .admin-room-label { color: #fff !important; }
+body.admin-app .admin-room-meta,
+body.admin-app .admin-room-price { color: #a0a0b8 !important; }
+body.admin-app .table-btn.free {
+  background: #1a1a2e !important;
+  border-color: #3a3a55 !important;
+  color: #e8e8ef !important;
+}
+body.admin-app .table-btn.occupied {
+  background: rgba(255, 107, 53, 0.2) !important;
+  border-color: #FF6B35 !important;
+  color: #fff !important;
+}
+
+body.admin-app .staff-avatar {
+  background: linear-gradient(135deg, #FF6B35, #e85a28) !important;
+}
+body.admin-app .product-card {
+  border-top-color: #FF6B35 !important;
+}
+body.admin-app .product-card-cat,
+body.admin-app .product-badge {
+  background: rgba(255, 107, 53, 0.15) !important;
+  border-color: rgba(255, 107, 53, 0.35) !important;
+  color: #FF6B35 !important;
+}
+
+body.admin-app .alert-error {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: #ef4444 !important;
+  color: #fca5a5 !important;
+}
+body.admin-app .alert-success {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: #22c55e !important;
+  color: #86efac !important;
+}
+
+body.admin-app .table-modal-content,
+body.admin-app .factory-reset-modal-content {
+  background: #1a1a2e !important;
+  color: #e8e8ef !important;
+  border: 1px solid rgba(255, 107, 53, 0.35) !important;
+}
+body.admin-app .table-modal-content h2,
+body.admin-app .factory-reset-modal-content h3 {
+  color: #fff !important;
+}
+body.admin-app .table-modal-sub { color: #a0a0b8 !important; }
+
+body.admin-app .fiscal-save-msg { color: #FF6B35 !important; }
+
+body.admin-app .cloud-status-pill.cloud-status-ok {
+  background: rgba(34, 197, 94, 0.15) !important;
+  color: #86efac !important;
+}
+body.admin-app .cloud-status-pill.cloud-status-bad {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #fca5a5 !important;
+}
+
+body.admin-app .settings-divider,
+body.admin-app #web-app-links {
+  border-color: #2e2e45 !important;
+}
+
+@media print {
+  body.admin-app,
+  body.admin-app #print-fature {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}

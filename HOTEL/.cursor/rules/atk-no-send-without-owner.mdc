@@ -1,0 +1,25 @@
+---
+description: ATK — MOS dërgo kuponë pa konfirmim eksplicit të pronarit
+alwaysApply: true
+---
+
+# ATK — NDALIM ABSOLUT PA LEJE TË PRONARIT (Revolution HOTEL)
+
+Pronari e ka thënë **qartë**: **MOS dërgo kuponë te ATK** pa konfirmim të tij.
+
+## Rregulla e pathyeshme
+
+1. **ASNJËHERË** mos ndiz dërgim automatik te ATK pa leje **eksplicite** të pronarit.
+2. **MOS** ndrysho `ATK_AUTO_SEND`, `FISCAL_LOCAL_RUN`, `atk_auto_send` në DB, launcher, ose UI që të dërgojë te API ATK.
+3. Kuponi fiskal: **krijo + ruaj lokalisht (SQLite) + printo** — **JO** HTTP te `fiskalizimi*.atk-ks.org`.
+4. Nëse pronari thotë “dërgo te ATK” — **pyet edhe një herë** para çdo ndryshimi.
+5. Pa konfirmim të qartë → **refuzo** dhe mbaj profilin lokal.
+
+## Gjendja e paracaktuar (HOTEL)
+
+- Dërgimi te ATK: **OFF** (manual / me leje pronari)
+- Kuponi: lokal + print
+
+## Kur lejohet ATK
+
+Vetëm kur pronari thotë qartë **“Po, tani dërgo te ATK”** + konfirmim i dytë.

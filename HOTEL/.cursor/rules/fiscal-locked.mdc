@@ -1,0 +1,31 @@
+---
+description: LOCKED — fiskalizimi/ATK/licenca nuk preken pa leje eksplicite nga përdoruesi
+alwaysApply: true
+---
+
+# FISKALIZIMI ËSHTË I MBYLLUR (LOCKED) — Revolution HOTEL
+
+Kjo është **rregull e rreptë**. Fiskalizimi, ATK, logoja RKS/MF, çelësat, kuponët, printimi fiskal dhe licenca fiskale **nuk ekzistojnë për ndryshim** pa leje.
+
+## Ndalim absolut pa leje
+
+**MOS** lexo-për-ndryshim, edito, fshi, riemërto, rifaktorizo, “pastro”, “përmirëso”, apo gjenero kod që prek:
+
+- `fiscal/**` (krejt moduli: ATK API, protobuf, crypto, offline queue, QR, logo, print, receipt guard, recovery, VAT, numbering, payment, audit, config, DB fiskal, self-test, assets, pem/keys)
+- Endpoint-e / rrugë `/api/fiscal/**` dhe çdo handler fiskal në `server.js`
+- Integrime fiskale në `database.js`, `printer.js`, `receipt-text.js`
+- Teste fiskale (`tests/fiscal*.js`, `fiscal/fiscal-self-test.js`)
+- Çelësa, certifikata, NUI, TCR, `fiscal-keys`, `restaurant.db` fusha fiskale, ENV fiskal (`FISCAL_*`, ATK URLs, ECDSA)
+- Logo RKS/MF, generatorët e logos, `logo_rks_mf.png`, rendin e printit tekst → QR → logo
+- `fiscal/license-guard.js` dhe çdo logjikë licence të lidhur me fiskalizimin
+
+## Procedura e detyrueshme para çdo prekjeje
+
+1. **NDALO** — mos bëj asnjë edit pa leje eksplicite.
+2. **Pyet leje eksplicite** (duhet të thotë qartë që lejon prekjen e fiskalizimit).
+3. **Pyet HERËN E DYTË** — konfirmim i qartë.
+4. Vetëm pas konfirmimit **dy herë**, lejohet ndryshimi i kufizuar.
+
+## Kur ke dyshim
+
+Nëse nuk je **100% i sigurt** → **MOS E PREK**.

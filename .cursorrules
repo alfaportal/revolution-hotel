@@ -1,0 +1,6 @@
+# hotel-system — rregulla Cursor
+
+## RREGULLI #0 (E PËRJETSHME)
+NDALOHET: Zero Supabase, zero cloud, zero server i jashtëm. Vetëm SQLite lokal. Kjo rregull nuk ndryshohet pa miratimin eksplicit të pronarit.
+
+Mos prek asgjë jashtë hotel-system. Lexo CLAUDE.md dhe HOTEL/CLAUDE.md.

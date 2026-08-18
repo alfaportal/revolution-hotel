@@ -1,0 +1,15 @@
+node_modules/
+HOTEL/node_modules/
+HOTEL/dist/
+HOTEL/.protected-build/
+dist/
+*.log
+dist-launch*.log
+_hotel-build*.log
+restaurant.db
+restaurant.db-wal
+restaurant.db-shm
+.env
+.env.*
+.DS_Store
+Thumbs.db

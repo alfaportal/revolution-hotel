@@ -1,0 +1,897 @@
+/* Truffle-inspired POS theme — only #ekrani-porosia (desktop order panel). CSS only. */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+#ekrani-porosia {
+  --pos-bg: #1a1a2e;
+  --pos-bg-soft: #1e1e2e;
+  --pos-panel: #ffffff;
+  --pos-panel-muted: #f4f5f7;
+  --pos-border: #e5e7eb;
+  --pos-text: #111827;
+  --pos-text-inv: #f8fafc;
+  --pos-muted: #6b7280;
+  --pos-accent: #ff6b35;
+  --pos-accent-hover: #e85a28;
+  --pos-green: #16a34a;
+  --pos-red: #e11d48;
+  --pos-radius: 14px;
+  --pos-radius-sm: 10px;
+  --pos-radius-lg: 16px;
+  --pos-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+
+  display: none;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pos-bg);
+  height: 100vh;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--pos-text-inv);
+}
+
+body.waiter-screen:has(#ekrani-porosia.active) {
+  display: flex;
+  flex-direction: column;
+  background: var(--pos-bg);
+}
+
+#ekrani-porosia.active {
+  display: flex;
+}
+
+/* ─── Thin minimal scrollbars ─── */
+#ekrani-porosia,
+#ekrani-porosia * {
+  scrollbar-width: thin;
+  scrollbar-color: #9ca3af transparent;
+}
+
+#ekrani-porosia ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+#ekrani-porosia ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#ekrani-porosia ::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 999px;
+}
+
+#ekrani-porosia ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* ─── Top bar / header ─── */
+#ekrani-porosia .waiter-order-top {
+  flex-shrink: 0;
+  background: var(--pos-bg-soft);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+#ekrani-porosia .back-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  background: transparent;
+}
+
+#ekrani-porosia .back-bar .btn-ghost {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--pos-text-inv);
+  font-weight: 600;
+  font-size: 0.84rem;
+  min-height: 40px;
+  padding: 0.45rem 1rem;
+  font-family: inherit;
+  letter-spacing: 0.01em;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+}
+
+#ekrani-porosia .back-bar .btn-ghost:hover {
+  background: rgba(255, 107, 53, 0.16);
+  border-color: rgba(255, 107, 53, 0.5);
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.2);
+  transform: translateY(-1px);
+}
+
+#ekrani-porosia .waiter-table-header {
+  padding: 0.9rem 1.15rem !important;
+  background: var(--pos-accent) !important;
+  border-bottom: none !important;
+}
+
+#ekrani-porosia .waiter-table-header h1 {
+  font-size: 1.45rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em;
+  color: #fff !important;
+  line-height: 1.2;
+}
+
+/* ─── Body layout ─── */
+#ekrani-porosia .waiter-order-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pos-bg);
+}
+
+#ekrani-porosia .menu-pos-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* ─── Category tabs: one horizontal scrolling row ─── */
+#ekrani-porosia .menu-group-bar {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0.7rem 0 0;
+  padding: 0.45rem 0.75rem 0.65rem;
+  gap: 0.45rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.55) rgba(255, 255, 255, 0.12);
+  -ms-overflow-style: auto;
+  cursor: grab;
+}
+
+#ekrani-porosia .menu-group-bar.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+#ekrani-porosia .menu-group-bar::-webkit-scrollbar {
+  height: 8px !important;
+  display: block !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+#ekrani-porosia .menu-group-bar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.45) !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  min-width: 40px;
+}
+
+#ekrani-porosia .menu-group-bar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.65) !important;
+}
+
+#ekrani-porosia .menu-group-bar::-webkit-scrollbar-track {
+  display: block !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 999px !important;
+}
+
+#ekrani-porosia .menu-group-bar::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+#ekrani-porosia .menu-group-btn {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  min-width: max-content;
+  min-height: 38px;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border: none !important;
+  outline: none !important;
+  background: #2d2d44;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  white-space: nowrap;
+  box-shadow: none !important;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+#ekrani-porosia .menu-group-btn:hover {
+  background: #3a3a55;
+  color: #fff;
+}
+
+#ekrani-porosia .menu-group-btn:focus,
+#ekrani-porosia .menu-group-btn:focus-visible,
+#ekrani-porosia .menu-group-btn:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+#ekrani-porosia .menu-group-btn .menu-tab-icon {
+  display: none !important;
+}
+
+#ekrani-porosia .menu-group-btn.active,
+#ekrani-porosia .menu-group-btn:nth-child(n).active,
+#ekrani-porosia .menu-group-btn.active:hover {
+  background: #ff6b35 !important;
+  color: #fff !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+#ekrani-porosia .menu-group-btn.active .menu-tab-icon {
+  display: none !important;
+}
+
+/* ─── Product grid / cards ─── */
+#ekrani-porosia .menu-photo-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.55rem 0.65rem 0.75rem;
+  -webkit-overflow-scrolling: touch;
+  background: transparent;
+}
+
+#ekrani-porosia .menu-photo-grid-inner,
+#ekrani-porosia .menu-text-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+}
+
+#ekrani-porosia .menu-item-text-btn,
+#ekrani-porosia .menu-item-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+#ekrani-porosia .menu-item-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  padding: 0;
+  min-height: 5.1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Placeholder strip when no photo */
+#ekrani-porosia .menu-item-card::before {
+  content: "";
+  display: block;
+  height: 44px;
+  background:
+    linear-gradient(145deg, rgba(255, 107, 53, 0.16), rgba(26, 26, 46, 0.04)),
+    #f3f4f6;
+  border-bottom: 1px solid var(--pos-border);
+  border-radius: 12px 12px 0 0;
+}
+
+#ekrani-porosia .menu-item-card.has-photo::before {
+  display: none;
+}
+
+#ekrani-porosia .menu-item-text-btn:hover .menu-item-card {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  border-color: rgba(255, 107, 53, 0.35);
+}
+
+#ekrani-porosia .menu-item-text-btn.menu-item-flash .menu-item-card {
+  transform: scale(0.97);
+  border-color: var(--pos-accent);
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.35);
+}
+
+#ekrani-porosia .menu-item-badge-wrap,
+#ekrani-porosia .menu-item-emoji-ph {
+  display: none !important;
+}
+
+#ekrani-porosia .menu-item-photo-wrap {
+  display: block !important;
+  aspect-ratio: 1.1 / 1;
+  width: 100%;
+  height: auto;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: none;
+}
+
+#ekrani-porosia .menu-item-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #fff;
+}
+
+#ekrani-porosia .menu-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  padding: 0.4rem 0.35rem 0.45rem;
+  min-height: 0;
+  width: 100%;
+  background: #fff;
+}
+
+#ekrani-porosia .menu-item-text-btn .emri {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--pos-text);
+  line-height: 1.2;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+#ekrani-porosia .menu-item-text-btn .cmimi,
+#ekrani-porosia .menu-item-text-btn .cmimi-badge {
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--pos-accent);
+  box-shadow: none;
+}
+
+#ekrani-porosia .menu-item-text-btn .cmimi-badge.is-gold {
+  background: transparent;
+  color: var(--pos-accent);
+}
+
+#ekrani-porosia .menu-item-btn:disabled .menu-item-card,
+#ekrani-porosia .menu-item-stock-out .menu-item-card {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
+
+#ekrani-porosia .menu-empty-msg {
+  color: rgba(248, 250, 252, 0.55);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+/* ─── Right checkout panel ─── */
+#ekrani-porosia .waiter-checkout-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #f8f9fb;
+  color: var(--pos-text);
+  border-top: none;
+  box-shadow: none;
+}
+
+/* Fshi tekstin informativ — logjika e faturës mbetet. */
+#ekrani-porosia #coupon-type-forced,
+#ekrani-porosia .coupon-type-forced {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: none !important;
+}
+
+#ekrani-porosia .order-list {
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0;
+  box-shadow: none;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #fff;
+  border-bottom: 1px solid var(--pos-border);
+  color: var(--pos-text);
+}
+
+#ekrani-porosia .order-list .card-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--pos-muted);
+  font-weight: 700;
+  margin-bottom: 0.55rem !important;
+  border: none;
+  padding: 0;
+}
+
+#ekrani-porosia .order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #f1f4f8;
+  color: var(--pos-text);
+}
+
+#ekrani-porosia .order-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+#ekrani-porosia .order-row-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--pos-text);
+  word-break: break-word;
+}
+
+#ekrani-porosia .order-row-meta {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--pos-muted);
+}
+
+#ekrani-porosia .order-row-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+#ekrani-porosia .order-row-total {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--pos-accent);
+  white-space: nowrap;
+}
+
+#ekrani-porosia .qty-btns button {
+  min-width: 32px;
+  min-height: 32px;
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  border-radius: var(--pos-radius-sm);
+  background: var(--pos-panel-muted);
+  border: 1px solid var(--pos-border);
+  color: var(--pos-text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+#ekrani-porosia .qty-btns button:hover {
+  background: #fff;
+  border-color: var(--pos-accent);
+  color: var(--pos-accent);
+}
+
+#ekrani-porosia .total-bar {
+  position: static;
+  flex-shrink: 0;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--pos-bg-soft);
+  color: var(--pos-text-inv);
+  border-top: none;
+  border-bottom: none;
+}
+
+#ekrani-porosia .total-bar #totali,
+#ekrani-porosia .total-bar #totali-tavoline {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--pos-accent);
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+#ekrani-porosia .promo-select-wrap {
+  flex-shrink: 0;
+}
+
+#ekrani-porosia .promo-pricing-bar {
+  flex-shrink: 0;
+}
+
+#ekrani-porosia .action-bar {
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem 0.65rem;
+  gap: 0.4rem;
+  background: #f8f9fb;
+  border-top: 1px solid var(--pos-border);
+  display: flex;
+  flex-direction: column;
+}
+
+#ekrani-porosia .action-bar .btn {
+  min-height: 40px;
+  border-radius: var(--pos-radius-lg);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family: inherit;
+  transition: transform 0.12s ease, opacity 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+#ekrani-porosia .action-bar .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+#ekrani-porosia .action-bar .btn-primary {
+  background: var(--pos-accent);
+  border: none;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(255, 107, 53, 0.35);
+  width: 100%;
+}
+
+#ekrani-porosia .action-bar .btn-primary:hover:not(:disabled) {
+  background: var(--pos-accent-hover);
+}
+
+#ekrani-porosia .action-bar .btn-danger {
+  background: #fff;
+  color: var(--pos-red);
+  border: 1.5px solid #fecdd3;
+  box-shadow: none;
+  width: 100%;
+  border-radius: var(--pos-radius-lg);
+}
+
+#ekrani-porosia .payment-close-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+#ekrani-porosia .btn-payment-cash,
+#ekrani-porosia .btn-payment-karte {
+  min-height: 40px;
+  border-radius: var(--pos-radius-lg);
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease, background 0.15s ease;
+}
+
+#ekrani-porosia .btn-payment-cash {
+  background: var(--pos-green);
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(22, 163, 74, 0.28);
+}
+
+#ekrani-porosia .btn-payment-karte {
+  background: var(--pos-bg);
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(26, 26, 46, 0.28);
+}
+
+#ekrani-porosia .btn-payment-cash:hover,
+#ekrani-porosia .btn-payment-karte:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+#ekrani-porosia .coupon-type-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+#ekrani-porosia .btn-coupon {
+  font-weight: 700;
+  border: 1.5px solid var(--pos-border);
+  border-radius: var(--pos-radius-sm);
+  padding: 0.4rem 0.35rem;
+  min-height: 34px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  background: var(--pos-panel-muted);
+  color: var(--pos-muted);
+  font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+#ekrani-porosia .btn-coupon-thermal.active {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+#ekrani-porosia .btn-coupon-fiscal.active {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  color: #6d28d9;
+}
+
+#ekrani-porosia .btn-split-bill {
+  background: #fff;
+  border: 1.5px solid var(--pos-border) !important;
+  color: var(--pos-muted) !important;
+  border-radius: var(--pos-radius-sm);
+  min-height: 36px !important;
+  width: 100%;
+  font-family: inherit;
+}
+
+#ekrani-porosia .promo-select-wrap {
+  flex-shrink: 0;
+  padding: 0.4rem 0.85rem 0.35rem;
+  margin: 0;
+  gap: 0.2rem;
+  background: #fff;
+  border-bottom: 1px solid var(--pos-border);
+}
+
+#ekrani-porosia .promo-select-wrap label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pos-muted);
+  margin: 0;
+}
+
+#ekrani-porosia .promo-select-wrap select {
+  border-radius: var(--pos-radius-sm);
+  border-color: var(--pos-border);
+  padding: 0.35rem 0.55rem;
+  min-height: 34px;
+  background: var(--pos-panel-muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--pos-text);
+}
+
+#ekrani-porosia #gabim-porosi {
+  margin: 0 !important;
+  border-radius: 0;
+}
+
+/* Desktop: menu left + cart right */
+@media (min-width: 860px) {
+  #ekrani-porosia .waiter-order-body {
+    flex-direction: row;
+  }
+
+  #ekrani-porosia .menu-pos-wrap {
+    flex: 1;
+    border-right: none;
+  }
+
+  #ekrani-porosia .menu-photo-grid-inner,
+  #ekrani-porosia .menu-text-grid-inner {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 0.55rem;
+  }
+
+  #ekrani-porosia .menu-item-card::before {
+    height: 48px;
+  }
+
+  #ekrani-porosia .waiter-checkout-panel {
+    width: min(380px, 34vw);
+    max-width: 420px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    border-top: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    background: #f3f4f6;
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.22);
+  }
+
+  #ekrani-porosia .order-list {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+  }
+
+  #ekrani-porosia .action-bar {
+    flex-direction: column;
+    flex-shrink: 0;
+    background: #f3f4f6;
+  }
+
+  #ekrani-porosia .action-bar .btn-primary,
+  #ekrani-porosia .action-bar .btn-danger {
+    width: 100%;
+  }
+}
+
+@media (min-width: 1200px) {
+  #ekrani-porosia .menu-photo-grid-inner,
+  #ekrani-porosia .menu-text-grid-inner {
+    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  }
+
+  #ekrani-porosia .menu-item-card::before {
+    height: 52px;
+  }
+
+  #ekrani-porosia .waiter-table-header h1 {
+    font-size: 1.55rem !important;
+  }
+}
+
+@media (max-width: 859px) {
+  #ekrani-porosia .total-bar,
+  #ekrani-porosia .action-bar {
+    position: static;
+    bottom: auto;
+    box-shadow: none;
+  }
+
+  #ekrani-porosia .menu-photo-grid-inner,
+  #ekrani-porosia .menu-text-grid-inner {
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 0.4rem;
+  }
+
+  #ekrani-porosia .menu-item-card::before {
+    height: 40px;
+  }
+
+  #ekrani-porosia .waiter-table-header h1 {
+    font-size: 1.25rem !important;
+  }
+}
+
+/* ��� Product detail modal (description) ��� */
+.menu-item-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+.menu-item-detail-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+}
+.menu-item-detail-card {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  max-height: min(88vh, 640px);
+  overflow: auto;
+  background: #fff;
+  color: #111827;
+  border-radius: 16px;
+  padding: 1.15rem 1.15rem 1.25rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.menu-item-detail-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: #111827;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.menu-item-detail-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+  background: #f3f4f6;
+}
+.menu-item-detail-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.menu-item-detail-name {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.25;
+  padding-right: 2rem;
+}
+.menu-item-detail-price {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ff6b35;
+  margin-bottom: 0.75rem;
+}
+.menu-item-detail-desc {
+  margin: 0 0 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #4b5563;
+  white-space: pre-wrap;
+}
+.menu-item-detail-add {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: #ff6b35;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.menu-item-detail-add:hover {
+  background: #e85a28;
+}
