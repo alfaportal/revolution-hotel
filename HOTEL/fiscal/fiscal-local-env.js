@@ -46,7 +46,7 @@ function getLocalRunStatus() {
     atk_transmission_blocked: isAtkCommunicationForbidden(),
     fiscal_enabled: fiscalEnabled,
     fiscal_persistence: "sqlite",
-    atk_http: "BLOCKED (HOTEL — vetëm biznes dërgon te ATK)",
+    atk_http: "BLOCKED (HOTEL — vetëm moduli SEF dërgon te ATK)",
     settings_summary: settings
       ? {
           nui: settings.taxpayer_nui,

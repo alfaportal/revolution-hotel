@@ -5,7 +5,7 @@
  * FISCAL_RELEASE_LOCKED=true → fiskalizimi mbetet OFF (pa toggle publik).
  * Hapet vetëm me leje eksplicite (vendos false).
  * 2026-08-06: hapur për TEST lokal (print). ATK është i ndaluar te HOTEL —
- * vetëm projekti `biznes` komunikon me SIATK (shih fiscal-offline.js).
+ * vetëm moduli SEF komunikon me SIATK (shih fiscal-offline.js).
  */
 const FISCAL_RELEASE_LOCKED = false;
 

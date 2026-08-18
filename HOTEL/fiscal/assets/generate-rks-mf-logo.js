@@ -9,11 +9,7 @@ const zlib = require("zlib");
 const OUT_W = 160;
 const OUT_H = 80;
 
-const REF = path.join(
-  process.env.USERPROFILE || "",
-  ".cursor/projects/c-Users-1-Desktop-firmat-biznes/assets",
-  "c__Users_1_AppData_Roaming_Cursor_User_workspaceStorage_empty-window_images_Screenshot_2026-08-04_194554-9ece7e4b-93dd-4524-8bac-0906d2821d46.png",
-);
+const REF = path.join(__dirname, "rks-mf-stema-source.png");
 
 function crc32(buf) {
   let c = 0xffffffff;

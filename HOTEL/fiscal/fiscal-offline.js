@@ -4,7 +4,7 @@
  * Nuk prek cloud-sync.
  *
  * ⛔ ATK: HOTEL NUK KOMUNIKON ME ATK.
- * Vetëm projekti `biznes` lejohet të dërgojë kuponë te SIATK.
+ * Vetëm moduli SEF lejohet të dërgojë kuponë te SIATK.
  * Ky flag NUK anashkalohet me settings / atk_auto_send / URL.
  */
 const dns = require("dns").promises;
@@ -47,7 +47,7 @@ function getSqlite() {
   return database.db;
 }
 
-/** Gjithmonë false te HOTEL — vetëm biznes dërgon te ATK. */
+/** Gjithmonë false te HOTEL — vetëm moduli SEF dërgon te ATK. */
 function isAtkAutoSendEnabled() {
   return false;
 }
@@ -357,7 +357,7 @@ function markReceiptSent(id, atkResponse) {
 }
 
 /**
- * HOTEL nuk dërgon kuponë te ATK — vetëm projekti `biznes`.
+ * HOTEL nuk dërgon kuponë te ATK — vetëm moduli SEF.
  * Funksioni ekziston për API-kompatibilitet; gjithmonë refuzon.
  */
 async function sendReceiptToAtk(_row) {
@@ -365,7 +365,7 @@ async function sendReceiptToAtk(_row) {
     sent: false,
     skipped_local_test: true,
     forbidden: true,
-    error: "HOTEL: komunikimi me ATK i ndaluar — vetëm biznes dërgon te ATK",
+    error: "HOTEL: komunikimi me ATK i ndaluar — vetëm moduli SEF dërgon te ATK",
   };
 }
 
@@ -382,7 +382,7 @@ async function processOfflineQueue(_opts = {}) {
       online: null,
       skipped_auto: true,
       forbidden: true,
-      message: "HOTEL: komunikimi me ATK i ndaluar — vetëm biznes",
+      message: "HOTEL: komunikimi me ATK i ndaluar — vetëm moduli SEF",
     };
   }
 
@@ -444,7 +444,7 @@ function startOfflineMonitor() {
   }
   if (isAtkCommunicationForbidden() || !isAtkAutoSendEnabled()) {
     console.log(
-      "[fiscal-offline] monitor: ATK i ndaluar për HOTEL — vetëm biznes komunikon me ATK"
+      "[fiscal-offline] monitor: ATK i ndaluar për HOTEL — vetëm moduli SEF komunikon me ATK"
     );
     return false;
   }

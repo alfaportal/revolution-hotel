@@ -37,7 +37,7 @@ Sistemi është rrjet. Kur rregullon një send, kontrollo automatikisht hallkat 
 | Blerje | faturë → stok → kontabilist |
 | Shitje / POS / dhomë | shuma + TVSH e saktë |
 | Kontabilisti / libra ATK | rreshta me bucket TVSH (jo “—” / 0% i rremë) |
-| Fiskale | lokal OK; ATK **vetëm** `biznes` |
+| Fiskale | lokal OK; dërgim ATK vetëm nga moduli SEF |
 | Raporte / ditari | shumat përputhen |
 | Admin UI | pronari e sheh dhe e kupton |
 

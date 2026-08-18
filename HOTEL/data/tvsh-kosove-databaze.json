@@ -80,36 +80,6 @@
       ],
       "smart_mapping": true,
       "seed_from_products_filter": ["Hotel", "Kafe / bar", "Pije", "Alkool", "Ushqim i gatshëm"]
-    },
-    "FURRA": {
-      "description": "Furrë buke / pastiçeri",
-      "menu_categories": [
-        { "name": "Bukë", "default_letter": "D", "default_rate": 8 },
-        { "name": "Miellore", "default_letter": "D", "default_rate": 8 },
-        { "name": "Pastiçeri / Ëmbëlsira", "default_letter": "E", "default_rate": 18 },
-        { "name": "Pije", "default_letter": "E", "default_rate": 18 },
-        { "name": "Kafe", "default_letter": "E", "default_rate": 18 }
-      ],
-      "smart_mapping": true,
-      "seed_from_products_filter": ["Ushqim bazë", "Ëmbëlsira", "Kafe / bar", "Pije"]
-    },
-    "MARKET": {
-      "description": "Market / supermarket — katalog i madh + HS/CN + barkod",
-      "menu_categories": [
-        { "name": "Ushqim bazë", "default_letter": "D", "default_rate": 8 },
-        { "name": "Pije joalkoolike", "default_letter": "E", "default_rate": 18 },
-        { "name": "Alkool", "default_letter": "E", "default_rate": 18 },
-        { "name": "Duhan", "default_letter": "E", "default_rate": 18 },
-        { "name": "Higjienë / Kozmetikë", "default_letter": "E", "default_rate": 18 },
-        { "name": "Veshje", "default_letter": "E", "default_rate": 18 },
-        { "name": "IT / Elektronikë", "default_letter": "D", "default_rate": 8 },
-        { "name": "Farmaci", "default_letter": "D", "default_rate": 8 },
-        { "name": "Të tjera", "default_letter": "E", "default_rate": 18 }
-      ],
-      "smart_mapping": true,
-      "use_hs_cn": true,
-      "use_barcode_cache": true,
-      "note": "Market NUK ka nevojë për 1 milion rreshta TVSH. Ka katalog produktesh + rregulla kategori/HS + smart mapping."
     }
   },
   "categories": [
