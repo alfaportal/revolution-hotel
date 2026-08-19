@@ -2869,7 +2869,9 @@ app.post("/api/orders/close", auth, async (req, res) => {
   const { table_id, waiter_name, is_admin, payment_method } = req.body;
   const asAdmin = !!is_admin && req.session.role === "admin";
   const name = asAdmin ? (waiter_name || req.session.emri) : req.session.emri;
-  const requestedCoupon = String(req.body?.coupon_type || "thermal").trim().toLowerCase();
+  const requestedCoupon = req.body?.coupon_type
+    ? String(req.body.coupon_type).trim().toLowerCase()
+    : null;
   const fiscalSkip = req.body?.fiscal_skip === true || requestedCoupon === "thermal";
   if (req.session.role === "kamarier" && asAdmin) {
     return res.status(403).json({ gabim: "Vetëm admini mund ta mbyllë nga paneli i adminit" });

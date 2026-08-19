@@ -425,7 +425,13 @@ function generateFiscalReceipt(orderData, fiscalData) {
 
   let bizSettings = {};
   try {
-    bizSettings = require("../database").getFiscalSettings() || {};
+    const dbApi = require("../database");
+    const fiscalLocal = dbApi.getFiscalSettings() || {};
+    const settings = typeof dbApi.getSettings === "function" ? dbApi.getSettings() : {};
+    bizSettings = {
+      ...fiscalLocal,
+      restaurant_name: settings.restaurant_name || "",
+    };
   } catch {
     bizSettings = {};
   }
@@ -437,6 +443,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
     "";
   const brandName =
     String(bizSettings.biz_name || "").trim() ||
+    String(bizSettings.restaurant_name || "").trim() ||
     legalName ||
     t("business_fallback");
   const unitName = String(
