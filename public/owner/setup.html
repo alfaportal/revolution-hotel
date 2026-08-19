@@ -7,7 +7,7 @@
   <title>Aktivizo llogarinë — Revolution POS</title>
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#1a1a2e">
-  <link rel="stylesheet" href="/css/owner.css">
+  <link rel="stylesheet" href="/hotel/css/owner.css">
 </head>
 <body>
   <div class="login-wrap">
@@ -25,7 +25,7 @@
         <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Aktivizo dhe vazhdo</button>
       </form>
       <p id="setup-done" class="hidden" style="margin-top:1rem">
-        <a href="/owner/login" class="btn btn-primary" style="width:100%;text-decoration:none;display:inline-flex">Shko te hyrja</a>
+        <a href="/hotel/owner/login" class="btn btn-primary" style="width:100%;text-decoration:none;display:inline-flex">Shko te hyrja</a>
       </p>
     </div>
   </div>
@@ -50,7 +50,7 @@
         return;
       }
       try {
-        const res = await fetch(`/api/auth/owner/invite/${encodeURIComponent(token)}`);
+        const res = await fetch(`/hotel/api/auth/owner/invite/${encodeURIComponent(token)}`);
         const data = await res.json();
         if (!data.valid) {
           showErr(data.message || data.gabim || "Ftesa nuk është e vlefshme.");
@@ -81,7 +81,7 @@
       const btn = e.target.querySelector('button[type="submit"]');
       btn.disabled = true;
       try {
-        const res = await fetch("/api/auth/owner/setup", {
+        const res = await fetch("/hotel/api/auth/owner/setup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token, password: pw }),
@@ -93,7 +93,7 @@
         doneEl.classList.remove("hidden");
         const loginUrl = data.email
           ? `/owner/login?email=${encodeURIComponent(data.email)}`
-          : "/owner/login";
+          : "/hotel/owner/login";
         setTimeout(() => { location.href = loginUrl; }, 2500);
       } catch (err) {
         errEl.textContent = err.message;

@@ -1,8 +1,16 @@
 const { getSupabase } = require("../db");
 const { buildTablesFromAreas, MAX_TABLES } = require("../lib/tableLayout");
 const { touchMenuSync } = require("./menuService");
+const { getPublicAppOrigin } = require("../lib/publicOrigin");
+const {
+  generatePunetoriToken,
+  buildPunetoriUrl,
+  ensureAllStaffPunetoriTokens,
+  ensureStaffPunetoriToken,
+  punetoriUiRole,
+} = require("../lib/punetoriToken");
 
-const STAFF_ROLES = ["waiter", "kitchen"];
+const STAFF_ROLES = ["waiter", "kitchen", "receptionist", "housekeeping"];
 
 function normalizeRole(role) {
   const r = String(role || "waiter").trim().toLowerCase();
@@ -10,7 +18,16 @@ function normalizeRole(role) {
 }
 
 function roleLabel(role) {
-  return role === "kitchen" ? "Kuzhinier" : "Kamarier";
+  switch (normalizeRole(role)) {
+    case "kitchen":
+      return "Kuzhinier";
+    case "receptionist":
+      return "Recepsionist";
+    case "housekeeping":
+      return "Housekeeping";
+    default:
+      return "Kamarier";
+  }
 }
 
 async function syncTableCountFromAreas(clientId) {
@@ -51,7 +68,7 @@ async function listVenue(clientId) {
       .order("name"),
     db
       .from("pos_staff")
-      .select("id, name, role, active, sort_order")
+      .select("id, name, role, active, sort_order, web_token")
       .eq("client_id", clientId)
       .order("role")
       .order("sort_order")
@@ -61,6 +78,16 @@ async function listVenue(clientId) {
 
   const activeAreas = (areas || []).filter(a => a.active !== false);
   const areaTableTotal = activeAreas.reduce((s, a) => s + (Number(a.table_count) || 0), 0);
+  const staffRows = staff || [];
+  await ensureAllStaffPunetoriTokens(clientId, staffRows);
+  const { data: staffFresh } = await db
+    .from("pos_staff")
+    .select("id, name, role, active, sort_order, web_token")
+    .eq("client_id", clientId)
+    .order("role")
+    .order("sort_order")
+    .order("name");
+  const base = getPublicAppOrigin();
 
   return {
     areas: (areas || []).map(a => ({
@@ -70,14 +97,20 @@ async function listVenue(clientId) {
       sort_order: Number(a.sort_order) || 0,
       active: a.active !== false,
     })),
-    staff: (staff || []).map(s => ({
-      id: s.id,
-      name: s.name,
-      role: normalizeRole(s.role),
-      role_label: roleLabel(normalizeRole(s.role)),
-      active: s.active !== false,
-      sort_order: Number(s.sort_order) || 0,
-    })),
+    staff: (staffFresh || staffRows).map(s => {
+      const role = normalizeRole(s.role);
+      const web_token = s.web_token || null;
+      return {
+        id: s.id,
+        name: s.name,
+        role,
+        role_label: roleLabel(role),
+        active: s.active !== false,
+        sort_order: Number(s.sort_order) || 0,
+        web_token,
+        punetori_url: punetoriUiRole(role) && web_token ? buildPunetoriUrl(base, web_token) : "",
+      };
+    }),
     table_count: areaTableTotal > 0 ? areaTableTotal : Math.min(MAX_TABLES, Number(settings?.table_count) || 10),
     synced_at: settings?.synced_at || null,
   };
@@ -184,12 +217,8 @@ async function addStaff(clientId, body) {
   const name = String(body.name || "").trim();
   if (!name) throw new Error("Shkruani emrin e stafit.");
   const role = normalizeRole(body.role);
-  if (role === "waiter") {
-    throw new Error(
-      "Kamarierët me PIN dhe link tablet shtohen te paneli → Kamarierët (jo te Venue → Stafi)."
-    );
-  }
   const db = getSupabase();
+  const web_token = punetoriUiRole(role) ? generatePunetoriToken(name) : null;
 
   const { data: last } = await db
     .from("pos_staff")
@@ -208,8 +237,9 @@ async function addStaff(clientId, body) {
       source: "owner",
       sort_order: (Number(last?.sort_order) || 0) + 1,
       active: true,
+      web_token,
     })
-    .select("id, name, role, active, sort_order")
+    .select("id, name, role, active, sort_order, web_token")
     .single();
   if (error) {
     if (String(error.message || "").includes("unique")) {
@@ -219,14 +249,18 @@ async function addStaff(clientId, body) {
   }
 
   const synced_at = await touchMenuSync(clientId);
+  const memberRole = normalizeRole(data.role);
+  const token = data.web_token || (await ensureStaffPunetoriToken(clientId, data.id, data.name));
   return {
     member: {
       id: data.id,
       name: data.name,
-      role: normalizeRole(data.role),
-      role_label: roleLabel(data.role),
+      role: memberRole,
+      role_label: roleLabel(memberRole),
       active: data.active !== false,
       sort_order: Number(data.sort_order) || 0,
+      web_token: token,
+      punetori_url: punetoriUiRole(memberRole) && token ? buildPunetoriUrl(getPublicAppOrigin(), token) : "",
     },
     synced_at,
   };
@@ -258,19 +292,32 @@ async function updateStaff(clientId, staffId, body) {
     .update(patch)
     .eq("id", staffId)
     .eq("client_id", clientId)
-    .select("id, name, role, active, sort_order")
+    .select("id, name, role, active, sort_order, web_token")
     .single();
   if (error) throw error;
+
+  const nextRole = normalizeRole(data.role);
+  let token = data.web_token || null;
+  if (punetoriUiRole(nextRole)) {
+    if (patch.name != null) {
+      token = generatePunetoriToken(data.name);
+      await db.from("pos_staff").update({ web_token: token }).eq("id", staffId).eq("client_id", clientId);
+    } else if (!token || patch.role != null) {
+      token = await ensureStaffPunetoriToken(clientId, staffId, data.name);
+    }
+  }
 
   const synced_at = await touchMenuSync(clientId);
   return {
     member: {
       id: data.id,
       name: data.name,
-      role: normalizeRole(data.role),
-      role_label: roleLabel(data.role),
+      role: nextRole,
+      role_label: roleLabel(nextRole),
       active: data.active !== false,
       sort_order: Number(data.sort_order) || 0,
+      web_token: token,
+      punetori_url: punetoriUiRole(nextRole) && token ? buildPunetoriUrl(getPublicAppOrigin(), token) : "",
     },
     synced_at,
   };

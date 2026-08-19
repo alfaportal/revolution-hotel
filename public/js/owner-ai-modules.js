@@ -12,7 +12,10 @@
     const token = localStorage.getItem("owner_token") || "";
     const headers = { "Content-Type": "application/json", Accept: "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(path, { ...opts, headers, credentials: "include" });
+    const res = await fetch(
+      typeof window.hotelPath === "function" ? window.hotelPath(path) : path,
+      { ...opts, headers, credentials: "include" },
+    );
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.gabim || data.message || `HTTP ${res.status}`);
     return data;

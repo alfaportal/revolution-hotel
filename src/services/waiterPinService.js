@@ -1,12 +1,13 @@
-const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const { getSupabase } = require("../db");
 const { touchMenuSync } = require("./menuService");
+const { generatePunetoriToken, isPunetoriTokenFormat, punetoriUiRole } = require("../lib/punetoriToken");
 
 const PIN_RE = /^\d{4}$/;
 
-function generateWebToken() {
-  return crypto.randomBytes(12).toString("hex");
+function generateWebToken(name) {
+  return generatePunetoriToken(name);
 }
 
 async function ensureWaiterWebToken(clientId, waiterId) {
@@ -20,16 +21,22 @@ async function ensureWaiterWebToken(clientId, waiterId) {
     .maybeSingle();
   if (findErr) throw findErr;
   if (!row) return null;
-  if (row.web_token) return row.web_token;
+  if (row.web_token && isPunetoriTokenFormat(row.web_token)) return row.web_token;
+
+  const { data: named } = await db
+    .from("pos_staff")
+    .select("name")
+    .eq("id", waiterId)
+    .eq("client_id", clientId)
+    .maybeSingle();
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const web_token = generateWebToken();
+    const web_token = generateWebToken(named?.name || "kamarier");
     const { data, error } = await db
       .from("pos_staff")
       .update({ web_token })
       .eq("id", waiterId)
       .eq("client_id", clientId)
-      .is("web_token", null)
       .select("web_token")
       .maybeSingle();
     if (!error && data?.web_token) return data.web_token;
@@ -60,11 +67,11 @@ async function getWaiterByWebToken(clientId, webToken) {
     .from("pos_staff")
     .select("id, name, role, active, pin_hash, web_token")
     .eq("client_id", clientId)
-    .eq("role", "waiter")
     .eq("web_token", token)
     .maybeSingle();
   if (error) throw error;
   if (!data?.id || data.active === false) return null;
+  if (!punetoriUiRole(data.role)) return null;
   return data;
 }
 
@@ -234,7 +241,7 @@ async function addWaiterWithPin(clientId, body) {
     .maybeSingle();
 
   const pin_hash = await hashPin(pin);
-  const web_token = generateWebToken();
+  const web_token = generateWebToken(name);
   const { data, error } = await db
     .from("pos_staff")
     .insert({

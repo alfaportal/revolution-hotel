@@ -2,27 +2,27 @@
   "name": "Revolution Invest POS",
   "short_name": "RI POS",
   "description": "Paneli i pronarit — Revolution Invest POS",
-  "start_url": "/owner/panel",
-  "scope": "/owner/",
+  "start_url": "/hotel/owner/panel",
+  "scope": "/hotel/owner/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#1a1a2e",
   "background_color": "#1a1a2e",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/hotel/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/hotel/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/hotel/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

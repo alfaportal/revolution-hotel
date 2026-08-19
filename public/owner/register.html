@@ -7,7 +7,7 @@
   <title>Regjistrohu — Revolution POS Pronar</title>
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#1a1a2e">
-  <link rel="stylesheet" href="/css/owner.css">
+  <link rel="stylesheet" href="/hotel/css/owner.css">
 </head>
 <body>
   <div class="login-wrap">
@@ -53,7 +53,7 @@
         <input type="password" id="password2" required minlength="6" autocomplete="new-password" placeholder="••••••••">
 
         <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Krijo llogarinë</button>
-        <a href="/owner/login" class="btn btn-ghost owner-forgot-link" style="display:block;text-align:center;margin-top:0.5rem">← Kthehu te hyrja</a>
+        <a href="/hotel/owner/login" class="btn btn-ghost owner-forgot-link" style="display:block;text-align:center;margin-top:0.5rem">← Kthehu te hyrja</a>
       </form>
     </div>
   </div>
@@ -71,7 +71,7 @@
 
     (async () => {
       try {
-        const res = await fetch("/api/auth/owner/register-config");
+        const res = await fetch("/hotel/api/auth/owner/register-config");
         const data = await res.json();
         if (data.registration_enabled) {
           formEl.classList.remove("hidden");
@@ -99,7 +99,7 @@
       const btn = e.target.querySelector('button[type="submit"]');
       btn.disabled = true;
       try {
-        const res = await fetch("/api/auth/owner/register", {
+        const res = await fetch("/hotel/api/auth/owner/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -118,7 +118,7 @@
         if (data.license_key) {
           sessionStorage.setItem("owner_new_license_key", data.license_key);
         }
-        location.href = "/owner/panel";
+        location.href = "/hotel/owner/panel";
       } catch (err) {
         showErr(err.message);
       } finally {

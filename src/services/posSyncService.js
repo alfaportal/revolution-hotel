@@ -103,7 +103,7 @@ async function syncStaffFromPos(db, clientId, staff) {
       const patch = { active: s.active };
       if (s.pin) {
         patch.pin_hash = await hashPin(s.pin);
-        if (!existing.web_token) patch.web_token = generateWebToken();
+        if (!existing.web_token) patch.web_token = generateWebToken(s.name);
       }
       const { error } = await db.from("pos_staff").update(patch).eq("id", existing.id);
       if (error) throw error;
@@ -120,7 +120,7 @@ async function syncStaffFromPos(db, clientId, staff) {
     };
     if (s.pin) {
       row.pin_hash = await hashPin(s.pin);
-      row.web_token = generateWebToken();
+      row.web_token = generateWebToken(s.name);
     }
     const { error } = await db.from("pos_staff").insert(row);
     if (error) throw error;
@@ -159,7 +159,7 @@ async function syncStaffFromPosPg(client, clientId, staff) {
     if (existing) {
       if (s.pin) {
         const pin_hash = await hashPin(s.pin);
-        const web_token = existing.web_token || generateWebToken();
+        const web_token = existing.web_token || generateWebToken(s.name);
         await client.query(
           `UPDATE pos_staff SET active = $1, pin_hash = $2, web_token = COALESCE(web_token, $3) WHERE id = $4`,
           [s.active, pin_hash, web_token, existing.id],
@@ -175,7 +175,7 @@ async function syncStaffFromPosPg(client, clientId, staff) {
       const pin_hash = await hashPin(s.pin);
       await client.query(
         `INSERT INTO pos_staff (client_id, name, active, role, source, pin_hash, web_token) VALUES ($1, $2, $3, 'waiter', 'pos', $4, $5)`,
-        [clientId, s.name, s.active, pin_hash, generateWebToken()],
+        [clientId, s.name, s.active, pin_hash, generateWebToken(s.name)],
       );
     } else {
       await client.query(

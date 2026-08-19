@@ -60,6 +60,9 @@ const { adminPanelPath } = require("./lib/admin-path");
 const { paymentsConfigured } = require("./lib/stripeConfig");
 const seoRoutes = require("./routes/seo");
 const { asyncHandler } = require("./lib/asyncHandler");
+const { getStaffByPunetoriToken } = require("./lib/punetoriToken");
+const { ensureKitchenCredentials } = require("./lib/kitchenAccess");
+const { getClientById } = require("./services/salesService");
 const {
   renderPublicStorefrontHtml,
   renderNotFoundHtml,
@@ -80,6 +83,17 @@ const PORT = Number(process.env.PORT) || 8080;
 app.set("trust proxy", 1);
 
 app.use(corsMiddleware);
+
+/** Strip /hotel prefix (revolution-pos.com/hotel/* proxy) — para route-ve të tjera. */
+app.use((req, _res, next) => {
+  const pathname = req.path || "/";
+  if (pathname === "/hotel" || pathname.startsWith("/hotel/")) {
+    const rest = pathname === "/hotel" ? "/" : pathname.slice("/hotel".length) || "/";
+    const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    req.url = rest + query;
+  }
+  next();
+});
 
 // Stripe webhook — RAW body (para express.json)
 app.post(
@@ -421,9 +435,9 @@ app.use("/api/v1/receipt", receiptRoutes);
 app.use("/api/v1/fiscal", fiscalRoutes);
 app.use("/api/v1/system", systemRoutes.router);
 app.use("/api/telegram", telegramRoutes);
+app.use("/api/admin", hotelBridgeRouter);
 app.use("/api/admin", adminRoutes);
 app.use("/api/super", superRoutes);
-app.use("/hotel/api/admin", hotelBridgeRouter);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/kds", kdsRoutes);
 app.use("/api/waiter", waiterRoutes);
@@ -635,6 +649,37 @@ app.get(["/waiter", "/waiter/"], (_req, res) => {
     .status(404)
     .type("html")
     .send(`<!DOCTYPE html><html lang="sq"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kamarieri</title></head><body style="font-family:system-ui,sans-serif;max-width:28rem;margin:3rem auto;padding:1.5rem;line-height:1.5;text-align:center"><h1>Linku i kamarierit mungon</h1><p>Hapni linkun e plotë nga paneli i pronarit (me <code>/waiter/emri-lokalit?key=...</code>), pastaj shtojeni në ekranin kryesor.</p><p>Mos instaloni PWA nga faqja kryesore.</p></body></html>`);
+});
+
+app.get("/punetori/:token", async (req, res) => {
+  const token = String(req.params.token || "").trim();
+  if (!token) {
+    return res.status(404).type("html").send("<h1>Linku i punëtorit mungon</h1>");
+  }
+  try {
+    const staff = await getStaffByPunetoriToken(token);
+    if (!staff) {
+      return res
+        .status(404)
+        .type("html")
+        .send(
+          "<!DOCTYPE html><html lang=\"sq\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Link i pavlefshëm</title></head><body style=\"font-family:system-ui,sans-serif;max-width:28rem;margin:3rem auto;padding:1.5rem;line-height:1.5;text-align:center\"><h1>Linku nuk është i vlefshëm</h1><p>Tokeni personal nuk u gjet ose punëtori është joaktiv. Kërkoni link të ri te pronari.</p></body></html>",
+        );
+    }
+    let client = await getClientById(staff.client_id);
+    if (!client) {
+      return res.status(404).type("html").send("<h1>Lokali nuk u gjet</h1>");
+    }
+    client = await ensureKitchenCredentials(client);
+    const slug = encodeURIComponent(client.kitchen_slug || client.id);
+    const key = encodeURIComponent(client.kitchen_key || "");
+    const w = encodeURIComponent(staff.web_token || token);
+    const origin = getPublicAppOrigin().replace(/\/+$/, "");
+    return res.redirect(302, `${origin}/hotel/waiter/${slug}?key=${key}&w=${w}`);
+  } catch (err) {
+    console.error("[punetori]", formatError(err));
+    return res.status(500).type("html").send("<h1>Gabim serveri</h1>");
+  }
 });
 
 app.get("/waiter/:slug", (req, res) => {

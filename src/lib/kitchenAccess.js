@@ -93,6 +93,9 @@ async function ensureKitchenCredentials(client) {
   return data;
 }
 
+/** Prefix web për hotel (revolution-pos.com/hotel/*). */
+const HOTEL_WEB_PREFIX = "/hotel";
+
 function buildKitchenUrl(baseUrl, client, kind) {
   const base = String(baseUrl || "").replace(/\/+$/, "");
   const slug = client.kitchen_slug || client.id;
@@ -106,7 +109,7 @@ function buildKitchenUrl(baseUrl, client, kind) {
         : kind === "kitchen"
           ? "kitchen"
           : "kitchen";
-  return `${base}/${path}/${encodeURIComponent(slug)}?key=${encodeURIComponent(key)}`;
+  return `${base}${HOTEL_WEB_PREFIX}/${path}/${encodeURIComponent(slug)}?key=${encodeURIComponent(key)}`;
 }
 
 /** URL publike për skanim QR tavoline — pa key në link */
@@ -114,7 +117,7 @@ function buildTableMenuUrl(baseUrl, client, tableNumber) {
   const base = String(baseUrl || "").replace(/\/+$/, "");
   const slug = client.kitchen_slug || client.id;
   const table = Math.max(1, Number(tableNumber) || 1);
-  return `${base}/menu/${encodeURIComponent(slug)}/${table}`;
+  return `${base}${HOTEL_WEB_PREFIX}/menu/${encodeURIComponent(slug)}/${table}`;
 }
 
 /** Link personal i kamarierit — shto &w=token (çdo kamarier tablet i veçantë) */
@@ -163,7 +166,7 @@ function buildClientWebLinks(baseUrl, client, packageTier) {
   const slug = client.kitchen_slug || client.id;
   const prefix = storefrontPrefix(client);
   if (features.website) {
-    links.public_page_url = `${base}/${prefix}/${encodeURIComponent(slug)}`;
+    links.public_page_url = `${base}${HOTEL_WEB_PREFIX}/${prefix}/${encodeURIComponent(slug)}`;
     if (isShopStorefront(client)) {
       links.shop_page_url = links.public_page_url;
     } else {
@@ -171,7 +174,7 @@ function buildClientWebLinks(baseUrl, client, packageTier) {
     }
   }
   if (features.online_orders && slug) {
-    links.public_order_url = `${base}/${prefix}/${encodeURIComponent(slug)}/order`;
+    links.public_order_url = `${base}${HOTEL_WEB_PREFIX}/${prefix}/${encodeURIComponent(slug)}/order`;
   }
   return links;
 }

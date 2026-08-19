@@ -1,9 +1,9 @@
 /* PWA vetëm për pronarët — scope /owner/ */
 const CACHE_NAME = "ri-pos-owner-v8";
 const PRECACHE = [
-  "/owner/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
+  "/hotel/owner/manifest.json",
+  "/hotel/icons/icon-192.png",
+  "/hotel/icons/icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -22,12 +22,12 @@ self.addEventListener("activate", (event) => {
 
 function shouldCache(pathname) {
   /* Mos cache HTML/JS të panelit — laptiopi mbante version të vjetër. */
-  if (pathname === "/owner/panel" || pathname === "/owner/login") return false;
-  if (pathname.startsWith("/js/")) return false;
-  if (pathname.startsWith("/css/")) return false;
+  if (pathname === "/hotel/owner/panel" || pathname === "/hotel/owner/login") return false;
+  if (pathname.startsWith("/hotel/js/")) return false;
+  if (pathname.startsWith("/hotel/css/")) return false;
   return (
-    pathname.startsWith("/owner/") ||
-    pathname.startsWith("/icons/")
+    pathname.startsWith("/hotel/owner/") ||
+    pathname.startsWith("/hotel/icons/")
   );
 }
 
@@ -50,21 +50,21 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (
-    !url.pathname.startsWith("/owner/")
-    && !url.pathname.startsWith("/icons/")
-    && !url.pathname.startsWith("/css/")
-    && !url.pathname.startsWith("/js/")
+    !url.pathname.startsWith("/hotel/owner/")
+    && !url.pathname.startsWith("/hotel/icons/")
+    && !url.pathname.startsWith("/hotel/css/")
+    && !url.pathname.startsWith("/hotel/js/")
   ) {
     return;
   }
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/hotel/api/")) return;
 
   /* HTML / CSS / JS — gjithmonë nga rrjeti */
   if (
-    url.pathname === "/owner/panel"
-    || url.pathname === "/owner/login"
-    || url.pathname.startsWith("/css/")
-    || url.pathname.startsWith("/js/")
+    url.pathname === "/hotel/owner/panel"
+    || url.pathname === "/hotel/owner/login"
+    || url.pathname.startsWith("/hotel/css/")
+    || url.pathname.startsWith("/hotel/js/")
     || request.mode === "navigate"
   ) {
     event.respondWith(networkFirst(request));

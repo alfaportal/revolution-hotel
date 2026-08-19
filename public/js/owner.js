@@ -1,5 +1,13 @@
 let token = localStorage.getItem("owner_token") || "";
 
+const HOTEL_PREFIX = "/hotel";
+
+function hotelPath(path) {
+  const p = String(path || "");
+  if (!p || p.startsWith(HOTEL_PREFIX) || /^https?:\/\//i.test(p)) return p;
+  return `${HOTEL_PREFIX}${p.startsWith("/") ? p : `/${p}`}`;
+}
+
 function showBootError(msg) {
   const el = document.getElementById("panel-boot-error");
   if (!el) return;
@@ -25,7 +33,7 @@ function showBootInfo(msg) {
 }
 
 async function verifyOwnerSession() {
-  const res = await fetch("/api/auth/owner/me", {
+  const res = await fetch(hotelPath("/api/auth/owner/me"), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     credentials: "include",
   });
@@ -35,7 +43,7 @@ async function verifyOwnerSession() {
 
 function redirectOwnerLogin() {
   localStorage.removeItem("owner_token");
-  location.href = "/owner/login";
+  location.href = hotelPath("/owner/login");
 }
 
 async function runBootStep(label, fn) {
@@ -82,19 +90,20 @@ function initPwaInstallBanner() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("/owner/sw.js?v=8", { scope: "/owner/" }).catch(() => {});
+  navigator.serviceWorker.register(hotelPath("/owner/sw.js?v=8"), { scope: hotelPath("/owner/") }).catch(() => {});
 }
 
 async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, { ...opts, headers, credentials: "include" });
+  const res = await fetch(hotelPath(path), { ...opts, headers, credentials: "include" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.gabim || `HTTP ${res.status}`);
   return data;
 }
 
 window.ownerApi = api;
+window.hotelPath = hotelPath;
 
 window.setOwnerToken = (t) => {
   token = t || "";
@@ -402,7 +411,7 @@ async function fetchOwnerOnlineSlots() {
     return { slots: defaultOwnerOnlineSlots(), title: "POROSI ONLINE" };
   }
   const q = `?key=${encodeURIComponent(access.key)}`;
-  const res = await fetch(`/api/kds/${encodeURIComponent(access.slug)}/bar/orders${q}`, {
+  const res = await fetch(hotelPath(`/api/kds/${encodeURIComponent(access.slug)}/bar/orders${q}`), {
     headers: { "x-kitchen-key": access.key },
   });
   const data = await res.json().catch(() => ({}));
@@ -1222,7 +1231,7 @@ async function exportZReport(format) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(
-    `/api/owner/${reportApiPath()}/export?${reportFetchQuery()}&format=${encodeURIComponent(format)}`,
+    hotelPath(`/api/owner/${reportApiPath()}/export?${reportFetchQuery()}&format=${encodeURIComponent(format)}`),
     { headers, credentials: "include" },
   );
   if (!res.ok) {
@@ -1247,7 +1256,7 @@ async function printZReport() {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(
-    `/api/owner/${reportApiPath()}/export?${reportFetchQuery()}&format=html`,
+    hotelPath(`/api/owner/${reportApiPath()}/export?${reportFetchQuery()}&format=html`),
     { headers, credentials: "include" },
   );
   if (!res.ok) throw new Error("Nuk u gjenerua raporti për printim.");
@@ -1296,7 +1305,7 @@ function renderMenuTable() {
 
   body.innerHTML = items.map(item => {
     const photoCell = item.has_photo
-      ? `<img class="menu-photo-thumb" src="/api/owner/menu/${item.id}/photo" alt="">`
+      ? `<img class="menu-photo-thumb" src="${hotelPath(`/api/owner/menu/${item.id}/photo`)}" alt="">`
       : `<div class="menu-photo-placeholder">📷</div>`;
     return `<tr class="${item.active ? "" : "inactive-row"}" data-id="${item.id}">
       <td class="menu-photo-cell">
@@ -1567,7 +1576,7 @@ function renderVenueStaff() {
   if (!body) return;
   const staff = ownerVenueCache.staff || [];
   if (!staff.length) {
-    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Nuk ka staf. Shtoni kamarierë ose kuzhinierë.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">Nuk ka staf. Shtoni kamarierë, recepsionistë ose housekeeping.</td></tr>';
     return;
   }
   body.innerHTML = staff.map(member => `
@@ -1576,8 +1585,15 @@ function renderVenueStaff() {
       <td>
         <select class="venue-edit-staff-role">
           <option value="waiter"${member.role === "waiter" ? " selected" : ""}>Kamarier</option>
+          <option value="receptionist"${member.role === "receptionist" ? " selected" : ""}>Recepsionist</option>
+          <option value="housekeeping"${member.role === "housekeeping" ? " selected" : ""}>Housekeeping</option>
           <option value="kitchen"${member.role === "kitchen" ? " selected" : ""}>Kuzhinier</option>
         </select>
+      </td>
+      <td class="punetori-link-cell">
+        ${member.punetori_url
+          ? `<div class="link-copy-row"><input type="text" class="punetori-url-input" readonly value="${escAttr(member.punetori_url)}"><button type="button" class="btn btn-ghost btn-sm btn-copy-punetori" data-url="${escAttr(member.punetori_url)}">Kopjo</button></div>`
+          : '<span style="color:var(--muted)">—</span>'}
       </td>
       <td><span class="menu-status ${member.active ? "active" : "inactive"}">${member.active ? "Aktiv" : "Joaktiv"}</span></td>
       <td>
@@ -1596,6 +1612,15 @@ function renderVenueStaff() {
   });
   body.querySelectorAll(".btn-staff-delete").forEach(btn => {
     btn.addEventListener("click", () => deleteStaffRow(btn.closest("tr")));
+  });
+  body.querySelectorAll(".btn-copy-punetori").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const url = btn.dataset.url || btn.closest(".link-copy-row")?.querySelector(".punetori-url-input")?.value || "";
+      if (!url) return;
+      navigator.clipboard.writeText(url).then(() => {
+        setVenueMsg("Linku u kopjua.", true);
+      }).catch(() => setVenueMsg("Nuk u kopjua linku.", false));
+    });
   });
 }
 
@@ -2523,7 +2548,7 @@ document.querySelectorAll(".tab").forEach(tab => {
 document.getElementById("btn-logout").addEventListener("click", async () => {
   try { await api("/api/auth/owner/logout", { method: "POST" }); } catch { /* */ }
   localStorage.removeItem("owner_token");
-  location.href = "/owner/login";
+  location.href = hotelPath("/owner/login");
 });
 
 document.getElementById("btn-owner-password-save")?.addEventListener("click", async () => {
@@ -2939,6 +2964,7 @@ async function refreshOwnerAiUsage() {
 }
 window.refreshOwnerAiUsage = refreshOwnerAiUsage;
 window.ownerApi = api;
+window.hotelPath = hotelPath;
 
 function applyAiHubTab(data) {
   const tab = document.getElementById("tab-ai-hub");

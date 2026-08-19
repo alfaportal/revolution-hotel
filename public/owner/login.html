@@ -9,9 +9,9 @@
   <meta name="theme-color" content="#1a1a2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="RI POS">
-  <link rel="manifest" href="/owner/manifest.json">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/css/owner.css">
+  <link rel="manifest" href="/hotel/owner/manifest.json">
+  <link rel="apple-touch-icon" href="/hotel/icons/icon-192.png">
+  <link rel="stylesheet" href="/hotel/css/owner.css">
 </head>
 <body>
   <div class="login-wrap">
@@ -33,7 +33,7 @@
         <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••">
         <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Hyr në panel</button>
         <button type="button" id="btn-forgot" class="btn btn-ghost owner-forgot-link">Harrove fjalëkalimin?</button>
-        <a href="/owner/register" id="link-owner-register" class="btn btn-ghost owner-forgot-link hidden" style="display:none">Regjistrohu me kod</a>
+        <a href="/hotel/owner/register" id="link-owner-register" class="btn btn-ghost owner-forgot-link hidden" style="display:none">Regjistrohu me kod</a>
       </form>
 
       <form id="form-reset" class="owner-auth-form hidden">
@@ -108,7 +108,7 @@
       const e = String(email || "").trim();
       if (!e) return;
       try {
-        const res = await fetch(`/api/auth/owner/branding?email=${encodeURIComponent(e)}`);
+        const res = await fetch(`/hotel/api/auth/owner/branding?email=${encodeURIComponent(e)}`);
         const data = await res.json();
         if (data.ok) applyBranding(data);
       } catch { /* ignore */ }
@@ -144,12 +144,12 @@
       const token = localStorage.getItem("owner_token");
       if (!token) return;
       try {
-        const res = await fetch("/api/auth/owner/me", {
+        const res = await fetch("/hotel/api/auth/owner/me", {
           headers: { Authorization: `Bearer ${token}` },
           credentials: "include",
         });
         if (res.ok) {
-          location.href = "/owner/panel";
+          location.href = "/hotel/owner/panel";
           return;
         }
         localStorage.removeItem("owner_token");
@@ -160,7 +160,7 @@
 
     (async () => {
       try {
-        const res = await fetch("/api/auth/owner/register-config");
+        const res = await fetch("/hotel/api/auth/owner/register-config");
         const data = await res.json();
         if (data.registration_enabled) {
           const link = document.getElementById("link-owner-register");
@@ -195,7 +195,7 @@
       }
       hideAlerts();
       try {
-        const res = await fetch("/api/auth/owner/password/forgot", {
+        const res = await fetch("/hotel/api/auth/owner/password/forgot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
@@ -215,7 +215,7 @@
       e.preventDefault();
       hideAlerts();
       try {
-        const res = await fetch("/api/auth/owner/login", {
+        const res = await fetch("/hotel/api/auth/owner/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -244,7 +244,7 @@
           throw new Error(data.gabim || "Gabim");
         }
         localStorage.setItem("owner_token", data.token);
-        location.href = "/owner/panel";
+        location.href = "/hotel/owner/panel";
       } catch (err) {
         showError(err.message);
       }
@@ -270,7 +270,7 @@
         return;
       }
       try {
-        const res = await fetch("/api/auth/owner/password/reset", {
+        const res = await fetch("/hotel/api/auth/owner/password/reset", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -279,7 +279,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.gabim || "Gabim");
         localStorage.setItem("owner_token", data.token);
-        location.href = "/owner/panel";
+        location.href = "/hotel/owner/panel";
       } catch (err) {
         showError(err.message);
       }

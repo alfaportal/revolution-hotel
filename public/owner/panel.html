@@ -10,10 +10,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="RI POS">
-  <link rel="manifest" href="/owner/manifest.json">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/css/owner.css?v=2">
+  <link rel="manifest" href="/hotel/owner/manifest.json">
+  <link rel="apple-touch-icon" href="/hotel/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/hotel/icons/icon-192.png">
+  <link rel="stylesheet" href="/hotel/css/owner.css?v=2">
 </head>
 <body class="owner-panel">
   <div id="pwa-install-banner" class="pwa-install-banner hidden" role="region" aria-label="Instalo aplikacionin">
@@ -450,7 +450,7 @@
 
       <div class="card" style="margin-top:1rem">
         <div class="card-title">Stafi — kamarierë dhe kuzhinierë</div>
-        <p class="links-hint">Kamarierët shfaqen te hyrja e tabletit të porosive. Kuzhinierët ruhen për menaxhim (POS / raporte). Për tabletat e kamarierit me PIN dhe linkun KDS, përdorni panelin <strong>KAFENE desktop</strong>.</p>
+        <p class="links-hint">Secili punonjës (kamarier, recepsionist, housekeeping) merr linkun personal për tablet. Kopjoni dhe dërgojeni te punëtori.</p>
         <div class="filter-row menu-add-row">
           <div>
             <label for="staff-add-name">Emri</label>
@@ -460,6 +460,8 @@
             <label for="staff-add-role">Roli</label>
             <select id="staff-add-role">
               <option value="waiter">Kamarier</option>
+              <option value="receptionist">Recepsionist</option>
+              <option value="housekeeping">Housekeeping</option>
               <option value="kitchen">Kuzhinier</option>
             </select>
           </div>
@@ -468,7 +470,7 @@
         <div class="table-wrap">
           <table class="menu-owner-table venue-owner-table">
             <thead>
-              <tr><th>Emri</th><th>Roli</th><th>Statusi</th><th>Veprimet</th></tr>
+              <tr><th>Emri</th><th>Roli</th><th>Linku personal</th><th>Statusi</th><th>Veprimet</th></tr>
             </thead>
             <tbody id="venue-staff-body"></tbody>
           </table>
@@ -1318,20 +1320,20 @@
     </button>
   </div>
 
-  <script src="/js/fiscalDiagnostics.js?v=1"></script>
-  <script src="/js/offlineQueue.js?v=1"></script>
-  <script src="/js/qrcode.js?v=1"></script>
-  <script src="/js/owner.js?v=37"></script>
-  <script src="/js/owner-locations.js?v=1"></script>
-  <script src="/js/owner-catalog.js?v=1"></script>
-  <script src="/js/owner-stock.js?v=2"></script>
-  <script src="/js/owner-inventory.js?v=2"></script>
-  <script src="/js/owner-invoice-scan.js?v=4"></script>
-  <script src="/js/owner-purchase.js?v=3"></script>
-  <script src="/js/owner-ai-reports.js?v=1"></script>
-  <script src="/js/owner-supply-suggestions.js?v=1"></script>
-  <script src="/js/owner-ai-assistant.js?v=2"></script>
-  <script src="/js/owner-ai-modules.js?v=1"></script>
-  <script src="/js/owner-notifications.js?v=1"></script>
+  <script src="/hotel/js/fiscalDiagnostics.js?v=1"></script>
+  <script src="/hotel/js/offlineQueue.js?v=1"></script>
+  <script src="/hotel/js/qrcode.js?v=1"></script>
+  <script src="/hotel/js/owner.js?v=37"></script>
+  <script src="/hotel/js/owner-locations.js?v=1"></script>
+  <script src="/hotel/js/owner-catalog.js?v=1"></script>
+  <script src="/hotel/js/owner-stock.js?v=2"></script>
+  <script src="/hotel/js/owner-inventory.js?v=2"></script>
+  <script src="/hotel/js/owner-invoice-scan.js?v=4"></script>
+  <script src="/hotel/js/owner-purchase.js?v=3"></script>
+  <script src="/hotel/js/owner-ai-reports.js?v=1"></script>
+  <script src="/hotel/js/owner-supply-suggestions.js?v=1"></script>
+  <script src="/hotel/js/owner-ai-assistant.js?v=2"></script>
+  <script src="/hotel/js/owner-ai-modules.js?v=1"></script>
+  <script src="/hotel/js/owner-notifications.js?v=1"></script>
 </body>
 </html>

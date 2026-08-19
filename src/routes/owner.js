@@ -84,6 +84,7 @@ const {
   getOwnerPublicPageQrPng,
 } = require("../services/publicPageService");
 const { getPublicAppOrigin } = require("../lib/publicOrigin");
+const { buildPunetoriUrl } = require("../lib/punetoriToken");
 const {
   listOwnerReservations,
   createOwnerReservation,
@@ -1207,6 +1208,7 @@ router.get("/waiters", async (req, res) => {
         waiter_url: client && w.web_token
           ? buildWaiterUrl(base, client, w.web_token)
           : shared_waiter_url,
+        punetori_url: w.web_token ? buildPunetoriUrl(base, w.web_token) : "",
         kds_url: client && w.web_token ? buildWaiterKitchenUrl(base, client, w.web_token) : "",
         assigned_tables: assignState.byWaiter.get(w.id) || [],
       })),
@@ -1250,6 +1252,7 @@ async function enrichWaiterForOwner(clientId, waiter) {
     ...waiter,
     web_token: token || waiter.web_token || null,
     waiter_url: client && token ? buildWaiterUrl(base, client, token) : shared,
+    punetori_url: token ? buildPunetoriUrl(base, token) : "",
     kds_url: client && token ? buildWaiterKitchenUrl(base, client, token) : "",
   };
 }
