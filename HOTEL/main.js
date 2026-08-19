@@ -180,7 +180,95 @@ if (!gotTheLock) {
       } catch {
         /* ignore */
       }
+
+      const resetFlag = path.join(userData, ".factory-reset-pending");
+      // Flag jashtë userData — nuk humbet nëse wipe dështon pjesërisht / DB e kyçur.
+      const resetFlagExternal = path.join(
+        app.getPath("appData"),
+        "RevolutionInvest",
+        "hotel-factory-reset-pending",
+      );
+
+      const wipeDirHard = (dir) => {
+        if (!dir || !fs.existsSync(dir)) return;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          let left = 0;
+          for (const name of fs.readdirSync(dir)) {
+            const p = path.join(dir, name);
+            try {
+              fs.rmSync(p, { recursive: true, force: true });
+            } catch {
+              left += 1;
+            }
+          }
+          if (left === 0) return;
+          const waitUntil = Date.now() + 250;
+          while (Date.now() < waitUntil) {
+            /* retry delay for locked DB */
+          }
+        }
+      };
+
+      const factoryResetRequested =
+        fs.existsSync(resetFlag) || fs.existsSync(resetFlagExternal);
+
+      // Rivendos si të re: fshi KREJT të dhënat lokale (si instalim i ri).
+      // Licenca mbetet në %APPDATA%\RevolutionInvest\HotelLicense.
+      if (factoryResetRequested) {
+        wipeDirHard(userData);
+        try {
+          const localSibling = path.join(
+            process.env.LOCALAPPDATA || "",
+            path.basename(userData),
+          );
+          if (
+            localSibling &&
+            process.env.LOCALAPPDATA &&
+            localSibling !== userData
+          ) {
+            wipeDirHard(localSibling);
+          }
+        } catch {
+          /* ignore */
+        }
+        try {
+          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
+          fs.unlinkSync(resetFlagExternal);
+        } catch {
+          /* ignore */
+        }
+        try {
+          fs.unlinkSync(resetFlag);
+        } catch {
+          /* ignore */
+        }
+        process.env.HOTEL_FACTORY_RESET_AT = new Date().toISOString();
+        fs.mkdirSync(userData, { recursive: true });
+      }
+
       process.env.DB_PATH = path.join(userData, "hotel.db");
+
+      global["__scheduleFactoryResetRelaunch"] = () => {
+        try {
+          fs.mkdirSync(userData, { recursive: true });
+          fs.writeFileSync(resetFlag, new Date().toISOString(), "utf8");
+          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
+          fs.writeFileSync(resetFlagExternal, new Date().toISOString(), "utf8");
+        } catch (e) {
+          dialog.showErrorBox(
+            APP_NAME,
+            "Nuk u shkrua flag-u i rivendosjes: " + (e.message || e),
+          );
+          return;
+        }
+        try {
+          httpServer?.close();
+        } catch {
+          /* ignore */
+        }
+        app.relaunch();
+        app.exit(0);
+      };
 
       /* Shtresa 0: Integrity (prod) — asar / instalim i dëmtuar */
       if (isProd) {
