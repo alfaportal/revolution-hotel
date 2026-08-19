@@ -17,7 +17,7 @@ const OBFUSCATE_SCRIPT = path.join(ROOT, "..", "scripts", "obfuscate-build.mjs")
 const {
   cleanDistBeforeBuild,
   finalizeDistDelivery,
-} = require(path.join(ROOT, "..", "scripts", "build-deliver.js"));
+} = require(path.join(ROOT, "..", "scripts", "build-deliver.cjs"));
 
 const BUILD_MAC =
   process.argv.includes("--mac") || process.env.HOTEL_BUILD_MAC === "1";

@@ -13,7 +13,7 @@ import JavaScriptObfuscator from "javascript-obfuscator";
 
 const require = createRequire(import.meta.url);
 const { cleanDistBeforeBuild, finalizeDistDelivery } = require(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "build-deliver.js"),
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "build-deliver.cjs"),
 );
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
