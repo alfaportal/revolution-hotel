@@ -8118,6 +8118,50 @@ function normalizePaperSizeDb(paper) {
   return p === "58" ? "58" : "80";
 }
 
+function normalizeConnectionTypeDb(type) {
+  const t = String(type || "usb")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (t === "network" || t === "wifi" || t === "lan" || t === "wi-fi" || t === "tcp" || t === "ip") {
+    return "network";
+  }
+  if (t === "bluetooth" || t === "bt") return "bluetooth";
+  return "usb";
+}
+
+function normalizePrinterPortDb(port) {
+  const n = Number(port);
+  if (!Number.isFinite(n) || n <= 0 || n > 65535) return 9100;
+  return Math.floor(n);
+}
+
+function isValidIpv4(ip) {
+  const parts = String(ip || "").trim().split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((p) => {
+    if (!/^\d{1,3}$/.test(p)) return false;
+    const n = Number(p);
+    return n >= 0 && n <= 255;
+  });
+}
+
+function validatePrinterFields(data, { requireName = true } = {}) {
+  const name = String(data.name || "").trim();
+  const role = String(data.role || "").trim();
+  const connection_type = normalizeConnectionTypeDb(data.connection_type);
+  const ip_address = String(data.ip_address || "").trim();
+  const port = normalizePrinterPortDb(data.port);
+  if (requireName && !name) throw new Error("Emri i printerit është i detyrueshëm.");
+  if (requireName && !role) throw new Error("Roli i printerit është i detyrueshëm.");
+  if (connection_type === "network") {
+    if (!ip_address) throw new Error("Për printer rrjeti (WiFi/LAN) kërkohet adresa IP.");
+    if (!isValidIpv4(ip_address)) throw new Error("Adresa IP nuk është e vlefshme (p.sh. 192.168.1.100).");
+  }
+  return { name, role, connection_type, ip_address, port };
+}
+
 function rowToPrinterDto(row) {
   if (!row) return null;
   return {
@@ -8125,6 +8169,9 @@ function rowToPrinterDto(row) {
     name: row.name,
     role: row.role,
     paper_size: row.paper_size,
+    connection_type: row.connection_type || "usb",
+    ip_address: row.ip_address || "",
+    port: normalizePrinterPortDb(row.port),
     is_default: !!row.is_default,
     enabled: !!row.enabled,
     created_at: row.created_at,
@@ -8154,42 +8201,70 @@ function getPrinterByRole(role) {
   return null;
 }
 
-function addPrinter(name, role, paper_size = "80") {
-  const printerName = String(name || "").trim();
-  const printerRole = String(role || "").trim();
-  if (!printerName) throw new Error("Emri i printerit Windows është i detyrueshëm.");
-  if (!printerRole) throw new Error("Roli i printerit është i detyrueshëm.");
+function addPrinter(name, role, paper_size = "80", opts = {}) {
+  const validated = validatePrinterFields({
+    name,
+    role,
+    connection_type: opts.connection_type,
+    ip_address: opts.ip_address,
+    port: opts.port,
+  });
   const paper = normalizePaperSizeDb(paper_size);
   const result = sqlite
     .prepare(
-      "INSERT INTO printers (name, role, paper_size, is_default, enabled) VALUES (?, ?, ?, 0, 1)",
+      `INSERT INTO printers (name, role, paper_size, connection_type, ip_address, port, is_default, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 1)`,
     )
-    .run(printerName, printerRole, paper);
+    .run(
+      validated.name,
+      validated.role,
+      paper,
+      validated.connection_type,
+      validated.ip_address,
+      validated.port,
+    );
   return getPrinterById(result.lastInsertRowid);
 }
 
 function updatePrinter(id, data = {}) {
   const existing = sqlite.prepare("SELECT * FROM printers WHERE id = ?").get(Number(id));
   if (!existing) throw new Error("Printeri nuk u gjet.");
-  const name = data.name !== undefined ? String(data.name).trim() : existing.name;
-  const role = data.role !== undefined ? String(data.role).trim() : existing.role;
+  const validated = validatePrinterFields(
+    {
+      name: data.name !== undefined ? data.name : existing.name,
+      role: data.role !== undefined ? data.role : existing.role,
+      connection_type: data.connection_type !== undefined ? data.connection_type : existing.connection_type,
+      ip_address: data.ip_address !== undefined ? data.ip_address : existing.ip_address,
+      port: data.port !== undefined ? data.port : existing.port,
+    },
+    { requireName: true },
+  );
   const paper_size =
     data.paper_size !== undefined ? normalizePaperSizeDb(data.paper_size) : existing.paper_size;
   const is_default =
     data.is_default !== undefined ? (data.is_default ? 1 : 0) : existing.is_default;
   const enabled = data.enabled !== undefined ? (data.enabled ? 1 : 0) : existing.enabled;
-  if (!name) throw new Error("Emri i printerit Windows është i detyrueshëm.");
-  if (!role) throw new Error("Roli i printerit është i detyrueshëm.");
   if (is_default) {
     sqlite
       .prepare("UPDATE printers SET is_default = 0 WHERE lower(trim(role)) = lower(trim(?)) AND id != ?")
-      .run(role, Number(id));
+      .run(validated.role, Number(id));
   }
   sqlite
     .prepare(
-      "UPDATE printers SET name = ?, role = ?, paper_size = ?, is_default = ?, enabled = ? WHERE id = ?",
+      `UPDATE printers SET name = ?, role = ?, paper_size = ?, connection_type = ?, ip_address = ?, port = ?,
+       is_default = ?, enabled = ? WHERE id = ?`,
     )
-    .run(name, role, paper_size, is_default, enabled, Number(id));
+    .run(
+      validated.name,
+      validated.role,
+      paper_size,
+      validated.connection_type,
+      validated.ip_address,
+      validated.port,
+      is_default,
+      enabled,
+      Number(id),
+    );
   return getPrinterById(id);
 }
 

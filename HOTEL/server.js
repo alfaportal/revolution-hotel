@@ -5659,7 +5659,11 @@ app.get("/api/printers", auth, adminOnly, async (_req, res) => {
 app.post("/api/printers", auth, adminOnly, (req, res) => {
   try {
     const body = req.body || {};
-    const row = db.addPrinter(body.name, body.role, body.paper_size || "80");
+    const row = db.addPrinter(body.name, body.role, body.paper_size || "80", {
+      connection_type: body.connection_type,
+      ip_address: body.ip_address,
+      port: body.port,
+    });
     if (body.is_default) {
       db.updatePrinter(row.id, { is_default: true });
     }
@@ -5681,6 +5685,9 @@ app.put("/api/printers/:id", auth, adminOnly, (req, res) => {
       name: body.name,
       role: body.role,
       paper_size: body.paper_size,
+      connection_type: body.connection_type,
+      ip_address: body.ip_address,
+      port: body.port,
       is_default: body.is_default,
       enabled: body.enabled,
     });

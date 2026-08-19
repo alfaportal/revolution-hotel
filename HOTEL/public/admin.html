@@ -3190,15 +3190,17 @@
             <thead>
               <tr style="text-align:left;border-bottom:1px solid var(--ngjyr-border)">
                 <th style="padding:0.45rem 0.35rem">Roli</th>
-                <th style="padding:0.45rem 0.35rem">Printer Windows</th>
+                <th style="padding:0.45rem 0.35rem">Emri</th>
+                <th style="padding:0.45rem 0.35rem">Lidhja</th>
+                <th style="padding:0.45rem 0.35rem">IP / Port</th>
                 <th style="padding:0.45rem 0.35rem">Letër</th>
-                <th style="padding:0.45rem 0.35rem">Default</th>
+                <th style="padding:0.45rem 0.35rem">Def.</th>
                 <th style="padding:0.45rem 0.35rem">Aktiv</th>
                 <th style="padding:0.45rem 0.35rem"></th>
               </tr>
             </thead>
             <tbody id="registered-printers-tbody">
-              <tr><td colspan="6" style="padding:0.6rem;color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
+              <tr><td colspan="8" style="padding:0.6rem;color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
             </tbody>
           </table>
         </div>
@@ -3206,11 +3208,41 @@
           <div class="settings-card-title" id="add-printer-form-title">Shto printer të ri</div>
           <input type="hidden" id="reg-printer-edit-id" value="">
           <div class="fiscal-field-row">
-            <label for="reg-printer-device">Pajisja Windows</label>
+            <label for="reg-printer-device">Pajisja</label>
             <div class="fiscal-field-actions">
               <select id="reg-printer-device">
-                <option value="">— Zgjidh nga lista —</option>
+                <option value="">— Zgjidh nga Windows —</option>
+                <option value="__MANUAL__">✎ Shto manualisht</option>
               </select>
+            </div>
+          </div>
+          <div id="reg-printer-manual-panel" hidden>
+            <div class="fiscal-field-row">
+              <label for="reg-printer-manual-name">Emri i printerit</label>
+              <div class="fiscal-field-actions">
+                <input type="text" id="reg-printer-manual-name" placeholder="p.sh. Kuzhina Termik 1">
+              </div>
+            </div>
+            <div class="fiscal-field-row">
+              <label for="reg-printer-connection-type">Lloji i lidhjes</label>
+              <div class="fiscal-field-actions">
+                <select id="reg-printer-connection-type">
+                  <option value="usb">USB (Windows)</option>
+                  <option value="network">WiFi / LAN (IP)</option>
+                  <option value="bluetooth">Bluetooth</option>
+                </select>
+              </div>
+            </div>
+            <div class="fiscal-field-row" id="reg-printer-network-row" hidden>
+              <label for="reg-printer-ip">Adresa IP</label>
+              <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+                <input type="text" id="reg-printer-ip" placeholder="192.168.1.100" style="min-width:140px">
+                <label for="reg-printer-port" style="margin:0 0.25rem">Port</label>
+                <input type="number" id="reg-printer-port" value="9100" min="1" max="65535" style="width:90px">
+              </div>
+              <p style="margin:0.35rem 0 0;color:var(--ngjyr-muted);font-size:0.8rem">
+                Printerët rrjeti ESC/POS zakonisht përdorin portin <strong>9100</strong> (RAW TCP).
+              </p>
             </div>
           </div>
           <div class="fiscal-field-row">
@@ -12849,22 +12881,51 @@
     }
 
     let _regPrinterWindows = [];
+    const REG_PRINTER_MANUAL = "__MANUAL__";
+
+    function connectionTypeLabel(t) {
+      const v = String(t || "usb").toLowerCase();
+      if (v === "network") return "WiFi/LAN";
+      if (v === "bluetooth") return "Bluetooth";
+      return "USB";
+    }
+
+    function toggleRegPrinterNetworkRow() {
+      const conn = document.getElementById("reg-printer-connection-type")?.value || "usb";
+      const row = document.getElementById("reg-printer-network-row");
+      if (row) row.hidden = conn !== "network";
+    }
+
+    function toggleRegPrinterManualPanel() {
+      const sel = document.getElementById("reg-printer-device");
+      const panel = document.getElementById("reg-printer-manual-panel");
+      const manual = sel?.value === REG_PRINTER_MANUAL;
+      if (panel) panel.hidden = !manual;
+      if (manual) toggleRegPrinterNetworkRow();
+    }
 
     function resetRegPrinterForm() {
       document.getElementById("reg-printer-edit-id").value = "";
       document.getElementById("reg-printer-device").value = "";
+      document.getElementById("reg-printer-manual-name").value = "";
+      document.getElementById("reg-printer-connection-type").value = "usb";
+      document.getElementById("reg-printer-ip").value = "";
+      document.getElementById("reg-printer-port").value = "9100";
       document.getElementById("reg-printer-role").value = "";
       document.getElementById("reg-printer-paper").value = "80";
       document.getElementById("reg-printer-default").checked = false;
       document.getElementById("reg-printer-enabled").checked = true;
       document.getElementById("add-printer-form-title").textContent = "Shto printer të ri";
       document.getElementById("btn-reg-printer-cancel").hidden = true;
+      toggleRegPrinterManualPanel();
     }
 
     function fillRegPrinterDeviceSelect(devices, selectedName) {
       const sel = document.getElementById("reg-printer-device");
       if (!sel) return;
-      let opts = `<option value="">— Zgjidh nga lista —</option>`;
+      const manualSelected = selectedName === REG_PRINTER_MANUAL;
+      let opts = `<option value="">— Zgjidh nga Windows —</option>`;
+      opts += `<option value="${REG_PRINTER_MANUAL}"${manualSelected ? " selected" : ""}>✎ Shto manualisht</option>`;
       opts += (devices || [])
         .map(p => {
           const tag = p.typeLabel ? ` — ${p.typeLabel}` : "";
@@ -12872,6 +12933,40 @@
         })
         .join("");
       sel.innerHTML = opts;
+      toggleRegPrinterManualPanel();
+    }
+
+    function collectRegPrinterPayload() {
+      const device = document.getElementById("reg-printer-device").value;
+      const role = document.getElementById("reg-printer-role").value.trim();
+      const paper_size = document.getElementById("reg-printer-paper").value || "80";
+      const is_default = document.getElementById("reg-printer-default").checked;
+      const enabled = document.getElementById("reg-printer-enabled").checked;
+      if (device === REG_PRINTER_MANUAL) {
+        const name = document.getElementById("reg-printer-manual-name").value.trim();
+        const connection_type = document.getElementById("reg-printer-connection-type").value || "usb";
+        const ip_address = document.getElementById("reg-printer-ip").value.trim();
+        const port = Number(document.getElementById("reg-printer-port").value) || 9100;
+        if (!name) throw new Error("Shkruani emrin e printerit.");
+        if (!role) throw new Error("Shkruani rolin e printerit.");
+        if (connection_type === "network" && !ip_address) {
+          throw new Error("Për WiFi/LAN shkruani adresën IP.");
+        }
+        return { name, role, paper_size, is_default, enabled, connection_type, ip_address, port };
+      }
+      const name = device.trim();
+      if (!name) throw new Error("Zgjidhni një pajisje Windows ose «Shto manualisht».");
+      if (!role) throw new Error("Shkruani rolin e printerit.");
+      return {
+        name,
+        role,
+        paper_size,
+        is_default,
+        enabled,
+        connection_type: "usb",
+        ip_address: "",
+        port: 9100,
+      };
     }
 
     async function ngarkoPrinteretRegjistruar(windowsDevices) {
@@ -12885,13 +12980,17 @@
         if (hint) hint.hidden = !(data.legacy_fallback && !(data.printers || []).length);
         const rows = data.printers || [];
         if (!rows.length) {
-          tbody.innerHTML = `<tr><td colspan="6" style="padding:0.6rem;color:var(--ngjyr-muted)">Asnjë printer i regjistruar — përdoret fallback te cilësimet e vjetra.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" style="padding:0.6rem;color:var(--ngjyr-muted)">Asnjë printer i regjistruar — përdoret fallback te cilësimet e vjetra.</td></tr>`;
           return;
         }
-        tbody.innerHTML = rows.map(p => `
+        tbody.innerHTML = rows.map(p => {
+          const ipInfo = p.ip_address ? `${esc(p.ip_address)}:${esc(String(p.port || 9100))}` : "—";
+          return `
           <tr data-reg-printer-id="${p.id}" style="border-bottom:1px solid var(--ngjyr-border)">
             <td style="padding:0.45rem 0.35rem"><strong>${esc(p.role)}</strong></td>
             <td style="padding:0.45rem 0.35rem">${esc(p.name)}</td>
+            <td style="padding:0.45rem 0.35rem">${esc(connectionTypeLabel(p.connection_type))}</td>
+            <td style="padding:0.45rem 0.35rem;font-family:monospace;font-size:0.8rem">${ipInfo}</td>
             <td style="padding:0.45rem 0.35rem">${esc(String(p.paper_size).replace(/mm$/i, ""))}mm</td>
             <td style="padding:0.45rem 0.35rem">${p.is_default ? "✓" : "—"}</td>
             <td style="padding:0.45rem 0.35rem">${p.enabled ? "Po" : "Jo"}</td>
@@ -12899,12 +12998,15 @@
               <button type="button" class="btn btn-ghost btn-sm" data-reg-printer-edit="${p.id}">Ndrysho</button>
               <button type="button" class="btn btn-ghost btn-sm" data-reg-printer-delete="${p.id}">Fshi</button>
             </td>
-          </tr>
-        `).join("");
+          </tr>`;
+        }).join("");
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" style="padding:0.6rem;color:var(--ngjyr-danger)">${esc(err.message || "Gabim")}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="padding:0.6rem;color:var(--ngjyr-danger)">${esc(err.message || "Gabim")}</td></tr>`;
       }
     }
+
+    document.getElementById("reg-printer-device")?.addEventListener("change", toggleRegPrinterManualPanel);
+    document.getElementById("reg-printer-connection-type")?.addEventListener("change", toggleRegPrinterNetworkRow);
 
     document.getElementById("registered-printers-tbody")?.addEventListener("click", async (e) => {
       const editBtn = e.target.closest("[data-reg-printer-edit]");
@@ -12916,7 +13018,17 @@
           const row = (data.printers || []).find(p => p.id === id);
           if (!row) return;
           document.getElementById("reg-printer-edit-id").value = String(row.id);
-          fillRegPrinterDeviceSelect(_regPrinterWindows, row.name);
+          const isManual = !!(row.ip_address || row.connection_type === "network" || row.connection_type === "bluetooth"
+            || !_regPrinterWindows.some(w => w.name === row.name));
+          if (isManual) {
+            fillRegPrinterDeviceSelect(_regPrinterWindows, REG_PRINTER_MANUAL);
+            document.getElementById("reg-printer-manual-name").value = row.name || "";
+            document.getElementById("reg-printer-connection-type").value = row.connection_type || "usb";
+            document.getElementById("reg-printer-ip").value = row.ip_address || "";
+            document.getElementById("reg-printer-port").value = String(row.port || 9100);
+          } else {
+            fillRegPrinterDeviceSelect(_regPrinterWindows, row.name);
+          }
           document.getElementById("reg-printer-role").value = row.role;
           document.getElementById("reg-printer-paper").value = String(row.paper_size).replace(/mm$/i, "") || "80";
           document.getElementById("reg-printer-default").checked = !!row.is_default;
@@ -12949,18 +13061,8 @@
     document.getElementById("btn-reg-printer-save")?.addEventListener("click", async () => {
       const msg = document.getElementById("msg-reg-printer-save");
       const editId = document.getElementById("reg-printer-edit-id").value.trim();
-      const name = document.getElementById("reg-printer-device").value.trim();
-      const role = document.getElementById("reg-printer-role").value.trim();
-      const paper_size = document.getElementById("reg-printer-paper").value || "80";
-      const is_default = document.getElementById("reg-printer-default").checked;
-      const enabled = document.getElementById("reg-printer-enabled").checked;
-      if (!name || !role) {
-        msg.textContent = "Zgjidhni pajisjen Windows dhe shkruani rolin.";
-        msg.style.color = "var(--ngjyr-danger)";
-        return;
-      }
-      const body = { name, role, paper_size, is_default, enabled };
       try {
+        const body = collectRegPrinterPayload();
         if (editId) {
           await api(`/api/printers/${editId}`, { method: "PUT", body: JSON.stringify(body) });
           msg.textContent = "U përditësua!";

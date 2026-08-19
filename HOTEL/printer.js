@@ -1,6 +1,7 @@
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
+const net = require("net");
 const { execSync } = require("child_process");
 const {
   plainTextFromServerBundle,
@@ -334,12 +335,15 @@ function getPrinterForStation(db, station = "bar", winPrinters = []) {
   if (hasDbPrinterRegistry(db) && typeof db.getPrinterByRole === "function") {
     for (const role of stationRoleCandidates(station)) {
       const row = db.getPrinterByRole(role);
-      if (row?.name) {
+      if (row && (row.name || row.ip_address)) {
         return {
-          name: row.name,
+          name: row.name || row.ip_address,
           paper: paperFromDbSize(row.paper_size),
           role: row.role,
           source: "registry",
+          connection_type: row.connection_type || "usb",
+          ip_address: row.ip_address || "",
+          port: Number(row.port) || 9100,
         };
       }
     }
@@ -975,6 +979,77 @@ function printRawSpoolerStaged(buffer, printerName) {
   return { method: "raw-spooler-staged", printer: printerName, bytes: totalBytes, stages: stages.length };
 }
 
+function hasNetworkPrintTarget(target = {}) {
+  return !!String(target.ip_address || "").trim();
+}
+
+function printRawTcpIp(buffer, host, port = 9100) {
+  const ip = String(host || "").trim();
+  if (!ip) throw new Error("Mungon adresa IP e printerit.");
+  buffer = prepareFiscalTailBuffer(buffer);
+  const { chunkSize, delayMs } = spoolerChunkParams(buffer.length);
+  const tcpPort = Number(port) || 9100;
+
+  return new Promise((resolve, reject) => {
+    const socket = new net.Socket();
+    let offset = 0;
+    let settled = false;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch {
+        /* ignore */
+      }
+      reject(err instanceof Error ? err : new Error(String(err || "TCP print dështoi")));
+    };
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve({ method: "tcp", host: ip, port: tcpPort, bytes: buffer.length });
+    };
+
+    const writeNext = () => {
+      if (offset >= buffer.length) {
+        socket.end();
+        return;
+      }
+      const end = Math.min(offset + chunkSize, buffer.length);
+      const chunk = buffer.subarray(offset, end);
+      socket.write(chunk, (err) => {
+        if (err) return fail(err);
+        offset = end;
+        if (offset < buffer.length && delayMs > 0) {
+          setTimeout(writeNext, delayMs);
+        } else {
+          writeNext();
+        }
+      });
+    };
+
+    socket.setTimeout(25000);
+    socket.once("error", fail);
+    socket.once("timeout", () => fail(new Error(`TCP timeout ${ip}:${tcpPort}`)));
+    socket.connect(tcpPort, ip, () => writeNext());
+    socket.once("close", finish);
+  });
+}
+
+async function dispatchRawEscPos(buffer, target = {}) {
+  const ip = String(target.ip_address || "").trim();
+  if (ip) {
+    const result = await printRawTcpIp(buffer, ip, Number(target.port) || 9100);
+    console.log(`[printer] TCP OK: ${ip}:${result.port} (${buffer.length} bajt)`);
+    return result;
+  }
+  const printerName = String(target.printerName || target.name || "").trim();
+  if (!printerName) throw new Error("Nuk është zgjedhur printer.");
+  return printRawEscPos(buffer, printerName);
+}
+
 function printRawEscPos(buffer, printerName) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) {
     throw new Error("Buffer ESC/POS bosh.");
@@ -1066,11 +1141,13 @@ async function ensureReceiptPrinter(db, station = "bar") {
   const names = printers.map(p => p.name);
   const config = getPrinterConfig(db);
   const stationPrinter = getPrinterForStation(db, station, printers);
+  const hasNetwork = hasNetworkPrintTarget(stationPrinter);
   let saved = stationPrinter.name;
 
   if (
     station === "bar" &&
     !hasDbPrinterRegistry(db) &&
+    !hasNetwork &&
     (!saved || (saved !== WINDOWS_DEFAULT && !names.includes(saved)))
   ) {
     const picked = pickAutoPrinter(printers);
@@ -1083,10 +1160,25 @@ async function ensureReceiptPrinter(db, station = "bar") {
     }
   }
 
-  const printerName = saved ? resolvePrinterName(saved, printers) : null;
+  let printerName = saved;
+  if (!hasNetwork) {
+    printerName = saved ? resolvePrinterName(saved, printers) : null;
+  } else if (!printerName) {
+    printerName = stationPrinter.ip_address;
+  }
+
   const paperSetting = stationPrinter.paper || config.paper;
-  const paper = resolvePaper(paperSetting, printerName);
-  return { printerName, paper, printers, station, source: stationPrinter.source };
+  const paper = resolvePaper(paperSetting, printerName || stationPrinter.ip_address || "");
+  return {
+    printerName,
+    paper,
+    printers,
+    station,
+    source: stationPrinter.source,
+    ip_address: stationPrinter.ip_address || "",
+    port: Number(stationPrinter.port) || 9100,
+    connection_type: stationPrinter.connection_type || "usb",
+  };
 }
 
 async function printEscPosReceipt(escposBase64, db, station = "bar") {
@@ -1094,15 +1186,16 @@ async function printEscPosReceipt(escposBase64, db, station = "bar") {
 }
 
 async function printEscPosReceiptAt(escposBase64, db, station = "bar") {
-  const { printerName, paper } = await ensureReceiptPrinter(db, station);
-  if (!printerName) throw new Error("Nuk u gjet printer termik.");
+  const target = await ensureReceiptPrinter(db, station);
+  if (!target.printerName && !target.ip_address) throw new Error("Nuk u gjet printer termik.");
 
   let buf = Buffer.from(String(escposBase64 || ""), "base64");
   if (!buf.length) throw new Error("Buffer ESC/POS bosh.");
   buf = ensureEscPosCut(buf);
 
-  printRawEscPos(buf, printerName);
-  return { printer: printerName, paper, output: "escpos", station };
+  await dispatchRawEscPos(buf, target);
+  const label = target.ip_address ? `${target.ip_address}:${target.port}` : target.printerName;
+  return { printer: label, paper: target.paper, output: "escpos", station };
 }
 
 async function printPlainTextReceipt(text, db, station = "bar") {
@@ -1110,20 +1203,22 @@ async function printPlainTextReceipt(text, db, station = "bar") {
 }
 
 async function printPlainTextReceiptAt(text, db, station = "bar") {
-  const { printerName, paper } = await ensureReceiptPrinter(db, station);
-  if (!printerName) throw new Error("Nuk u gjet printer termik.");
+  const target = await ensureReceiptPrinter(db, station);
+  if (!target.printerName && !target.ip_address) throw new Error("Nuk u gjet printer termik.");
 
-  const normalized = finalizeReceiptText(String(text || ""), paper).trim();
+  const normalized = finalizeReceiptText(String(text || ""), target.paper).trim();
   if (!normalized) throw new Error("Teksti i faturës është bosh.");
 
   try {
-    printRawEscPos(buildEscPosFromPlainText(normalized), printerName);
-    return { printer: printerName, paper, output: "escpos-text", station };
+    await dispatchRawEscPos(buildEscPosFromPlainText(normalized), target);
+    const label = target.ip_address ? `${target.ip_address}:${target.port}` : target.printerName;
+    return { printer: label, paper: target.paper, output: "escpos-text", station };
   } catch (err) {
+    if (hasNetworkPrintTarget(target)) throw err;
     try {
-      printTextWindows(`${normalized.replace(/\r?\n/g, "\r\n")}\r\n`, printerName);
-      printRawEscPos(cutOnlyEscPosBuffer(), printerName);
-      return { printer: printerName, paper, output: "text+cut", station };
+      printTextWindows(`${normalized.replace(/\r?\n/g, "\r\n")}\r\n`, target.printerName);
+      await dispatchRawEscPos(cutOnlyEscPosBuffer(), target);
+      return { printer: target.printerName, paper: target.paper, output: "text+cut", station };
     } catch (cutErr) {
       throw err;
     }
@@ -1133,20 +1228,22 @@ async function printPlainTextReceiptAt(text, db, station = "bar") {
 /** Njësoj si printPlainTextReceiptAt (ESC/POS raw + CP1252) por pa finalizeReceiptText —
  * për raporte (X/Z) që s'kanë rreshta "Pagesa:"/"Faleminderit!" për t'u rirenditur si faturë. */
 async function printPlainTextAt(text, db, station = "bar") {
-  const { printerName, paper } = await ensureReceiptPrinter(db, station);
-  if (!printerName) throw new Error("Nuk u gjet printer termik.");
+  const target = await ensureReceiptPrinter(db, station);
+  if (!target.printerName && !target.ip_address) throw new Error("Nuk u gjet printer termik.");
 
   const normalized = String(text || "").trim();
   if (!normalized) throw new Error("Teksti është bosh.");
 
   try {
-    printRawEscPos(buildEscPosFromPlainText(normalized), printerName);
-    return { printer: printerName, paper, output: "escpos-text", station };
+    await dispatchRawEscPos(buildEscPosFromPlainText(normalized), target);
+    const label = target.ip_address ? `${target.ip_address}:${target.port}` : target.printerName;
+    return { printer: label, paper: target.paper, output: "escpos-text", station };
   } catch (err) {
+    if (hasNetworkPrintTarget(target)) throw err;
     try {
-      printTextWindows(`${normalized.replace(/\r?\n/g, "\r\n")}\r\n`, printerName);
-      printRawEscPos(cutOnlyEscPosBuffer(), printerName);
-      return { printer: printerName, paper, output: "text+cut", station };
+      printTextWindows(`${normalized.replace(/\r?\n/g, "\r\n")}\r\n`, target.printerName);
+      await dispatchRawEscPos(cutOnlyEscPosBuffer(), target);
+      return { printer: target.printerName, paper: target.paper, output: "text+cut", station };
     } catch (cutErr) {
       throw err;
     }
@@ -1225,10 +1322,12 @@ async function printHtmlDocument(fullHtml, printerName, paper) {
 
 /** Prerje e letrës (ESC/POS GS V B 0) pas çdo faturë — mbyllje tavoline ose ndërrimi.
  * A4/laser nuk ka prerëse fizike; nëse pajisja s'pranon RAW ESC/POS, injorohet e heshtur. */
-function cutPaperBestEffort(printerName, paper) {
-  if (!printerName || paper === "a4") return;
+async function cutPaperBestEffort(target, paper) {
+  const printerName = typeof target === "string" ? target : target?.printerName;
+  if (!printerName && !hasNetworkPrintTarget(target)) return;
+  if (paper === "a4") return;
   try {
-    printRawEscPos(cutOnlyEscPosBuffer(), printerName);
+    await dispatchRawEscPos(cutOnlyEscPosBuffer(), typeof target === "string" ? { printerName: target } : target);
   } catch {
     /* printeri nuk mbështet ESC/POS raw — vazhdo pa prerje shtesë */
   }
@@ -1243,40 +1342,64 @@ async function printReceiptAt(innerHtml, db, station = "bar") {
   const printers = await listPrinters();
   const stationPrinter = getPrinterForStation(db, station, printers);
   const saved = stationPrinter.name;
-  const printerName = saved ? resolvePrinterName(saved, printers) : null;
-  if (!printerName) {
+  const hasNetwork = hasNetworkPrintTarget(stationPrinter);
+  let printerName = saved;
+  if (!hasNetwork) {
+    printerName = saved ? resolvePrinterName(saved, printers) : null;
+  } else if (!printerName) {
+    printerName = stationPrinter.ip_address;
+  }
+  if (!printerName && !hasNetwork) {
     const label = station === "fiscal" ? "printer fiskal" : station === "kitchen" ? "printer kuzhine" : "printer";
     throw new Error(`Nuk është zgjedhur ${label}.`);
   }
 
   const paperSetting = stationPrinter.paper || config.paper;
-  const paper = resolvePaper(paperSetting, printerName);
+  const paper = resolvePaper(paperSetting, printerName || stationPrinter.ip_address || "");
   const output = station === "fiscal"
-    ? (resolveOutput(config.output, printerName) === "html" ? "text" : resolveOutput(config.output, printerName))
-    : resolveOutput(config.output, printerName);
+    ? (resolveOutput(config.output, printerName || "") === "html" ? "text" : resolveOutput(config.output, printerName || ""))
+    : resolveOutput(config.output, printerName || "");
+  const printTarget = {
+    printerName,
+    ip_address: stationPrinter.ip_address || "",
+    port: Number(stationPrinter.port) || 9100,
+    connection_type: stationPrinter.connection_type || "usb",
+  };
 
   if (output === "text") {
     const text = buildTextReceipt(innerHtml, paper);
-    if (isElectron()) {
+    if (isElectron() && !hasNetwork) {
       const doc = buildPrintableDocument(`<pre style="font-family:monospace;white-space:pre-wrap;text-align:left;font-weight:bold;color:#000">${text.replace(/</g, "&lt;")}</pre>`, paper);
       try {
         await printHtmlDocument(doc, printerName, paper);
-        cutPaperBestEffort(printerName, paper);
+        await cutPaperBestEffort(printTarget, paper);
         return { printer: printerName, paper, output, station };
       } catch {
         /* fallback text spooler */
       }
     }
+    if (hasNetwork) {
+      await dispatchRawEscPos(buildEscPosFromPlainText(text), printTarget);
+      await cutPaperBestEffort(printTarget, paper);
+      return { printer: `${printTarget.ip_address}:${printTarget.port}`, paper, output: "escpos-text", station };
+    }
     printTextWindows(text, printerName);
-    cutPaperBestEffort(printerName, paper);
+    await cutPaperBestEffort(printTarget, paper);
     return { printer: printerName, paper, output: "text", station };
+  }
+
+  if (hasNetwork) {
+    const receiptText = buildTextReceipt(innerHtml, paper);
+    await dispatchRawEscPos(buildEscPosFromPlainText(receiptText), printTarget);
+    await cutPaperBestEffort(printTarget, paper);
+    return { printer: `${printTarget.ip_address}:${printTarget.port}`, paper, output: "escpos-text", station };
   }
 
   const doc = innerHtml.trim().startsWith("<!DOCTYPE")
     ? innerHtml
     : buildPrintableDocument(innerHtml, paper);
   await printHtmlDocument(doc, printerName, paper);
-  cutPaperBestEffort(printerName, paper);
+  await cutPaperBestEffort(printTarget, paper);
   return { printer: printerName, paper, output: "html", station };
 }
 
@@ -1411,6 +1534,8 @@ module.exports = {
   stationConfigName,
   getPrinterForStation,
   stationConfigNameLegacy,
+  printRawTcpIp,
+  dispatchRawEscPos,
   printRawEscPos,
   isTyssoReceiptPrinter,
   printTestPage,

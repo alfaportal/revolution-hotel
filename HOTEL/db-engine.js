@@ -265,13 +265,16 @@ function initSchema() {
   );
 
   CREATE TABLE IF NOT EXISTS printers (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    role        TEXT NOT NULL,
-    paper_size  TEXT NOT NULL DEFAULT '80',
-    is_default  INTEGER NOT NULL DEFAULT 0,
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    role            TEXT NOT NULL,
+    paper_size      TEXT NOT NULL DEFAULT '80',
+    connection_type TEXT NOT NULL DEFAULT 'usb',
+    ip_address      TEXT NOT NULL DEFAULT '',
+    port            INTEGER NOT NULL DEFAULT 9100,
+    is_default      INTEGER NOT NULL DEFAULT 0,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS categories (
@@ -893,6 +896,21 @@ function initSchema() {
     for (const [col, decl] of rcMigrations) {
       if (!rcNames.has(col)) {
         sqlRun(`ALTER TABLE room_charges ADD COLUMN ${col} ${decl}`);
+      }
+    }
+  } catch (_) { /* */ }
+
+  try {
+    const printerCols = sqlAll("PRAGMA table_info(printers)");
+    const printerColNames = new Set(printerCols.map((c) => c.name));
+    const printerMigrations = [
+      ["connection_type", "TEXT NOT NULL DEFAULT 'usb'"],
+      ["ip_address", "TEXT NOT NULL DEFAULT ''"],
+      ["port", "INTEGER NOT NULL DEFAULT 9100"],
+    ];
+    for (const [col, decl] of printerMigrations) {
+      if (!printerColNames.has(col)) {
+        sqlRun(`ALTER TABLE printers ADD COLUMN ${col} ${decl}`);
       }
     }
   } catch (_) { /* */ }
