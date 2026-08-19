@@ -4576,6 +4576,7 @@
             pending_items: pendingItems,
             payment_method: paymentMethod,
             coupon_type: effectiveCouponType(),
+            fiscal_skip: effectiveCouponType() === "thermal",
             promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
           }),
         });
@@ -4721,6 +4722,7 @@
             items: itemsToClose,
             payment_method: paymentMethod,
             coupon_type: effectiveCouponType(),
+            fiscal_skip: effectiveCouponType() === "thermal",
             promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
           }),
         });

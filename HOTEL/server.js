@@ -2869,6 +2869,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
   const { table_id, waiter_name, is_admin, payment_method } = req.body;
   const asAdmin = !!is_admin && req.session.role === "admin";
   const name = asAdmin ? (waiter_name || req.session.emri) : req.session.emri;
+  const fiscalSkip = req.body?.fiscal_skip === true;
   if (req.session.role === "kamarier" && asAdmin) {
     return res.status(403).json({ gabim: "Vetëm admini mund ta mbyllë nga paneli i adminit" });
   }
@@ -2901,7 +2902,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
 
     // HAPI FINAL — PAS closeTable (nuk e prek closeTable)
     let fiscalResult = null;
-    if (order && fiscalConfig.isFiscalEnabled()) {
+    if (order && fiscalConfig.isFiscalEnabled() && !fiscalSkip) {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           order.id,
@@ -2916,7 +2917,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
       }
     }
 
-    res.json({ ok: true, order, fiscal: fiscalResult });
+    res.json({ ok: true, order, fiscal: fiscalResult, fiscal_skipped: fiscalSkip });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -2950,6 +2951,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
+  const fiscalSkip = req.body?.fiscal_skip === true && couponType === "thermal";
 
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
@@ -3002,13 +3004,14 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       source: null,
     };
 
+    // Termik i zgjedhur → mbyll/printo termik pa kupon fiskal.
     // SEF replace → skip VETËM kuponin normal të MBYLLJES. Order ticket nuk preket këtu.
-    if (getFiscalMain().shouldPrintClosingNormalReceipt()) {
+    if (fiscalSkip || getFiscalMain().shouldPrintClosingNormalReceipt()) {
       printResult = await printClosedTableReceipt(db, {
         order,
         receipt,
         tableNumber: table?.number || 0,
-        couponType: sefOn ? "thermal" : couponType,
+        couponType: fiscalSkip ? "thermal" : (sefOn ? "thermal" : couponType),
       });
     } else {
       console.log("[close-and-print] SEF replace — skip kupon normal mbylljeje, vetëm fiskal");
@@ -3016,7 +3019,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
 
     // HAPI FINAL — PAS closeTable
     let fiscalResult = null;
-    if (sefOn) {
+    if (sefOn && !fiscalSkip) {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           order.id,
@@ -3068,6 +3071,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       printMessage: printResult.printMessage || fiscalResult?.printMessage || "",
       receipt_source: printResult.source,
       fiscal_receipt: fiscalResult,
+      fiscal_skipped: fiscalSkip,
       sef_print_mode: sefPrintMode,
     });
   } catch (e) {
@@ -3082,6 +3086,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   if (!items?.length) return res.status(400).json({ gabim: "Zgjidhni artikuj për pagesë" });
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
+  const fiscalSkip = req.body?.fiscal_skip === true && couponType === "thermal";
 
   try {
     if (req.body?.pending_items?.length) {
@@ -3143,19 +3148,19 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       html: null,
       source: null,
     };
-    if (getFiscalMain().shouldPrintClosingNormalReceipt()) {
+    if (fiscalSkip || getFiscalMain().shouldPrintClosingNormalReceipt()) {
       printResult = await printClosedTableReceipt(db, {
         order: partialOrder,
         receipt,
         tableNumber: table?.number || 0,
-        couponType: sefOn ? "thermal" : couponType,
+        couponType: fiscalSkip ? "thermal" : (sefOn ? "thermal" : couponType),
       });
     } else {
       console.log("[split-close] SEF replace — skip kupon normal mbylljeje, vetëm fiskal");
     }
 
     let fiscalResult = null;
-    if (sefOn) {
+    if (sefOn && !fiscalSkip) {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           result.order.id,
@@ -3224,6 +3229,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       printMessage: printResult.printMessage || fiscalResult?.printMessage || "",
       receipt_source: printResult.source,
       fiscal_receipt: fiscalResult,
+      fiscal_skipped: fiscalSkip,
       sef_print_mode: sefPrintMode,
     });
   } catch (e) {
