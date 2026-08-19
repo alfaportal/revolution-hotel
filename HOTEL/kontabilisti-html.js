@@ -96,7 +96,9 @@ function buildVatReportHtml(report, bizName, periodLabel) {
   <thead><tr><th>Norma</th><th>Shitjet neto</th><th>TVSh e mbledhur</th><th>Shitjet bruto</th></tr></thead>
   <tbody>${trs || "<tr><td colspan='4'>Nuk ka të dhëna</td></tr>"}</tbody>
 </table>
-<div class="total">TOTALI: neto ${formatEuro(rep.totals.net)} · TVSh ${formatEuro(rep.totals.vat)} · bruto ${formatEuro(rep.totals.gross)}</div>
+<div class="total">TOTALI (dalëse): neto ${formatEuro(rep.totals.net)} · TVSh ${formatEuro(rep.totals.vat)} · bruto ${formatEuro(rep.totals.gross)}</div>
+${rep.vat_input != null ? `<div class="meta">TVSH hyrëse (blerje): ${formatEuro(rep.vat_input)}</div>` : ""}
+${rep.vat_difference != null ? `<div class="total">Diferenca (dalëse − hyrëse): ${formatEuro(rep.vat_difference)}</div>` : ""}
 </body></html>`;
 }
 

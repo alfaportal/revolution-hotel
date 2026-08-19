@@ -14,6 +14,11 @@ async function printClosedTableReceipt(db, {
   couponType = "thermal",
 }) {
   const fiscal = db.getFiscalSettings();
+  const settings = typeof db.getSettings === "function" ? db.getSettings() : {};
+  const bizDisplayName =
+    String(fiscal.biz_name || "").trim()
+    || String(settings.restaurant_name || settings.business_name || "").trim()
+    || "Hotel";
   const totals = db.calcFiscalTotals(
     order.total,
     fiscal.tvsh_enabled,
@@ -34,7 +39,7 @@ async function printClosedTableReceipt(db, {
       fiscal,
       receiptNumber: receipt.receipt_number,
       totals,
-      restaurantName: fiscal.biz_name,
+      restaurantName: bizDisplayName,
       paymentMethod: order.payment_method,
       closedAt,
       discountTotal,
@@ -114,6 +119,8 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
   }
 
   const pay = String(opts.paymentMethod || order.payment_method || "cash").trim() || "cash";
+  const requestedCoupon = String(opts.coupon_type || opts.couponType || "thermal").trim().toLowerCase();
+  const fiscalSkip = opts.fiscal_skip === true || opts.fiscalSkip === true || requestedCoupon === "thermal";
   const closed = db.closeTable(table.id, order.waiter_name || "Kamarier", false, pay, null, {
     allowAnyWaiter: true,
   });
@@ -121,12 +128,12 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
 
   const receipt = db.createReceipt(closed.id);
 
-  /* SEF ON → gjithmonë processFiscalReceipt (rrit FIS · N + printon kuponin fiskal) */
+  /* SEF ON + jo termik → processFiscalReceipt */
   let fiscalResult = null;
   try {
     const fiscalConfig = require("./fiscal/fiscal-config");
     const fiscalMain = require("./fiscal/fiscal-main");
-    if (fiscalConfig.isFiscalEnabled()) {
+    if (fiscalConfig.isFiscalEnabled() && !fiscalSkip) {
       fiscalResult = await fiscalMain.processFiscalReceipt(
         closed.id,
         pay,
@@ -155,7 +162,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     shouldPrintNormal = true;
   }
 
-  if (!shouldPrintNormal) {
+  if (!shouldPrintNormal && !fiscalSkip) {
     console.log("[close-print] SEF replace — skip kupon normal (cloud close T" + num + ")", {
       fiscal_printed: !!fiscalResult?.printed,
       order_id: closed.id,
@@ -173,7 +180,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     order: closed,
     receipt,
     tableNumber: num,
-    couponType: "thermal",
+    couponType: fiscalSkip ? "thermal" : "fiscal",
   });
   console.log("[close-print] cloud close T" + num, {
     printed: !!printResult?.printed,

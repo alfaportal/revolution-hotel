@@ -1825,6 +1825,8 @@ function handleKdsKitchenSsePayload(db, payload) {
     const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
     void Promise.resolve(printClosingReceiptIfActiveCloudOrder(db, num, {
       paymentMethod: payload.payment_method,
+      fiscal_skip: payload.fiscal_skip,
+      coupon_type: payload.coupon_type,
     }))
       .catch(err => console.warn("[cloud/sse] closing print:", err.message || err))
       .finally(() => {

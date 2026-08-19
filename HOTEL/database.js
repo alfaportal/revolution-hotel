@@ -3285,7 +3285,7 @@ function getHotelRevenueReport(from, to) {
     if (!row) continue;
     const amt = Number(c.amount) || 0;
     if (isRoomServiceFoodCharge(c.description)) {
-      row.restaurant += amt; /* QR Room Service — vetëm te room_charges */
+      row.services += amt; /* QR Room Service — si getReports/getDitari */
     } else if (!isFoodDrinkRoomCharge(c.description)) {
       row.services += amt;
     }
@@ -7594,7 +7594,30 @@ function getVatReport({ month } = {}) {
     net: t.net + r.net,
     vat: t.vat + r.vat,
   }), { gross: 0, net: 0, vat: 0 });
-  return { month: m, rows, totals };
+  totals.gross = Number(totals.gross.toFixed(2));
+  totals.net = Number(totals.net.toFixed(2));
+  totals.vat = Number(totals.vat.toFixed(2));
+
+  const purchaseBook = getAtkPurchaseVatBook({ from: fromDate, to: toDate });
+  const salesVatBook = getAtkSalesVatBook({ from: fromDate, to: toDate });
+  const vat_output = roundReportMoney(salesVatBook.totals?.box30 ?? totals.vat);
+  const vat_input = roundReportMoney(purchaseBook.totals?.box67 ?? 0);
+  const vat_difference = roundReportMoney(vat_output - vat_input);
+
+  return {
+    month: m,
+    from: fromDate,
+    to: toDate,
+    rows,
+    totals,
+    vat_output,
+    vat_input,
+    vat_difference,
+    purchase_vat_by_rate: {
+      k1_18: roundReportMoney(purchaseBook.totals?.boxK1 ?? 0),
+      k2_8: roundReportMoney(purchaseBook.totals?.boxK2 ?? 0),
+    },
+  };
 }
 
 function csvEsc(val) {
@@ -7630,7 +7653,10 @@ function exportVatReportCsv({ month } = {}) {
   for (const r of report.rows) {
     lines.push([`${r.rate}%`, r.net.toFixed(2), r.vat.toFixed(2), r.gross.toFixed(2)].map(csvEsc).join(","));
   }
-  lines.push(["TOTALI", report.totals.net.toFixed(2), report.totals.vat.toFixed(2), report.totals.gross.toFixed(2)].map(csvEsc).join(","));
+  lines.push(["TOTALI (dalëse)", report.totals.net.toFixed(2), report.totals.vat.toFixed(2), report.totals.gross.toFixed(2)].map(csvEsc).join(","));
+  lines.push("");
+  lines.push(["TVSH hyrëse (blerje)", "", Number(report.vat_input || 0).toFixed(2), ""].map(csvEsc).join(","));
+  lines.push(["Diferenca (dalëse − hyrëse)", "", Number(report.vat_difference || 0).toFixed(2), ""].map(csvEsc).join(","));
   return lines.join("\n");
 }
 
@@ -8114,6 +8140,10 @@ function updateFiscalSettings(data) {
     if (data[key] === undefined) continue;
     if (key === "tvsh_enabled") {
       setSetting(settingKey, data[key] ? "1" : "0");
+    } else if (key === "biz_name") {
+      const name = String(data[key]).trim();
+      setSetting("biz_name", name);
+      setSetting("restaurant_name", name);
     } else {
       setSetting(settingKey, String(data[key]).trim());
     }
@@ -8271,50 +8301,7 @@ function backfillDailyLogReceiptForOrder(orderId, { nuikf, fiscal_receipt_id } =
   }
 
   if (changes === 0) {
-    const order = sqlite.prepare(`
-      SELECT o.cloud_order_id, o.total, o.waiter_name, t.number AS table_number
-      FROM orders o
-      LEFT JOIN tables t ON t.id = o.table_id
-      WHERE o.id = ?
-    `).get(oid);
-    const cloudId = String(order?.cloud_order_id || "").trim();
-    if (cloudId) {
-      const r = sqlite.prepare(`
-        UPDATE daily_log
-        SET receipt_number = ?
-        WHERE id = (
-          SELECT id FROM daily_log
-          WHERE cloud_sale_id = ?
-            AND status = 'completed'
-            AND (receipt_number IS NULL OR TRIM(receipt_number) = '')
-          ORDER BY datetime(date || ' ' || time) DESC, id DESC
-          LIMIT 1
-        )
-      `).run(label, cloudId);
-      changes = Number(r.changes) || 0;
-    }
-    if (changes === 0 && order?.table_number != null) {
-      const r = sqlite.prepare(`
-        UPDATE daily_log
-        SET receipt_number = ?
-        WHERE id = (
-          SELECT id FROM daily_log
-          WHERE table_number = ?
-            AND waiter_name = ?
-            AND ABS(total - ?) < 0.005
-            AND status = 'completed'
-            AND (receipt_number IS NULL OR TRIM(receipt_number) = '')
-          ORDER BY datetime(date || ' ' || time) DESC, id DESC
-          LIMIT 1
-        )
-      `).run(
-        label,
-        order.table_number,
-        order.waiter_name,
-        Number(order.total) || 0,
-      );
-      changes = Number(r.changes) || 0;
-    }
+    console.warn("[daily_log] backfill: asnjë rresht për order_id=", oid);
   }
 
   if (changes > 0) {
@@ -8869,22 +8856,21 @@ function getDashboardOverview() {
   }, 0);
 
   let servicesRevenue = 0;
-  let roomServiceFood = 0;
   const todayCharges = sqlite.prepare(`
     SELECT description, amount FROM room_charges
     WHERE created_at >= ? AND created_at < date(?, '+1 day')
   `).all(today, today);
   for (const c of todayCharges) {
     const amt = Number(c.amount) || 0;
-    if (isRoomServiceFoodCharge(c.description)) roomServiceFood += amt;
+    if (isRoomServiceFoodCharge(c.description)) servicesRevenue += amt;
     else if (!isFoodDrinkRoomCharge(c.description)) servicesRevenue += amt;
   }
 
-  const restaurantRevenue = (Number(sqlite.prepare(`
+  const restaurantRevenue = Number(sqlite.prepare(`
     SELECT COALESCE(SUM(total), 0) AS t
     FROM daily_log
     WHERE date = ? AND status = 'completed'
-  `).get(today)?.t) || 0) + roomServiceFood;
+  `).get(today)?.t) || 0;
 
   const dailyRevenueTotal =
     Math.round((nightsRevenue + servicesRevenue + restaurantRevenue) * 100) / 100;
