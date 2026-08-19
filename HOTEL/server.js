@@ -514,7 +514,7 @@ async function autoPrintKitchenTicket(db, opts) {
 async function printGuestFolioReceipt(db, folio) {
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
-  const hotelName = folio?.hotel_name || settings.restaurant_name || "Hotel";
+  const hotelName = folio?.hotel_name || settings.business_name || "Hotel";
   const html = buildGuestFolioPrintHtml(folio, fiscal, hotelName);
   try {
     return await printer.printReceiptAt(html, db, "fiscal");
@@ -1717,7 +1717,7 @@ app.post("/api/waiter/shift/close", auth, waiterOnly, async (req, res) => {
         }
 
         const reportPayload = {
-          restaurantName: fiscal.biz_name || settings.restaurant_name,
+          restaurantName: fiscal.biz_name || settings.business_name,
           phone: fiscal.biz_phone,
           address: fiscal.biz_address,
           city: fiscal.biz_city,
@@ -2950,8 +2950,9 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   const waiterName = req.session.emri;
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
+  const requestedCoupon = String(coupon_type || "thermal").trim().toLowerCase();
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
-  const fiscalSkip = req.body?.fiscal_skip === true && couponType === "thermal";
+  const fiscalSkip = req.body?.fiscal_skip === true || requestedCoupon === "thermal";
 
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
@@ -3085,8 +3086,9 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   if (!items?.length) return res.status(400).json({ gabim: "Zgjidhni artikuj për pagesë" });
+  const requestedCoupon = String(coupon_type || "thermal").trim().toLowerCase();
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
-  const fiscalSkip = req.body?.fiscal_skip === true && couponType === "thermal";
+  const fiscalSkip = req.body?.fiscal_skip === true || requestedCoupon === "thermal";
 
   try {
     if (req.body?.pending_items?.length) {
@@ -3321,7 +3323,7 @@ app.get("/api/admin/ditari/preview", auth, adminOnly, (req, res) => {
   const ditari = db.getDitari(opts);
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
-  const html = buildDitariReportHtml(ditari, fiscal, settings.restaurant_name);
+  const html = buildDitariReportHtml(ditari, fiscal, settings.business_name);
   res.json({ html, ditari });
 });
 
@@ -3331,7 +3333,7 @@ app.post("/api/admin/ditari/print", auth, adminOnly, async (req, res) => {
     const ditari = db.getDitari(opts);
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildDitariReportHtml(ditari, fiscal, settings.restaurant_name);
+    const html = buildDitariReportHtml(ditari, fiscal, settings.business_name);
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
@@ -3644,8 +3646,8 @@ app.post("/api/menu/print", auth, adminOnly, async (req, res) => {
       db.getCategoryNames(),
       db.getMenuItems(false),
       fiscal,
-      settings.restaurant_name,
-      settings.version || settings.restaurant_name,
+      settings.business_name,
+      settings.version || settings.business_name,
     );
     let result;
     try {
@@ -3696,12 +3698,12 @@ app.post("/api/reports/print", auth, adminOnly, async (req, res) => {
     const report = db.getReports(from, to);
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildReportPrintHtml(report, fiscal, settings.restaurant_name);
+    const html = buildReportPrintHtml(report, fiscal, settings.business_name);
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
     } catch {
-      const text = buildReportPrintLines(report, fiscal, settings.restaurant_name).join("\n");
+      const text = buildReportPrintLines(report, fiscal, settings.business_name).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
     auditReq(req, "Raport — print", `${from} — ${to}`);
@@ -3724,12 +3726,12 @@ app.post("/api/admin/reports/x/print", auth, adminOnly, async (req, res) => {
     const data = db.buildXReportData();
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildXReportHtml({ fiscal, restaurantName: settings.restaurant_name, data });
+    const html = buildXReportHtml({ fiscal, restaurantName: settings.business_name, data });
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
     } catch {
-      const text = buildXReportLines({ fiscal, restaurantName: settings.restaurant_name, data }).join("\n");
+      const text = buildXReportLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
     auditReq(req, "Raporti X — print", `${data.open_shift_count} nderrime aktive · ${Number(data.total_sales).toFixed(2)} €`);
@@ -3744,7 +3746,7 @@ app.post("/api/admin/reports/daily-summary/print", auth, adminOnly, async (req, 
     const data = db.buildDailySummaryData();
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const text = buildDailySummaryLines({ fiscal, restaurantName: settings.restaurant_name, data }).join("\n");
+    const text = buildDailySummaryLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
     const result = await printer.printPlainTextAt(text, db, "bar");
     auditReq(req, "Përmbledhje ditore — print", `${data.items.length} artikuj · ${Number(data.total_sales).toFixed(2)} €`);
 
@@ -3909,12 +3911,12 @@ app.post("/api/admin/reports/z/:shiftId/print", auth, adminOnly, async (req, res
     const data = db.buildZReportData(req.params.shiftId);
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildZReportHtml({ fiscal, restaurantName: settings.restaurant_name, data });
+    const html = buildZReportHtml({ fiscal, restaurantName: settings.business_name, data });
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
     } catch {
-      const text = buildZReportLines({ fiscal, restaurantName: settings.restaurant_name, data }).join("\n");
+      const text = buildZReportLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
     auditReq(req, "Raporti Z — print", `Nderrim #${data.shift_id} (${data.waiter_name}) · ${Number(data.total_sales).toFixed(2)} €`);
@@ -3946,7 +3948,7 @@ app.post("/api/admin/reports/waiter/:shiftId/print", auth, adminOnly, async (req
     const settings = db.getSettings();
     const { buildWaiterLiveReportLines } = require("./waiter-shift-html");
     const lines = buildWaiterLiveReportLines({
-      restaurantName: settings.restaurant_name,
+      restaurantName: settings.business_name,
       waiterName: data.waiter_name,
       shift: { opened_at: data.opened_at },
       totals: data,
@@ -4065,7 +4067,7 @@ app.get("/api/purchases/export/pdf", auth, adminOnly, (req, res) => {
   const invoices = db.listPurchases({ from, to, supplier });
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildPurchasesListHtml(invoices, settings.restaurant_name, period);
+  const html = buildPurchasesListHtml(invoices, settings.business_name, period);
   res.json({ html, count: invoices.length });
 });
 
@@ -4125,7 +4127,7 @@ app.get("/api/kontabilisti/sales-ledger/export/pdf", auth, adminOnly, (req, res)
   const rows = db.getSalesLedger(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildSalesLedgerHtml(rows, settings.restaurant_name, period);
+  const html = buildSalesLedgerHtml(rows, settings.business_name, period);
   res.json({ html, count: rows.length });
 });
 
@@ -4170,7 +4172,7 @@ app.get("/api/kontabilisti/expenses/export/pdf", auth, adminOnly, (req, res) => 
   const rows = db.listExpenses(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildExpensesLedgerHtml(rows, settings.restaurant_name, period);
+  const html = buildExpensesLedgerHtml(rows, settings.business_name, period);
   res.json({ html, count: rows.length });
 });
 
@@ -4193,7 +4195,7 @@ app.get("/api/kontabilisti/vat-report/export.csv", auth, adminOnly, (req, res) =
 app.get("/api/kontabilisti/vat-report/export/pdf", auth, adminOnly, (req, res) => {
   const report = db.getVatReport(req.query);
   const settings = db.getSettings();
-  const html = buildVatReportHtml(report, settings.restaurant_name, report.month);
+  const html = buildVatReportHtml(report, settings.business_name, report.month);
   res.json({ html, count: report.rows.length });
 });
 
@@ -4519,7 +4521,7 @@ app.get("/api/kontabilisti/purchases/export/pdf", auth, adminOnly, (req, res) =>
   const rows = db.listPurchasesLedger(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildPurchasesLedgerHtml(rows, settings.restaurant_name, period);
+  const html = buildPurchasesLedgerHtml(rows, settings.business_name, period);
   const invoiceIds = new Set(rows.map((r) => r.invoice_id));
   res.json({ html, count: invoiceIds.size, line_count: rows.length });
 });
@@ -4543,7 +4545,7 @@ app.get("/api/kontabilisti/bilanc/export.csv", auth, adminOnly, (req, res) => {
 app.get("/api/kontabilisti/bilanc/export/pdf", auth, adminOnly, (req, res) => {
   const bilanc = db.getKontabilistiBilanc(req.query);
   const settings = db.getSettings();
-  const html = buildBilancHtml(bilanc, settings.restaurant_name);
+  const html = buildBilancHtml(bilanc, settings.business_name);
   res.json({ html, bilanc });
 });
 
@@ -4581,7 +4583,7 @@ app.get("/api/purchases/:id/print", auth, adminOnly, (req, res) => {
   const inv = db.getPurchaseInvoice(Number(req.params.id));
   if (!inv) return res.status(404).json({ gabim: "Fatura nuk u gjet" });
   const settings = db.getSettings();
-  const html = buildPurchaseInvoiceHtml(inv, settings.restaurant_name);
+  const html = buildPurchaseInvoiceHtml(inv, settings.business_name);
   res.json({ html, invoice: inv });
 });
 
@@ -4759,7 +4761,7 @@ app.get("/api/guest/menu", (_req, res) => {
     const settings = db.getSettings();
     res.json({
       ok: true,
-      hotel_name: settings.restaurant_name || "Hotel",
+      hotel_name: settings.business_name || "Hotel",
       items,
     });
   } catch (e) {
@@ -4773,7 +4775,7 @@ app.get("/api/guest/services", (_req, res) => {
     const settings = db.getSettings();
     res.json({
       ok: true,
-      hotel_name: settings.restaurant_name || "Hotel",
+      hotel_name: settings.business_name || "Hotel",
       groups: catalog.groups || [],
       services: (catalog.services || []).map((s) => ({
         id: s.id,

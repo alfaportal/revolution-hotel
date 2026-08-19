@@ -3001,8 +3001,8 @@
         <div id="gabim-cil" class="alert alert-error" hidden></div>
         <form id="forma-cil" class="settings-form">
           <div class="settings-field">
-            <label for="cil-emri">Emri i objektit</label>
-            <input type="text" id="cil-emri" placeholder="p.sh. Marini, Dardania">
+            <label for="cil-emri">Emri i biznesit</label>
+            <input type="text" id="cil-emri" placeholder="p.sh. Hotel Marini, Dardania">
             <p id="cil-emri-hint" class="settings-field-hint">
               Shfaqet në hyrje dhe fatura. Tavolinat: Cilësimet → Restorant &amp; Bar.
             </p>
@@ -5229,7 +5229,7 @@
     async function ngarkoSettings() {
       const s = await api("/api/settings");
       applyPackageTier(s.packageTier, s.packageFeatures);
-      emriRestorantit = s.restaurant_name;
+      emriRestorantit = s.business_name || s.restaurant_name || "";
       if (typeof applyAppWindowTitle === "function") applyAppWindowTitle(s);
       if (s.fiscal) {
         fiscalSettings = { ...s.fiscal };
@@ -5242,10 +5242,10 @@
       }
       if (s.register_mode) applyRegisterModeSettingsUi(s.register_mode);
       document.getElementById("hdr-emri").textContent = sanitizeVenueDisplayName(
-        s.window_title || s.restaurant_name || s.app_brand || "Revolution HOTEL",
+        s.window_title || s.business_name || s.restaurant_name || s.app_brand || "Revolution HOTEL",
       );
       applyAppVersionBadge(s, "hdr-app-version");
-      document.getElementById("cil-emri").value = s.restaurant_name;
+      document.getElementById("cil-emri").value = s.business_name || s.restaurant_name || "";
       const sot = sotISO();
       document.getElementById("raport-nga").value = sot;
       document.getElementById("raport-deri").value = sot;
@@ -12744,9 +12744,10 @@
         const res = await api("/api/settings", { method: "PUT", body: JSON.stringify(body) });
         if (typeof applyAppWindowTitle === "function") applyAppWindowTitle(res);
         document.getElementById("hdr-emri").textContent = sanitizeVenueDisplayName(
-          res.window_title || res.restaurant_name || res.app_brand || "Revolution HOTEL",
+          res.window_title || res.business_name || res.restaurant_name || res.app_brand || "Revolution HOTEL",
         );
         alert("Cilësimet u ruajtën!");
+        emriRestorantit = res.business_name || res.restaurant_name || "";
       } catch (err) {
         shfaqGabim(gabimEl, err.message);
       }

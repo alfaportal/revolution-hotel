@@ -4197,7 +4197,7 @@
       if (typeof applyAppWindowTitle === "function") applyAppWindowTitle(s);
       const hdr = document.getElementById("hdr-emri");
       if (hdr) {
-        hdr.textContent = s.window_title || s.app_brand || s.restaurant_name || "Revolution HOTEL";
+        hdr.textContent = s.window_title || s.app_brand || s.business_name || s.restaurant_name || "Revolution HOTEL";
       }
       applyAppVersionBadge(s, "waiter-app-version");
     }

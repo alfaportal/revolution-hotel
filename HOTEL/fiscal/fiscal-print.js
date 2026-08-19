@@ -15,7 +15,12 @@ const {
 const { getSefIdentifier, generateNUIKF } = require("./fiscal-numbering");
 const { formatHashShort } = require("./fiscal-hash-chain");
 const { t, tPayment, tReceiptType, syncLanguageFromSettings } = require("./fiscal-i18n");
-const { paperChars, pad: receiptPad, divider: receiptDivider } = require("../receipt-text");
+const {
+  paperChars,
+  pad: receiptPad,
+  divider: receiptDivider,
+  formatReceiptDateTime,
+} = require("../receipt-text");
 
 /** Default 80mm = 42 char — njësoj si receipt-text. */
 const WIDTH = 42;
@@ -84,15 +89,31 @@ function receiptTypeLabel(type) {
   return tReceiptType(type);
 }
 
+/** DD/MM/YYYY + HH:mm — Europe/Belgrade, njësoj si kuponi termik. */
 function formatFiscalDateTime(isoOrDate) {
+  if (isoOrDate) {
+    const dotDate = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(isoOrDate).trim());
+    if (dotDate) {
+      return {
+        date: `${dotDate[1]}/${dotDate[2]}/${dotDate[3]}`,
+        time: "00:00",
+      };
+    }
+    const slashDate = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(isoOrDate).trim());
+    if (slashDate) {
+      return { date: String(isoOrDate).trim(), time: "00:00" };
+    }
+  }
   const d = isoOrDate ? new Date(isoOrDate) : new Date();
-  const safe = Number.isNaN(d.getTime()) ? new Date() : d;
-  const dd = String(safe.getDate()).padStart(2, "0");
-  const mm = String(safe.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(safe.getFullYear());
-  const hh = String(safe.getHours()).padStart(2, "0");
-  const mi = String(safe.getMinutes()).padStart(2, "0");
-  return { date: `${dd}.${mm}.${yyyy}`, time: `${hh}:${mi}` };
+  const iso = Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  return formatReceiptDateTime(iso);
+}
+
+function normalizeFiscalDisplayDate(raw) {
+  const s = String(raw || "").trim();
+  const dotMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  if (dotMatch) return `${dotMatch[1]}/${dotMatch[2]}/${dotMatch[3]}`;
+  return s;
 }
 
 function itemQty(item) {
@@ -402,24 +423,43 @@ function generateFiscalReceipt(orderData, fiscalData) {
     .toLowerCase();
   const isCorrective = receiptType !== "regular";
 
+  let bizSettings = {};
+  try {
+    bizSettings = require("../database").getFiscalSettings() || {};
+  } catch {
+    bizSettings = {};
+  }
+
   const legalName =
     fiscal.taxpayer_legal_name ||
     fiscal.taxpayer_name ||
     order.taxpayer_legal_name ||
-    t("business_fallback");
+    "";
   const brandName =
-    fiscal.taxpayer_trade_name ||
-    fiscal.business_name ||
-    order.taxpayer_trade_name ||
-    legalName;
+    String(bizSettings.biz_name || "").trim() ||
+    legalName ||
+    t("business_fallback");
   const unitName = String(
     fiscal.unit_name || order.unit_name || ""
   ).trim();
   const unitPhone = String(
-    fiscal.unit_phone || order.unit_phone || ""
+    bizSettings.biz_phone ||
+    fiscal.unit_phone ||
+    order.unit_phone ||
+    ""
   ).trim();
-  const address = fiscal.taxpayer_address || order.taxpayer_address || "";
-  const { lines: addressLines, city } = splitAddressLines(address);
+
+  const bizAddress = String(bizSettings.biz_address || "").trim();
+  const bizCity = String(bizSettings.biz_city || "").trim();
+  let addressLines;
+  let city;
+  if (bizAddress || bizCity) {
+    addressLines = bizAddress ? [bizAddress] : [];
+    city = bizCity;
+  } else {
+    const address = fiscal.taxpayer_address || order.taxpayer_address || "";
+    ({ lines: addressLines, city } = splitAddressLines(address));
+  }
   const nui = fiscal.taxpayer_nui || order.taxpayer_nui || "";
   const vatNo =
     fiscal.taxpayer_vat ||
@@ -437,8 +477,8 @@ function generateFiscalReceipt(orderData, fiscalData) {
     fiscal.fiscal_time || order.fiscal_time
       ? String(fiscal.fiscal_time || order.fiscal_time).slice(0, 5)
       : time;
-  const dateStr = fiscal.fiscal_date && /^\d{2}\.\d{2}\.\d{4}$/.test(String(fiscal.fiscal_date))
-    ? String(fiscal.fiscal_date)
+  const dateStr = fiscal.fiscal_date
+    ? normalizeFiscalDisplayDate(fiscal.fiscal_date)
     : date;
 
   const dailyNumber = fiscal.daily_number ?? order.daily_number ?? "";

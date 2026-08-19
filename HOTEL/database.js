@@ -452,6 +452,13 @@ function getStoredBusinessSubtype() {
   return fallback;
 }
 
+/** Emri i biznesit — biz_name (fiskal/zyrtar) ose restaurant_name (legacy). */
+function getBusinessName() {
+  const biz = String(getSetting("biz_name", "") || "").trim();
+  const rest = String(getSetting("restaurant_name", "") || "").trim();
+  return biz || rest;
+}
+
 /** Titulli i dritares / UI: p.sh. "Revolution HOTEL — Hotel Marini" */
 function getAppWindowTitle({ business_subtype, business_type, restaurant_name } = {}) {
   const subtype = business_subtype != null
@@ -459,7 +466,7 @@ function getAppWindowTitle({ business_subtype, business_type, restaurant_name } 
     : (business_type != null ? business_type : getStoredBusinessSubtype());
   const info = getBusinessSubtypeInfo(subtype);
   const name = String(
-    restaurant_name != null ? restaurant_name : getSetting("restaurant_name", ""),
+    restaurant_name != null ? restaurant_name : getBusinessName(),
   ).trim();
   if (!name) return info.brand;
   return `${info.brand} — ${info.label} ${name}`;
@@ -468,15 +475,17 @@ function getAppWindowTitle({ business_subtype, business_type, restaurant_name } 
 function getSettings() {
   const business_subtype = getStoredBusinessSubtype();
   const restaurant_name = getSetting("restaurant_name", "");
+  const business_name = getBusinessName();
   const typeInfo = getBusinessSubtypeInfo(business_subtype);
   return {
     restaurant_name,
+    business_name,
     business_subtype,
     business_type: business_subtype,
     business_type_label: typeInfo.label,
     business_subtype_label: typeInfo.label,
     app_brand: typeInfo.brand,
-    window_title: getAppWindowTitle({ business_subtype, restaurant_name }),
+    window_title: getAppWindowTitle({ business_subtype, restaurant_name: business_name }),
     table_count:     getTableCount(),
     version:         getSetting("version", VERSION.versionLabel),
     setup_done:      isSetupDone(),
@@ -820,6 +829,7 @@ function applyRestaurantNameIfEmpty(name) {
   if (!trimmed) return false;
   if (getSetting("restaurant_name", "").trim()) return false;
   setSetting("restaurant_name", trimmed);
+  setSetting("biz_name", trimmed);
   return true;
 }
 
@@ -834,9 +844,11 @@ function runSetup({
   const type = normalizeBusinessSubtype(
     business_subtype != null ? business_subtype : business_type,
   );
+  const name = String(restaurant_name || "").trim();
 
   sqlite.transaction(() => {
-    setSetting("restaurant_name", String(restaurant_name || "").trim());
+    setSetting("restaurant_name", name);
+    setSetting("biz_name", name);
     setSetting("business_subtype", type);
     setSetting("business_type", type); /* alias për kod të vjetër */
     setSetting("admin_password", hashPassword(admin_password));
@@ -6086,8 +6098,15 @@ function updateSettings({
   admin_password,
   business_subtype,
   business_type,
+  biz_name,
 } = {}) {
-  if (restaurant_name != null) setSetting("restaurant_name", String(restaurant_name).trim());
+  const nameRaw =
+    restaurant_name != null ? restaurant_name : biz_name != null ? biz_name : null;
+  if (nameRaw != null) {
+    const name = String(nameRaw).trim();
+    setSetting("restaurant_name", name);
+    setSetting("biz_name", name);
+  }
   const subtypeRaw = business_subtype != null ? business_subtype : business_type;
   if (subtypeRaw != null) {
     const type = normalizeBusinessSubtype(subtypeRaw);
@@ -8502,6 +8521,7 @@ function getVersionInfo() {
     flushDatabase,
     isSetupDone,
     getSettings,
+    getBusinessName,
     getAppWindowTitle,
     getBusinessTypeInfo,
     normalizeBusinessType,

@@ -161,7 +161,7 @@
     (async () => {
       function applyLoginBrand(s) {
         if (!s) return;
-        const name = (s.restaurant_name || "").trim();
+        const name = (s.business_name || s.restaurant_name || "").trim();
         const lic = s.license || {};
         const brandName = document.getElementById("brand-venue-name");
         const firmName = document.getElementById("brand-firm-name");
