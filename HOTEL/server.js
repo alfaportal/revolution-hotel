@@ -890,7 +890,7 @@ app.post("/api/setup", (req, res) => {
   const subtype = business_subtype || business_type;
   if (!subtype) {
     return res.status(400).json({
-      gabim: "Zgjidhni llojin: Hotel, Motel, Villë, Resort ose Bujtinë",
+      gabim: "Zgjidhni llojin: Hotel, Motel, Villa, Hostel ose Resort",
     });
   }
   try {
@@ -5883,7 +5883,7 @@ function startServer(startPort = START_PORT) {
         reject(new Error(`Nuk u gjet port i lirë (${START_PORT}–${MAX_PORT})`));
         return;
       }
-      const server = app.listen(port, "127.0.0.1", () => {
+      const server = app.listen(port, "0.0.0.0", () => {
         onServerListening(server, port);
         resolve({
           server,

@@ -1,9 +1,11 @@
 /**
- * QR lokale për hotel — Room Service / Menyja / Shërbime.
- * Pa cloud: URL bazohen në hotel_qr_base_url (SQLite) ose localhost.
+ * QR për hotel — Room Service / Menyja / Shërbime.
+ * Cloud (hotel_qr_base_url publik): /hotel/{slug}/room-service?room=…
+ * LAN / lokal: /guest/room-service.html?room=…
  */
 const os = require("os");
 const QRCode = require("qrcode");
+const { isLocalOrPrivateServerUrl } = require("./cloud-server-url");
 
 function escHtml(s) {
   return String(s ?? "")
@@ -36,11 +38,47 @@ function resolveQrBaseUrl(db) {
   return detectLanBase().replace(/\/+$/, "");
 }
 
-function buildHotelQrUrls(base, roomNumber) {
+function resolveHotelQrSlug(db) {
+  try {
+    const cloud = typeof db.getCloudSettings === "function" ? db.getCloudSettings() : {};
+    return String(
+      cloud.kitchen_slug
+      || cloud.cloud_client_id
+      || db.getSetting?.("kitchen_slug", "")
+      || db.getSetting?.("cloud_client_id", "")
+      || "",
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+function isCloudQrBase(base) {
+  const b = String(base || "").trim();
+  if (!b || !/^https?:\/\//i.test(b)) return false;
+  return !isLocalOrPrivateServerUrl(b);
+}
+
+function buildHotelQrUrls(base, roomNumber, slug = "") {
   const b = String(base || "").replace(/\/+$/, "");
   const room = encodeURIComponent(String(roomNumber || "").trim());
+  const venueSlug = encodeURIComponent(String(slug || "").trim());
+
+  if (isCloudQrBase(b) && venueSlug) {
+    const prefix = `${b}/hotel/${venueSlug}`;
+    return {
+      room_service: room
+        ? `${prefix}/room-service?room=${room}`
+        : `${prefix}/room-service`,
+      menu: `${prefix}/menu`,
+      services: `${prefix}/services`,
+    };
+  }
+
   return {
-    room_service: `${b}/guest/room-service.html?room=${room}`,
+    room_service: room
+      ? `${b}/guest/room-service.html?room=${room}`
+      : `${b}/guest/room-service.html`,
     menu: `${b}/guest/menu.html`,
     services: `${b}/guest/services.html`,
   };
@@ -60,19 +98,25 @@ async function qrEntry(kind, label, url) {
 
 async function listHotelQrs(db) {
   const settings = db.getSettings();
-  const base = resolveQrBaseUrl(db);
+  const configuredBase = resolveQrBaseUrl(db);
+  const slug = resolveHotelQrSlug(db);
+  const useCloudQr = isCloudQrBase(configuredBase) && !!slug;
+  const qrBase = useCloudQr ? configuredBase : (
+    isCloudQrBase(configuredBase) ? detectLanBase() : configuredBase
+  );
   try {
     db.ensureDefaultRooms?.();
   } catch {
     /* ignore */
   }
   const rooms = typeof db.listRooms === "function" ? db.listRooms() : [];
-  const sharedMenu = await qrEntry("menu", "QR Menyja", buildHotelQrUrls(base).menu);
-  const sharedServices = await qrEntry("services", "QR Shërbime", buildHotelQrUrls(base).services);
+  const qrSlug = useCloudQr ? slug : "";
+  const sharedMenu = await qrEntry("menu", "QR Menyja", buildHotelQrUrls(qrBase, "", qrSlug).menu);
+  const sharedServices = await qrEntry("services", "QR Shërbime", buildHotelQrUrls(qrBase, "", qrSlug).services);
 
   const roomRows = [];
   for (const room of rooms) {
-    const urls = buildHotelQrUrls(base, room.room_number);
+    const urls = buildHotelQrUrls(qrBase, room.room_number, qrSlug);
     const rs = await qrEntry(
       "room_service",
       `Room Service — Dh. ${room.room_number}`,
@@ -90,7 +134,10 @@ async function listHotelQrs(db) {
   }
 
   return {
-    base_url: base,
+    base_url: qrBase,
+    configured_base_url: configuredBase,
+    qr_mode: useCloudQr ? "cloud" : "local",
+    hotel_slug: slug || "",
     business_name: settings.restaurant_name || "Hotel",
     count: roomRows.length,
     shared: { menu: sharedMenu, services: sharedServices },
@@ -175,6 +222,8 @@ module.exports = {
   getRoomServiceQr,
   qrPrintHtml,
   resolveQrBaseUrl,
+  resolveHotelQrSlug,
   setHotelQrBaseUrl,
   buildHotelQrUrls,
+  isCloudQrBase,
 };

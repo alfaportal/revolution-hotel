@@ -410,9 +410,9 @@ function isSetupDone() {
 const HOTEL_BUSINESS_SUBTYPES = {
   hotel: { key: "hotel", label: "Hotel", brand: "Revolution HOTEL" },
   motel: { key: "motel", label: "Motel", brand: "Revolution MOTEL" },
-  ville: { key: "ville", label: "Villë", brand: "Revolution VILLË" },
+  villa: { key: "villa", label: "Villa", brand: "Revolution VILLA" },
+  hostel: { key: "hostel", label: "Hostel", brand: "Revolution HOSTEL" },
   resort: { key: "resort", label: "Resort", brand: "Revolution RESORT" },
-  bujtine: { key: "bujtine", label: "Bujtinë", brand: "Revolution BUJTINË" },
 };
 const HOTEL_BUSINESS_TYPES = HOTEL_BUSINESS_SUBTYPES;
 
@@ -420,8 +420,7 @@ function normalizeBusinessSubtype(type) {
   const raw = String(type || "hotel").trim().toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  if (raw === "ville" || raw === "villa" || raw === "vill") return "ville";
-  if (raw === "bujtine" || raw === "bujtina" || raw === "guesthouse") return "bujtine";
+  if (raw === "ville" || raw === "vill") return "villa";
   if (HOTEL_BUSINESS_SUBTYPES[raw]) return raw;
   return "hotel";
 }
