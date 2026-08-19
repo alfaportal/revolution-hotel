@@ -1170,16 +1170,49 @@
     body.tier-rank-3 #btn-menu-scan-ai, body.tier-rank-3 #modal-menu-scan,
     body.tier-rank-3 #cloud-row-kitchen,
 
-    /* AI (Pako 4) — fshehur derisa /api/ai/status → enabled */
+    /* AI — butonat/skanimet fshehur derisa /api/ai/status → enabled; paneli AI mbetet i dukshëm */
     body:not(.ai-package-on) #btn-menu-scan-ai,
     body:not(.ai-package-on) #modal-menu-scan,
-    body:not(.ai-package-on) [data-panel="ai"],
-    body:not(.ai-package-on) #panel-ai,
     body:not(.ai-package-on) #btn-receipt-scan-ai,
     body:not(.ai-package-on) #btn-purchase-receipt-ai,
     body:not(.ai-package-on) #modal-receipt-scan {
       display: none !important;
     }
+
+    .ai-status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .ai-status-badge.ai-status-on {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+    }
+    .ai-status-badge.ai-status-off {
+      background: rgba(148, 163, 184, 0.12);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    .ai-panel-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 0.5rem;
+    }
+    .ai-feature-list {
+      margin: 0.5rem 0 0;
+      padding-left: 1.15rem;
+      color: var(--ngjyr-muted, #a0a0b8);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    .ai-feature-list li { margin-bottom: 0.45rem; }
+    .ai-feature-list strong { color: #e8e8f0; }
 
     .ai-cat-grid {
       display: grid;
@@ -1614,6 +1647,7 @@
       <button type="button" class="admin-tab-btn" data-panel="cilësimet">Cilësimet</button>
       <button type="button" class="admin-tab-btn" data-panel="blerjet">Blerjet</button>
       <button type="button" class="admin-tab-btn" data-panel="kontabilisti">Kontabilisti</button>
+      <button type="button" class="admin-tab-btn" data-panel="ai">AI</button>
     </nav>
 
     <nav class="settings-subnav settings-subnav-global" id="settings-subnav-bar" hidden>
@@ -2512,8 +2546,45 @@
       </div>
     </section>
 
-    <!-- AI panel — i hequr nga UI derisa hoteli të ketë cloud -->
-    <section id="panel-ai" class="panel" hidden aria-hidden="true" style="display:none!important"></section>
+    <!-- AI — panel informues (funksionet aktivizohen me cloud + paketë AI) -->
+    <section id="panel-ai" class="panel">
+      <div class="reports-panel-header">
+        <div>
+          <h2 class="reports-panel-title">Asistenti AI</h2>
+          <p class="reports-panel-sub" style="margin:0.25rem 0 0;color:var(--ngjyr-muted);font-size:0.85rem">
+            Skanim, parashikim stoku dhe raporte inteligjente për hotelin
+          </p>
+        </div>
+      </div>
+      <div class="card settings-card">
+        <div class="settings-card-head">
+          <span class="settings-hub-icon settings-hub-icon-cyan">AI</span>
+          <div>
+            <div class="settings-card-title">Statusi i AI</div>
+            <p class="settings-card-desc">Gjendja aktuale e modulit inteligjent</p>
+          </div>
+        </div>
+        <div class="ai-panel-status-row">
+          <span id="ai-panel-status-badge" class="ai-status-badge ai-status-off">Joaktiv</span>
+          <span id="ai-panel-status-text" style="font-size:0.9rem;color:var(--ngjyr-muted)">Duke kontrolluar…</span>
+        </div>
+        <p id="ai-panel-cloud-msg" style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--ngjyr-muted)">
+          AI do të aktivizohet kur hoteli të lidhet me cloud.
+        </p>
+        <p id="ai-usage-line" style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--ngjyr-muted)"></p>
+      </div>
+      <div class="card settings-card">
+        <div class="settings-card-title">Funksionet AI</div>
+        <p class="settings-card-desc" style="margin-bottom:0.35rem">Kur moduli aktivizohet, disponohen:</p>
+        <ul class="ai-feature-list">
+          <li><strong>Skanim menu</strong> — lexon foto/fletë menuje dhe krijon kategori e artikuj automatikisht.</li>
+          <li><strong>Skanim fature blerjeje</strong> — nxjerr artikuj nga fatura e furnizuesit për stok/blerje.</li>
+          <li><strong>Parashikim stoku</strong> — sugjeron çka të blini bazuar në shitjet dhe stokun aktual.</li>
+          <li><strong>Raport javor</strong> — përmbledhje automatike e shitjeve, stokut dhe trendeve.</li>
+          <li><strong>Asistent</strong> — pyetje në gjuhë natyrore për operacionet e hotelit (ditari, stok, raporte).</li>
+        </ul>
+      </div>
+    </section>
 
     <!-- KONTABILISTI -->
     <section id="panel-kontabilisti" class="panel">
@@ -3083,6 +3154,33 @@
           <div class="fiscal-save-msg" id="msg-tvsh-percent"></div>
         </div>
       </div>
+      <div class="card settings-card" id="card-register-mode">
+        <div class="settings-card-head">
+          <span class="settings-hub-icon settings-hub-icon-cyan">K</span>
+          <div>
+            <div class="settings-card-title">Modaliteti i faturës (kupon)</div>
+            <p class="settings-card-desc">Si printohet fatura kur kamarieri mbyll tavolinën</p>
+          </div>
+        </div>
+        <p style="margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.85rem">
+          Zgjidhni nëse kamarierët zgjedhin vetë (Auto), apo detyrohen gjithmonë Termik ose Fiskal (ATK).
+          Nëse pronari ndryshon modalitetin nga telefoni (cloud), ai mbizotëron mbi zgjedhjen lokale.
+        </p>
+        <div class="fiscal-field-row">
+          <label for="register-mode-select">Modaliteti për kamarierët</label>
+          <div class="fiscal-field-actions">
+            <select id="register-mode-select">
+              <option value="auto">Automatik (kamarieri zgjedh Termik ose Fiskal)</option>
+              <option value="thermal">Gjithmonë Termik (pa kupon ATK)</option>
+              <option value="fiscal">Gjithmonë Fiskal (ATK / SEF)</option>
+            </select>
+            <button type="button" class="btn btn-primary btn-sm" id="ruaj-register-mode">Ruaj</button>
+          </div>
+          <div class="fiscal-save-msg" id="msg-register-mode"></div>
+        </div>
+        <p id="register-mode-current" style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--ngjyr-muted)"></p>
+        <p id="register-mode-cloud-override" hidden style="margin:0.35rem 0 0;font-size:0.85rem;color:var(--ngjyr-warning,#fbbf24)"></p>
+      </div>
       <div class="card settings-card" id="card-printer-fiscal">
         <div class="settings-card-head">
           <span class="settings-hub-icon settings-hub-icon-violet">P</span>
@@ -3186,7 +3284,7 @@
           <span>Asnjë printer i regjistruar — aktiv fallback te cilësimet e vjetra.</span>
         </div>
         <div class="registered-printers-table-wrap" style="overflow-x:auto;margin-bottom:1rem">
-          <table class="registered-printers-table" id="registered-printers-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <table class="registered-printers-table mobile-card-table" id="registered-printers-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
             <thead>
               <tr style="text-align:left;border-bottom:1px solid var(--ngjyr-border)">
                 <th style="padding:0.45rem 0.35rem">Roli</th>
@@ -4672,6 +4770,7 @@
         // Gjithmonë nis me «Ky muaj» që blerjet e fundit të duken (jo vetëm «Sot»)
         applyKontPeriod("muaj").catch((err) => alert(err.message || "Gabim kontabilisti"));
       }
+      if (name === "ai") applyMenuAiUiState().catch(() => {});
     }
 
     document.querySelectorAll(".admin-tab-btn").forEach(tab => {
@@ -7958,17 +8057,67 @@
       }
     }
 
-    function applyMenuAiUiState() {
+    async function applyMenuAiUiState() {
       const scanBtn = document.getElementById("btn-menu-scan-ai");
       const usageLine = document.getElementById("ai-usage-line");
-      const msg = "AI do të aktivizohet kur hoteli të lidhet me cloud";
-      document.body.classList.remove("ai-package-on");
-      if (scanBtn) {
-        scanBtn.hidden = true;
-        scanBtn.disabled = true;
-        scanBtn.title = msg;
+      const statusBadge = document.getElementById("ai-panel-status-badge");
+      const statusText = document.getElementById("ai-panel-status-text");
+      const cloudMsg = document.getElementById("ai-panel-cloud-msg");
+      const cloudDefault = "AI do të aktivizohet kur hoteli të lidhet me cloud";
+      let active = false;
+      try {
+        const data = await api("/api/ai/status");
+        active = !!data.enabled;
+        document.body.classList.toggle("ai-package-on", active);
+        if (statusBadge) {
+          statusBadge.textContent = active ? "Aktiv" : "Joaktiv";
+          statusBadge.classList.toggle("ai-status-on", active);
+          statusBadge.classList.toggle("ai-status-off", !active);
+        }
+        if (statusText) {
+          statusText.textContent = active
+            ? "Moduli AI është aktiv dhe i gatshëm për përdorim."
+            : (data.gabim || cloudDefault);
+        }
+        if (cloudMsg) {
+          cloudMsg.textContent = active
+            ? "Hoteli është i lidhur me cloud — funksionet AI varen nga pakoja e licencës."
+            : cloudDefault;
+        }
+        if (usageLine) {
+          if (active) {
+            try {
+              const u = await api("/api/ai/usage");
+              if (u.ok) {
+                usageLine.textContent =
+                  `Tokenë këtë muaj: ${Number(u.tokens_total || 0).toLocaleString("sq-AL")} · ` +
+                  `Kosto: ${Number(u.cost_eur_total || 0).toFixed(4)} € · Thirrje: ${Number(u.calls || 0)}`;
+              } else {
+                usageLine.textContent = u.gabim || "";
+              }
+            } catch {
+              usageLine.textContent = "";
+            }
+          } else {
+            usageLine.textContent = cloudDefault;
+          }
+        }
+      } catch (err) {
+        document.body.classList.remove("ai-package-on");
+        if (statusBadge) {
+          statusBadge.textContent = "Joaktiv";
+          statusBadge.classList.add("ai-status-off");
+          statusBadge.classList.remove("ai-status-on");
+        }
+        if (statusText) statusText.textContent = err.message || cloudDefault;
+        if (cloudMsg) cloudMsg.textContent = cloudDefault;
+        if (usageLine) usageLine.textContent = cloudDefault;
       }
-      if (usageLine) usageLine.textContent = msg;
+      if (scanBtn) {
+        scanBtn.hidden = !active;
+        scanBtn.disabled = !active;
+        scanBtn.title = active ? "" : cloudDefault;
+      }
     }
 
     let receiptScanItems = [];
