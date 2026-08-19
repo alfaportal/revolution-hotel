@@ -461,6 +461,27 @@ function purchaseVatSplitsForInvoice(inv) {
   return [{ gross: Number(inv.total) || 0, rate: hdr >= 0 ? hdr : 18 }];
 }
 
+/** Shuma neto e faturës blerje (pa TVSH hyrëse) — për bilancin e kontabilistit. */
+function purchaseInvoiceNetTotal(inv) {
+  let net = 0;
+  for (const { gross, rate } of purchaseVatSplitsForInvoice(inv)) {
+    if (!(gross > 0)) continue;
+    net += splitGross(gross, rate).net;
+  }
+  return money(net);
+}
+
+/** Shuma neto e rreshtit të shitjes (pa TVSH dalëse) — nga vat_buckets ose total−vat. */
+function saleLedgerNetTotal(row) {
+  const buckets = Array.isArray(row?.vat_buckets) ? row.vat_buckets : [];
+  if (buckets.length) {
+    return money(buckets.reduce((s, b) => s + (Number(b.net) || 0), 0));
+  }
+  const gross = Number(row?.total) || 0;
+  const vat = Number(row?.vat_amount) || 0;
+  return money(vat > 0 ? gross - vat : gross);
+}
+
 function buildPurchaseVatBook(invoices, expenses) {
   const rows = [];
   let nr = 0;
@@ -822,6 +843,7 @@ function buildAnnualStatements({
   stockEnd = 0,
   wages = 0,
   priorYear = null,
+  cogs: cogsOverride = null,
 }) {
   const y = Number(year) || new Date().getFullYear();
   const prev = priorYear || {};
@@ -829,7 +851,9 @@ function buildAnnualStatements({
   const purch = money(purchases);
   const stStart = money(stockStart);
   const stEnd = money(stockEnd);
-  const cogs = money(stStart + purch - stEnd);
+  const cogs = cogsOverride != null
+    ? money(cogsOverride)
+    : money(stStart + purch - stEnd);
   const grossProfit = money(revenue - cogs);
   const adminExp = money(expenses);
   const wageTotal = money(wages);
@@ -960,6 +984,8 @@ module.exports = {
   letterFromRate,
   normalizeLetter,
   splitGross,
+  purchaseInvoiceNetTotal,
+  saleLedgerNetTotal,
   normalizeVatBuckets,
   enrichItemsWithVatNorm,
   buildSaleVatBuckets,

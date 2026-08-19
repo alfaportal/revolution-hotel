@@ -49,6 +49,18 @@ function getDbApi() {
   return require("../database");
 }
 
+function tryBackfillDailyLogReceipt(orderId, { nuikf, fiscal_receipt_id } = {}) {
+  try {
+    const dbApi = getDbApi();
+    if (typeof dbApi.backfillDailyLogReceiptForOrder === "function") {
+      return dbApi.backfillDailyLogReceiptForOrder(orderId, { nuikf, fiscal_receipt_id });
+    }
+  } catch (e) {
+    console.warn("[fiscal-main] daily_log backfill:", e.message);
+  }
+  return { updated: 0 };
+}
+
 /** addon = kupon normal + fiskal; replace = vetëm fiskal (default). */
 function getFiscalPrintMode() {
   try {
@@ -437,6 +449,10 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
           const resumed = await recovery.resumePendingPrint(pending, {
             skip_print: !!opts.skip_print,
           });
+          tryBackfillDailyLogReceipt(id, {
+            nuikf: existing.nuikf,
+            fiscal_receipt_id: existing.id,
+          });
           return {
             ok: true,
             already_fiscalized: true,
@@ -453,6 +469,10 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       } catch (re) {
         console.warn("[fiscal-main] recovery resume:", re.message);
       }
+      tryBackfillDailyLogReceipt(id, {
+        nuikf: existing.nuikf,
+        fiscal_receipt_id: existing.id,
+      });
       return {
         ok: true,
         already_fiscalized: true,
@@ -819,6 +839,11 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   } catch (e) {
     console.warn("[fiscal-main] update orders:", e.message);
   }
+
+  tryBackfillDailyLogReceipt(id, {
+    nuikf,
+    fiscal_receipt_id: fiscalReceiptId,
+  });
 
   try {
     if (pendingId && printText) {

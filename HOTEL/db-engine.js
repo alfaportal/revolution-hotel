@@ -604,7 +604,11 @@ function initSchema() {
   if (!logCols.some(c => c.name === "cloud_sale_id")) {
     sqlRun("ALTER TABLE daily_log ADD COLUMN cloud_sale_id TEXT");
   }
+  if (!logCols.some(c => c.name === "order_id")) {
+    sqlRun("ALTER TABLE daily_log ADD COLUMN order_id INTEGER");
+  }
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_cloud_sale ON daily_log(cloud_sale_id)");
+  sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_order_id ON daily_log(order_id)");
   try {
     sqlRun(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_log_cloud_sale_unique ON daily_log(cloud_sale_id) WHERE cloud_sale_id IS NOT NULL AND TRIM(cloud_sale_id) <> ''",

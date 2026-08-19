@@ -3273,6 +3273,15 @@ app.get("/api/admin/low-stock", auth, adminOnly, (_req, res) => {
   res.json({ ok: true, items, count: items.length });
 });
 
+app.get("/api/admin/stock/reconcile", auth, adminOnly, (_req, res) => {
+  try {
+    const data = db.reconcileStock();
+    res.json({ ok: true, ...data });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/admin/rebuild-register", auth, adminOnly, async (req, res) => {
   try {
     auditReq(req, "Rifresko arkën nga cloud");

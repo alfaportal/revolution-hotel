@@ -4712,6 +4712,7 @@ function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash"
       promotion_id: promotionId,
       promotion_name: promotionName,
       cloud_sale_id: order.cloud_order_id || null,
+      order_id: order.id,
     });
     decrementMenuItemStock(parseOrderItems(order.items_json));
   })();
@@ -4783,6 +4784,7 @@ function closeOrderById(orderId, waiterName, isAdmin = false, paymentMethod = "c
       promotion_id: promotionId,
       promotion_name: promotionName,
       cloud_sale_id: order.cloud_order_id || null,
+      order_id: order.id,
     });
     decrementMenuItemStock(parseOrderItems(order.items_json));
   })();
@@ -4864,6 +4866,7 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
       promotion_id: promotionId,
       promotion_name: promotionName,
       cloud_sale_id: order.cloud_order_id || null,
+      order_id: order.id,
     });
     decrementMenuItemStock(removed);
 
@@ -5032,11 +5035,125 @@ function cancelActiveOrder(tableId) {
       total:          order.total,
       receipt_number: null,
       status:         "cancelled",
+      order_id:       order.id,
     });
     sqlite.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(order.id);
     sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tableId);
   })();
   return order;
+}
+
+function roundReportMoney(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
+/** Netët (check-out) + shërbime/RS — i njëjti burim si kontabilisti (getSalesLedger). */
+function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDitari = false } = {}) {
+  let hotelNights = 0;
+  let hotelServices = 0;
+  const nightsByDay = new Map();
+  const servicesByDay = new Map();
+  const hotelEntries = [];
+
+  const inDitariRange = (dateStr, timeStr = "12:00:00") => {
+    if (!forDitari || !fromDatetime || !toDatetime) return true;
+    const dt = `${String(dateStr || "").slice(0, 10)} ${timeStr}`;
+    return dt >= fromDatetime && dt <= toDatetime;
+  };
+
+  try {
+    const checkouts = sqlite.prepare(`
+      SELECT
+        g.id, g.guest_name, g.check_out_date, g.total_paid,
+        g.check_in_date, g.status,
+        r.room_number, r.price_per_night
+      FROM guests g
+      LEFT JOIN rooms r ON r.id = g.room_id
+      WHERE g.status = 'checked_out'
+        AND date(g.check_out_date) >= date(?)
+        AND date(g.check_out_date) <= date(?)
+      ORDER BY g.check_out_date ASC, g.id ASC
+    `).all(from, to);
+
+    for (const g of checkouts) {
+      const day = String(g.check_out_date || "").slice(0, 10);
+      if (!inDitariRange(day, "12:00:00")) continue;
+      const paid = computeGuestPaidTotal(g);
+      const roomAmt = Number(paid.room_total) || 0;
+      if (roomAmt <= 0) continue;
+      hotelNights += roomAmt;
+      nightsByDay.set(day, (nightsByDay.get(day) || 0) + roomAmt);
+      const nightsCount = paid.nights || 0;
+      const label = `Netë dhoma ${g.room_number || "—"} — ${g.guest_name || ""} (${nightsCount} netë)`;
+      hotelEntries.push({
+        id: `hotel-night-${g.id}`,
+        entry_type: "hotel_night",
+        status: "completed",
+        date: day,
+        time: "12:00:00",
+        table_number: g.room_number || "—",
+        waiter_name: "Recepcion",
+        payment_method: "hotel",
+        payment_label: "Hotel",
+        receipt_number: `DH-${g.id}`,
+        total: roundReportMoney(roomAmt),
+        items: [{ name: label, quantity: 1, price: roundReportMoney(roomAmt) }],
+        artikujt: label,
+        source: "rooms",
+      });
+    }
+
+    const hotelCharges = sqlite.prepare(`
+      SELECT rc.*, r.room_number, g.guest_name
+      FROM room_charges rc
+      LEFT JOIN rooms r ON r.id = rc.room_id
+      LEFT JOIN guests g ON g.id = rc.guest_id
+      WHERE date(rc.created_at) >= date(?) AND date(rc.created_at) <= date(?)
+      ORDER BY rc.created_at ASC, rc.id ASC
+    `).all(from, to);
+
+    for (const c of hotelCharges) {
+      const amt = Number(c.amount) || 0;
+      if (amt <= 0) continue;
+      const food = isFoodDrinkRoomCharge(c.description);
+      const rs = isRoomServiceFoodCharge(c.description);
+      if (food && !rs) continue;
+      const created = String(c.created_at || "");
+      const day = created.slice(0, 10) || from;
+      const timePart = created.includes(" ") ? created.split(" ")[1].slice(0, 8) : "12:00:00";
+      if (!inDitariRange(day, timePart)) continue;
+      hotelServices += amt;
+      servicesByDay.set(day, (servicesByDay.get(day) || 0) + amt);
+      const desc = String(c.description || "Shërbim").trim();
+      const label = `${desc} · Dh. ${c.room_number || "—"} · ${c.guest_name || ""}`;
+      hotelEntries.push({
+        id: `hotel-charge-${c.id}`,
+        entry_type: rs ? "room_service" : "hotel_service",
+        status: "completed",
+        date: day,
+        time: timePart,
+        table_number: c.room_number || "—",
+        waiter_name: rs ? "Room Service" : "Recepcion",
+        payment_method: rs ? "room_service" : "hotel_service",
+        payment_label: rs ? "Room Service" : "Shërbim hoteli",
+        receipt_number: rs ? `RS-${c.id}` : `SH-${c.id}`,
+        total: roundReportMoney(amt),
+        items: [{ name: desc, quantity: 1, price: roundReportMoney(amt) }],
+        artikujt: label,
+        source: rs ? "room_service" : "services",
+      });
+    }
+  } catch (err) {
+    console.warn("[reports] hotel revenue merge:", err.message);
+  }
+
+  return {
+    hotelNights: roundReportMoney(hotelNights),
+    hotelServices: roundReportMoney(hotelServices),
+    nightsByDay,
+    servicesByDay,
+    hotelEntries,
+  };
 }
 
 function getReports(dateFrom, dateTo) {
@@ -5050,10 +5167,14 @@ function getReports(dateFrom, dateTo) {
     ORDER BY date ASC, time ASC
   `).all(from, to);
 
-  const totalSales = entries.reduce((s, e) => s + Number(e.total || 0), 0);
+  const restaurantSales = entries.reduce((s, e) => s + Number(e.total || 0), 0);
   const totalDiscount = entries.reduce((s, e) => s + Number(e.discount_total || 0), 0);
   const orderCount = entries.length;
-  const average = orderCount ? totalSales / orderCount : 0;
+  const hotelRev = collectHotelReportRevenue({ from, to });
+  const totalSales = roundReportMoney(
+    restaurantSales + hotelRev.hotelNights + hotelRev.hotelServices,
+  );
+  const average = orderCount ? restaurantSales / orderCount : 0;
 
   const promoMap = {};
   for (const e of entries) {
@@ -5093,19 +5214,60 @@ function getReports(dateFrom, dateTo) {
   const end = new Date(to + "T12:00:00");
   if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dailyMap.set(d.toISOString().slice(0, 10), 0);
+      dailyMap.set(d.toISOString().slice(0, 10), {
+        restaurant: 0,
+        nights: 0,
+        services: 0,
+        total: 0,
+      });
     }
   }
   for (const e of entries) {
     const day = String(e.date || "").slice(0, 10);
-    if (dailyMap.has(day)) {
-      dailyMap.set(day, dailyMap.get(day) + Number(e.total || 0));
-    }
+    if (!dailyMap.has(day)) continue;
+    const row = dailyMap.get(day);
+    row.restaurant += Number(e.total || 0);
   }
-  const dailySales = [...dailyMap.entries()].map(([date, total]) => ({ date, total }));
+  for (const [day, amt] of hotelRev.nightsByDay) {
+    if (!dailyMap.has(day)) {
+      dailyMap.set(day, { restaurant: 0, nights: 0, services: 0, total: 0 });
+    }
+    dailyMap.get(day).nights += amt;
+  }
+  for (const [day, amt] of hotelRev.servicesByDay) {
+    if (!dailyMap.has(day)) {
+      dailyMap.set(day, { restaurant: 0, nights: 0, services: 0, total: 0 });
+    }
+    dailyMap.get(day).services += amt;
+  }
+  const dailySales = [...dailyMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, row]) => {
+      const restaurant = roundReportMoney(row.restaurant);
+      const nights = roundReportMoney(row.nights);
+      const services = roundReportMoney(row.services);
+      return {
+        date,
+        restaurant,
+        nights,
+        services,
+        total: roundReportMoney(restaurant + nights + services),
+      };
+    });
+
+  const restaurantRounded = roundReportMoney(restaurantSales);
 
   return {
     totalSales,
+    restaurantSales: restaurantRounded,
+    hotelNights: hotelRev.hotelNights,
+    hotelServices: hotelRev.hotelServices,
+    by_source: {
+      restaurant: restaurantRounded,
+      nights: hotelRev.hotelNights,
+      services: hotelRev.hotelServices,
+      total: totalSales,
+    },
     totalDiscount: Number(totalDiscount.toFixed(2)),
     promotionStats,
     orderCount,
@@ -6152,12 +6314,16 @@ function updateKitchenAccess(_opts) {
 
 function exportReportText(dateFrom, dateTo) {
   const rep = getReports(dateFrom, dateTo);
+  const src = rep.by_source || {};
   const name = getSetting("restaurant_name", VERSION.versionLabel);
   let txt = `RAPORTI — ${name}\n`;
   txt += `Periudha: ${rep.dateFrom} deri ${rep.dateTo}\n`;
   txt += `${"=".repeat(40)}\n`;
-  txt += `Shitjet totale: ${rep.totalSales.toFixed(2)} €\n`;
-  txt += `Porosi te perfunduara: ${rep.orderCount}\n\n`;
+  txt += `Restorant: ${(src.restaurant ?? rep.restaurantSales ?? 0).toFixed(2)} €\n`;
+  txt += `Netë hotel: ${(src.nights ?? rep.hotelNights ?? 0).toFixed(2)} €\n`;
+  txt += `Shërbime / RS: ${(src.services ?? rep.hotelServices ?? 0).toFixed(2)} €\n`;
+  txt += `Totali: ${rep.totalSales.toFixed(2)} €\n`;
+  txt += `Porosi restorant: ${rep.orderCount}\n\n`;
   txt += `Artikujt me te shitur:\n`;
   for (const it of rep.topItems) {
     const rev = it.revenue != null ? ` (${Number(it.revenue).toFixed(2)} €)` : "";
@@ -6347,6 +6513,210 @@ function applyPurchaseStockDelta(menuItemId, qty) {
     `[stock] adjust-decrease productId=${id} qty=${abs} stockBefore=${stockBefore} stockAfter=${stockAfter}`,
   );
   return { id, name: row.name, stock_qty: stockAfter, stockBefore };
+}
+
+/** Stoku fillestar për reconciliacion (settings `stock_opening_{menuItemId}`, default 0). */
+function getMenuItemOpeningStock(menuItemId) {
+  const raw = getSetting(`stock_opening_${Number(menuItemId)}`, "0");
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Sasi blerje (goods) të grupuara sipas menu_item_id — përfshin rregullimet ±. */
+function aggregateGoodsPurchaseQtyByMenuItem() {
+  const rows = sqlite.prepare(`
+    SELECT pii.menu_item_id, COALESCE(SUM(pii.quantity), 0) AS qty
+    FROM purchase_invoice_items pii
+    INNER JOIN purchase_invoices pi ON pi.id = pii.invoice_id
+    WHERE COALESCE(pi.purchase_kind, 'goods') = 'goods'
+    GROUP BY pii.menu_item_id
+  `).all();
+  const map = new Map();
+  for (const r of rows) {
+    const id = Number(r.menu_item_id);
+    if (!id) continue;
+    map.set(id, Number(r.qty) || 0);
+  }
+  return map;
+}
+
+/** Sasi shitje të grupuara nga daily_log (completed) — njësoj si decrementMenuItemStock. */
+function aggregateSalesQtyFromDailyLog({ from, to } = {}) {
+  const menu = getMenuItems(false);
+  const byId = new Map(menu.map((m) => [Number(m.id), m]));
+  const byName = new Map(menu.map((m) => [String(m.name || "").trim().toLowerCase(), m]));
+  const entries = from && to
+    ? sqlite.prepare(`
+      SELECT items_json FROM daily_log
+      WHERE status = 'completed' AND date >= ? AND date <= ?
+    `).all(from, to)
+    : sqlite.prepare(`
+      SELECT items_json FROM daily_log WHERE status = 'completed'
+    `).all();
+  const map = new Map();
+  for (const e of entries) {
+    for (const it of parseOrderItems(e.items_json)) {
+      const menuItemId = resolveMenuItemIdForStock(it, byId, byName);
+      const qty = Number(it?.quantity ?? it?.qty ?? it?.sasia) || 0;
+      if (!menuItemId || qty <= 0) continue;
+      map.set(menuItemId, (map.get(menuItemId) || 0) + qty);
+    }
+  }
+  return map;
+}
+
+/**
+ * Çmimi mesatar i blerjes për artikull — SUM(line_total) / SUM(quantity) nga faturat goods.
+ * Kthen null nëse nuk ka blerje me sasi > 0.
+ */
+function getAveragePurchaseCost(menuItemId) {
+  const id = Number(menuItemId);
+  if (!id) return null;
+  const row = sqlite.prepare(`
+    SELECT
+      COALESCE(SUM(pii.line_total), 0) AS total_amount,
+      COALESCE(SUM(pii.quantity), 0) AS total_qty
+    FROM purchase_invoice_items pii
+    INNER JOIN purchase_invoices pi ON pi.id = pii.invoice_id
+    WHERE pii.menu_item_id = ?
+      AND COALESCE(pi.purchase_kind, 'goods') = 'goods'
+  `).get(id);
+  const qty = Number(row?.total_qty) || 0;
+  const amt = Number(row?.total_amount) || 0;
+  if (qty <= 0) return null;
+  return Math.round((amt / qty) * 10000) / 10000;
+}
+
+/** Kostoja për COGS: mesatar blerje, fallback çmimi i menusë (retail). */
+function getMenuItemCostForCogs(menuItemId) {
+  const avg = getAveragePurchaseCost(menuItemId);
+  if (avg != null && avg > 0) return avg;
+  const row = sqlite.prepare(`
+    SELECT COALESCE(price, 0) AS price FROM menu_items WHERE id = ?
+  `).get(Number(menuItemId));
+  return Number(row?.price) || 0;
+}
+
+/** COGS = sasia e shitur × çmimi mesatar i blerjes (fallback menu price). */
+function computeCogsForPeriod({ from, to } = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const fromDate = from || today;
+  const toDate = to || today;
+  const menu = getMenuItems(false);
+  const byId = new Map(menu.map((m) => [Number(m.id), m]));
+  const sales = aggregateSalesQtyFromDailyLog({ from: fromDate, to: toDate });
+  const lines = [];
+  let total = 0;
+  for (const [menuItemId, qty] of sales) {
+    const sold = Number(qty) || 0;
+    if (sold <= 0) continue;
+    const unitCost = getMenuItemCostForCogs(menuItemId);
+    const cost = sold * unitCost;
+    total += cost;
+    const meta = byId.get(Number(menuItemId));
+    lines.push({
+      menu_item_id: Number(menuItemId),
+      name: meta?.name || "",
+      quantity_sold: roundReportMoney(sold),
+      unit_cost: roundReportMoney(unitCost),
+      cost: roundReportMoney(cost),
+      cost_source: getAveragePurchaseCost(menuItemId) != null ? "purchase_avg" : "menu_price",
+    });
+  }
+  lines.sort((a, b) => b.cost - a.cost || String(a.name).localeCompare(String(b.name), "sq"));
+  return {
+    from: fromDate,
+    to: toDate,
+    total: roundReportMoney(total),
+    lines,
+  };
+}
+
+/** Vlera e stokut aktual — sasi × kosto mesatare blerje (jo çmimi retail). */
+function getMenuStockValueAtCost() {
+  const menu = getMenuItems(false);
+  let total = 0;
+  for (const m of menu) {
+    const qty = Number(m.stock_qty) || 0;
+    if (qty <= 0) continue;
+    total += qty * getMenuItemCostForCogs(m.id);
+  }
+  return roundReportMoney(total);
+}
+
+/**
+ * Reconciliacion stoku: stoku fillestar + blerjet (goods) − shitjet (daily_log) vs stock_qty.
+ * Devijimet (p.sh. shtesa manuale / stock/add) shfaqen si difference ≠ 0.
+ */
+function reconcileStock() {
+  const menu = getMenuItems(false);
+  const purchases = aggregateGoodsPurchaseQtyByMenuItem();
+  const sales = aggregateSalesQtyFromDailyLog();
+  const items = [];
+  let mismatchCount = 0;
+
+  for (const m of menu) {
+    const id = Number(m.id);
+    const opening = getMenuItemOpeningStock(id);
+    const purchased = purchases.get(id) || 0;
+    const sold = sales.get(id) || 0;
+    const expected = opening + purchased - sold;
+    const actual = Number(m.stock_qty) || 0;
+    const difference = actual - expected;
+    const absDiff = Math.abs(difference);
+    const pctBase = Math.max(Math.abs(expected), Math.abs(actual), 1);
+    const pctDifference = Math.round((absDiff / pctBase) * 10000) / 100;
+    const hasDeviation = absDiff > 0.0001;
+    if (hasDeviation) mismatchCount += 1;
+    items.push({
+      menu_item_id: id,
+      name: m.name,
+      category: m.category || "",
+      opening_stock: roundReportMoney(opening),
+      purchased: roundReportMoney(purchased),
+      sold: roundReportMoney(sold),
+      expected_stock: roundReportMoney(expected),
+      actual_stock: roundReportMoney(actual),
+      difference: roundReportMoney(difference),
+      pct_difference: pctDifference,
+      has_deviation: hasDeviation,
+    });
+  }
+
+  items.sort(
+    (a, b) => Math.abs(b.difference) - Math.abs(a.difference)
+      || String(a.name).localeCompare(String(b.name), "sq"),
+  );
+
+  return {
+    checked_at: new Date().toISOString(),
+    formula: "stoku fillestar + blerjet (goods) − shitjet (daily_log)",
+    item_count: items.length,
+    mismatch_count: mismatchCount,
+    items,
+    deviations: items.filter((i) => i.has_deviation),
+  };
+}
+
+/** Artikuj me devijim > 5 njësi ose > 5% (nga reconcileStock). */
+function getStockAlerts() {
+  const rep = reconcileStock();
+  const alerts = rep.items.filter((i) => {
+    if (!i.has_deviation) return false;
+    const absDiff = Math.abs(Number(i.difference) || 0);
+    const pct = Number(i.pct_difference) || 0;
+    return absDiff > 5 || pct > 5;
+  });
+  return {
+    checked_at: rep.checked_at,
+    formula: rep.formula,
+    item_count: rep.item_count,
+    mismatch_count: rep.mismatch_count,
+    alert_count: alerts.length,
+    alerts,
+    items: rep.items,
+    deviations: rep.deviations,
+  };
 }
 
 /**
@@ -6847,6 +7217,9 @@ function overlaySefFiscalOnLedgerRow(row, entry, maps) {
   if (!fr && entry?.receipt_number && maps.byReceipt.has(String(entry.receipt_number))) {
     fr = maps.byReceipt.get(String(entry.receipt_number));
   }
+  if (!fr && entry?.order_id != null && maps.bySaleId.has(Number(entry.order_id))) {
+    fr = maps.bySaleId.get(Number(entry.order_id));
+  }
   // sale_id përmes receipts.order_id
   if (!fr && row.receipt_number) {
     try {
@@ -7130,7 +7503,9 @@ function getSalesLedger({ from, to } = {}) {
 function getVatReport({ month } = {}) {
   const m = /^\d{4}-\d{2}$/.test(String(month)) ? String(month) : new Date().toISOString().slice(0, 7);
   const fromDate = `${m}-01`;
-  const toDate = `${m}-31`;
+  const [y, mo] = m.split("-").map(Number);
+  const lastDay = new Date(y, mo, 0).getDate();
+  const toDate = `${m}-${String(lastDay).padStart(2, "0")}`;
   const byRate = new Map([
     ["0", { rate: "0", gross: 0, net: 0, vat: 0 }],
     ["8", { rate: "8", gross: 0, net: 0, vat: 0 }],
@@ -7268,24 +7643,36 @@ function exportPurchasesLedgerCsv({ from, to } = {}) {
 }
 
 /**
- * Bilanci i kontabilistit: SHITJET − BLERJET − SHPENZIMET = FITIMI.
- * Lexon të dhënat ekzistuese — nuk ndryshon getSalesLedger / listExpenses / listPurchases.
+ * Bilanci i kontabilistit (fitim neto):
+ * (Shitje pa TVSH) − (Blerje pa TVSH) − Shpenzime = Fitimi neto.
+ * Lexon getSalesLedger / listPurchaseInvoicesForAtk / listExpenses — pa ndryshuar burimet.
  */
 function getKontabilistiBilanc({ from, to } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const fromDate = from || today;
   const toDate = to || today;
   const salesRows = getSalesLedger({ from: fromDate, to: toDate });
-  const purchaseInvoices = listPurchases({ from: fromDate, to: toDate });
+  const purchaseInvoices = listPurchaseInvoicesForAtk({ from: fromDate, to: toDate });
   const expenseRows = listExpenses({ from: fromDate, to: toDate });
-  const sales_total = salesRows.reduce((s, r) => s + (Number(r.total) || 0), 0);
-  const purchases_total = purchaseInvoices.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const sales_total = salesRows.reduce(
+    (s, r) => s + atk.saleLedgerNetTotal(r),
+    0,
+  );
+  const purchases_total = purchaseInvoices.reduce(
+    (s, inv) => s + atk.purchaseInvoiceNetTotal(inv),
+    0,
+  );
   const expenses_total = expenseRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const cogsData = computeCogsForPeriod({ from: fromDate, to: toDate });
+  const cogs_total = cogsData.total;
+  const gross_profit = roundReportMoney(sales_total - cogs_total);
   const profit = sales_total - purchases_total - expenses_total;
   return {
     from: fromDate,
     to: toDate,
     sales_total: Number(sales_total.toFixed(2)),
+    cogs_total,
+    gross_profit,
     purchases_total: Number(purchases_total.toFixed(2)),
     expenses_total: Number(expenses_total.toFixed(2)),
     profit: Number(profit.toFixed(2)),
@@ -7298,7 +7685,7 @@ function getKontabilistiBilanc({ from, to } = {}) {
 function exportKontabilistiBilancCsv({ from, to } = {}) {
   const b = getKontabilistiBilanc({ from, to });
   const lines = [
-    "Periudha,Shitjet,Blerjet,Shpenzimet,Fitimi",
+    "Periudha,Shitjet (pa TVSH),Blerjet (pa TVSH),Shpenzimet,Fitimi neto",
     [
       `${b.from} — ${b.to}`,
       b.sales_total.toFixed(2),
@@ -7307,7 +7694,7 @@ function exportKontabilistiBilancCsv({ from, to } = {}) {
       b.profit.toFixed(2),
     ].map(csvEsc).join(","),
     "",
-    "Formula,SHITJET - BLERJET - SHPENZIMET = FITIMI",
+    "Formula,(Shitje pa TVSH) - (Blerje pa TVSH) - Shpenzime = Fitimi neto",
   ];
   return lines.join("\n");
 }
@@ -7543,15 +7930,7 @@ function getAtkQuarterlyForm({ from, to, prior_year_tax } = {}) {
 }
 
 function getMenuStockValue() {
-  try {
-    const row = sqlite.prepare(`
-      SELECT COALESCE(SUM(COALESCE(stock_qty,0) * COALESCE(price,0)), 0) AS v
-      FROM menu_items WHERE active = 1
-    `).get();
-    return Number(row?.v) || 0;
-  } catch {
-    return 0;
-  }
+  return getMenuStockValueAtCost();
 }
 
 /** Stoku i fillimit të vitit = stoku i mbyllur i vitit të kaluar (cilësim). */
@@ -7561,7 +7940,7 @@ function getAtkOpeningStock(year) {
     year: y,
     prior_year: y - 1,
     stock_start: Number(getSetting(`atk_stock_end_${y - 1}`, "0")) || 0,
-    stock_end_current: getMenuStockValue(),
+    stock_end_current: getMenuStockValueAtCost(),
   };
 }
 
@@ -7583,7 +7962,7 @@ function getAtkAnnualStatements({ year } = {}) {
     WHERE year_month >= ? AND year_month <= ?
   `).get(`${y}-01`, `${y}-12`);
   const fiscal = getFiscalSettings();
-  const stockEnd = getMenuStockValue();
+  const stockEnd = getMenuStockValueAtCost();
   // Stoku i fillimit = stoku i fundit i vitit të kaluar (ruajtur), ose 0
   const stockStart = Number(getSetting(`atk_stock_end_${y - 1}`, "0")) || 0;
   try {
@@ -7599,8 +7978,8 @@ function getAtkAnnualStatements({ year } = {}) {
     WHERE year_month >= ? AND year_month <= ?
   `).get(`${y - 1}-01`, `${y - 1}-12`);
   const prevStockEnd = Number(getSetting(`atk_stock_end_${y - 1}`, "0")) || stockStart;
-  const prevStockStart = Number(getSetting(`atk_stock_end_${y - 2}`, "0")) || 0;
-  const prevCogs = atk.money(prevStockStart + prevBilanc.purchases_total - prevStockEnd);
+  const cogsCurrent = computeCogsForPeriod({ from, to }).total;
+  const prevCogs = computeCogsForPeriod({ from: prevFrom, to: prevTo }).total;
   const prevWages = Number(prevPayroll?.w) || 0;
   const prevGross = atk.money(prevBilanc.sales_total - prevCogs);
   const prevOp = atk.money(prevGross - prevBilanc.expenses_total - prevWages);
@@ -7617,6 +7996,7 @@ function getAtkAnnualStatements({ year } = {}) {
     stockStart,
     stockEnd,
     wages: Number(payroll?.w) || 0,
+    cogs: cogsCurrent,
     priorYear: {
       sales: prevBilanc.sales_total,
       cogs: prevCogs,
@@ -7764,6 +8144,7 @@ function addDailyLogEntry({
   promotion_id = null,
   promotion_name = "",
   cloud_sale_id = null,
+  order_id = null,
   date = null,
   time = null,
 }) {
@@ -7787,9 +8168,9 @@ function addDailyLogEntry({
     INSERT INTO daily_log (
       date, time, table_number, waiter_name, items_json, total, receipt_number, status,
       payment_method, staff_id, shift_id, subtotal, discount_total, promotion_id, promotion_name,
-      cloud_sale_id
+      cloud_sale_id, order_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ts.d,
     ts.t,
@@ -7807,7 +8188,91 @@ function addDailyLogEntry({
     promotion_id != null ? Number(promotion_id) : null,
     String(promotion_name || ""),
     cloud_sale_id ? String(cloud_sale_id).trim() : null,
+    order_id != null ? Number(order_id) : null,
   );
+}
+
+/**
+ * Pas fiskalizimit SEF — lidh daily_log me kuponin fiskal (NUIKF ose FIS-id).
+ * Thirret nga processFiscalReceipt() pas INSERT në fiscal_receipts.
+ */
+function backfillDailyLogReceiptForOrder(orderId, { nuikf, fiscal_receipt_id } = {}) {
+  const oid = Number(orderId);
+  if (!oid) return { updated: 0, receipt_number: "" };
+  const label = String(nuikf || "").trim()
+    || (fiscal_receipt_id != null ? `FIS-${Number(fiscal_receipt_id)}` : "");
+  if (!label) return { updated: 0, receipt_number: "" };
+
+  let changes = 0;
+  try {
+    const r = sqlite.prepare(`
+      UPDATE daily_log
+      SET receipt_number = ?
+      WHERE id = (
+        SELECT id FROM daily_log
+        WHERE order_id = ?
+          AND status = 'completed'
+          AND (receipt_number IS NULL OR TRIM(receipt_number) = '')
+        ORDER BY datetime(date || ' ' || time) DESC, id DESC
+        LIMIT 1
+      )
+    `).run(label, oid);
+    changes = Number(r.changes) || 0;
+  } catch (err) {
+    console.warn("[daily_log] backfill order_id:", err.message);
+  }
+
+  if (changes === 0) {
+    const order = sqlite.prepare(`
+      SELECT o.cloud_order_id, o.total, o.waiter_name, t.number AS table_number
+      FROM orders o
+      LEFT JOIN tables t ON t.id = o.table_id
+      WHERE o.id = ?
+    `).get(oid);
+    const cloudId = String(order?.cloud_order_id || "").trim();
+    if (cloudId) {
+      const r = sqlite.prepare(`
+        UPDATE daily_log
+        SET receipt_number = ?
+        WHERE id = (
+          SELECT id FROM daily_log
+          WHERE cloud_sale_id = ?
+            AND status = 'completed'
+            AND (receipt_number IS NULL OR TRIM(receipt_number) = '')
+          ORDER BY datetime(date || ' ' || time) DESC, id DESC
+          LIMIT 1
+        )
+      `).run(label, cloudId);
+      changes = Number(r.changes) || 0;
+    }
+    if (changes === 0 && order?.table_number != null) {
+      const r = sqlite.prepare(`
+        UPDATE daily_log
+        SET receipt_number = ?
+        WHERE id = (
+          SELECT id FROM daily_log
+          WHERE table_number = ?
+            AND waiter_name = ?
+            AND ABS(total - ?) < 0.005
+            AND status = 'completed'
+            AND (receipt_number IS NULL OR TRIM(receipt_number) = '')
+          ORDER BY datetime(date || ' ' || time) DESC, id DESC
+          LIMIT 1
+        )
+      `).run(
+        label,
+        order.table_number,
+        order.waiter_name,
+        Number(order.total) || 0,
+      );
+      changes = Number(r.changes) || 0;
+    }
+  }
+
+  if (changes > 0) {
+    console.log("[daily_log] backfill receipt_number=", label, "orderId=", oid);
+  }
+  return { updated: changes, receipt_number: label };
 }
 
 const CLOUD_WAITER_CLOSED_SINCE_KEY = "cloud_waiter_closed_last_closed_at";
@@ -8232,6 +8697,7 @@ function getDitari(opts = {}) {
 
   const parsed = entries.map(e => ({
     ...e,
+    entry_type: "restaurant",
     items: JSON.parse(e.items_json || "[]"),
     artikujt: JSON.parse(e.items_json || "[]")
       .map(i => `${i.quantity}× ${i.name}`)
@@ -8239,15 +8705,38 @@ function getDitari(opts = {}) {
     payment_label: paymentMethodLabel(e.payment_method),
   }));
 
-  const completed = parsed.filter(e => e.status !== "cancelled");
-  const totalSales = completed.reduce((s, e) => s + e.total, 0);
-  const totalCash = completed
+  const completedRestaurant = parsed.filter(e => e.status !== "cancelled");
+  const restaurantSales = completedRestaurant.reduce((s, e) => s + Number(e.total || 0), 0);
+
+  const hotelRev = collectHotelReportRevenue({
+    from: range.dateFrom,
+    to: range.dateTo,
+    fromDatetime: range.fromDatetime,
+    toDatetime: range.toDatetime,
+    forDitari: true,
+  });
+  const hotelEntries = hotelRev.hotelEntries.sort((a, b) => {
+    const da = `${a.date || ""} ${a.time || ""}`;
+    const db_ = `${b.date || ""} ${b.time || ""}`;
+    return db_.localeCompare(da) || String(a.id).localeCompare(String(b.id));
+  });
+
+  const allEntries = [...parsed, ...hotelEntries].sort((a, b) => {
+    const da = `${a.date || ""} ${a.time || ""}`;
+    const db_ = `${b.date || ""} ${b.time || ""}`;
+    return db_.localeCompare(da) || String(a.id).localeCompare(String(b.id));
+  });
+
+  const totalSales = roundReportMoney(
+    restaurantSales + hotelRev.hotelNights + hotelRev.hotelServices,
+  );
+  const totalCash = completedRestaurant
     .filter(e => normalizePaymentMethod(e.payment_method) === "cash")
     .reduce((s, e) => s + e.total, 0);
-  const totalKarte = completed
+  const totalKarte = completedRestaurant
     .filter(e => normalizePaymentMethod(e.payment_method) === "karte")
     .reduce((s, e) => s + e.total, 0);
-  const tablesServed = new Set(completed.map(e => e.table_number)).size;
+  const tablesServed = new Set(completedRestaurant.map(e => e.table_number)).size;
   const activity = getActivityLog(range.fromDatetime, range.toDatetime);
 
   return {
@@ -8261,11 +8750,21 @@ function getDitari(opts = {}) {
     toDatetime: range.toDatetime,
     today: new Date().toLocaleDateString("sq-AL"),
     totalSales,
+    restaurantSales: roundReportMoney(restaurantSales),
+    hotelNights: hotelRev.hotelNights,
+    hotelServices: hotelRev.hotelServices,
+    by_source: {
+      restaurant: roundReportMoney(restaurantSales),
+      nights: hotelRev.hotelNights,
+      services: hotelRev.hotelServices,
+      total: totalSales,
+    },
     totalCash,
     totalKarte,
-    orderCount: completed.length,
+    orderCount: completedRestaurant.length,
+    hotelTransactionCount: hotelEntries.length,
     tablesServed,
-    entries: parsed,
+    entries: allEntries,
     activity,
   };
 }
@@ -8483,14 +8982,21 @@ function exportDitariText(opts = {}) {
   txt += `Nga: ${d.dateFrom} ${d.timeFrom}\n`;
   txt += `Deri: ${d.dateTo} ${d.timeTo}\n`;
   txt += `${"=".repeat(50)}\n`;
-  txt += `Shitjet totale: ${d.totalSales.toFixed(2)} €\n`;
-  txt += `  Cash: ${d.totalCash.toFixed(2)} €\n`;
-  txt += `  Kartë: ${d.totalKarte.toFixed(2)} €\n`;
-  txt += `Porosi: ${d.orderCount}\n`;
+  const src = d.by_source || {};
+  txt += `Restorant: ${(src.restaurant ?? d.restaurantSales ?? 0).toFixed(2)} €\n`;
+  txt += `Netë hotel: ${(src.nights ?? d.hotelNights ?? 0).toFixed(2)} €\n`;
+  txt += `Shërbime / RS: ${(src.services ?? d.hotelServices ?? 0).toFixed(2)} €\n`;
+  txt += `Totali: ${d.totalSales.toFixed(2)} €\n`;
+  txt += `  Cash (restorant): ${d.totalCash.toFixed(2)} €\n`;
+  txt += `  Kartë (restorant): ${d.totalKarte.toFixed(2)} €\n`;
+  txt += `Porosi restorant: ${d.orderCount}\n`;
   txt += `Tavolina te sherbyera: ${d.tablesServed}\n\n`;
   for (const e of d.entries) {
     const prefix = e.status === "cancelled" ? "[ANULLUAR] " : "";
-    txt += `${prefix}${e.date} ${e.time} | T${e.table_number} | ${e.waiter_name} | ${e.payment_label} | ${e.artikujt} | ${e.total.toFixed(2)} € | ${e.status === "cancelled" ? "Anulluar" : e.status}\n`;
+    const loc = e.entry_type && e.entry_type !== "restaurant"
+      ? `Dh.${e.table_number}`
+      : `T${e.table_number}`;
+    txt += `${prefix}${e.date} ${e.time} | ${loc} | ${e.waiter_name} | ${e.payment_label} | ${e.artikujt} | ${e.total.toFixed(2)} € | ${e.status === "cancelled" ? "Anulluar" : e.status}\n`;
   }
   txt += `\nTOTALI: ${d.totalSales.toFixed(2)} €\n`;
   txt += `\nGjeneruar: ${new Date().toLocaleString("sq-AL")}\n`;
@@ -8654,6 +9160,7 @@ function getVersionInfo() {
     findOnlinePickupTableBySlotIndex,
     enrichCloudOrderForWaiter,
     importClosedWebWaiterSaleFromCloud,
+    backfillDailyLogReceiptForOrder,
     rebuildDailyLogFromCloudSales,
     countDailyLogEntries,
     getCloudWaiterClosedSyncSince,
@@ -8741,6 +9248,13 @@ function getVersionInfo() {
     deletePurchaseInvoice,
     increaseMenuItemStock,
     decrementMenuItemStock,
+    reconcileStock,
+    getStockAlerts,
+    getMenuItemOpeningStock,
+    getAveragePurchaseCost,
+    getMenuItemCostForCogs,
+    computeCogsForPeriod,
+    getMenuStockValueAtCost,
     addExpense,
     listExpenses,
     deleteExpense,

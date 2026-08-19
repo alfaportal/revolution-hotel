@@ -150,13 +150,13 @@ function buildBilancHtml(bilanc, bizName) {
 <h1>Bilanci i kontabilistit</h1>
 <div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(period)}</div>
 <div class="bilanc-grid">
-  <div class="bilanc-box"><div class="lbl">Shitjet</div><div class="val">${formatEuro(b.sales_total)}</div></div>
-  <div class="bilanc-box"><div class="lbl">Blerjet</div><div class="val">${formatEuro(b.purchases_total)}</div></div>
+  <div class="bilanc-box"><div class="lbl">Shitjet (pa TVSH)</div><div class="val">${formatEuro(b.sales_total)}</div></div>
+  <div class="bilanc-box"><div class="lbl">Blerjet (pa TVSH)</div><div class="val">${formatEuro(b.purchases_total)}</div></div>
   <div class="bilanc-box"><div class="lbl">Shpenzimet</div><div class="val">${formatEuro(b.expenses_total)}</div></div>
   <div class="bilanc-box ${Number(b.profit) < 0 ? "bilanc-loss" : "bilanc-profit"}">
-    <div class="lbl">Fitimi</div>
+    <div class="lbl">Fitimi neto</div>
     <div class="val">${formatEuro(b.profit)}</div>
-    <div class="formula">SHITJET − BLERJET − SHPENZIMET = FITIMI</div>
+    <div class="formula">(Shitje pa TVSH) − (Blerje pa TVSH) − Shpenzime = Fitimi neto</div>
   </div>
 </div>
 </body></html>`;

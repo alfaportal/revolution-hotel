@@ -32,6 +32,10 @@ function buildDitariReportHtml(ditari, fiscal, restaurantName) {
 
   const entryBlocks = (ditari.entries || []).map(e => {
     const cancelled = e.status === "cancelled";
+    const isHotel = e.entry_type && e.entry_type !== "restaurant";
+    const locLabel = isHotel
+      ? `${escHtml(t("Dhoma:"))} ${escHtml(e.table_number || "—")}`
+      : `${escHtml(t("Tavolina:"))} T${e.table_number}`;
     const items = (e.items || []).map(it =>
       `<div class="receipt-item"><span>${it.quantity}× ${escHtml(it.name)}</span><span>${formatEuro(it.price * it.quantity)}</span></div>`
     ).join("");
@@ -42,7 +46,7 @@ function buildDitariReportHtml(ditari, fiscal, restaurantName) {
       <div class="receipt-rule">--------------------------------</div>
       ${statusLine}
       <div class="receipt-meta">${escHtml(t("Nr. Porosia:"))} ${escHtml(e.receipt_number || "—")}</div>
-      <div class="receipt-meta">${escHtml(t("Tavolina:"))} T${e.table_number}</div>
+      <div class="receipt-meta">${locLabel}</div>
       <div class="receipt-meta">${escHtml(t("Kamarieri:"))} ${escHtml(e.waiter_name)}</div>
       <div class="receipt-meta">${escHtml(t("Arka:"))} ${escHtml(f.biz_register_number || "—")}</div>
       <div class="receipt-meta">${escHtml(t("Operatori:"))} ${escHtml(f.biz_cashier_operator || "—")}</div>
@@ -69,9 +73,12 @@ function buildDitariReportHtml(ditari, fiscal, restaurantName) {
       <div class="receipt-meta">${escHtml(t("Nga:"))} ${escHtml(ditari.dateFrom)} ${escHtml(ditari.timeFrom || "00:00:00")}</div>
       <div class="receipt-meta">${escHtml(t("Deri:"))} ${escHtml(ditari.dateTo)} ${escHtml(ditari.timeTo || "23:59:59")}</div>
       <div class="receipt-rule">--------------------------------</div>
+      <div class="receipt-item"><span>${escHtml(t("Restorant"))}</span><span>${formatEuro((ditari.by_source || {}).restaurant ?? ditari.restaurantSales ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Netë hotel"))}</span><span>${formatEuro((ditari.by_source || {}).nights ?? ditari.hotelNights ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Shërbime / RS"))}</span><span>${formatEuro((ditari.by_source || {}).services ?? ditari.hotelServices ?? 0)}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Shitjet totale"))}</span><span>${formatEuro(ditari.totalSales)}</span></div>
-      <div class="receipt-item"><span>${escHtml(t("Cash"))}</span><span>${formatEuro(ditari.totalCash)}</span></div>
-      <div class="receipt-item"><span>${escHtml(t("Kartë"))}</span><span>${formatEuro(ditari.totalKarte)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Cash"))} (${escHtml(t("restorant"))})</span><span>${formatEuro(ditari.totalCash)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Kartë"))} (${escHtml(t("restorant"))})</span><span>${formatEuro(ditari.totalKarte)}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Porosi"))}</span><span>${ditari.orderCount}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Tavolina"))}</span><span>${ditari.tablesServed}</span></div>
       <div class="receipt-rule">================================</div>

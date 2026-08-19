@@ -1833,11 +1833,15 @@
           <h2 class="purchases-panel-title">Stoku</h2>
           <p class="purchases-panel-sub">Shitja zbret stokun · blerja e rrit · stoku 0 → alarm. Blerjet / fatura: te skeda Blerjet.</p>
         </div>
+        <div class="tables-panel-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-stoku-reconcile">Verifiko stokun</button>
+        </div>
       </div>
       <div class="card settings-card">
         <div id="stoku-kontabilist-warning" class="fiscal-save-msg" role="status" style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-warning,#b45309);background:rgba(180,83,9,0.08);color:var(--ngjyr-text,#e8e8ef)">
           ⚠️ Shtesa manuale e stokut NUK regjistrohet në kontabilist — përdorni Blerjet për regjistrim zyrtar.
         </div>
+        <div id="stoku-reconcile-panel" class="fiscal-save-msg" hidden style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-primary,#6366f1);background:rgba(99,102,241,0.08)"></div>
         <div id="stoku-summary" class="fiscal-save-msg" style="margin-bottom:0.65rem"></div>
         <div id="stoku-cat-filter" class="product-cat-filter stoku-cat-filter" role="tablist" aria-label="Filtro stokun sipas kategorisë"></div>
         <div id="stoku-grid" class="product-grid"></div>
@@ -2175,17 +2179,30 @@
 
       <div class="dashboard-kpi-row reports-kpi-row">
         <div class="dashboard-kpi">
-          <div class="dashboard-kpi-label">TË ARDHURAT</div>
+          <div class="dashboard-kpi-label">TOTALI</div>
           <div class="dashboard-kpi-val" id="raport-revenue">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">RESTORANT</div>
+          <div class="dashboard-kpi-val" id="raport-restaurant">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">NETË HOTEL</div>
+          <div class="dashboard-kpi-val" id="raport-hotel-nights">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">SHËRBIME / RS</div>
+          <div class="dashboard-kpi-val" id="raport-hotel-services">0.00 €</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">POROSI</div>
           <div class="dashboard-kpi-val" id="raport-orders">0</div>
+          <div class="dashboard-kpi-sub">Vetëm restorant</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">MESATARJA</div>
           <div class="dashboard-kpi-val" id="raport-average">0.00 €</div>
-          <div class="dashboard-kpi-sub">Për transaksion</div>
+          <div class="dashboard-kpi-sub">Për porosi restorant</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">ZBRITJE (PROMO)</div>
@@ -2531,7 +2548,7 @@
       </div>
 
       <div class="kont-hub-grid" id="kont-hub" role="navigation" aria-label="Seksionet e kontabilistit">
-        <button type="button" class="kont-hub-btn" data-kont-sec="bilanc"><span class="kont-hub-ico">Σ</span><strong>Bilanci</strong><span>Shitje − blerje − shpenzime</span></button>
+        <button type="button" class="kont-hub-btn" data-kont-sec="bilanc"><span class="kont-hub-ico">Σ</span><strong>Bilanci</strong><span>Shitje pa TVSH − blerje pa TVSH − shpenzime</span></button>
         <button type="button" class="kont-hub-btn" data-kont-sec="shitje-tvsh"><span class="kont-hub-ico">S</span><strong>Libri i Shitjes TVSH</strong><span>Sipas deklaratës ATK</span></button>
         <button type="button" class="kont-hub-btn" data-kont-sec="blerje-tvsh"><span class="kont-hub-ico">B</span><strong>Libri i Blerjes TVSH</strong><span>Fatura + shpenzime</span></button>
         <button type="button" class="kont-hub-btn" data-kont-sec="kuartale"><span class="kont-hub-ico">K</span><strong>Libra kuartale</strong><span>Shitje &amp; blerje pa TVSH</span></button>
@@ -2556,10 +2573,10 @@
           </div>
           <p class="kont-sec-note">SHITJET − BLERJET − SHPENZIMET = FITIMI</p>
           <div class="dashboard-kpi-row" id="kont-bilanc-kpi">
-            <div class="dashboard-kpi"><div class="dashboard-kpi-label">SHITJET</div><div class="dashboard-kpi-val" id="kont-bilanc-shitje">0.00 €</div></div>
-            <div class="dashboard-kpi"><div class="dashboard-kpi-label">BLERJET</div><div class="dashboard-kpi-val" id="kont-bilanc-blerje">0.00 €</div></div>
+            <div class="dashboard-kpi"><div class="dashboard-kpi-label">SHITJET (PA TVSH)</div><div class="dashboard-kpi-val" id="kont-bilanc-shitje">0.00 €</div></div>
+            <div class="dashboard-kpi"><div class="dashboard-kpi-label">BLERJET (PA TVSH)</div><div class="dashboard-kpi-val" id="kont-bilanc-blerje">0.00 €</div></div>
             <div class="dashboard-kpi"><div class="dashboard-kpi-label">SHPENZIMET</div><div class="dashboard-kpi-val" id="kont-bilanc-shpenzim">0.00 €</div></div>
-            <div class="dashboard-kpi"><div class="dashboard-kpi-label">FITIMI</div><div class="dashboard-kpi-val" id="kont-bilanc-fitim">0.00 €</div></div>
+            <div class="dashboard-kpi"><div class="dashboard-kpi-label">FITIMI NETO</div><div class="dashboard-kpi-val" id="kont-bilanc-fitim">0.00 €</div></div>
           </div>
           <input type="hidden" id="kont-bilanc-nga"><input type="hidden" id="kont-bilanc-deri">
         </div>
@@ -4638,12 +4655,16 @@
     function renderDitariStats(elId, d) {
       const el = document.getElementById(elId);
       if (!el) return;
+      const src = d.by_source || {};
       el.innerHTML = `
         <div class="stat-card"><div class="val">${d.today}</div><div class="lbl">${tt("Data e sotme")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Shitjet")} (${d.periodLabel})</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(d.totalCash)}</div><div class="lbl">${tt("Cash")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(d.totalKarte)}</div><div class="lbl">${tt("Kartë")}</div></div>
-        <div class="stat-card"><div class="val">${d.orderCount}</div><div class="lbl">${tt("Porosi të përfunduara")}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Totali")} (${d.periodLabel})</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(src.restaurant ?? d.restaurantSales ?? 0)}</div><div class="lbl">${tt("Restorant")}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(src.nights ?? d.hotelNights ?? 0)}</div><div class="lbl">${tt("Netë hotel")}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(src.services ?? d.hotelServices ?? 0)}</div><div class="lbl">${tt("Shërbime / RS")}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(d.totalCash)}</div><div class="lbl">${tt("Cash")} (${tt("restorant")})</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(d.totalKarte)}</div><div class="lbl">${tt("Kartë")} (${tt("restorant")})</div></div>
+        <div class="stat-card"><div class="val">${d.orderCount}</div><div class="lbl">${tt("Porosi restorant")}</div></div>
         <div class="stat-card"><div class="val">${d.tablesServed}</div><div class="lbl">${tt("Tavolina të shërbyera")}</div></div>`;
     }
 
@@ -4763,13 +4784,15 @@
             const statusLabel = cancelled
               ? tt("Anulluar")
               : (e.status === "completed" ? tt("completed") : (e.status || "—"));
+            const isHotel = e.entry_type && e.entry_type !== "restaurant";
+            const locCell = isHotel ? `Dh.${escHtml(e.table_number || "—")}` : `T${e.table_number}`;
             return `<tr${rowClass}>
             <td>${e.date || "—"}</td>
             <td>${e.time}</td>
-            <td>T${e.table_number}</td>
-            <td>${e.waiter_name}</td>
-            <td>${e.payment_label || "Cash"}</td>
-            <td style="max-width:220px;font-size:0.85rem">${e.artikujt || "—"}</td>
+            <td>${locCell}</td>
+            <td>${escHtml(e.waiter_name || "—")}</td>
+            <td>${escHtml(e.payment_label || "Cash")}</td>
+            <td style="max-width:220px;font-size:0.85rem">${escHtml(e.artikujt || "—")}</td>
             <td>${formatEuro(e.total)}</td>
             <td>${statusLabel}</td>
           </tr>`;
@@ -5702,6 +5725,71 @@
     /** Paralajmërim: /api/stock/add nuk krijon faturë blerjeje — kontabilisti nuk e sheh. */
     const SHTES_MANUALE_STOKU_KONTABILIST_MSG =
       "⚠️ Shtesa manuale e stokut NUK regjistrohet në kontabilist — përdorni Blerjet për regjistrim zyrtar.";
+
+    async function verifikoStokun() {
+      const panel = document.getElementById("stoku-reconcile-panel");
+      const btn = document.getElementById("btn-stoku-reconcile");
+      if (!panel) return;
+      if (btn) btn.disabled = true;
+      panel.hidden = false;
+      panel.innerHTML = "Duke verifikuar stokun…";
+      try {
+        const data = await api("/api/admin/stock/reconcile");
+        const deviations = data.deviations || [];
+        const alerts = (deviations || []).filter((i) => {
+          const abs = Math.abs(Number(i.difference) || 0);
+          const pct = Number(i.pct_difference) || 0;
+          return abs > 5 || pct > 5;
+        });
+        const fmtQty = (n) => {
+          const v = Number(n) || 0;
+          return v % 1 ? v.toFixed(2) : String(Math.round(v));
+        };
+        let html = `<strong>Reconciliacion stoku</strong> — ${escHtml(data.formula || "")}<br>` +
+          `<span style="font-size:0.9rem;color:var(--ngjyr-muted)">` +
+          `${data.item_count || 0} artikuj · ${data.mismatch_count || 0} devijime` +
+          (alerts.length ? ` · <strong style="color:var(--ngjyr-warning,#b45309)">${alerts.length} alarm (&gt;5 copë ose &gt;5%)</strong>` : "") +
+          `</span>`;
+        if (!deviations.length) {
+          html += `<p style="margin:0.5rem 0 0;color:var(--ngjyr-success,#16a34a)">✓ Stoku përputhet me blerjet dhe shitjet.</p>`;
+        } else {
+          html += `<div style="overflow-x:auto;margin-top:0.65rem"><table class="dashboard-top-table" style="font-size:0.85rem">
+            <thead><tr>
+              <th>Artikulli</th><th>Fillestar</th><th>Blerje</th><th>Shitje</th>
+              <th>Llogaritur</th><th>Aktual</th><th>Devijim</th><th>%</th>
+            </tr></thead><tbody>`;
+          for (const row of deviations) {
+            const abs = Math.abs(Number(row.difference) || 0);
+            const pct = Number(row.pct_difference) || 0;
+            const isAlert = abs > 5 || pct > 5;
+            const diffCls = isAlert ? " style=\"color:var(--ngjyr-danger);font-weight:700\"" : "";
+            html += `<tr>
+              <td>${escHtml(row.name || "—")}</td>
+              <td>${fmtQty(row.opening_stock)}</td>
+              <td>${fmtQty(row.purchased)}</td>
+              <td>${fmtQty(row.sold)}</td>
+              <td>${fmtQty(row.expected_stock)}</td>
+              <td>${fmtQty(row.actual_stock)}</td>
+              <td${diffCls}>${row.difference > 0 ? "+" : ""}${fmtQty(row.difference)}</td>
+              <td${diffCls}>${pct.toFixed(1)}%</td>
+            </tr>`;
+          }
+          html += `</tbody></table></div>`;
+          html += `<p style="margin:0.5rem 0 0;font-size:0.82rem;color:var(--ngjyr-muted)">` +
+            `Devijimet shpesh vijnë nga shtesa manuale (+ Shto stok) ose stoku fillestar i panjohur. ` +
+            `Përdorni Blerjet për regjistrim zyrtar.</p>`;
+        }
+        panel.innerHTML = html;
+      } catch (err) {
+        panel.innerHTML = `<span style="color:var(--ngjyr-danger)">${escHtml(err.message || "Gabim reconciliacioni")}</span>`;
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    document.getElementById("btn-stoku-reconcile")?.addEventListener("click", () => {
+      verifikoStokun().catch((err) => alert(err.message || "Gabim reconciliacioni"));
+    });
 
     function renderStokuGrid() {
       const grid = document.getElementById("stoku-grid");
@@ -10701,7 +10789,14 @@
       const nga = document.getElementById("raport-nga").value;
       const deri = document.getElementById("raport-deri").value;
       const r = await api(`/api/reports?from=${nga}&to=${deri}`);
+      const src = r.by_source || {};
       document.getElementById("raport-revenue").textContent = formatEuro(r.totalSales);
+      const restEl = document.getElementById("raport-restaurant");
+      const nightsEl = document.getElementById("raport-hotel-nights");
+      const svcEl = document.getElementById("raport-hotel-services");
+      if (restEl) restEl.textContent = formatEuro(src.restaurant ?? r.restaurantSales ?? 0);
+      if (nightsEl) nightsEl.textContent = formatEuro(src.nights ?? r.hotelNights ?? 0);
+      if (svcEl) svcEl.textContent = formatEuro(src.services ?? r.hotelServices ?? 0);
       document.getElementById("raport-orders").textContent = String(r.orderCount);
       document.getElementById("raport-average").textContent = formatEuro(r.average || 0);
       document.getElementById("raport-discount").textContent = formatEuro(r.totalDiscount || 0);
