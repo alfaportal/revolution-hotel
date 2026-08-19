@@ -138,7 +138,10 @@ async function listHotelQrs(db) {
     configured_base_url: configuredBase,
     qr_mode: useCloudQr ? "cloud" : "local",
     hotel_slug: slug || "",
-    business_name: settings.restaurant_name || "Hotel",
+    business_name: (typeof db.getBusinessName === "function" ? db.getBusinessName() : "")
+      || settings.business_name
+      || settings.restaurant_name
+      || "Hotel",
     count: roomRows.length,
     shared: { menu: sharedMenu, services: sharedServices },
     rooms: roomRows,

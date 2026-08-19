@@ -119,7 +119,10 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
   }
 
   const pay = String(opts.paymentMethod || order.payment_method || "cash").trim() || "cash";
-  const requestedCoupon = String(opts.coupon_type || opts.couponType || "thermal").trim().toLowerCase();
+  const rawCoupon = opts.coupon_type ?? opts.couponType;
+  const requestedCoupon = rawCoupon
+    ? String(rawCoupon).trim().toLowerCase()
+    : null;
   const fiscalSkip = opts.fiscal_skip === true || opts.fiscalSkip === true || requestedCoupon === "thermal";
   const closed = db.closeTable(table.id, order.waiter_name || "Kamarier", false, pay, null, {
     allowAnyWaiter: true,

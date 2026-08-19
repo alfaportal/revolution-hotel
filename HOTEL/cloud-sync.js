@@ -146,6 +146,17 @@ function orderMirrorsRemoteCloud(order) {
   return !!(order?.cloud_order_id && String(order.cloud_order_id).trim());
 }
 
+function applyFiscalCloseFields(payload, opts = {}) {
+  if (opts.fiscal_skip === true || opts.fiscalSkip === true) {
+    payload.fiscal_skip = true;
+  }
+  const raw = opts.coupon_type ?? opts.couponType;
+  if (raw != null && String(raw).trim() !== "") {
+    payload.coupon_type = String(raw).trim().toLowerCase();
+  }
+  return payload;
+}
+
 function buildSalePayload(db, order, opts = {}) {
   const cfg = getConfig(db);
   if (!cfg.celesi || !order) return null;
@@ -190,6 +201,7 @@ function buildSalePayload(db, order, opts = {}) {
   };
   if (orderedAt) payload.ordered_at = orderedAt;
   if (closedAt) payload.closed_at = closedAt;
+  if (saleStatus === "closed") applyFiscalCloseFields(payload, opts);
 
   return { cfg, payload };
 }
@@ -1658,6 +1670,7 @@ async function closeCloudTableOrdersForPayment(db, tableNumber, opts = {}) {
       closed_at: now,
       ordered_at: o.ordered_at || o.created_at || now,
     };
+    applyFiscalCloseFields(payload, opts);
     try {
       const res = await requestJson(
         "POST",
@@ -1693,6 +1706,7 @@ async function closeCloudOnlineOrderById(db, opts = {}) {
     items,
   };
   if (opts.waiter_id) payload.waiter_id = opts.waiter_id;
+  applyFiscalCloseFields(payload, opts);
 
   const res = await requestJson(
     "POST",

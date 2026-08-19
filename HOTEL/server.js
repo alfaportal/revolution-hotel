@@ -399,6 +399,8 @@ async function closeCloudLinkedSale(tableId, cloudOrderIds, opts = {}) {
         waiter_name: opts.waiter_name,
         waiter_id: staff?.cloud_waiter_id || staff?.id,
         items: opts.items,
+        fiscal_skip: opts.fiscal_skip,
+        coupon_type: opts.coupon_type,
       });
       closed += 1;
     } catch (err) {
@@ -2873,6 +2875,9 @@ app.post("/api/orders/close", auth, async (req, res) => {
     ? String(req.body.coupon_type).trim().toLowerCase()
     : null;
   const fiscalSkip = req.body?.fiscal_skip === true || requestedCoupon === "thermal";
+  const cloudFiscalOpts = fiscalSkip
+    ? { fiscal_skip: true, coupon_type: requestedCoupon || "thermal" }
+    : (requestedCoupon ? { coupon_type: requestedCoupon } : {});
   if (req.session.role === "kamarier" && asAdmin) {
     return res.status(403).json({ gabim: "Vetëm admini mund ta mbyllë nga paneli i adminit" });
   }
@@ -2886,6 +2891,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
         cloudSync.pushSale(db, order, {
           table_number: tNum,
           status: "closed",
+          ...cloudFiscalOpts,
         });
         if (tNum) cloudSync.pushTableFree(db, tNum);
       } else {
@@ -2896,6 +2902,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
           payment_method: order.payment_method,
           waiter_name: name,
           closed_at: new Date().toISOString(),
+          ...cloudFiscalOpts,
         }).catch(err => console.warn("[close] cloud table:", err.message));
       }
       const cloudIds1 = db.getLinkedCloudOrderIds(order.id);
@@ -2953,9 +2960,14 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   const waiterName = req.session.emri;
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
-  const requestedCoupon = String(coupon_type || "thermal").trim().toLowerCase();
+  const requestedCoupon = coupon_type
+    ? String(coupon_type).trim().toLowerCase()
+    : null;
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
   const fiscalSkip = req.body?.fiscal_skip === true || requestedCoupon === "thermal";
+  const cloudFiscalOpts = fiscalSkip
+    ? { fiscal_skip: true, coupon_type: requestedCoupon || "thermal" }
+    : (requestedCoupon ? { coupon_type: requestedCoupon } : {});
 
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
@@ -3050,6 +3062,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
         receipt_number: receipt.receipt_number,
         waiter_name: waiterName,
         closed_at: receipt.printed_at || new Date().toISOString(),
+        ...cloudFiscalOpts,
       })
         .catch(err => console.warn("[close] cloud table:", err.message))
         .finally(() => purgeClosedCloudOrdersFromWatcher(cloudIds3));
@@ -3060,6 +3073,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
         closed_at: receipt.printed_at || new Date().toISOString(),
         status: "closed",
         payment_method: order.payment_method,
+        ...cloudFiscalOpts,
       });
       if (table?.number) cloudSync.pushTableFree(db, table.number);
     }
@@ -3089,9 +3103,14 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   if (!items?.length) return res.status(400).json({ gabim: "Zgjidhni artikuj për pagesë" });
-  const requestedCoupon = String(coupon_type || "thermal").trim().toLowerCase();
+  const requestedCoupon = coupon_type
+    ? String(coupon_type).trim().toLowerCase()
+    : null;
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
   const fiscalSkip = req.body?.fiscal_skip === true || requestedCoupon === "thermal";
+  const cloudFiscalOpts = fiscalSkip
+    ? { fiscal_skip: true, coupon_type: requestedCoupon || "thermal" }
+    : (requestedCoupon ? { coupon_type: requestedCoupon } : {});
 
   try {
     if (req.body?.pending_items?.length) {
@@ -3196,6 +3215,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
           receipt_number: receipt.receipt_number,
           waiter_name: waiterName,
           closed_at: receipt.printed_at || new Date().toISOString(),
+          ...cloudFiscalOpts,
         })
           .catch(err => console.warn("[split-close] cloud table:", err.message))
           .finally(() => purgeClosedCloudOrdersFromWatcher(cloudIds4));
@@ -3207,6 +3227,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
         closed_at: receipt.printed_at || new Date().toISOString(),
         status: "closed",
         payment_method: partialOrder.payment_method,
+        ...cloudFiscalOpts,
       });
       if (result.tableFreed && table?.number) {
         cloudSync.pushTableFree(db, table.number);
