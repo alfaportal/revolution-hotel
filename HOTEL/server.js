@@ -5639,6 +5639,71 @@ app.post("/api/printer/print", auth, adminOnly, async (req, res) => {
   }
 });
 
+app.get("/api/printers", auth, adminOnly, async (_req, res) => {
+  try {
+    const registered = db.listPrinters();
+    const windows_devices = await printer.listPrinters();
+    const legacy_fallback = registered.length === 0;
+    res.json({
+      ok: true,
+      printers: registered,
+      windows_devices,
+      legacy_fallback,
+      legacy: legacy_fallback ? printer.getPrinterConfig(db) : null,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/printers", auth, adminOnly, (req, res) => {
+  try {
+    const body = req.body || {};
+    const row = db.addPrinter(body.name, body.role, body.paper_size || "80");
+    if (body.is_default) {
+      db.updatePrinter(row.id, { is_default: true });
+    }
+    if (body.enabled === false) {
+      db.updatePrinter(row.id, { enabled: false });
+    }
+    auditReq(req, "Shto printer", `${row.role} → ${row.name}`);
+    res.status(201).json({ ok: true, printer: db.getPrinterById(row.id) });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.put("/api/printers/:id", auth, adminOnly, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const body = req.body || {};
+    const row = db.updatePrinter(id, {
+      name: body.name,
+      role: body.role,
+      paper_size: body.paper_size,
+      is_default: body.is_default,
+      enabled: body.enabled,
+    });
+    auditReq(req, "Ndrysho printer", `#${id} · ${row.role} → ${row.name}`);
+    res.json({ ok: true, printer: row });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.delete("/api/printers/:id", auth, adminOnly, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = db.getPrinterById(id);
+    if (!existing) return res.status(404).json({ ok: false, gabim: "Printeri nuk u gjet." });
+    db.deletePrinter(id);
+    auditReq(req, "Fshi printer", `#${id} · ${existing.role} → ${existing.name}`);
+    res.json({ ok: true, id });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.get("/api/fiscal-register", auth, adminOnly, async (_req, res) => {
   try {
     res.json(await fiscalRegister.getStatus(db));

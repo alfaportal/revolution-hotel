@@ -8105,6 +8105,101 @@ function exportAtkPurchaseQuarterlyCsv(q) {
   return atk.exportPurchaseQuarterlyCsv(getAtkPurchaseQuarterly(q).rows);
 }
 
+function normalizePrinterRoleKey(role) {
+  return String(role || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+function normalizePaperSizeDb(paper) {
+  const p = String(paper || "80").trim().replace(/mm$/i, "");
+  return p === "58" ? "58" : "80";
+}
+
+function rowToPrinterDto(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    paper_size: row.paper_size,
+    is_default: !!row.is_default,
+    enabled: !!row.enabled,
+    created_at: row.created_at,
+  };
+}
+
+function listPrinters() {
+  const rows = sqlite
+    .prepare("SELECT * FROM printers ORDER BY role ASC, is_default DESC, id ASC")
+    .all();
+  return rows.map(rowToPrinterDto);
+}
+
+function getPrinterById(id) {
+  return rowToPrinterDto(sqlite.prepare("SELECT * FROM printers WHERE id = ?").get(Number(id)));
+}
+
+function getPrinterByRole(role) {
+  const key = normalizePrinterRoleKey(role);
+  if (!key) return null;
+  const rows = sqlite
+    .prepare("SELECT * FROM printers WHERE enabled = 1 ORDER BY is_default DESC, id ASC")
+    .all();
+  for (const row of rows) {
+    if (normalizePrinterRoleKey(row.role) === key) return rowToPrinterDto(row);
+  }
+  return null;
+}
+
+function addPrinter(name, role, paper_size = "80") {
+  const printerName = String(name || "").trim();
+  const printerRole = String(role || "").trim();
+  if (!printerName) throw new Error("Emri i printerit Windows është i detyrueshëm.");
+  if (!printerRole) throw new Error("Roli i printerit është i detyrueshëm.");
+  const paper = normalizePaperSizeDb(paper_size);
+  const result = sqlite
+    .prepare(
+      "INSERT INTO printers (name, role, paper_size, is_default, enabled) VALUES (?, ?, ?, 0, 1)",
+    )
+    .run(printerName, printerRole, paper);
+  return getPrinterById(result.lastInsertRowid);
+}
+
+function updatePrinter(id, data = {}) {
+  const existing = sqlite.prepare("SELECT * FROM printers WHERE id = ?").get(Number(id));
+  if (!existing) throw new Error("Printeri nuk u gjet.");
+  const name = data.name !== undefined ? String(data.name).trim() : existing.name;
+  const role = data.role !== undefined ? String(data.role).trim() : existing.role;
+  const paper_size =
+    data.paper_size !== undefined ? normalizePaperSizeDb(data.paper_size) : existing.paper_size;
+  const is_default =
+    data.is_default !== undefined ? (data.is_default ? 1 : 0) : existing.is_default;
+  const enabled = data.enabled !== undefined ? (data.enabled ? 1 : 0) : existing.enabled;
+  if (!name) throw new Error("Emri i printerit Windows është i detyrueshëm.");
+  if (!role) throw new Error("Roli i printerit është i detyrueshëm.");
+  if (is_default) {
+    sqlite
+      .prepare("UPDATE printers SET is_default = 0 WHERE lower(trim(role)) = lower(trim(?)) AND id != ?")
+      .run(role, Number(id));
+  }
+  sqlite
+    .prepare(
+      "UPDATE printers SET name = ?, role = ?, paper_size = ?, is_default = ?, enabled = ? WHERE id = ?",
+    )
+    .run(name, role, paper_size, is_default, enabled, Number(id));
+  return getPrinterById(id);
+}
+
+function deletePrinter(id) {
+  const existing = sqlite.prepare("SELECT id FROM printers WHERE id = ?").get(Number(id));
+  if (!existing) throw new Error("Printeri nuk u gjet.");
+  sqlite.prepare("DELETE FROM printers WHERE id = ?").run(Number(id));
+  return { ok: true, id: Number(id) };
+}
+
 function getFiscalSettings() {
   return {
     biz_name:             getSetting("biz_name", ""),
@@ -9261,6 +9356,12 @@ function getVersionInfo() {
     updateCloudSettings,
     updateKitchenAccess,
     getFiscalSettings,
+    listPrinters,
+    getPrinterById,
+    getPrinterByRole,
+    addPrinter,
+    updatePrinter,
+    deletePrinter,
     updateFiscalSettings,
     calcFiscalTotals,
     createReceipt,

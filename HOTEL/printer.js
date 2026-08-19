@@ -285,7 +285,7 @@ function pickFiscalWindowsPrinter(printers) {
   return items[0].name;
 }
 
-function stationConfigName(db, station = "bar", printers = []) {
+function stationConfigNameLegacy(db, station = "bar", printers = []) {
   const config = getPrinterConfig(db);
   if (station === "kitchen") {
     // Printer i veçantë kuzhine, ose i njëjti si banaku (2 fletë të ndara te 1 pajisje)
@@ -303,6 +303,57 @@ function stationConfigName(db, station = "bar", printers = []) {
     return pickFiscalWindowsPrinter(printers) || "";
   }
   return config.name || "";
+}
+
+function hasDbPrinterRegistry(db) {
+  return typeof db.listPrinters === "function" && db.listPrinters().length > 0;
+}
+
+function stationRoleCandidates(station) {
+  const s = String(station || "bar")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (s === "kitchen" || s === "kuzhine") return ["kitchen", "kuzhine"];
+  if (s === "fiscal" || s === "fiskal") return ["fiscal", "fiskal"];
+  if (s === "bar" || s === "banak") return ["bar", "banak"];
+  const raw = String(station || "").trim();
+  return raw ? [raw, s] : ["bar"];
+}
+
+function paperFromDbSize(paperSize) {
+  const p = String(paperSize || "80").replace(/mm$/i, "");
+  if (p === "58") return "58mm";
+  if (p === "80") return "80mm";
+  return "80mm";
+}
+
+/** Regjistri printers (role) → fallback settings (printer_name, …). */
+function getPrinterForStation(db, station = "bar", winPrinters = []) {
+  if (hasDbPrinterRegistry(db) && typeof db.getPrinterByRole === "function") {
+    for (const role of stationRoleCandidates(station)) {
+      const row = db.getPrinterByRole(role);
+      if (row?.name) {
+        return {
+          name: row.name,
+          paper: paperFromDbSize(row.paper_size),
+          role: row.role,
+          source: "registry",
+        };
+      }
+    }
+  }
+  return {
+    name: stationConfigNameLegacy(db, station, winPrinters) || "",
+    paper: null,
+    role: null,
+    source: "settings",
+  };
+}
+
+function stationConfigName(db, station = "bar", printers = []) {
+  return getPrinterForStation(db, station, printers).name || "";
 }
 
 function resolvePrinterName(configName, printers) {
@@ -1014,9 +1065,14 @@ async function ensureReceiptPrinter(db, station = "bar") {
   const printers = await listPrinters();
   const names = printers.map(p => p.name);
   const config = getPrinterConfig(db);
-  let saved = stationConfigName(db, station, printers);
+  const stationPrinter = getPrinterForStation(db, station, printers);
+  let saved = stationPrinter.name;
 
-  if (station === "bar" && (!saved || (saved !== WINDOWS_DEFAULT && !names.includes(saved)))) {
+  if (
+    station === "bar" &&
+    !hasDbPrinterRegistry(db) &&
+    (!saved || (saved !== WINDOWS_DEFAULT && !names.includes(saved)))
+  ) {
     const picked = pickAutoPrinter(printers);
     if (picked) {
       db.setSetting("printer_name", picked);
@@ -1028,8 +1084,9 @@ async function ensureReceiptPrinter(db, station = "bar") {
   }
 
   const printerName = saved ? resolvePrinterName(saved, printers) : null;
-  const paper = resolvePaper(getPrinterConfig(db).paper, printerName);
-  return { printerName, paper, printers, station };
+  const paperSetting = stationPrinter.paper || config.paper;
+  const paper = resolvePaper(paperSetting, printerName);
+  return { printerName, paper, printers, station, source: stationPrinter.source };
 }
 
 async function printEscPosReceipt(escposBase64, db, station = "bar") {
@@ -1184,14 +1241,16 @@ async function printReceipt(innerHtml, db) {
 async function printReceiptAt(innerHtml, db, station = "bar") {
   const config = getPrinterConfig(db);
   const printers = await listPrinters();
-  const saved = stationConfigName(db, station, printers);
+  const stationPrinter = getPrinterForStation(db, station, printers);
+  const saved = stationPrinter.name;
   const printerName = saved ? resolvePrinterName(saved, printers) : null;
   if (!printerName) {
     const label = station === "fiscal" ? "printer fiskal" : station === "kitchen" ? "printer kuzhine" : "printer";
     throw new Error(`Nuk është zgjedhur ${label}.`);
   }
 
-  const paper = resolvePaper(config.paper, printerName);
+  const paperSetting = stationPrinter.paper || config.paper;
+  const paper = resolvePaper(paperSetting, printerName);
   const output = station === "fiscal"
     ? (resolveOutput(config.output, printerName) === "html" ? "text" : resolveOutput(config.output, printerName))
     : resolveOutput(config.output, printerName);
@@ -1350,6 +1409,8 @@ module.exports = {
   printPlainTextAt,
   ensureReceiptPrinter,
   stationConfigName,
+  getPrinterForStation,
+  stationConfigNameLegacy,
   printRawEscPos,
   isTyssoReceiptPrinter,
   printTestPage,

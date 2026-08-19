@@ -264,6 +264,16 @@ function initSchema() {
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS printers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    paper_size  TEXT NOT NULL DEFAULT '80',
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+
   CREATE TABLE IF NOT EXISTS categories (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL UNIQUE,

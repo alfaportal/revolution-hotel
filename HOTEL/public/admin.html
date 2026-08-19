@@ -3177,6 +3177,85 @@
 
         <hr class="settings-divider">
 
+        <h3 class="settings-subtitle">Printerët e regjistruar</h3>
+        <p style="margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.85rem">
+          Shtoni printerë me role të lira (p.sh. <strong>bar</strong>, <strong>kuzhine</strong>, <strong>recepsion</strong>, <strong>terrasa</strong>, <strong>fiskal</strong>).
+          Kur lista është bosh, përdoren cilësimet e vjetra më sipër (banak / kuzhinë / fiskal).
+        </p>
+        <div id="registered-printers-legacy-hint" class="printer-status-box pending" hidden style="margin-bottom:0.75rem">
+          <span>Asnjë printer i regjistruar — aktiv fallback te cilësimet e vjetra.</span>
+        </div>
+        <div class="registered-printers-table-wrap" style="overflow-x:auto;margin-bottom:1rem">
+          <table class="registered-printers-table" id="registered-printers-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
+            <thead>
+              <tr style="text-align:left;border-bottom:1px solid var(--ngjyr-border)">
+                <th style="padding:0.45rem 0.35rem">Roli</th>
+                <th style="padding:0.45rem 0.35rem">Printer Windows</th>
+                <th style="padding:0.45rem 0.35rem">Letër</th>
+                <th style="padding:0.45rem 0.35rem">Default</th>
+                <th style="padding:0.45rem 0.35rem">Aktiv</th>
+                <th style="padding:0.45rem 0.35rem"></th>
+              </tr>
+            </thead>
+            <tbody id="registered-printers-tbody">
+              <tr><td colspan="6" style="padding:0.6rem;color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card settings-card" id="card-add-printer" style="margin-bottom:0.5rem">
+          <div class="settings-card-title" id="add-printer-form-title">Shto printer të ri</div>
+          <input type="hidden" id="reg-printer-edit-id" value="">
+          <div class="fiscal-field-row">
+            <label for="reg-printer-device">Pajisja Windows</label>
+            <div class="fiscal-field-actions">
+              <select id="reg-printer-device">
+                <option value="">— Zgjidh nga lista —</option>
+              </select>
+            </div>
+          </div>
+          <div class="fiscal-field-row">
+            <label for="reg-printer-role">Roli</label>
+            <div class="fiscal-field-actions">
+              <input type="text" id="reg-printer-role" placeholder="p.sh. bar, kuzhine, recepsion, terrasa, fiskal" list="reg-printer-role-suggestions">
+              <datalist id="reg-printer-role-suggestions">
+                <option value="bar"></option>
+                <option value="kuzhine"></option>
+                <option value="recepsion"></option>
+                <option value="terrasa"></option>
+                <option value="fiskal"></option>
+              </datalist>
+            </div>
+          </div>
+          <div class="fiscal-field-row">
+            <label for="reg-printer-paper">Formati i letër</label>
+            <div class="fiscal-field-actions">
+              <select id="reg-printer-paper">
+                <option value="80">80mm</option>
+                <option value="58">58mm</option>
+              </select>
+            </div>
+          </div>
+          <div class="fiscal-field-row">
+            <label class="settings-checkbox-label" for="reg-printer-default">
+              <input type="checkbox" id="reg-printer-default">
+              Default për këtë rol (nëse ka disa)
+            </label>
+          </div>
+          <div class="fiscal-field-row">
+            <label class="settings-checkbox-label" for="reg-printer-enabled">
+              <input type="checkbox" id="reg-printer-enabled" checked>
+              Aktiv
+            </label>
+          </div>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.25rem">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-reg-printer-save">Ruaj printerin</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-reg-printer-cancel" hidden>Anulo editimin</button>
+          </div>
+          <div class="fiscal-save-msg" id="msg-reg-printer-save"></div>
+        </div>
+
+        <hr class="settings-divider">
+
         <h3 class="settings-subtitle">Arka fiskale</h3>
         <p style="margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.85rem">
           Regjistroni arkën fiskale (emër/numër, port COM, baud rate). Të dhënat ruhen në SQLite.
@@ -12761,12 +12840,143 @@
           })
           .join("");
         if (fiscalSelect) fiscalSelect.innerHTML = fiscalOpts;
+        await ngarkoPrinteretRegjistruar(status.printers || []);
       } catch (err) {
         box.className = "printer-status-box disconnected";
         icon.textContent = "❌";
         text.textContent = err.message || "Nuk u lexua lista e pajisjeve";
       }
     }
+
+    let _regPrinterWindows = [];
+
+    function resetRegPrinterForm() {
+      document.getElementById("reg-printer-edit-id").value = "";
+      document.getElementById("reg-printer-device").value = "";
+      document.getElementById("reg-printer-role").value = "";
+      document.getElementById("reg-printer-paper").value = "80";
+      document.getElementById("reg-printer-default").checked = false;
+      document.getElementById("reg-printer-enabled").checked = true;
+      document.getElementById("add-printer-form-title").textContent = "Shto printer të ri";
+      document.getElementById("btn-reg-printer-cancel").hidden = true;
+    }
+
+    function fillRegPrinterDeviceSelect(devices, selectedName) {
+      const sel = document.getElementById("reg-printer-device");
+      if (!sel) return;
+      let opts = `<option value="">— Zgjidh nga lista —</option>`;
+      opts += (devices || [])
+        .map(p => {
+          const tag = p.typeLabel ? ` — ${p.typeLabel}` : "";
+          return `<option value="${escPrinterOpt(p.name)}"${p.name === selectedName ? " selected" : ""}>${escPrinterOpt(p.name)}${tag}</option>`;
+        })
+        .join("");
+      sel.innerHTML = opts;
+    }
+
+    async function ngarkoPrinteretRegjistruar(windowsDevices) {
+      const tbody = document.getElementById("registered-printers-tbody");
+      const hint = document.getElementById("registered-printers-legacy-hint");
+      if (!tbody) return;
+      try {
+        const data = await api("/api/printers");
+        _regPrinterWindows = data.windows_devices || windowsDevices || _regPrinterWindows || [];
+        fillRegPrinterDeviceSelect(_regPrinterWindows, document.getElementById("reg-printer-device")?.value || "");
+        if (hint) hint.hidden = !(data.legacy_fallback && !(data.printers || []).length);
+        const rows = data.printers || [];
+        if (!rows.length) {
+          tbody.innerHTML = `<tr><td colspan="6" style="padding:0.6rem;color:var(--ngjyr-muted)">Asnjë printer i regjistruar — përdoret fallback te cilësimet e vjetra.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows.map(p => `
+          <tr data-reg-printer-id="${p.id}" style="border-bottom:1px solid var(--ngjyr-border)">
+            <td style="padding:0.45rem 0.35rem"><strong>${esc(p.role)}</strong></td>
+            <td style="padding:0.45rem 0.35rem">${esc(p.name)}</td>
+            <td style="padding:0.45rem 0.35rem">${esc(String(p.paper_size).replace(/mm$/i, ""))}mm</td>
+            <td style="padding:0.45rem 0.35rem">${p.is_default ? "✓" : "—"}</td>
+            <td style="padding:0.45rem 0.35rem">${p.enabled ? "Po" : "Jo"}</td>
+            <td style="padding:0.45rem 0.35rem;white-space:nowrap">
+              <button type="button" class="btn btn-ghost btn-sm" data-reg-printer-edit="${p.id}">Ndrysho</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-reg-printer-delete="${p.id}">Fshi</button>
+            </td>
+          </tr>
+        `).join("");
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="padding:0.6rem;color:var(--ngjyr-danger)">${esc(err.message || "Gabim")}</td></tr>`;
+      }
+    }
+
+    document.getElementById("registered-printers-tbody")?.addEventListener("click", async (e) => {
+      const editBtn = e.target.closest("[data-reg-printer-edit]");
+      const delBtn = e.target.closest("[data-reg-printer-delete]");
+      if (editBtn) {
+        const id = Number(editBtn.dataset.regPrinterEdit);
+        try {
+          const data = await api("/api/printers");
+          const row = (data.printers || []).find(p => p.id === id);
+          if (!row) return;
+          document.getElementById("reg-printer-edit-id").value = String(row.id);
+          fillRegPrinterDeviceSelect(_regPrinterWindows, row.name);
+          document.getElementById("reg-printer-role").value = row.role;
+          document.getElementById("reg-printer-paper").value = String(row.paper_size).replace(/mm$/i, "") || "80";
+          document.getElementById("reg-printer-default").checked = !!row.is_default;
+          document.getElementById("reg-printer-enabled").checked = !!row.enabled;
+          document.getElementById("add-printer-form-title").textContent = `Ndrysho printer #${row.id}`;
+          document.getElementById("btn-reg-printer-cancel").hidden = false;
+        } catch (err) {
+          alert(err.message || "Gabim");
+        }
+        return;
+      }
+      if (delBtn) {
+        const id = Number(delBtn.dataset.regPrinterDelete);
+        if (!confirm("Fshi këtë printer nga regjistri?")) return;
+        try {
+          await api(`/api/printers/${id}`, { method: "DELETE" });
+          resetRegPrinterForm();
+          await ngarkoPrinteretRegjistruar(_regPrinterWindows);
+        } catch (err) {
+          alert(err.message || "Gabim");
+        }
+      }
+    });
+
+    document.getElementById("btn-reg-printer-cancel")?.addEventListener("click", () => {
+      resetRegPrinterForm();
+      document.getElementById("msg-reg-printer-save").textContent = "";
+    });
+
+    document.getElementById("btn-reg-printer-save")?.addEventListener("click", async () => {
+      const msg = document.getElementById("msg-reg-printer-save");
+      const editId = document.getElementById("reg-printer-edit-id").value.trim();
+      const name = document.getElementById("reg-printer-device").value.trim();
+      const role = document.getElementById("reg-printer-role").value.trim();
+      const paper_size = document.getElementById("reg-printer-paper").value || "80";
+      const is_default = document.getElementById("reg-printer-default").checked;
+      const enabled = document.getElementById("reg-printer-enabled").checked;
+      if (!name || !role) {
+        msg.textContent = "Zgjidhni pajisjen Windows dhe shkruani rolin.";
+        msg.style.color = "var(--ngjyr-danger)";
+        return;
+      }
+      const body = { name, role, paper_size, is_default, enabled };
+      try {
+        if (editId) {
+          await api(`/api/printers/${editId}`, { method: "PUT", body: JSON.stringify(body) });
+          msg.textContent = "U përditësua!";
+        } else {
+          await api("/api/printers", { method: "POST", body: JSON.stringify(body) });
+          msg.textContent = "U shtua!";
+        }
+        msg.style.color = "var(--ngjyr-success)";
+        resetRegPrinterForm();
+        await ngarkoPrinteretRegjistruar(_regPrinterWindows);
+        setTimeout(() => { msg.textContent = ""; }, 2500);
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.style.color = "var(--ngjyr-danger)";
+      }
+    });
 
     document.getElementById("btn-printer-refresh").addEventListener("click", ngarkoPrinterin);
 
