@@ -1,5 +1,5 @@
 /**
- * Dërgon shitjet te Revolution POS Server (online).
+ * Dërgon shitjet te Revolution HOTEL Server (online).
  * Fire-and-forget — nuk bllokon POS-in nëse serveri është offline.
  */
 const http = require("http");

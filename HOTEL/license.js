@@ -799,7 +799,7 @@ function getLoginLicenseDisplay(app) {
       : `Licencë deri më ${formatLicenseDate(expiryRaw)}`;
   }
   return {
-    firm_name: "Revolution Invest POS",
+    firm_name: "Revolution Invest HOTEL",
     client_name: record.client_name || "",
     machine_id: getMachineId(),
     license_key_masked: key ? maskLicenseKey(key) : "",

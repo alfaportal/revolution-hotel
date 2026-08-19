@@ -62,12 +62,12 @@ function menuPhotoUrl(item) {
 }
 
 function ruajSesionin(s) {
-  sessionStorage.setItem("rs_user", JSON.stringify(s));
+  sessionStorage.setItem("rh_user", JSON.stringify(s));
 }
 
 function lexoSesionin() {
   try {
-    return JSON.parse(sessionStorage.getItem("rs_user") || "null");
+    return JSON.parse(sessionStorage.getItem("rh_user") || "null");
   } catch {
     return null;
   }
@@ -81,7 +81,7 @@ function dil() {
       headers: { "X-Session-Token": u.token },
     }).catch(() => {});
   }
-  sessionStorage.removeItem("rs_user");
+  sessionStorage.removeItem("rh_user");
   window.location.href = "/login.html";
 }
 

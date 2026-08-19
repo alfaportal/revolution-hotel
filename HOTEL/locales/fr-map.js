@@ -415,7 +415,7 @@ module.exports = {
   "Tavolinat & Zonat": "Tables & Zones",
   "Emri i kamarierit": "Nom du serveur",
   "Sistemi i Hotelit": "Revolution HOTEL",
-  "Revolution POS": "Revolution POS",
+  "Revolution HOTEL": "Revolution HOTEL",
   "Duke kontrolluar…": "Vérification…",
   "Serveri nuk u nis": "Le serveur n'a pas démarré",
   "Licenca u bllokua": "Licence bloquée",

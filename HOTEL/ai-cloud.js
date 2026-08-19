@@ -1,5 +1,5 @@
 /**
- * Thirrje AI te serveri cloud (Revolution POS) — kërkon licencë + internet.
+ * Thirrje AI te serveri cloud (Revolution HOTEL) — kërkon licencë + internet.
  */
 const cloudHealth = require("./cloud-health");
 
