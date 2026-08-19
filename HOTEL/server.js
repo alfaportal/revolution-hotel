@@ -3123,8 +3123,10 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       allowAnyWaiter: true,
     });
     const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
+    const fiscalOrderId = result.fiscalOrderId;
     const partialOrder = {
-      ...result.order,
+      ...(result.splitOrder || result.order),
+      id: fiscalOrderId,
       items_json: JSON.stringify(result.removed),
       total: result.partialTotal,
       payment_method: result.order.payment_method,
@@ -3133,7 +3135,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       promotion_name: pricing.promotion_name,
     };
 
-    const receipt = db.createReceipt(result.order.id);
+    const receipt = db.createReceipt(fiscalOrderId);
     const fiscal = db.getFiscalSettings();
     const totals = db.calcFiscalTotals(result.partialTotal, fiscal.tvsh_enabled, fiscal.tvsh_percent);
 
@@ -3165,7 +3167,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
     if (sefOn && !fiscalSkip) {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
-          result.order.id,
+          fiscalOrderId,
           payment_method || result.order.payment_method || "cash",
           {
             operator_name: waiterName,

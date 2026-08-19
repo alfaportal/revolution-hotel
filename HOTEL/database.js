@@ -3114,6 +3114,40 @@ function listGuestsOverlappingRange(fromYmd, toYmd) {
   `).all(toYmd, fromYmd);
 }
 
+/** Netët akruale — një natë për çdo ditë kalendarike të qëndrimit (jo në check-out). */
+function accrueHotelNightsForRange(from, to, opts = {}) {
+  const inDayRange = typeof opts.inDayRange === "function" ? opts.inDayRange : () => true;
+  const buildEntry = typeof opts.buildEntry === "function" ? opts.buildEntry : null;
+  let hotelNights = 0;
+  const nightsByDay = new Map();
+  const entries = [];
+
+  try {
+    ensureDefaultRooms();
+  } catch {
+    /* ignore */
+  }
+
+  const guests = listGuestsOverlappingRange(from, to);
+  for (const g of guests) {
+    const price = Number(g.price_per_night) || 0;
+    if (price <= 0) continue;
+    eachHotelYmd(from, to, (day) => {
+      if (!guestStayOverlapsDay(g, day)) return;
+      if (!inDayRange(day, "12:00:00")) return;
+      hotelNights += price;
+      nightsByDay.set(day, (nightsByDay.get(day) || 0) + price);
+      if (buildEntry) entries.push(buildEntry(g, day, price));
+    });
+  }
+
+  return {
+    hotelNights: roundReportMoney(hotelNights),
+    nightsByDay,
+    entries,
+  };
+}
+
 function computeGuestPaidTotal(guest) {
   const stored = Number(guest.total_paid);
   const room = {
@@ -3228,22 +3262,16 @@ function getHotelOccupancyReport(from, to) {
 /** Raport të ardhurash — netët + shërbimet + restoranti/bari. */
 function getHotelRevenueReport(from, to) {
   const range = resolveHotelReportRange(from, to);
-  try { ensureDefaultRooms(); } catch { /* ignore */ }
-  const guests = listGuestsOverlappingRange(range.from, range.to);
 
   const dailyMap = new Map();
   eachHotelYmd(range.from, range.to, (day) => {
     dailyMap.set(day, { date: day, nights: 0, services: 0, restaurant: 0, total: 0 });
   });
 
-  for (const g of guests) {
-    const price = Number(g.price_per_night) || 0;
-    eachHotelYmd(range.from, range.to, (day) => {
-      if (guestStayOverlapsDay(g, day)) {
-        const row = dailyMap.get(day);
-        if (row) row.nights += price;
-      }
-    });
+  const accrued = accrueHotelNightsForRange(range.from, range.to);
+  for (const [day, amt] of accrued.nightsByDay) {
+    const row = dailyMap.get(day);
+    if (row) row.nights += amt;
   }
 
   /* Shërbime hoteli (jo ushqim/pije). Ushqimi nga charge-to-room është te daily_log. */
@@ -4830,6 +4858,25 @@ function subtractOrderItems(allItems, selectedItems) {
   return { remaining, removed };
 }
 
+/** Porosi e mbyllur vetëm për një pagesë të ndarë — secila me is_fiscalized=0 të vet. */
+function createSplitPaymentOrder(parentOrder, tableId, removed, partialTotal, method) {
+  const itemsJson = JSON.stringify(removed);
+  const r = sqlite.prepare(`
+    INSERT INTO orders (
+      table_id, waiter_name, items_json, total, status, payment_method, source_label
+    )
+    VALUES (?, ?, ?, ?, 'completed', ?, ?)
+  `).run(
+    tableId,
+    parentOrder.waiter_name,
+    itemsJson,
+    partialTotal,
+    method,
+    String(parentOrder.source_label || "").trim(),
+  );
+  return Number(r.lastInsertRowid);
+}
+
 function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pricing = null, opts = {}) {
   const order = getActiveOrderForTable(tableId);
   if (!order) throw new Error("Nuk ka porosi aktive për këtë tavolinë.");
@@ -4852,6 +4899,15 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
   const promotionName = pricing?.promotion_name || "";
 
   return sqlite.transaction(() => {
+    const fiscalOrderId = createSplitPaymentOrder(
+      order,
+      tableId,
+      removed,
+      partialTotal,
+      method,
+    );
+    const splitOrder = sqlite.prepare("SELECT * FROM orders WHERE id = ?").get(fiscalOrderId);
+
     addDailyLogEntry({
       table_number: table.number,
       waiter_name: order.waiter_name,
@@ -4866,7 +4922,7 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
       promotion_id: promotionId,
       promotion_name: promotionName,
       cloud_sale_id: order.cloud_order_id || null,
-      order_id: order.id,
+      order_id: fiscalOrderId,
     });
     decrementMenuItemStock(removed);
 
@@ -4889,6 +4945,8 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
           promotion_id: promotionId,
           promotion_name: promotionName,
         },
+        fiscalOrderId,
+        splitOrder,
         removed,
         partialTotal,
         tableFreed: true,
@@ -4909,6 +4967,8 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
         promotion_id: promotionId,
         promotion_name: promotionName,
       },
+      fiscalOrderId,
+      splitOrder,
       removed,
       partialTotal,
       tableFreed: false,
@@ -5047,7 +5107,7 @@ function roundReportMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
-/** Netët (check-out) + shërbime/RS — i njëjti burim si kontabilisti (getSalesLedger). */
+/** Netët (akruale) + shërbime/RS — i njëjti burim si getHotelRevenueReport. Kontabilisti përdor check-out. */
 function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDitari = false } = {}) {
   let hotelNights = 0;
   let hotelServices = 0;
@@ -5062,46 +5122,34 @@ function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDita
   };
 
   try {
-    const checkouts = sqlite.prepare(`
-      SELECT
-        g.id, g.guest_name, g.check_out_date, g.total_paid,
-        g.check_in_date, g.status,
-        r.room_number, r.price_per_night
-      FROM guests g
-      LEFT JOIN rooms r ON r.id = g.room_id
-      WHERE g.status = 'checked_out'
-        AND date(g.check_out_date) >= date(?)
-        AND date(g.check_out_date) <= date(?)
-      ORDER BY g.check_out_date ASC, g.id ASC
-    `).all(from, to);
-
-    for (const g of checkouts) {
-      const day = String(g.check_out_date || "").slice(0, 10);
-      if (!inDitariRange(day, "12:00:00")) continue;
-      const paid = computeGuestPaidTotal(g);
-      const roomAmt = Number(paid.room_total) || 0;
-      if (roomAmt <= 0) continue;
-      hotelNights += roomAmt;
-      nightsByDay.set(day, (nightsByDay.get(day) || 0) + roomAmt);
-      const nightsCount = paid.nights || 0;
-      const label = `Netë dhoma ${g.room_number || "—"} — ${g.guest_name || ""} (${nightsCount} netë)`;
-      hotelEntries.push({
-        id: `hotel-night-${g.id}`,
-        entry_type: "hotel_night",
-        status: "completed",
-        date: day,
-        time: "12:00:00",
-        table_number: g.room_number || "—",
-        waiter_name: "Recepcion",
-        payment_method: "hotel",
-        payment_label: "Hotel",
-        receipt_number: `DH-${g.id}`,
-        total: roundReportMoney(roomAmt),
-        items: [{ name: label, quantity: 1, price: roundReportMoney(roomAmt) }],
-        artikujt: label,
-        source: "rooms",
-      });
+    const accrued = accrueHotelNightsForRange(from, to, {
+      inDayRange: inDitariRange,
+      buildEntry: (g, day, price) => {
+        const amt = roundReportMoney(price);
+        const label = `Netë dhoma ${g.room_number || "—"} — ${g.guest_name || ""} (1 netë)`;
+        return {
+          id: `hotel-night-${g.id}-${day}`,
+          entry_type: "hotel_night",
+          status: "completed",
+          date: day,
+          time: "12:00:00",
+          table_number: g.room_number || "—",
+          waiter_name: "Recepcion",
+          payment_method: "hotel",
+          payment_label: "Hotel",
+          receipt_number: `DH-${g.id}-${day.replace(/-/g, "")}`,
+          total: amt,
+          items: [{ name: label, quantity: 1, price: amt }],
+          artikujt: label,
+          source: "rooms",
+        };
+      },
+    });
+    hotelNights = accrued.hotelNights;
+    for (const [day, amt] of accrued.nightsByDay) {
+      nightsByDay.set(day, amt);
     }
+    hotelEntries.push(...accrued.entries);
 
     const hotelCharges = sqlite.prepare(`
       SELECT rc.*, r.room_number, g.guest_name
