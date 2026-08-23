@@ -500,6 +500,10 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   }
 
   const payment = paymentMethod || order.payment_method || "cash";
+  const paymentSplits =
+    (Array.isArray(opts.payment_splits) && opts.payment_splits.length
+      ? opts.payment_splits
+      : null) || [];
   const operatorName =
     String(opts.operator_name || order.waiter_name || "Operator").trim() ||
     "Operator";
@@ -608,6 +612,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     operator_name: operatorName,
     operator_id: operatorId,
     payment_method: payment,
+    payment_splits: paymentSplits,
     subtotal,
     discount_amount: discount,
     total_amount: totalAmount,
@@ -666,6 +671,8 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       total_without_tax: totalWithoutTax,
       vat_breakdown: vatTax,
       payment_method: payment,
+      payment_splits_json:
+        paymentSplits.length > 0 ? JSON.stringify(paymentSplits) : null,
     });
     fiscalReceiptId = queued?.id || null;
     console.log(
@@ -708,6 +715,8 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       total_without_tax: totalWithoutTax,
       vat_breakdown_json: JSON.stringify(vatTax),
       payment_method: payment,
+      payment_splits_json:
+        paymentSplits.length > 0 ? JSON.stringify(paymentSplits) : null,
       qr_code_data: qrPayload,
       digital_signature: signature || null,
     };

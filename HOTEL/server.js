@@ -18,6 +18,64 @@ function getFiscalMain() {
   if (!_fiscalMain) _fiscalMain = require("./fiscal/fiscal-main");
   return _fiscalMain;
 }
+
+function roundPaymentMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function normalizeSplitMethod(raw) {
+  const v = String(raw || "cash").trim().toLowerCase();
+  if (["karte", "kartë", "card", "pos"].includes(v)) return "credit_card";
+  if (["cheque", "cek", "çek"].includes(v)) return "check";
+  if (
+    [
+      "cash",
+      "debit_card",
+      "credit_card",
+      "bank_account",
+      "voucher",
+      "check",
+      "sms",
+      "crypto",
+      "cryptocurrency",
+    ].includes(v)
+  ) {
+    return v;
+  }
+  return "cash";
+}
+
+/** Pagesë e përzier ose një metodë — validon shumat kundrejt totalit të pritur. */
+function resolvePaymentFromBody(body, expectedTotal) {
+  const rawSplits = Array.isArray(body?.payment_splits) ? body.payment_splits : [];
+  const splits = rawSplits
+    .map((p) => ({
+      method: normalizeSplitMethod(p.method ?? p.id),
+      amount: roundPaymentMoney(p.amount),
+    }))
+    .filter((p) => p.amount > 0);
+  const wantsMixed =
+    String(body?.payment_method || "").trim().toLowerCase() === "mixed" ||
+    splits.length > 1;
+  if (wantsMixed) {
+    if (splits.length < 2) {
+      throw new Error("Pagesa e përzier kërkon të paktën dy metoda me shuma > 0");
+    }
+    const total = roundPaymentMoney(expectedTotal);
+    const sum = roundPaymentMoney(splits.reduce((s, p) => s + p.amount, 0));
+    if (Math.abs(sum - total) > 0.02) {
+      throw new Error(
+        `Pagesa e përzier (${sum.toFixed(2)} €) ≠ totali (${total.toFixed(2)} €)`
+      );
+    }
+    return { payment_method: "mixed", payment_splits: splits };
+  }
+  if (splits.length === 1) {
+    return { payment_method: splits[0].method, payment_splits: splits };
+  }
+  const method = normalizeSplitMethod(body?.payment_method || "cash");
+  return { payment_method: method, payment_splits: null };
+}
 let _fiscalSelfTest = null;
 function getFiscalSelfTest() {
   if (!_fiscalSelfTest) _fiscalSelfTest = require("./fiscal/fiscal-self-test");
@@ -213,6 +271,20 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   const imported = [];
   for (const order of ordersBefore) {
+    if (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(order)) {
+      try {
+        const applied = db.applyGuestHotelServiceOrder(order);
+        imported.push({
+          ok: true,
+          cloud_id: order.id,
+          guest_service: true,
+          ...applied,
+        });
+      } catch (e) {
+        imported.push({ ok: false, cloud_id: order.id, error: e.message });
+      }
+      continue;
+    }
     const slotNum = onlineSlotForOrder(order.id);
     const enriched = {
       ...order,
@@ -295,6 +367,13 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
 
   ensureOnlineOrdersWatcher();
 
+  const pendingLocal = db.listPendingCloudOrders().find((o) => String(o?.id) === String(orderId));
+  const isLocalGuestOrder = !!(
+    pendingLocal?.local_only
+    || pendingLocal?.device_id === "WEB-PUBLIC-LOCAL"
+    || (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(pendingLocal))
+  );
+
   let cloudResult = { ok: false, message: "", refused: 0, order_id: orderId };
   const ackPin = pinTrim || String(staff.pin || "").trim();
   try {
@@ -303,7 +382,7 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     cloudResult = { ok: false, message: e.message || "", refused: 0, order_id: orderId };
   }
 
-  if (!cloudResult.ok) {
+  if (!cloudResult.ok && !isLocalGuestOrder) {
     cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason).catch(() => {});
     throw Object.assign(
       new Error(cloudResult.message || "Nuk u refuzua porosia në cloud — provoni përsëri."),
@@ -311,7 +390,15 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     );
   }
 
-  onlineOrdersWatcher.persistStaffRefusal(db, staff.id, orderId);
+  if (isLocalGuestOrder) {
+    onlineOrdersWatcher.persistAcknowledged(db, ids);
+    db.removePendingCloudOrders(ids);
+    onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
+  }
+
+  if (cloudResult.ok) {
+    onlineOrdersWatcher.persistStaffRefusal(db, staff.id, orderId);
+  }
 
   const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
   let freshSnapshot;
@@ -512,17 +599,40 @@ async function autoPrintKitchenTicket(db, opts) {
   return autoPrintOrderSlip(db, opts);
 }
 
-/** Print fatura qëndrimi hoteli — ESC/POS 80mm (banak / fiskal). */
-async function printGuestFolioReceipt(db, folio) {
+/** Print fatura qëndrimi hoteli — termik (bar) ose fiskal. */
+async function printGuestFolioReceipt(db, folio, opts = {}) {
+  const { normalizeCouponType } = require("./close-table-print");
+  const kind = normalizeCouponType(opts.couponType || opts.coupon_type || "thermal");
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
   const hotelName = folio?.hotel_name || settings.business_name || "Hotel";
   const html = buildGuestFolioPrintHtml(folio, fiscal, hotelName);
+  const text = buildGuestFolioPrintLines(folio, fiscal, hotelName).join("\n");
+
+  if (kind === "fiscal") {
+    try {
+      const printResult = await printer.printReceiptAt(html, db, "fiscal");
+      return { printed: true, coupon_type: "fiscal", html, printMessage: "", ...printResult };
+    } catch (err) {
+      return {
+        printed: false,
+        coupon_type: "fiscal",
+        html,
+        printMessage: err.message || "Printimi fiskal dështoi.",
+      };
+    }
+  }
+
   try {
-    return await printer.printReceiptAt(html, db, "fiscal");
-  } catch {
-    const text = buildGuestFolioPrintLines(folio, fiscal, hotelName).join("\n");
-    return await printer.printPlainTextAt(text, db, "bar");
+    const printResult = await printer.printPlainTextAt(text, db, "bar");
+    return { printed: true, coupon_type: "thermal", html, printMessage: "", ...printResult };
+  } catch (err) {
+    return {
+      printed: false,
+      coupon_type: "thermal",
+      html,
+      printMessage: err.message || "Printeri termik nuk u gjet.",
+    };
   }
 }
 
@@ -2223,19 +2333,64 @@ app.get("/api/waiter/rooms/:id/checkout-preview", auth, staffOrAdmin, (req, res)
   }
 });
 
-app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, (req, res) => {
+app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res) => {
   try {
     const body = req.body || {};
-    const result = db.checkOutGuest(req.params.id, {
+    const preview = db.getCheckoutPreview(req.params.id, {
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
     });
+    const payInfo = resolvePaymentFromBody(body, preview.bill.total);
+    const requestedCoupon = body.coupon_type
+      ? String(body.coupon_type).trim().toLowerCase()
+      : null;
+    const couponType = registerMode.resolveEffectiveCouponType(db, body.coupon_type);
+    const fiscalSkip =
+      body.fiscal_skip === true || requestedCoupon === "thermal" || couponType === "thermal";
+    const result = db.checkOutGuest(req.params.id, {
+      check_out_date: body.check_out_date,
+      extra_services: body.extra_services != null ? body.extra_services : body.services_total,
+      payment_method: payInfo.payment_method,
+      payment_splits: payInfo.payment_splits,
+      waiter_name: req.session.emri || "Recepcion",
+    });
+    let folio = null;
+    try {
+      folio = db.getGuestFolio(result.guest.id, {
+        check_out_date: body.check_out_date,
+        extra_services: body.extra_services != null ? body.extra_services : body.services_total,
+      });
+    } catch {
+      folio = {
+        guest: result.guest,
+        room: result.room,
+        bill: result.bill,
+        hotel_name: db.getSettings()?.business_name || "Hotel",
+      };
+    }
+    let printResult = { printed: false, printMessage: "", html: null, coupon_type: couponType };
+    if (fiscalSkip) {
+      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal" });
+    } else if (fiscalConfig.isFiscalEnabled()) {
+      printResult = await printGuestFolioReceipt(db, folio, { couponType: "fiscal" });
+    } else {
+      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal" });
+    }
     auditReq(
       req,
       "Check-out",
-      `${result.room.room_number} — ${result.guest.guest_name} · ${result.bill.total}€`,
+      `${result.room.room_number} — ${result.guest.guest_name} · ${result.bill.total}€ · ${payInfo.payment_method} · ${printResult.coupon_type || couponType}`,
     );
-    res.json({ ok: true, ...result });
+    res.json({
+      ok: true,
+      ...result,
+      payment_method: payInfo.payment_method,
+      coupon_type: printResult.coupon_type || couponType,
+      printed: !!printResult.printed,
+      printMessage: printResult.printMessage || "",
+      html: printResult.html || null,
+      fiscal_skipped: fiscalSkip,
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -2868,7 +3023,7 @@ app.post("/api/orders", auth, async (req, res) => {
 });
 
 app.post("/api/orders/close", auth, async (req, res) => {
-  const { table_id, waiter_name, is_admin, payment_method } = req.body;
+  const { table_id, waiter_name, is_admin } = req.body;
   const asAdmin = !!is_admin && req.session.role === "admin";
   const name = asAdmin ? (waiter_name || req.session.emri) : req.session.emri;
   const requestedCoupon = req.body?.coupon_type
@@ -2882,8 +3037,21 @@ app.post("/api/orders/close", auth, async (req, res) => {
     return res.status(403).json({ gabim: "Vetëm admini mund ta mbyllë nga paneli i adminit" });
   }
   try {
-    const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(Number(table_id));
-    const order = db.closeTable(Number(table_id), name, asAdmin, payment_method);
+    const tableId = Number(table_id);
+    const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
+    const orderBefore = db.getActiveOrderForTable(tableId);
+    const closeItems = db.parseOrderItems(orderBefore?.items_json);
+    const pricing = promotionService.resolvePromotionDiscount(
+      db,
+      closeItems,
+      req.body.promotion_id
+    );
+    const expectedTotal =
+      pricing?.total != null ? Number(pricing.total) : Number(orderBefore?.total || 0);
+    const payInfo = resolvePaymentFromBody(req.body, expectedTotal);
+    const order = db.closeTable(tableId, name, asAdmin, payInfo.payment_method, pricing, {
+      allowAnyWaiter: asAdmin,
+    });
     if (order) {
       const tNum = tableRow?.number || 0;
       const mirrorsCloud = cloudSync.orderMirrorsRemoteCloud(order);
@@ -2916,10 +3084,14 @@ app.post("/api/orders/close", auth, async (req, res) => {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           order.id,
-          payment_method || order.payment_method || "cash",
+          payInfo.payment_method || order.payment_method || "cash",
           {
             operator_name: name,
             operator_id: String(req.session.userId || req.session.id || "POS"),
+            payment_splits: payInfo.payment_splits,
+            subtotal: pricing?.subtotal,
+            discount_amount: pricing?.discount_total,
+            total_amount: expectedTotal,
           }
         );
       } catch (fe) {
@@ -2956,7 +3128,7 @@ app.post("/api/orders/cancel", auth, (req, res) => {
 });
 
 app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
-  const { table_id, items, payment_method, coupon_type } = req.body;
+  const { table_id, items, coupon_type } = req.body;
   const waiterName = req.session.emri;
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
@@ -2994,7 +3166,10 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
     const orderBefore = db.getActiveOrderForTable(tableId);
     const closeItems = db.parseOrderItems(orderBefore?.items_json);
     const pricing = promotionService.resolvePromotionDiscount(db, closeItems, req.body.promotion_id);
-    const order = db.closeTable(tableId, waiterName, false, payment_method, pricing, {
+    const expectedTotal =
+      pricing?.total != null ? Number(pricing.total) : Number(orderBefore?.total || 0);
+    const payInfo = resolvePaymentFromBody(req.body, expectedTotal);
+    const order = db.closeTable(tableId, waiterName, false, payInfo.payment_method, pricing, {
       allowAnyWaiter: true,
     });
     if (!order) {
@@ -3039,13 +3214,14 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           order.id,
-          payment_method || order.payment_method || "cash",
+          payInfo.payment_method || order.payment_method || "cash",
           {
             operator_name: waiterName,
             operator_id: String(req.session.userId || req.session.id || "POS"),
             subtotal: pricing?.subtotal,
             discount_amount: pricing?.discount_total,
             total_amount: order.total,
+            payment_splits: payInfo.payment_splits,
           }
         );
       } catch (fe) {
@@ -3098,7 +3274,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
 });
 
 app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res) => {
-  const { table_id, items, payment_method, coupon_type } = req.body;
+  const { table_id, items, coupon_type } = req.body;
   const waiterName = req.session.emri;
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
@@ -3141,7 +3317,17 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
     }
 
     const pricing = promotionService.resolvePromotionDiscount(db, items, req.body.promotion_id);
-    const result = db.closeTablePartial(tableId, waiterName, payment_method, items, pricing, {
+    const expectedTotal =
+      pricing?.total != null
+        ? Number(pricing.total)
+        : (Array.isArray(items)
+            ? items.reduce(
+                (s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0),
+                0
+              )
+            : 0);
+    const payInfo = resolvePaymentFromBody(req.body, expectedTotal);
+    const result = db.closeTablePartial(tableId, waiterName, payInfo.payment_method, items, pricing, {
       allowAnyWaiter: true,
     });
     const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
@@ -3190,7 +3376,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           fiscalOrderId,
-          payment_method || result.order.payment_method || "cash",
+          payInfo.payment_method || result.order.payment_method || "cash",
           {
             operator_name: waiterName,
             operator_id: String(req.session.userId || req.session.id || "POS"),
@@ -3198,6 +3384,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
             subtotal: pricing?.subtotal,
             discount_amount: pricing?.discount_total,
             total_amount: result.partialTotal,
+            payment_splits: payInfo.payment_splits,
           }
         );
       } catch (fe) {
@@ -4831,26 +5018,49 @@ app.post("/api/guest/room-order", (req, res) => {
   try {
     const roomNumber = String(req.body?.room_number || req.body?.room || "").trim();
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
-    if (!roomNumber) throw new Error("Numri i dhomës mungon.");
-    if (!items.length) throw new Error("Zgjidhni të paktën një artikull.");
-    const rooms = db.listRoomsWithGuests();
-    const room = rooms.find((r) => String(r.room_number) === roomNumber);
-    if (!room) throw new Error(`Dhoma ${roomNumber} nuk u gjet.`);
-    if (room.status !== "occupied" || !room.active_guest) {
-      throw new Error("Dhoma nuk ka mysafir aktiv — room service nuk pranohet.");
+    const result = db.submitGuestRoomMenuOrder(roomNumber, items);
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/guest/service-order", (req, res) => {
+  try {
+    const roomNumber = String(req.body?.room_number || req.body?.room || "").trim();
+    const raw = Array.isArray(req.body?.services) ? req.body.services : [];
+    if (!raw.length && req.body?.service_id) {
+      raw.push({
+        service_id: req.body.service_id,
+        quantity: req.body.quantity,
+        amount: req.body.amount,
+        notes: req.body.notes,
+      });
     }
-    const created = db.addRoomChargesFromOrderItems(
-      room.active_guest.id,
-      room.id,
+    const result = db.submitGuestRoomServiceOrder(roomNumber, raw);
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/guest/menu-order", (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const roomNumber = String(req.body?.room_number || req.body?.room || "").trim();
+    const tableNumber = req.body?.table_number ?? req.body?.table;
+    if (roomNumber) {
+      const result = db.submitGuestRoomMenuOrder(roomNumber, items);
+      return res.status(201).json(result);
+    }
+    const result = db.submitGuestPublicMenuOrder({
       items,
-      { source: "room_service", decrement_stock: true },
-    );
-    res.status(201).json({
-      ok: true,
-      count: created.length,
-      guest_name: room.active_guest.guest_name,
-      room_number: room.room_number,
+      order_kind: tableNumber != null && String(tableNumber).trim() !== "" ? "table" : "takeaway",
+      table_number: tableNumber,
+      customer_name: req.body?.customer_name || req.body?.name,
+      customer_phone: req.body?.customer_phone || req.body?.phone,
     });
+    res.status(201).json(result);
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -5066,12 +5276,25 @@ app.put("/api/fiscal-settings", auth, adminOnly, (req, res) => {
 });
 
 /* HAPI 2 — SEF fiscal_settings (vetëm pronari / admin) */
+function fiscalDevToolsForbidden(res) {
+  if (typeof fiscalConfig.isFiscalDevToolsEnabled === "function" && fiscalConfig.isFiscalDevToolsEnabled()) {
+    return false;
+  }
+  res.status(403).json({
+    ok: false,
+    gabim: "Mjetet e testit fiskal janë vetëm për mjedisin biznes (SEF test).",
+  });
+  return true;
+}
+
 app.get("/api/fiscal-config", auth, adminOnly, (_req, res) => {
   try {
     const settings = fiscalConfig.getFiscalSettings();
     res.json({
       ...settings,
+      activation: fiscalConfig.getFiscalActivationCheck(settings),
       fiscal_release_locked: !!fiscalConfig.isFiscalReleaseLocked?.(),
+      dev_tools_enabled: !!fiscalConfig.isFiscalDevToolsEnabled?.(),
     });
   } catch (e) {
     res.status(500).json({ gabim: e.message });
@@ -5085,6 +5308,7 @@ app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
       body.fiscal_enabled = false;
     }
     const saved = fiscalConfig.saveFiscalSettings(body);
+    const activation = fiscalConfig.getFiscalActivationCheck(saved);
     try {
       if (saved.fiscal_enabled) {
         fiscalOffline.startOfflineMonitor();
@@ -5097,6 +5321,7 @@ app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
     res.json({
       ok: true,
       ...saved,
+      activation,
       fiscal_release_locked: !!fiscalConfig.isFiscalReleaseLocked?.(),
     });
   } catch (e) {
@@ -5107,6 +5332,7 @@ app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
 /* Lista e kuponëve fiskalë — vetëm pronari */
 app.get("/api/fiscal-receipts", auth, adminOnly, (req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5120,6 +5346,7 @@ app.get("/api/fiscal-receipts", auth, adminOnly, (req, res) => {
 
 app.get("/api/fiscal-receipts/:id", auth, adminOnly, (req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5137,6 +5364,7 @@ app.get("/api/fiscal-receipts/:id", auth, adminOnly, (req, res) => {
 /** Print nga Print Preview — reprint origjinal, pa INSERT të ri. */
 app.post("/api/fiscal-receipts/:id/print", auth, adminOnly, async (req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5176,6 +5404,7 @@ app.post("/api/fiscal-receipts/:id/print", auth, adminOnly, async (req, res) => 
 /* Test lokal i plotë fiskal — vetëm pronari, pa ATK (print termik opsional) */
 app.post("/api/fiscal-self-test", auth, adminOnly, async (req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({
         ok: false,
@@ -5197,6 +5426,7 @@ app.post("/api/fiscal-self-test", auth, adminOnly, async (req, res) => {
 /* Kupon fiskal provë — print termik, pa INSERT (vetëm kur fiscal ON) */
 app.post("/api/fiscal-print-test-coupon", auth, adminOnly, async (_req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({
         ok: false,
@@ -5251,6 +5481,7 @@ app.get("/api/fiscal-enabled", auth, (_req, res) => {
 /* HAPI 7 — kuponë korrigjues (vetëm pronari) */
 app.get("/api/fiscal-correction/lookup/:nuikf", auth, adminOnly, (req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5272,6 +5503,7 @@ app.get("/api/fiscal-correction/lookup/:nuikf", auth, adminOnly, (req, res) => {
 
 app.post("/api/fiscal-correction", auth, adminOnly, async (req, res) => {
   try {
+    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }

@@ -229,6 +229,18 @@ function queueOfflineReceipt(receiptData) {
   const unitName = d.unit_name || settings.unit_name || "";
   const unitPhone = d.unit_phone || settings.unit_phone || "";
   const paymentMethod = d.payment_method || "cash";
+  const paymentSplitsRaw = d.payment_splits_json
+    ? (() => {
+        try {
+          return JSON.parse(String(d.payment_splits_json));
+        } catch {
+          return [];
+        }
+      })()
+    : Array.isArray(d.payment_splits)
+      ? d.payment_splits
+      : [];
+  const paymentSplits = Array.isArray(paymentSplitsRaw) ? paymentSplitsRaw : [];
   const receiptType = d.receipt_type || "regular";
   const saleId = Number(d.sale_id) || 0;
 
@@ -261,6 +273,8 @@ function queueOfflineReceipt(receiptData) {
     total_without_tax: totalWithoutTax,
     vat_breakdown_json: JSON.stringify(vatBreak),
     payment_method: paymentMethod,
+    payment_splits_json:
+      paymentSplits.length > 0 ? JSON.stringify(paymentSplits) : null,
     currency: "EUR",
     qr_code_data: qrPayload,
     digital_signature: null,
@@ -274,6 +288,7 @@ function queueOfflineReceipt(receiptData) {
     operator_name: operatorName,
     operator_id: operatorId,
     payment_method: paymentMethod,
+    payment_splits: paymentSplits,
     subtotal,
     discount_amount: discount,
     total_amount: totalAmount,

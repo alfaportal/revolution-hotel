@@ -1,6 +1,6 @@
 {
   "name": "revolution-hotel",
-  "version": "1.0.601",
+  "version": "1.0.606",
   "description": "Revolution HOTEL — sistem lokal (një Setup, pako 3/4 nga telefoni)",
   "main": "main.js",
   "scripts": {
@@ -137,6 +137,7 @@
       "menu-stock-photos.js",
       "service-stock-photos.js",
       "barcode-lookup.js",
+      "vat-smart-map.js",
       "ai-cloud.js",
       "shift-close-email.js",
       "receipt-text.js",

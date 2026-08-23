@@ -1292,10 +1292,17 @@
       color: #e8e8ef !important;
       box-shadow: 0 4px 16px rgba(234, 179, 8, 0.16) !important;
     }
+    body.admin-app .admin-room-card.reserved {
+      background: rgba(59, 130, 246, 0.16) !important;
+      border-color: #3b82f6 !important;
+      color: #e8e8ef !important;
+      box-shadow: 0 4px 16px rgba(59, 130, 246, 0.18) !important;
+    }
     body.admin-app .admin-room-label,
     body.admin-app .admin-room-card.free .admin-room-label,
     body.admin-app .admin-room-card.occupied .admin-room-label,
-    body.admin-app .admin-room-card.dirty .admin-room-label { color: #fff !important; }
+    body.admin-app .admin-room-card.dirty .admin-room-label,
+    body.admin-app .admin-room-card.reserved .admin-room-label { color: #fff !important; }
     body.admin-app .admin-room-meta,
     body.admin-app .admin-room-price { color: #a0a0b8 !important; }
     body.admin-app .admin-room-card.free .admin-room-badge {
@@ -1310,6 +1317,11 @@
       background: rgba(234, 179, 8, 0.25) !important;
       color: #fde047 !important;
     }
+    body.admin-app .admin-room-card.reserved .admin-room-badge {
+      background: rgba(59, 130, 246, 0.28) !important;
+      color: #93c5fd !important;
+    }
+    body.admin-app .rooms-legend-reserved i { background: #3b82f6 !important; }
     body.admin-app .admin-room-guest { color: #e8e8ef !important; }
     body.admin-app .checkout-bill-box {
       background: #252538 !important;
@@ -1608,6 +1620,23 @@
       background:#252538; border:1px solid #3a3a55; border-radius:12px; padding:0.85rem; text-align:center;
     }
     body.admin-app .hotel-qr-card img { width:120px; height:120px; display:block; margin:0 auto 0.5rem; }
+    .rez-svc-picker {
+      max-height: 220px; overflow: auto; border: 1px solid #3a3a55; border-radius: 10px;
+      padding: 0.5rem; background: #1a1a28;
+    }
+    .rez-svc-cat {
+      font-size: 0.72rem; font-weight: 800; color: var(--ngjyr-accent, #FF6B35);
+      margin: 0.55rem 0 0.35rem; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .rez-svc-cat:first-child { margin-top: 0; }
+    .rez-svc-row {
+      display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 0.45rem;
+      align-items: center; padding: 0.35rem 0.25rem; font-size: 0.85rem; cursor: pointer;
+    }
+    .rez-svc-name { font-weight: 600; }
+    .rez-svc-price { color: var(--ngjyr-muted); font-size: 0.78rem; white-space: nowrap; }
+    .rez-svc-qty, .rez-svc-amt { width: 3.2rem; padding: 0.2rem 0.35rem; font-size: 0.8rem; }
+    .rez-svc-summary { font-size: 0.78rem; color: var(--ngjyr-muted); margin-top: 0.15rem; }
   </style>
 </head>
 <body class="admin-app">
@@ -1923,6 +1952,7 @@
         <span class="rooms-legend-item rooms-legend-free"><i></i> E Lirë</span>
         <span class="rooms-legend-item rooms-legend-occupied"><i></i> E Zënë</span>
         <span class="rooms-legend-item rooms-legend-dirty"><i></i> E Papastër</span>
+        <span class="rooms-legend-item rooms-legend-reserved"><i></i> E Rezervuar</span>
       </div>
       <div id="rooms-mgmt-msg" class="fiscal-save-msg"></div>
       <div class="card tables-panel-card">
@@ -2150,8 +2180,9 @@
       </div>
       <div class="card settings-card">
         <p class="table-qr-hint">
-          QR gjenerohen nga SQLite lokal. Me slug cloud: <code>https://revolution-pos.com/hotel/{slug}/room-service?room=…</code> · Menyja: <code>/hotel/{slug}/menu</code> · Shërbime: <code>/hotel/{slug}/services</code>.
-          Pa cloud / LAN: vendosni IP e PC-së — Room Service: <code>/guest/room-service.html?room=…</code> · Menyja: <code>/guest/menu.html</code> · Shërbime: <code>/guest/services.html</code>
+          QR në dhomë: Room Service · Menyja · Shërbime (bazen, spa, transport…) — me <code>?room=101</code>.
+          Mysafiri porosit nga dhoma → stafi merr njoftim (si takeaway) → PRANO → shkon te fatura.
+          Pa cloud / LAN: <code>/guest/services.html?room=…</code> · Menyja: <code>/guest/menu.html?room=…</code> ose takeaway pa dhomë.
         </p>
         <div class="reports-filter-bar" style="margin:0.75rem 0;flex-wrap:wrap;gap:0.5rem">
           <label style="font-size:0.85rem;flex:1;min-width:240px">URL bazë
@@ -3462,14 +3493,14 @@
           <span class="settings-hub-icon">F</span>
           <div>
             <div class="settings-card-title" data-fi18n="fiscalization">Fiskalizimi</div>
-            <p class="settings-card-desc" data-fi18n="fiscalization_desc">SEF / ATK — aktivizohet vetëm kur toggle është ON. Të dhënat ruhen lokalisht.</p>
+            <p class="settings-card-desc" data-fi18n="fiscalization_desc">SEF — plotësoni të dhënat e dyqanit; aktivizohet automatikisht kur fushat e detyrueshme janë të plota. Pa lidhje ATK.</p>
           </div>
         </div>
 
         <div class="sef-toggle-row">
           <span class="sef-toggle-label" data-fi18n="enable_fiscalization">Aktivizo Fiskalizimin</span>
           <label class="sef-switch" for="sef-fiscal-enabled">
-            <input type="checkbox" id="sef-fiscal-enabled" disabled>
+            <input type="checkbox" id="sef-fiscal-enabled">
             <span class="sef-switch-slider"></span>
           </label>
         </div>
@@ -3541,18 +3572,7 @@
 
         <div class="settings-form-actions settings-form-actions-inline">
           <button type="button" class="btn btn-primary btn-sm" id="btn-fiscalizimi-save" data-fi18n="save_fiscalization">Ruaj Fiskalizimin</button>
-          <button type="button" class="btn btn-sm" id="btn-kupon-korrigjues" data-fi18n="corrective_coupon" hidden>Kupon Korrigjues</button>
-          <button type="button" class="btn btn-sm" id="btn-fiscal-self-test" data-fi18n="test_fiscalization" hidden>Testo Fiskalizimin</button>
-          <button type="button" class="btn btn-sm" id="btn-fiscal-self-test-100" data-fi18n="test_fiscalization_100" hidden>Testo 100 herë</button>
-          <button type="button" class="btn btn-sm" id="btn-fiscal-print-test-coupon" data-fi18n="print_test_coupon" hidden>Printo Kupon Provë</button>
-          <button type="button" class="btn btn-sm" id="btn-fiscal-receipts-list" data-fi18n="view_fiscal_receipts" hidden>Shiko Kuponët Fiskalë</button>
           <div class="fiscal-save-msg" id="msg-fiscalizimi"></div>
-        </div>
-
-        <div class="sef-self-test-box" id="sef-self-test-box" hidden>
-          <div class="sef-self-test-title" id="sef-self-test-title" data-fi18n="self_test_title">Rezultati i testit fiskal (lokal — pa ATK)</div>
-          <ul class="sef-self-test-list" id="sef-self-test-list"></ul>
-          <div class="sef-self-test-summary" id="sef-self-test-summary"></div>
         </div>
 
         <div class="sef-audit-box" id="sef-audit-box" hidden>
@@ -3575,92 +3595,6 @@
         </div>
       </div>
     </section>
-
-    <!-- Lista e kuponëve fiskalë -->
-    <div id="modal-fiscal-receipts" class="table-modal" hidden>
-      <div class="table-modal-backdrop" id="frl-backdrop"></div>
-      <div class="table-modal-content">
-        <h2 data-fi18n="fiscal_receipts_title">Kuponët Fiskalë</h2>
-        <p class="frl-sub" data-fi18n="fiscal_receipts_sub">Të gjitha kuponët nga fiscal_receipts — më i riu lart. Vetëm lexim (WRITE-ONCE).</p>
-        <div class="frl-table-wrap">
-          <table class="frl-table">
-            <thead>
-              <tr>
-                <th data-fi18n="col_nuikf">NUIKF</th>
-                <th data-fi18n="col_daily">Nr. ditor</th>
-                <th data-fi18n="col_datetime">Data / Ora</th>
-                <th data-fi18n="col_type">Tipi</th>
-                <th data-fi18n="col_total">Totali</th>
-                <th data-fi18n="col_payment">Pagesa</th>
-                <th data-fi18n="col_operator">Operatori</th>
-                <th data-fi18n="col_status">Statusi</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="frl-tbody">
-              <tr><td colspan="9" style="color:#a0a0b8" data-fi18n="loading">Duke ngarkuar…</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="frl-footer">
-          <span class="frl-count" id="frl-count"></span>
-          <button type="button" class="btn btn-ghost btn-sm" id="frl-close" data-fi18n="close">Mbyll</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="modal-fiscal-receipt-view" class="table-modal" hidden>
-      <div class="table-modal-backdrop" id="frv-backdrop"></div>
-      <div class="table-modal-content">
-        <h2 data-fi18n="fiscal_receipt_view_title">Kupon Fiskal</h2>
-        <p class="frv-meta" id="frv-meta"></p>
-        <pre class="frv-body" id="frv-body"></pre>
-        <div class="frv-actions">
-          <button type="button" class="btn btn-ghost btn-sm" id="frv-close" data-fi18n="close">Mbyll</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- HAPI 7 — modal kupon korrigjues (pronari) -->
-    <div id="modal-fiscal-correction" class="table-modal" hidden>
-      <div class="table-modal-backdrop" id="fcc-backdrop"></div>
-      <div class="table-modal-content">
-        <h2 data-fi18n="corrective_coupon">Kupon Korrigjues</h2>
-        <p class="fcc-sub" data-fi18n="correction_sub">Shkruani NUIKF e kuponit origjinal. Kuponi i ri ruhet write-once dhe printohet.</p>
-
-        <label for="fcc-nuikf" data-fi18n="original_nuikf">NUIKF origjinal</label>
-        <div style="display:flex;gap:0.5rem;align-items:flex-start">
-          <input type="text" id="fcc-nuikf" maxlength="16" data-fi18n-placeholder="original_nuikf_placeholder" placeholder="16 karaktere" style="flex:1;text-transform:uppercase">
-          <button type="button" class="btn btn-ghost btn-sm" id="fcc-lookup" data-fi18n="lookup">Kërko</button>
-        </div>
-
-        <div id="fcc-details" class="fcc-details" hidden></div>
-
-        <div id="fcc-form" hidden>
-          <label for="fcc-type" data-fi18n="correction_type">Tipi i korrigjimit</label>
-          <select id="fcc-type">
-            <option value="cancel" data-fi18n="type_cancel">Anulim</option>
-            <option value="return" data-fi18n="type_return">Kthim malli</option>
-            <option value="storno" data-fi18n="type_storno">Storno</option>
-          </select>
-
-          <div id="fcc-items-wrap" hidden>
-            <label data-fi18n="return_items">Artikujt për kthim</label>
-            <div class="fcc-items" id="fcc-items"></div>
-          </div>
-
-          <label for="fcc-reason" data-fi18n="reason_label">Arsyeja</label>
-          <textarea id="fcc-reason" rows="2" data-fi18n-placeholder="reason_placeholder" placeholder="Arsyeja e korrigjimit"></textarea>
-
-          <div class="fcc-actions">
-            <button type="button" class="btn btn-sm btn-fcc-primary" id="fcc-confirm" data-fi18n="confirm_print">Konfirmo &amp; Printo</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="fcc-close" data-fi18n="close">Mbyll</button>
-          </div>
-        </div>
-
-        <div class="fcc-msg" id="fcc-msg"></div>
-      </div>
-    </div>
 
     <!-- CLOUD & LINKE -->
     <section id="panel-cloud" class="panel">
@@ -3770,10 +3704,6 @@
         <div class="coupon-type-row">
           <button type="button" class="btn-coupon btn-coupon-thermal active" data-coupon="thermal" id="modal-kupon-termik">Kuponi Termik</button>
           <button type="button" class="btn-coupon btn-coupon-fiscal" data-coupon="fiscal" id="modal-kupon-fiskal">Kuponi Fiskal</button>
-        </div>
-        <div class="payment-close-row">
-          <button type="button" class="btn btn-payment-cash" id="btn-mbyll-cash">Cash</button>
-          <button type="button" class="btn btn-payment-karte" id="btn-mbyll-karte">Kartë</button>
         </div>
         <button type="button" class="btn btn-danger" id="btn-anullo-porosi">Anullo porosinë</button>
         <button type="button" class="btn btn-ghost" id="btn-mbyll-modal">Mbyll</button>
@@ -4007,7 +3937,7 @@
     <div class="table-modal-backdrop" id="checkout-modal-backdrop"></div>
     <div class="table-modal-content purchase-modal-content">
       <h2 id="checkout-modal-title">Check-out</h2>
-      <p class="table-modal-sub" id="checkout-modal-sub">Fatura e qëndrimit — pas pagesës dhoma bëhet E Papastër</p>
+      <p class="table-modal-sub" id="checkout-modal-sub">Fatura e qëndrimit — vetëm shikim. Pagesa dhe check-out bëhen nga terminali i kamarierit.</p>
       <input type="hidden" id="checkout-room-id" value="">
       <div id="checkout-bill-box" class="checkout-bill-box"></div>
       <div class="purchase-form-grid" style="margin-top:0.85rem">
@@ -4023,8 +3953,7 @@
       <div class="fiscal-save-msg" id="checkout-modal-msg"></div>
       <div class="purchase-modal-actions">
         <button type="button" class="btn btn-ghost" id="checkout-modal-cancel">Anulo</button>
-        <button type="button" class="btn btn-ghost" id="checkout-modal-print">Print Faturë</button>
-        <button type="button" class="btn btn-primary" id="checkout-modal-save">Paguaj &amp; Check-out</button>
+        <button type="button" class="btn btn-primary" id="checkout-modal-print">Print Faturë</button>
       </div>
     </div>
   </div>
@@ -4137,7 +4066,7 @@
 
   <div id="modal-room-reservation" class="table-modal" hidden>
     <div class="table-modal-backdrop" id="room-res-modal-backdrop"></div>
-    <div class="table-modal-content purchase-modal-content">
+    <div class="table-modal-content purchase-modal-content" style="max-height:90vh;overflow-y:auto">
       <h2 id="room-res-modal-title">Rezervim i ri</h2>
       <p class="table-modal-sub">Emri, telefoni, dhoma, datat dhe personat</p>
       <input type="hidden" id="room-res-edit-id" value="">
@@ -4172,6 +4101,11 @@
             <option value="confirmed">Confirmed</option>
             <option value="pending">Pending</option>
           </select>
+        </div>
+        <div class="purchase-form-field purchase-form-field-wide">
+          <label>Shërbime shtesë</label>
+          <div id="room-res-services-picker" class="rez-svc-picker"><p class="purchases-empty">Duke ngarkuar…</p></div>
+          <small style="display:block;margin-top:0.35rem;color:var(--ngjyr-muted);font-size:0.8rem">Wellness, Transport, etj. — ruhen me rezervimin dhe shtohen te fatura në check-in.</small>
         </div>
       </div>
       <div class="fiscal-save-msg" id="room-res-modal-msg"></div>
@@ -8982,8 +8916,6 @@
       document.getElementById("modal-kamarieri").hidden = true;
       document.getElementById("modal-fiscal-breakdown").hidden = true;
       document.getElementById("btn-printo").hidden = false;
-      document.getElementById("btn-mbyll-cash").hidden = false;
-      document.getElementById("btn-mbyll-karte").hidden = false;
       document.getElementById("btn-anullo-porosi").hidden = false;
       document.getElementById("btn-mbyll-modal").hidden = false;
     }
@@ -9000,8 +8932,6 @@
       document.getElementById("modal-fiscal-breakdown").hidden = true;
       document.getElementById("modal-total-wrap").hidden = true;
       document.getElementById("btn-printo").hidden = true;
-      document.getElementById("btn-mbyll-cash").hidden = true;
-      document.getElementById("btn-mbyll-karte").hidden = true;
       document.getElementById("btn-anullo-porosi").hidden = true;
       document.getElementById("btn-mbyll-modal").hidden = false;
       document.getElementById("modal-tavolina").hidden = false;
@@ -9097,8 +9027,6 @@
       document.getElementById("modal-sep").hidden = false;
       document.getElementById("modal-total-wrap").hidden = false;
       document.getElementById("btn-printo").hidden = false;
-      document.getElementById("btn-mbyll-cash").hidden = false;
-      document.getElementById("btn-mbyll-karte").hidden = false;
       document.getElementById("btn-mbyll-modal").hidden = false;
       shfaqTotaletModal(t.order.total);
       document.getElementById("modal-tavolina").hidden = false;
@@ -9148,41 +9076,6 @@
       } catch (err) {
         alert(err.message);
       }
-    }
-
-    async function mbyllTavolinenAdmin(paymentMethod) {
-      if (!tavolinaModal) return;
-      const label = paymentMethod === "karte" ? "Kartë" : (paymentMethod === "cash" ? "Cash" : paymentMethod);
-      if (!confirm("Mbyll tavolinën T" + tavolinaModal.number + " me " + label + "? Porosia shkon në raportin ditor.")) return;
-      try {
-        await api("/api/orders/close", {
-          method: "POST",
-          body: JSON.stringify({
-            table_id:       tavolinaModal.id,
-            waiter_name:    user.emri,
-            is_admin:       true,
-            payment_method: paymentMethod,
-            fiscal_skip:    adminCouponType === "thermal",
-          }),
-        });
-        mbyllModalTavoline();
-        ngarkoTavolinat();
-        ngarkoDitarin();
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    async function mbyllTavolinenAdminMeZgjedhje(fallbackMethod) {
-      console.log("[admin] Cash/Kartë klik → mbyllTavolinenAdminMeZgjedhje", fallbackMethod, {
-        hasFiscalModal: !!window.FiscalPaymentModal,
-      });
-      const method = window.FiscalPaymentModal
-        ? await FiscalPaymentModal.resolvePaymentMethod(api, fallbackMethod)
-        : fallbackMethod;
-      console.log("[admin] pas resolvePaymentMethod → method=", method);
-      if (method == null) return;
-      return mbyllTavolinenAdmin(method);
     }
 
     function injektoDemoT1(tables) {
@@ -9496,13 +9389,112 @@
       free: "E Lirë",
       occupied: "E Zënë",
       dirty: "E Papastër",
+      reserved: "E Rezervuar",
     };
+
+    function resolveAdminRoomDisplayStatus(room) {
+      const st = String(room.display_status || room.status || "free");
+      if (ROOM_STATUS_LABEL[st]) return st;
+      return "free";
+    }
 
     function showRoomsMsg(text, ok) {
       const msg = document.getElementById("rooms-mgmt-msg");
       if (!msg) return;
       msg.textContent = text || "";
       msg.style.color = ok ? "var(--ngjyr-success, #16a34a)" : "var(--ngjyr-danger, #dc2626)";
+    }
+
+    function renderRoomsGrid(rooms) {
+      const grid = document.getElementById("grida-dhomave");
+      if (!grid) return;
+      grid.innerHTML = "";
+      if (!rooms.length) {
+        grid.innerHTML = '<p class="purchases-empty">Nuk ka dhoma. Shtoni dhomën e parë me «+ Dhomë e re».</p>';
+        return;
+      }
+      for (const r of rooms) {
+        const st = resolveAdminRoomDisplayStatus(r);
+        const guest = r.active_guest || null;
+        const reservation = r.active_reservation || null;
+        const card = document.createElement("div");
+        card.className = "admin-room-card " + st;
+        let actions = "";
+        if (st === "free") {
+          actions =
+            `<button type="button" class="btn btn-ghost btn-sm room-action-btn" data-room-reserve="${r.id}">Rezervim</button>` +
+            `<button type="button" class="btn btn-primary btn-sm room-action-btn" data-room-checkin="${r.id}">Check-in</button>`;
+        } else if (st === "reserved" && reservation?.id) {
+          actions =
+            `<button type="button" class="btn btn-ghost btn-sm room-action-btn" data-room-res-edit-grid="${reservation.id}">Ndrysho</button>` +
+            `<button type="button" class="btn btn-primary btn-sm room-action-btn" data-room-res-checkin-grid="${reservation.id}">Check-in</button>`;
+        } else if (st === "occupied") {
+          actions = `<button type="button" class="btn btn-primary btn-sm room-action-btn" data-room-checkout="${r.id}">Shiko faturën</button>`;
+        } else if (st === "dirty") {
+          actions = `<button type="button" class="btn btn-ghost btn-sm room-action-btn" data-room-clean="${r.id}">Pastro → E Lirë</button>`;
+        }
+        const guestLine = guest
+          ? `<div class="admin-room-guest">${escMenuAttr(guest.guest_name)} · ${Number(guest.persons) || 1} pers.</div>`
+          : (reservation
+            ? `<div class="admin-room-guest">${escMenuAttr(reservation.guest_name || "Rezervuar")} · ${escMenuAttr(reservation.check_in_date || "")} → ${escMenuAttr(reservation.check_out_date || "")}</div>`
+            : "");
+        card.innerHTML =
+          `<button type="button" class="admin-room-card-main" data-room-edit="${r.id}" title="Ndrysho dhomën">` +
+          `<div class="admin-room-label">${escMenuAttr(r.room_number)}</div>` +
+          `<div class="admin-room-meta">${escMenuAttr(r.type)} · Kati ${Number(r.floor)}</div>` +
+          `<div class="admin-room-price">${formatEuro(r.price_per_night)} / natë</div>` +
+          guestLine +
+          `<span class="admin-room-badge">${ROOM_STATUS_LABEL[st]}</span>` +
+          `</button>` +
+          `<div class="admin-room-actions">${actions}</div>`;
+        grid.appendChild(card);
+        card.querySelector("[data-room-edit]")?.addEventListener("click", () => hapModalRoom(r));
+        card.querySelector("[data-room-checkin]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hapModalCheckIn(r);
+        });
+        card.querySelector("[data-room-reserve]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hapModalRoomReservation({ room_id: r.id, room_number: r.room_number });
+        });
+        card.querySelector("[data-room-res-edit-grid]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const rvId = Number(e.currentTarget?.dataset?.roomResEditGrid);
+          const rv = reservation && Number(reservation.id) === rvId
+            ? reservation
+            : { id: rvId, room_id: r.id };
+          hapModalRoomReservation(rv);
+        });
+        card.querySelector("[data-room-res-checkin-grid]")?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const rvId = e.currentTarget?.dataset?.roomResCheckinGrid;
+          if (!rvId) return;
+          if (!confirm(`Check-in nga rezervimi për dhomën ${r.room_number}?`)) return;
+          try {
+            await api(`/api/admin/room-reservations/${rvId}/check-in`, { method: "POST", body: "{}" });
+            await ngarkoDhomat();
+            await ngarkoRezervimeDhomash().catch(() => {});
+            showRoomsMsg(`Check-in u krye — dhoma ${r.room_number} është e zënë.`, true);
+          } catch (err) {
+            showRoomsMsg(err.message || "Gabim check-in.", false);
+          }
+        });
+        card.querySelector("[data-room-checkout]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hapModalCheckOut(r);
+        });
+        card.querySelector("[data-room-clean]")?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Dhoma ${r.room_number} u pastrua? Statusi → E Lirë.`)) return;
+          try {
+            await api(`/api/admin/rooms/${r.id}/clean`, { method: "POST", body: "{}" });
+            await ngarkoDhomat();
+            showRoomsMsg(`Dhoma ${r.room_number} është e lirë.`, true);
+          } catch (err) {
+            showRoomsMsg(err.message || "Gabim gjatë pastrimit.", false);
+          }
+        });
+      }
     }
 
     function mbyllModalRoom() {
@@ -9553,62 +9545,6 @@
       const m = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
       return `${d.getFullYear()}-${m}-${day}`;
-    }
-
-    function renderRoomsGrid(rooms) {
-      const grid = document.getElementById("grida-dhomave");
-      if (!grid) return;
-      grid.innerHTML = "";
-      if (!rooms.length) {
-        grid.innerHTML = '<p class="purchases-empty">Nuk ka dhoma. Shtoni dhomën e parë me «+ Dhomë e re».</p>';
-        return;
-      }
-      for (const r of rooms) {
-        const st = ROOM_STATUS_LABEL[r.status] ? r.status : "free";
-        const guest = r.active_guest || null;
-        const card = document.createElement("div");
-        card.className = "admin-room-card " + st;
-        let actions = "";
-        if (st === "free") {
-          actions = `<button type="button" class="btn btn-primary btn-sm room-action-btn" data-room-checkin="${r.id}">Check-in</button>`;
-        } else if (st === "occupied") {
-          actions = `<button type="button" class="btn btn-primary btn-sm room-action-btn" data-room-checkout="${r.id}">Check-out</button>`;
-        } else if (st === "dirty") {
-          actions = `<button type="button" class="btn btn-ghost btn-sm room-action-btn" data-room-clean="${r.id}">Pastro → E Lirë</button>`;
-        }
-        card.innerHTML =
-          `<button type="button" class="admin-room-card-main" data-room-edit="${r.id}" title="Ndrysho dhomën">` +
-          `<div class="admin-room-label">${escMenuAttr(r.room_number)}</div>` +
-          `<div class="admin-room-meta">${escMenuAttr(r.type)} · Kati ${Number(r.floor)}</div>` +
-          `<div class="admin-room-price">${formatEuro(r.price_per_night)} / natë</div>` +
-          (guest
-            ? `<div class="admin-room-guest">${escMenuAttr(guest.guest_name)} · ${Number(guest.persons) || 1} pers.</div>`
-            : "") +
-          `<span class="admin-room-badge">${ROOM_STATUS_LABEL[st]}</span>` +
-          `</button>` +
-          `<div class="admin-room-actions">${actions}</div>`;
-        grid.appendChild(card);
-        card.querySelector("[data-room-edit]")?.addEventListener("click", () => hapModalRoom(r));
-        card.querySelector("[data-room-checkin]")?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          hapModalCheckIn(r);
-        });
-        card.querySelector("[data-room-checkout]")?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          hapModalCheckOut(r);
-        });
-        card.querySelector("[data-room-clean]")?.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          if (!confirm(`Dhoma ${r.room_number} u pastrua? Statusi → E Lirë.`)) return;
-          try {
-            await api(`/api/admin/rooms/${r.id}/clean`, { method: "POST", body: "{}" });
-            await ngarkoDhomat();
-            showRoomsMsg(`Dhoma ${r.room_number} është e lirë.`, true);
-          } catch (err) {
-            showRoomsMsg(err.message || "Gabim gjatë pastrimit.", false);
-          }
-        });
-      }
     }
 
     function mbyllModalCheckIn() {
@@ -10202,9 +10138,13 @@
       box.innerHTML = rows.map((r) => {
         const st = ROOM_RES_STATUS_LABEL[r.status] || r.status;
         const canEdit = r.status === "pending" || r.status === "confirmed";
+        const svcLines = Array.isArray(r.services) ? r.services : [];
+        const svcSummary = svcLines.length
+          ? `<span class="rez-svc-summary">${escMenuAttr(svcLines.map((s) => s.service_name).join(", "))}</span>`
+          : "";
         return `<div class="rooms-history-row room-res-row">` +
           `<strong>Dhoma ${escMenuAttr(r.room_number || "—")}</strong>` +
-          `<span>${escMenuAttr(r.guest_name)}</span>` +
+          `<span>${escMenuAttr(r.guest_name)}${svcSummary}</span>` +
           `<span>${escMenuAttr(r.phone || "—")} · ${Number(r.persons) || 1}p</span>` +
           `<span>${escMenuAttr(r.check_in_date)} → ${escMenuAttr(r.check_out_date)}</span>` +
           `<span class="admin-room-badge">${st}</span>` +
@@ -10232,6 +10172,7 @@
               body: "{}",
             });
             await ngarkoRezervimeDhomash();
+            await ngarkoDhomat();
             showRoomResMsg("Rezervimi u anulua.", true);
           } catch (err) {
             showRoomResMsg(err.message || "Gabim", false);
@@ -10247,12 +10188,119 @@
               body: "{}",
             });
             await ngarkoRezervimeDhomash();
+            await ngarkoDhomat();
             showRoomResMsg("Check-in u krye nga rezervimi.", true);
           } catch (err) {
             showRoomResMsg(err.message || "Gabim", false);
           }
         });
       });
+    }
+
+    let roomResSvcCatalog = null;
+    let roomResSvcSelected = {};
+
+    async function ensureRoomResSvcCatalog() {
+      if (roomResSvcCatalog) return roomResSvcCatalog;
+      const res = await api("/api/admin/services");
+      roomResSvcCatalog = res.groups || [];
+      if (!roomResSvcCatalog.length && (res.services || []).length) {
+        roomResSvcCatalog = [{ name: "Shërbime", services: res.services }];
+      }
+      return roomResSvcCatalog;
+    }
+
+    function getAdminRoomResRoomPrice() {
+      const roomId = Number(document.getElementById("room-res-room")?.value);
+      const room = roomResRoomsCache.find((r) => Number(r.id) === roomId);
+      return Number(room?.price_per_night) || 0;
+    }
+
+    function formatRezSvcPickerPrice(s, roomPrice) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "room_rate") return `${roomPrice.toFixed(2)} € / natë`;
+      if (mode === "variable") return "Çmim i lirë";
+      return `${Number(s.price || 0).toFixed(2)} €`;
+    }
+
+    function renderRoomResServicesPicker(existingServices) {
+      const box = document.getElementById("room-res-services-picker");
+      if (!box) return;
+      roomResSvcSelected = {};
+      for (const line of existingServices || []) {
+        roomResSvcSelected[line.service_id] = {
+          quantity: line.quantity || 1,
+          amount: line.unit_price,
+          notes: line.notes || "",
+        };
+      }
+      const groups = roomResSvcCatalog || [];
+      if (!groups.length) {
+        box.innerHTML = '<p class="purchases-empty">Nuk ka shërbime — shtoni te Shërbimet.</p>';
+        return;
+      }
+      const roomPrice = getAdminRoomResRoomPrice();
+      box.innerHTML = groups.map((g) => {
+        const items = (g.services || []).filter((s) => s.active !== 0);
+        if (!items.length) return "";
+        return `<div class="rez-svc-cat">${escMenuAttr(g.name)}</div>` +
+          items.map((s) => {
+            const sel = roomResSvcSelected[s.id];
+            const checked = sel ? "checked" : "";
+            const qty = sel?.quantity || 1;
+            const showAmt = String(s.price_mode) === "variable";
+            const amtVal = sel?.amount ?? s.price ?? 0;
+            return `<label class="rez-svc-row">` +
+              `<input type="checkbox" class="rez-svc-check" data-svc-id="${s.id}" ${checked}>` +
+              `<span class="rez-svc-name">${escMenuAttr(s.name)}</span>` +
+              `<span class="rez-svc-price">${escMenuAttr(formatRezSvcPickerPrice(s, roomPrice))}</span>` +
+              `<input type="number" class="rez-svc-qty" data-svc-id="${s.id}" min="1" max="99" value="${qty}" ${sel ? "" : "disabled"}>` +
+              (showAmt ? `<input type="number" class="rez-svc-amt" data-svc-id="${s.id}" min="0" step="0.01" value="${amtVal}" ${sel ? "" : "disabled"} placeholder="€">` : "") +
+              `</label>`;
+          }).join("");
+      }).join("");
+
+      box.querySelectorAll(".rez-svc-check").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const id = Number(cb.dataset.svcId);
+          const qtyEl = box.querySelector(`.rez-svc-qty[data-svc-id="${id}"]`);
+          const amtEl = box.querySelector(`.rez-svc-amt[data-svc-id="${id}"]`);
+          if (cb.checked) {
+            roomResSvcSelected[id] = {
+              quantity: Number(qtyEl?.value) || 1,
+              amount: amtEl ? Number(amtEl.value) : undefined,
+              notes: "",
+            };
+            if (qtyEl) qtyEl.disabled = false;
+            if (amtEl) amtEl.disabled = false;
+          } else {
+            delete roomResSvcSelected[id];
+            if (qtyEl) qtyEl.disabled = true;
+            if (amtEl) amtEl.disabled = true;
+          }
+        });
+      });
+      box.querySelectorAll(".rez-svc-qty").forEach((inp) => {
+        inp.addEventListener("input", () => {
+          const id = Number(inp.dataset.svcId);
+          if (roomResSvcSelected[id]) roomResSvcSelected[id].quantity = Number(inp.value) || 1;
+        });
+      });
+      box.querySelectorAll(".rez-svc-amt").forEach((inp) => {
+        inp.addEventListener("input", () => {
+          const id = Number(inp.dataset.svcId);
+          if (roomResSvcSelected[id]) roomResSvcSelected[id].amount = Number(inp.value);
+        });
+      });
+    }
+
+    function collectRoomResServicesPayload() {
+      return Object.entries(roomResSvcSelected).map(([service_id, v]) => ({
+        service_id: Number(service_id),
+        quantity: Number(v.quantity) || 1,
+        amount: v.amount,
+        notes: v.notes || "",
+      }));
     }
 
     async function fillRoomResRoomSelect(selectedId) {
@@ -10275,9 +10323,12 @@
     }
 
     async function hapModalRoomReservation(row) {
-      await fillRoomResRoomSelect(row?.room_id);
-      document.getElementById("room-res-edit-id").value = row ? String(row.id) : "";
-      document.getElementById("room-res-modal-title").textContent = row ? "Ndrysho rezervimin" : "Rezervim i ri";
+      const preselectRoomId = row?.room_id != null ? Number(row.room_id) : null;
+      await fillRoomResRoomSelect(preselectRoomId || row?.room_id);
+      await ensureRoomResSvcCatalog();
+      document.getElementById("room-res-edit-id").value = row?.id ? String(row.id) : "";
+      document.getElementById("room-res-modal-title").textContent =
+        row?.id ? "Ndrysho rezervimin" : (preselectRoomId ? `Rezervim — dhoma ${row?.room_number || preselectRoomId}` : "Rezervim i ri");
       document.getElementById("room-res-guest").value = row?.guest_name || "";
       document.getElementById("room-res-phone").value = row?.phone || "";
       document.getElementById("room-res-persons").value = row?.persons || 1;
@@ -10286,6 +10337,11 @@
       document.getElementById("room-res-out").value = row?.check_out_date || addDaysYmd(today, 1);
       document.getElementById("room-res-status").value =
         row?.status === "pending" ? "pending" : "confirmed";
+      if (preselectRoomId) {
+        const sel = document.getElementById("room-res-room");
+        if (sel) sel.value = String(preselectRoomId);
+      }
+      renderRoomResServicesPicker(row?.services || []);
       const msg = document.getElementById("room-res-modal-msg");
       if (msg) msg.textContent = "";
       document.getElementById("modal-room-reservation").hidden = false;
@@ -10322,6 +10378,14 @@
     document.getElementById("room-res-status-filter")?.addEventListener("change", () => ngarkoRezervimeDhomash());
     document.getElementById("room-res-modal-backdrop")?.addEventListener("click", mbyllModalRoomReservation);
     document.getElementById("room-res-modal-cancel")?.addEventListener("click", mbyllModalRoomReservation);
+    document.getElementById("room-res-room")?.addEventListener("change", () => {
+      renderRoomResServicesPicker(collectRoomResServicesPayload().map((s) => ({
+        service_id: s.service_id,
+        quantity: s.quantity,
+        unit_price: s.amount,
+        notes: s.notes,
+      })));
+    });
     document.getElementById("room-res-modal-save")?.addEventListener("click", async () => {
       const msg = document.getElementById("room-res-modal-msg");
       const saveBtn = document.getElementById("room-res-modal-save");
@@ -10334,6 +10398,7 @@
         check_in_date: document.getElementById("room-res-in")?.value || "",
         check_out_date: document.getElementById("room-res-out")?.value || "",
         status: document.getElementById("room-res-status")?.value || "confirmed",
+        services: collectRoomResServicesPayload(),
       };
       if (!body.guest_name || !body.room_id) {
         if (msg) {
@@ -10351,6 +10416,7 @@
         }
         mbyllModalRoomReservation();
         await ngarkoRezervimeDhomash();
+        await ngarkoDhomat();
         showRoomResMsg(id ? "Rezervimi u përditësua." : "Rezervimi u shtua.", true);
       } catch (err) {
         if (msg) {
@@ -10499,37 +10565,6 @@
         }
       } finally {
         if (btn) btn.disabled = false;
-      }
-    });
-
-    document.getElementById("checkout-modal-save")?.addEventListener("click", async () => {
-      const msg = document.getElementById("checkout-modal-msg");
-      const saveBtn = document.getElementById("checkout-modal-save");
-      const roomId = document.getElementById("checkout-room-id")?.value;
-      const body = {
-        check_out_date: document.getElementById("checkout-date-out")?.value || "",
-        services_total: Number(document.getElementById("checkout-services")?.value) || 0,
-      };
-      if (saveBtn) saveBtn.disabled = true;
-      try {
-        const result = await api(`/api/admin/rooms/${roomId}/check-out`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        const total = result?.bill?.total;
-        mbyllModalCheckOut();
-        await ngarkoDhomat();
-        showRoomsMsg(
-          `Check-out u krye${total != null ? " · totali " + formatEuro(total) : ""}. Dhoma E Papastër.`,
-          true,
-        );
-      } catch (err) {
-        if (msg) {
-          msg.textContent = err.message || "Gabim Check-out.";
-          msg.style.color = "var(--ngjyr-danger)";
-        }
-      } finally {
-        if (saveBtn) saveBtn.disabled = false;
       }
     });
 
@@ -10693,11 +10728,6 @@
         alert(err.message);
       }
     });
-    document.getElementById("btn-mbyll-cash").addEventListener("click", () => mbyllTavolinenAdminMeZgjedhje("cash"));
-    document.getElementById("btn-mbyll-karte").addEventListener("click", () => mbyllTavolinenAdminMeZgjedhje("karte"));
-
-    let raportPeriod = "sot";
-
     function applyRaportPreset(period) {
       raportPeriod = period;
       const today = new Date();
@@ -11758,7 +11788,7 @@
       }
     }
 
-    function applySefFieldsEnabled(enabled) {
+    function applySefFieldsEditable() {
       const ids = [
         "sef-taxpayer-nui",
         "sef-taxpayer-nf",
@@ -11773,21 +11803,20 @@
       ];
       for (const id of ids) {
         const el = document.getElementById(id);
-        if (el) el.disabled = !enabled;
+        if (el) el.disabled = false;
       }
       const saveBtn = document.getElementById("btn-fiscalizimi-save");
       if (saveBtn) saveBtn.disabled = false;
-      // Readonly fields stay disabled always
-      const ro = ["sef-fiscalization-number", "sef-sef-code"];
-      for (const id of ro) {
-        const el = document.getElementById(id);
-        if (el) el.disabled = true;
-      }
     }
 
-    const FISCAL_OWNER_NUI = "811314567";
     const FISCAL_UNLOCK_CODE = "FISKALIZIM2026";
     const FISCAL_UNLOCK_KEY = "fiscal_ui_unlock_v1";
+    function applySefFiscalFeatures(active) {
+      const auditBox = document.getElementById("sef-audit-box");
+      const printWrap = document.getElementById("sef-print-mode-wrap");
+      if (auditBox) auditBox.hidden = !active;
+      if (printWrap) printWrap.hidden = !active;
+    }
 
     function isFiscalUiUnlocked() {
       try {
@@ -11884,29 +11913,10 @@
 
     async function ngarkoFiscalizimin() {
       const msg = document.getElementById("msg-fiscalizimi");
-      const btnCorr = document.getElementById("btn-kupon-korrigjues");
-      const btnSelfTest = document.getElementById("btn-fiscal-self-test");
-      const btnSelfTest100 = document.getElementById("btn-fiscal-self-test-100");
-      const btnPrintTestCoupon = document.getElementById("btn-fiscal-print-test-coupon");
-      const btnReceiptsList = document.getElementById("btn-fiscal-receipts-list");
-      const auditBox = document.getElementById("sef-audit-box");
-      const selfTestBox = document.getElementById("sef-self-test-box");
       try {
         const s = await api("/api/fiscal-config");
-        const nui = String(s.taxpayer_nui || "").trim();
-        const allowUi = nui === FISCAL_OWNER_NUI || isFiscalUiUnlocked();
-        setFiscalUiVisible(allowUi);
-        if (!allowUi) {
-          applySefFieldsEnabled(false);
-          if (btnCorr) btnCorr.hidden = true;
-          if (btnSelfTest) btnSelfTest.hidden = true;
-          if (btnSelfTest100) btnSelfTest100.hidden = true;
-          if (btnPrintTestCoupon) btnPrintTestCoupon.hidden = true;
-          if (btnReceiptsList) btnReceiptsList.hidden = true;
-          if (auditBox) auditBox.hidden = true;
-          if (selfTestBox) selfTestBox.hidden = true;
-          return;
-        }
+        setFiscalUiVisible(true);
+        applySefFieldsEditable();
         const locked = !!s.fiscal_release_locked;
         const enabled = locked ? false : !!s.fiscal_enabled;
         const toggleEl = document.getElementById("sef-fiscal-enabled");
@@ -11929,14 +11939,14 @@
         document.getElementById("sef-fiscalization-number").value = s.fiscalization_number || "";
         document.getElementById("sef-sef-code").value = s.sef_code || "";
         document.getElementById("sef-language").value = s.language === "sr" ? "sr" : "sq";
-        applySefFieldsEnabled(enabled);
-        if (btnCorr) btnCorr.hidden = !enabled;
-        if (btnSelfTest) btnSelfTest.hidden = !enabled;
-        if (btnSelfTest100) btnSelfTest100.hidden = !enabled;
-        if (btnPrintTestCoupon) btnPrintTestCoupon.hidden = !enabled;
-        if (btnReceiptsList) btnReceiptsList.hidden = !enabled;
-        if (auditBox) auditBox.hidden = !enabled;
-        if (selfTestBox && !enabled) selfTestBox.hidden = true;
+        applySefFiscalFeatures(enabled);
+        if (msg && s.activation && !s.activation.complete && !enabled) {
+          msg.textContent =
+            "Plotësoni fushat e dyqanit (*), pastaj «Ruaj Fiskalizimin» — aktivizohet automatikisht.";
+          msg.style.color = "var(--ngjyr-muted,#888)";
+        } else if (msg && enabled) {
+          msg.textContent = "";
+        }
         const printWrap = document.getElementById("sef-print-mode-wrap");
         if (printWrap) printWrap.hidden = !enabled;
         try {
@@ -11962,14 +11972,8 @@
           msg.textContent = err.message || "Nuk u lexuan cilësimet e fiskalizimit.";
           msg.style.color = "var(--ngjyr-danger, #ef4444)";
         }
-        applySefFieldsEnabled(false);
-        if (btnCorr) btnCorr.hidden = true;
-        if (btnSelfTest) btnSelfTest.hidden = true;
-        if (btnSelfTest100) btnSelfTest100.hidden = true;
-        if (btnPrintTestCoupon) btnPrintTestCoupon.hidden = true;
-        if (btnReceiptsList) btnReceiptsList.hidden = true;
-        if (auditBox) auditBox.hidden = true;
-        if (selfTestBox) selfTestBox.hidden = true;
+        applySefFieldsEditable();
+        applySefFiscalFeatures(false);
       }
     }
 
@@ -11981,29 +11985,13 @@
       }
       const on = toggle.checked;
       console.log("[admin] sef-fiscal-enabled toggle →", on, "(ruajtje e menjëhershme)");
-      applySefFieldsEnabled(on);
-      const btnCorr = document.getElementById("btn-kupon-korrigjues");
-      if (btnCorr) btnCorr.hidden = !on;
-      const btnSelfTest = document.getElementById("btn-fiscal-self-test");
-      if (btnSelfTest) btnSelfTest.hidden = !on;
-      const btnSelfTest100 = document.getElementById("btn-fiscal-self-test-100");
-      if (btnSelfTest100) btnSelfTest100.hidden = !on;
-      const btnPrintTestCoupon = document.getElementById("btn-fiscal-print-test-coupon");
-      if (btnPrintTestCoupon) btnPrintTestCoupon.hidden = !on;
-      const btnReceiptsList = document.getElementById("btn-fiscal-receipts-list");
-      if (btnReceiptsList) btnReceiptsList.hidden = !on;
-      const auditBox = document.getElementById("sef-audit-box");
-      if (auditBox) auditBox.hidden = !on;
-      const selfTestBox = document.getElementById("sef-self-test-box");
-      if (selfTestBox && !on) selfTestBox.hidden = true;
-      const printWrap = document.getElementById("sef-print-mode-wrap");
-      if (printWrap) printWrap.hidden = !on;
+      applySefFiscalFeatures(on);
       // Ruaj menjëherë fiscal_enabled — pa pritur «Ruaj Fiskalizimin»
       const msg = document.getElementById("msg-fiscalizimi");
       try {
         await api("/api/fiscal-config", {
           method: "PUT",
-          body: JSON.stringify({ fiscal_enabled: on }),
+          body: JSON.stringify(on ? { fiscal_enabled: true } : { fiscal_enabled: false }),
         });
         if (window.FiscalPaymentModal) FiscalPaymentModal.invalidateCache();
         console.log("[admin] fiscal_enabled u ruajt në SQLite:", on);
@@ -12021,7 +12009,7 @@
       } catch (err) {
         console.error("[admin] ruajtja e fiscal_enabled dështoi:", err);
         document.getElementById("sef-fiscal-enabled").checked = !on;
-        applySefFieldsEnabled(!on);
+        applySefFiscalFeatures(!on);
         if (msg) {
           msg.textContent = err.message || "Ruajtja e toggle dështoi";
           msg.style.color = "#ef4444";
@@ -12064,17 +12052,11 @@
     let _fiscalUiTr = {};
 
     function paintFiscalI18nDom(tr) {
-      const roots = [
-        "#card-fiscalizimi",
-        "#modal-fiscal-correction",
-        "#modal-fiscal-receipts",
-        "#modal-fiscal-receipt-view",
-      ].join(", ");
-      document.querySelectorAll(`${roots} [data-fi18n]`).forEach((el) => {
+      document.querySelectorAll("#card-fiscalizimi [data-fi18n]").forEach((el) => {
         const key = el.getAttribute("data-fi18n");
         if (key && tr[key] != null) el.textContent = tr[key];
       });
-      document.querySelectorAll(`${roots} [data-fi18n-placeholder]`).forEach((el) => {
+      document.querySelectorAll("#card-fiscalizimi [data-fi18n-placeholder]").forEach((el) => {
         const key = el.getAttribute("data-fi18n-placeholder");
         if (key && tr[key] != null) el.setAttribute("placeholder", tr[key]);
       });
@@ -12163,177 +12145,6 @@
     document.getElementById("btn-audit-csv")?.addEventListener("click", () => exportFiscalAudit("csv"));
     document.getElementById("btn-audit-pdf")?.addEventListener("click", () => exportFiscalAudit("pdf"));
 
-    /* ——— HAPI 7: Kupon Korrigjues ——— */
-    let fccOriginal = null;
-
-    function mbyllFiscalCorrectionModal() {
-      const modal = document.getElementById("modal-fiscal-correction");
-      if (modal) modal.hidden = true;
-      fccOriginal = null;
-      const form = document.getElementById("fcc-form");
-      const details = document.getElementById("fcc-details");
-      const msg = document.getElementById("fcc-msg");
-      if (form) form.hidden = true;
-      if (details) { details.hidden = true; details.textContent = ""; }
-      if (msg) msg.textContent = "";
-      const nuikf = document.getElementById("fcc-nuikf");
-      if (nuikf) nuikf.value = "";
-      const reason = document.getElementById("fcc-reason");
-      if (reason) reason.value = "";
-    }
-
-    async function hapFiscalCorrectionModal() {
-      mbyllFiscalCorrectionModal();
-      await applyFiscalI18n(_fiscalUiLang);
-      const modal = document.getElementById("modal-fiscal-correction");
-      if (modal) modal.hidden = false;
-      document.getElementById("fcc-nuikf")?.focus();
-    }
-
-    function renderFccItems(items) {
-      const wrap = document.getElementById("fcc-items");
-      if (!wrap) return;
-      wrap.innerHTML = "";
-      (items || []).forEach((it, idx) => {
-        const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
-        const price = Number(it.price ?? it.unit_price ?? 0) || 0;
-        const row = document.createElement("div");
-        row.className = "fcc-item-row";
-        row.innerHTML =
-          `<input type="checkbox" data-fcc-idx="${idx}" checked>` +
-          `<span style="flex:1">${String(it.name || "-").replace(/</g, "&lt;")} (${price.toFixed(2)} €)</span>` +
-          `<input type="number" min="0.01" step="0.01" max="${qty}" value="${qty}" data-fcc-qty="${idx}">`;
-        wrap.appendChild(row);
-      });
-    }
-
-    function collectFccReturnItems() {
-      if (!fccOriginal) return [];
-      const items = fccOriginal.items || [];
-      const out = [];
-      document.querySelectorAll("#fcc-items [data-fcc-idx]").forEach((cb) => {
-        if (!cb.checked) return;
-        const idx = Number(cb.getAttribute("data-fcc-idx"));
-        const it = items[idx];
-        if (!it) return;
-        const qtyEl = document.querySelector(`#fcc-items [data-fcc-qty="${idx}"]`);
-        const qty = Number(qtyEl?.value || 0);
-        if (qty <= 0) return;
-        out.push({
-          name: it.name,
-          quantity: qty,
-          qty,
-          price: it.price ?? it.unit_price,
-          unit_price: it.unit_price ?? it.price,
-          vat_norm: it.vat_norm || "E",
-          menu_item_id: it.menu_item_id,
-        });
-      });
-      return out;
-    }
-
-    document.getElementById("btn-kupon-korrigjues")?.addEventListener("click", hapFiscalCorrectionModal);
-    document.getElementById("fcc-backdrop")?.addEventListener("click", mbyllFiscalCorrectionModal);
-    document.getElementById("fcc-close")?.addEventListener("click", mbyllFiscalCorrectionModal);
-
-    document.getElementById("fcc-type")?.addEventListener("change", () => {
-      const type = document.getElementById("fcc-type").value;
-      const itemsWrap = document.getElementById("fcc-items-wrap");
-      if (itemsWrap) itemsWrap.hidden = type !== "return";
-    });
-
-    document.getElementById("fcc-lookup")?.addEventListener("click", async () => {
-      const msg = document.getElementById("fcc-msg");
-      const nuikf = (document.getElementById("fcc-nuikf").value || "").trim().toUpperCase();
-      document.getElementById("fcc-nuikf").value = nuikf;
-      if (!nuikf) {
-        msg.textContent = fiscalUiT("enter_nuikf", "Shkruani NUIKF");
-        msg.style.color = "#ef4444";
-        return;
-      }
-      msg.textContent = fiscalUiT("searching", "Duke kërkuar...");
-      msg.style.color = "#a0a0b8";
-      try {
-        const res = await api(`/api/fiscal-correction/lookup/${encodeURIComponent(nuikf)}`);
-        fccOriginal = res.original;
-        const details = document.getElementById("fcc-details");
-        const form = document.getElementById("fcc-form");
-        const total = Number(fccOriginal.total_amount || 0).toFixed(2);
-        const itemsCount = (fccOriginal.items || []).length;
-        details.hidden = false;
-        details.innerHTML =
-          `<div><strong style="color:#FF6B35">NUIKF:</strong> ${fccOriginal.nuikf}</div>` +
-          `<div>${fiscalUiT("details_date", "Data:")} ${fccOriginal.fiscal_date || ""} ${fccOriginal.fiscal_time || ""}</div>` +
-          `<div>${fiscalUiT("details_operator", "Operator:")} ${fccOriginal.operator_name || ""}</div>` +
-          `<div>${fiscalUiT("details_items", "Artikuj:")} ${itemsCount} — ${fiscalUiT("details_total", "Totali:")} ${total} €</div>` +
-          `<div>${fiscalUiT("details_payment", "Pagesa:")} ${fccOriginal.payment_method || ""}</div>` +
-          (res.has_correction
-            ? `<div style="color:#fbbf24;margin-top:0.35rem">${fiscalUiT("has_correction", "Ky kupon ka tashmë korrigjim(e).")}</div>`
-            : "");
-        form.hidden = false;
-        renderFccItems(fccOriginal.items || []);
-        document.getElementById("fcc-type").value = "cancel";
-        document.getElementById("fcc-items-wrap").hidden = true;
-        msg.textContent = "";
-      } catch (err) {
-        fccOriginal = null;
-        document.getElementById("fcc-form").hidden = true;
-        document.getElementById("fcc-details").hidden = true;
-        msg.textContent = err.message || fiscalUiT("not_found", "Nuk u gjet");
-        msg.style.color = "#ef4444";
-      }
-    });
-
-    document.getElementById("fcc-confirm")?.addEventListener("click", async () => {
-      const msg = document.getElementById("fcc-msg");
-      if (!fccOriginal) {
-        msg.textContent = fiscalUiT("lookup_first", "Kërkoni fillimisht kuponin origjinal");
-        msg.style.color = "#ef4444";
-        return;
-      }
-      const type = document.getElementById("fcc-type").value;
-      const reason = (document.getElementById("fcc-reason").value || "").trim();
-      if (!reason) {
-        msg.textContent = fiscalUiT("enter_reason", "Shkruani arsyen");
-        msg.style.color = "#ef4444";
-        return;
-      }
-      let items = null;
-      if (type === "return") {
-        items = collectFccReturnItems();
-        if (!items.length) {
-          msg.textContent = fiscalUiT("select_return_item", "Zgjidhni të paktën një artikull për kthim");
-          msg.style.color = "#ef4444";
-          return;
-        }
-      }
-      const btn = document.getElementById("fcc-confirm");
-      btn.disabled = true;
-      msg.textContent = fiscalUiT("creating", "Duke krijuar...");
-      msg.style.color = "#a0a0b8";
-      try {
-        const res = await api("/api/fiscal-correction", {
-          method: "POST",
-          body: JSON.stringify({
-            original_nuikf: fccOriginal.nuikf,
-            correction_type: type,
-            items,
-            reason,
-          }),
-        });
-        msg.style.color = "#FF6B35";
-        msg.textContent = res.printed
-          ? `U krijua NUIKF ${res.receipt?.nuikf} dhe u printua.`
-          : `U krijua NUIKF ${res.receipt?.nuikf}. ${res.printMessage || ""}`;
-        setTimeout(() => mbyllFiscalCorrectionModal(), 2200);
-      } catch (err) {
-        msg.textContent = err.message || "Gabim";
-        msg.style.color = "#ef4444";
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
     document.getElementById("btn-fiscalizimi-save")?.addEventListener("click", async () => {
       const msg = document.getElementById("msg-fiscalizimi");
       const nui = (document.getElementById("sef-taxpayer-nui").value || "").trim();
@@ -12343,10 +12154,9 @@
         return;
       }
       try {
-        await api("/api/fiscal-config", {
+        const resp = await api("/api/fiscal-config", {
           method: "PUT",
           body: JSON.stringify({
-            fiscal_enabled: document.getElementById("sef-fiscal-enabled").checked,
             taxpayer_nui: nui,
             taxpayer_nf: document.getElementById("sef-taxpayer-nf").value,
             taxpayer_vat_number: document.getElementById("sef-taxpayer-vat").value,
@@ -12361,7 +12171,13 @@
           }),
         });
         if (window.FiscalPaymentModal) FiscalPaymentModal.invalidateCache();
-        const savedMsg = fiscalUiT("saved_ok", "U ruajt!");
+        let savedMsg = fiscalUiT("saved_ok", "U ruajt!");
+        if (resp.fiscal_enabled) {
+          savedMsg += " — Fiskalizimi u aktivizua (të dhënat e dyqanit).";
+        } else if (resp.activation && resp.activation.missing && resp.activation.missing.length) {
+          savedMsg +=
+            " — Mungon: " + resp.activation.missing.slice(0, 4).join(", ");
+        }
         msg.textContent = savedMsg;
         msg.style.color = "#FF6B35";
         await ngarkoFiscalizimin();
@@ -12371,321 +12187,6 @@
         msg.style.color = "var(--ngjyr-danger, #ef4444)";
       }
     });
-
-    function setFiscalSelfTestBusy(busy) {
-      const b1 = document.getElementById("btn-fiscal-self-test");
-      const b100 = document.getElementById("btn-fiscal-self-test-100");
-      if (b1) b1.disabled = !!busy;
-      if (b100) b100.disabled = !!busy;
-    }
-
-    function renderFiscalSelfTestSingle(report) {
-      const list = document.getElementById("sef-self-test-list");
-      const summary = document.getElementById("sef-self-test-summary");
-      const title = document.getElementById("sef-self-test-title");
-      if (title) {
-        title.textContent = fiscalUiT(
-          "self_test_title",
-          "Rezultati i testit fiskal (lokal — pa ATK)"
-        );
-      }
-      const rows = Array.isArray(report.results) ? report.results : [];
-      list.innerHTML = "";
-      for (const r of rows) {
-        const li = document.createElement("li");
-        li.className = r.pass ? "pass" : "fail";
-        const icon = r.pass ? "✅" : "❌";
-        const detail = r.detail ? ` — ${r.detail}` : "";
-        li.textContent = `${icon} ${r.name}${detail}`;
-        list.appendChild(li);
-      }
-      const s = report.summary || {};
-      summary.className = "sef-self-test-summary " + (report.ok ? "ok" : "bad");
-      summary.textContent = report.ok
-        ? `✅ Të gjitha kaluan (${s.passed || 0}/${s.total || 0})` +
-          (s.deleted_test_receipts != null
-            ? ` · u fshinë ${s.deleted_test_receipts} rreshta TEST`
-            : "")
-        : `❌ ${s.failed || 0} dështuan / ${s.passed || 0} kaluan (nga ${s.total || 0})`;
-    }
-
-    function renderFiscalSelfTestBattery(report) {
-      const list = document.getElementById("sef-self-test-list");
-      const summary = document.getElementById("sef-self-test-summary");
-      const title = document.getElementById("sef-self-test-title");
-      if (title) {
-        title.textContent = fiscalUiT(
-          "self_test_battery_title",
-          "Testi 100 herë — përmbledhje"
-        );
-      }
-      list.innerHTML = "";
-
-      const c = report.checks || {};
-      const lines = [
-        { ok: true, text: report.headline || `12 teste × ${report.times || 100} = ${report.expected_checks || 1200} kontrolle` },
-        { ok: true, text: `✅ ${c.passed || 0} kaluan` },
-        { ok: (c.failed || 0) === 0, text: `❌ ${c.failed || 0} dështuan` },
-        { ok: true, text: `⏱ Koha totale: ${report.duration_label || ((report.duration_ms || 0) + "ms")}` },
-        {
-          ok: true,
-          text: `Ciklet: ✅ ${report.runs?.passed || 0} / ❌ ${report.runs?.failed || 0} (nga ${report.times || 0})`,
-        },
-      ];
-      if (report.perfect) {
-        lines.push({ ok: true, text: "SISTEMI FISKAL ËSHTË 100% GATI" });
-      }
-
-      for (const row of lines) {
-        const li = document.createElement("li");
-        li.className = row.ok ? "pass" : "fail";
-        li.textContent = row.text;
-        list.appendChild(li);
-      }
-
-      const fails = Array.isArray(report.failures) ? report.failures : [];
-      if (fails.length) {
-        const head = document.createElement("li");
-        head.className = "fail";
-        head.textContent = "Gabimet:";
-        list.appendChild(head);
-        const maxShow = 40;
-        for (const f of fails.slice(0, maxShow)) {
-          const li = document.createElement("li");
-          li.className = "fail";
-          li.textContent = `❌ #${f.run} ${f.name}${f.detail ? " — " + f.detail : ""}`;
-          list.appendChild(li);
-        }
-        if (fails.length > maxShow) {
-          const more = document.createElement("li");
-          more.className = "fail";
-          more.textContent = `… +${fails.length - maxShow} gabime të tjera`;
-          list.appendChild(more);
-        }
-      }
-
-      summary.className = "sef-self-test-summary " + (report.ok ? "ok" : "bad");
-      summary.textContent = report.perfect
-        ? "SISTEMI FISKAL ËSHTË 100% GATI"
-        : `❌ ${c.failed || 0} dështime nga ${c.total || 0} kontrolle`;
-    }
-
-    document.getElementById("btn-fiscal-print-test-coupon")?.addEventListener("click", async () => {
-      const btn = document.getElementById("btn-fiscal-print-test-coupon");
-      const msg = document.getElementById("msg-fiscalizimi");
-      if (btn) btn.disabled = true;
-      try {
-        const data = await api("/api/fiscal-print-test-coupon", {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
-        if (msg) {
-          msg.textContent = data.message || "U printua";
-          msg.style.color = "#4ade80";
-        }
-      } catch (err) {
-        if (msg) {
-          msg.textContent = "Gabim: " + (err.message || "printimi dështoi");
-          msg.style.color = "#f87171";
-        }
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-    });
-
-    document.getElementById("btn-fiscal-self-test")?.addEventListener("click", async () => {
-      const box = document.getElementById("sef-self-test-box");
-      const list = document.getElementById("sef-self-test-list");
-      const summary = document.getElementById("sef-self-test-summary");
-      const msg = document.getElementById("msg-fiscalizimi");
-      if (!box || !list || !summary) return;
-      setFiscalSelfTestBusy(true);
-      box.hidden = false;
-      list.innerHTML = "<li style=\"color:#a0a0b8\">Duke testuar… (printon kupon provë nëse printeri është i lidhur)</li>";
-      summary.textContent = "";
-      summary.className = "sef-self-test-summary";
-      try {
-        const report = await api("/api/fiscal-self-test", {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
-        renderFiscalSelfTestSingle(report);
-        if (msg) {
-          msg.textContent = report.ok ? "Testi fiskal: OK" : "Testi fiskal: ka gabime";
-          msg.style.color = report.ok ? "#4ade80" : "#f87171";
-        }
-      } catch (err) {
-        list.innerHTML = "";
-        const li = document.createElement("li");
-        li.className = "fail";
-        li.textContent = `❌ ${err.message || "Gabim gjatë testit"}`;
-        list.appendChild(li);
-        summary.className = "sef-self-test-summary bad";
-        summary.textContent = "Testi nuk u kompletuar";
-        if (msg) {
-          msg.textContent = err.message || "Testi dështoi";
-          msg.style.color = "#f87171";
-        }
-      } finally {
-        setFiscalSelfTestBusy(false);
-      }
-    });
-
-    document.getElementById("btn-fiscal-self-test-100")?.addEventListener("click", async () => {
-      const box = document.getElementById("sef-self-test-box");
-      const list = document.getElementById("sef-self-test-list");
-      const summary = document.getElementById("sef-self-test-summary");
-      const msg = document.getElementById("msg-fiscalizimi");
-      if (!box || !list || !summary) return;
-      setFiscalSelfTestBusy(true);
-      box.hidden = false;
-      list.innerHTML = "<li style=\"color:#a0a0b8\">Duke ekzekutuar 12×100 kontrolle… mund të zgjasë disa minuta.</li>";
-      summary.textContent = "";
-      summary.className = "sef-self-test-summary";
-      try {
-        const report = await api("/api/fiscal-self-test", {
-          method: "POST",
-          body: JSON.stringify({ times: 100 }),
-        });
-        renderFiscalSelfTestBattery(report);
-        if (msg) {
-          msg.textContent = report.perfect
-            ? "SISTEMI FISKAL ËSHTË 100% GATI"
-            : "Testi 100×: ka dështime";
-          msg.style.color = report.perfect ? "#4ade80" : "#f87171";
-        }
-      } catch (err) {
-        list.innerHTML = "";
-        const li = document.createElement("li");
-        li.className = "fail";
-        li.textContent = `❌ ${err.message || "Gabim gjatë testit 100×"}`;
-        list.appendChild(li);
-        summary.className = "sef-self-test-summary bad";
-        summary.textContent = "Testi 100× nuk u kompletuar";
-        if (msg) {
-          msg.textContent = err.message || "Testi 100× dështoi";
-          msg.style.color = "#f87171";
-        }
-      } finally {
-        setFiscalSelfTestBusy(false);
-      }
-    });
-
-    function statusClassFiscalReceipt(row) {
-      if (row && (row.is_offline === true || row.is_offline === 1)) return "frl-status-offline";
-      if (row && (row.sent_to_atk === true || row.sent_to_atk === 1)) return "frl-status-sent";
-      const status = String((row && row.status) || row || "");
-      if (/offline/i.test(status)) return "frl-status-offline";
-      if (/dërguar|poslato|atk/i.test(status)) return "frl-status-sent";
-      return "frl-status-pending";
-    }
-
-    function escHtmlFrl(s) {
-      return String(s == null ? "" : s)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    }
-
-    function mbyllFiscalReceiptsModal() {
-      const m = document.getElementById("modal-fiscal-receipts");
-      if (m) m.hidden = true;
-    }
-
-    function mbyllFiscalReceiptViewModal() {
-      const m = document.getElementById("modal-fiscal-receipt-view");
-      if (m) m.hidden = true;
-    }
-
-    async function hapFiscalReceiptView(id) {
-      const modal = document.getElementById("modal-fiscal-receipt-view");
-      const meta = document.getElementById("frv-meta");
-      const body = document.getElementById("frv-body");
-      if (!modal || !body) return;
-      body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
-      if (meta) meta.textContent = "";
-      modal.hidden = false;
-      await applyFiscalI18n(_fiscalUiLang);
-      try {
-        const res = await api("/api/fiscal-receipts/" + encodeURIComponent(id));
-        const r = res.receipt || {};
-        if (meta) {
-          meta.textContent =
-            "NUIKF " + (r.nuikf || "-") +
-            " · Nr. " + (r.daily_number ?? "-") +
-            " · " + (r.fiscal_date || "") + " " + (r.fiscal_time || "") +
-            " · " + (r.status || "");
-        }
-        body.textContent = r.print_text || fiscalUiT("empty", "(bosh)");
-      } catch (err) {
-        body.textContent = err.message || "Gabim";
-      }
-    }
-
-    async function hapFiscalReceiptsModal() {
-      const modal = document.getElementById("modal-fiscal-receipts");
-      const tbody = document.getElementById("frl-tbody");
-      const countEl = document.getElementById("frl-count");
-      if (!modal || !tbody) return;
-      modal.hidden = false;
-      await applyFiscalI18n(_fiscalUiLang);
-      tbody.innerHTML =
-        '<tr><td colspan="9" style="color:#a0a0b8">' +
-        escHtmlFrl(fiscalUiT("loading", "Duke ngarkuar…")) +
-        "</td></tr>";
-      if (countEl) countEl.textContent = "";
-      try {
-        const res = await api("/api/fiscal-receipts?limit=500");
-        const rows = Array.isArray(res.receipts) ? res.receipts : [];
-        if (!rows.length) {
-          tbody.innerHTML =
-            '<tr><td colspan="9" style="color:#a0a0b8">' +
-            escHtmlFrl(fiscalUiT("receipts_empty", "Nuk ka kuponë fiskalë ende.")) +
-            "</td></tr>";
-          if (countEl) countEl.textContent = "0";
-          return;
-        }
-        tbody.innerHTML = "";
-        const viewLbl = fiscalUiT("view", "Shiko");
-        for (const r of rows) {
-          const tr = document.createElement("tr");
-          const stClass = statusClassFiscalReceipt(r);
-          tr.innerHTML =
-            "<td><code>" + escHtmlFrl(r.nuikf) + "</code></td>" +
-            "<td>" + escHtmlFrl(r.daily_number) + "</td>" +
-            "<td>" + escHtmlFrl((r.fiscal_date || "") + " " + (r.fiscal_time || "")) + "</td>" +
-            "<td>" + escHtmlFrl(r.receipt_type_label || r.receipt_type) + "</td>" +
-            "<td>" + Number(r.total_amount || 0).toFixed(2) + " €</td>" +
-            "<td>" + escHtmlFrl(r.payment_label || r.payment_method) + "</td>" +
-            "<td>" + escHtmlFrl(r.operator_name) + "</td>" +
-            "<td class=\"" + stClass + "\">" + escHtmlFrl(r.status) + "</td>" +
-            "<td><button type=\"button\" class=\"btn-frl-view\" data-frl-id=\"" +
-            escHtmlFrl(r.id) + "\">" + escHtmlFrl(viewLbl) + "</button></td>";
-          tbody.appendChild(tr);
-        }
-        if (countEl) {
-          countEl.textContent =
-            rows.length === 1
-              ? fiscalUiT("receipts_count_one", "1 kupon")
-              : fiscalUiT("receipts_count", "{n} kuponë").replace("{n}", String(rows.length));
-        }
-        tbody.querySelectorAll("[data-frl-id]").forEach((btn) => {
-          btn.addEventListener("click", () => hapFiscalReceiptView(btn.getAttribute("data-frl-id")));
-        });
-      } catch (err) {
-        tbody.innerHTML =
-          '<tr><td colspan="9" style="color:#f87171">' +
-          escHtmlFrl(err.message || "Gabim") +
-          "</td></tr>";
-      }
-    }
-
-    document.getElementById("btn-fiscal-receipts-list")?.addEventListener("click", hapFiscalReceiptsModal);
-    document.getElementById("frl-close")?.addEventListener("click", mbyllFiscalReceiptsModal);
-    document.getElementById("frl-backdrop")?.addEventListener("click", mbyllFiscalReceiptsModal);
-    document.getElementById("frv-close")?.addEventListener("click", mbyllFiscalReceiptViewModal);
-    document.getElementById("frv-backdrop")?.addEventListener("click", mbyllFiscalReceiptViewModal);
 
     document.getElementById("btn-fiscal-register-save").addEventListener("click", async () => {
       const msg = document.getElementById("msg-fiscal-register");

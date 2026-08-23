@@ -231,10 +231,17 @@
     var enabled = await fetchFiscalEnabled(apiFn);
     fpmLog("resolvePaymentMethod → isFiscalEnabled=", enabled, "lang=", _langCache);
     if (!enabled) {
-      fpmLog("resolvePaymentMethod → fiscal OFF, kthej fallback pa modal");
-      return fallbackMethod || "cash";
+      var fb = FALLBACK_LABELS[_langCache === "sr" ? "sr" : "sq"];
+      _labelsCache = Object.assign({}, _labelsCache || {}, {
+        title: (_labelsCache && _labelsCache.title) || fb.title,
+        sub:
+          _langCache === "sr"
+            ? "Izaberite način plaćanja pre zatvaranja."
+            : "Zgjidhni mënyrën e pagesës para mbylljes.",
+        cancel: (_labelsCache && _labelsCache.cancel) || fb.cancel,
+      });
     }
-    fpmLog("resolvePaymentMethod → fiscal ON, hap modalin");
+    fpmLog("resolvePaymentMethod → hap modalin (terminal gjithmonë)");
     return pickPaymentMethod();
   }
 

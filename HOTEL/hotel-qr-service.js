@@ -70,8 +70,12 @@ function buildHotelQrUrls(base, roomNumber, slug = "") {
       room_service: room
         ? `${prefix}/room-service?room=${room}`
         : `${prefix}/room-service`,
-      menu: `${prefix}/menu`,
-      services: `${prefix}/services`,
+      menu: room
+        ? `${prefix}/menu?room=${room}`
+        : `${prefix}/menu`,
+      services: room
+        ? `${prefix}/services?room=${room}`
+        : `${prefix}/services`,
     };
   }
 
@@ -79,8 +83,12 @@ function buildHotelQrUrls(base, roomNumber, slug = "") {
     room_service: room
       ? `${b}/guest/room-service.html?room=${room}`
       : `${b}/guest/room-service.html`,
-    menu: `${b}/guest/menu.html`,
-    services: `${b}/guest/services.html`,
+    menu: room
+      ? `${b}/guest/menu.html?room=${room}`
+      : `${b}/guest/menu.html`,
+    services: room
+      ? `${b}/guest/services.html?room=${room}`
+      : `${b}/guest/services.html`,
   };
 }
 
@@ -114,7 +122,7 @@ async function listHotelQrs(db) {
   const sharedMenu = await qrEntry("menu", "QR Menyja", buildHotelQrUrls(qrBase, "", qrSlug).menu);
   const sharedServices = await qrEntry("services", "QR Shërbime", buildHotelQrUrls(qrBase, "", qrSlug).services);
 
-  const roomRows = [];
+    const roomRows = [];
   for (const room of rooms) {
     const urls = buildHotelQrUrls(qrBase, room.room_number, qrSlug);
     const rs = await qrEntry(
@@ -122,14 +130,24 @@ async function listHotelQrs(db) {
       `Room Service — Dh. ${room.room_number}`,
       urls.room_service,
     );
+    const menuForRoom = await qrEntry(
+      "menu",
+      `Menyja — Dh. ${room.room_number}`,
+      urls.menu,
+    );
+    const svcForRoom = await qrEntry(
+      "services",
+      `Shërbime — Dh. ${room.room_number}`,
+      urls.services,
+    );
     roomRows.push({
       room_id: room.id,
       room_number: room.room_number,
       floor: room.floor,
       type: room.type,
       room_service: rs,
-      menu: sharedMenu,
-      services: sharedServices,
+      menu: menuForRoom,
+      services: svcForRoom,
     });
   }
 

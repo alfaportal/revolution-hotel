@@ -351,6 +351,23 @@
     .svc-card-name { font-weight: 800; color: #0f172a; font-size: 0.9rem; line-height: 1.25; }
     .svc-card-price { font-weight: 800; color: #0f766e; font-size: 0.9rem; margin-top: auto; }
     .svc-card-mode { font-size: 0.68rem; font-weight: 700; color: #64748b; }
+    .rez-svc-picker {
+      max-height: 200px; overflow: auto; border: 1px solid #cbd5e1; border-radius: 10px;
+      padding: 0.5rem; background: #f8fafc;
+    }
+    .rez-svc-cat {
+      font-size: 0.72rem; font-weight: 800; color: #ea580c;
+      margin: 0.55rem 0 0.35rem; text-transform: uppercase;
+    }
+    .rez-svc-cat:first-child { margin-top: 0; }
+    .rez-svc-row {
+      display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 0.45rem;
+      align-items: center; padding: 0.35rem 0.25rem; font-size: 0.85rem; cursor: pointer;
+    }
+    .rez-svc-name { font-weight: 700; color: #0f172a; }
+    .rez-svc-price { color: #64748b; font-size: 0.78rem; white-space: nowrap; }
+    .rez-svc-qty, .rez-svc-amt { width: 3.2rem; padding: 0.2rem 0.35rem; font-size: 0.8rem; }
+    .rez-svc-tag { display: block; font-size: 0.72rem; color: #64748b; font-weight: 600; margin-top: 0.1rem; }
     .waiter-svc-rooms, .waiter-hk-list { display: flex; flex-direction: column; gap: 0.5rem; }
     #modal-w-add-service .table-modal-content { max-width: 440px; width: min(440px, 96vw); }
     .waiter-svc-room-row, .waiter-hk-row {
@@ -718,6 +735,48 @@
 
     .btn-payment-karte:hover { opacity: 0.92; }
 
+    .pay-mixed-wrap {
+      margin-top: 0.5rem;
+      padding: 0.5rem 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .pay-mixed-wrap label {
+      font-size: 0.85rem;
+      color: var(--ngjyr-muted, #a0a0b8);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+    }
+    .pay-mixed-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.4rem;
+      margin: 0.45rem 0;
+    }
+    .pay-mixed-box label {
+      font-size: 0.72rem;
+      display: block;
+      margin-bottom: 0.15rem;
+    }
+    .pay-mixed-box input {
+      width: 100%;
+      padding: 0.4rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+      color: inherit;
+    }
+    .pay-mixed-status {
+      font-size: 0.78rem;
+      color: var(--ngjyr-muted, #a0a0b8);
+      margin-top: 0.25rem;
+    }
+    .pay-mixed-status.mismatch { color: #ff8a65; }
+    .pay-mixed-status[hidden] { display: none !important; }
+    .pay-mixed-box[hidden] { display: none !important; }
+    .pay-mixed-wrap[hidden] { display: none !important; }
+
     .coupon-type-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1081,7 +1140,7 @@
 
   <div id="modal-w-reservation" class="table-modal" hidden>
     <div class="table-modal-backdrop" id="w-rez-backdrop"></div>
-    <div class="table-modal-content">
+    <div class="table-modal-content" style="max-height:90vh;overflow-y:auto">
       <h2 id="w-rez-title">Rezervim i ri</h2>
       <p class="table-modal-sub" style="margin-top:-0.5rem;margin-bottom:0.85rem;color:var(--ngjyr-muted);font-size:0.9rem">
         Dhoma shfaqet si E Rezervuar (blu) për datat e zgjedhura.
@@ -1131,6 +1190,11 @@
           <label for="w-rez-notes">Shënime</label>
           <input type="text" id="w-rez-notes" maxlength="240" placeholder="kërkesa speciale, orari, VIP…">
         </div>
+        <div class="hotel-form-field wide">
+          <label>Shërbime shtesë</label>
+          <div id="w-rez-services-picker" class="rez-svc-picker"><p style="color:#64748b;font-size:0.85rem">Duke ngarkuar…</p></div>
+          <small style="display:block;margin-top:0.35rem;color:#64748b;font-size:0.78rem">Wellness, Transport, etj. — ruhen me rezervimin; shtohen te fatura në check-in.</small>
+        </div>
       </div>
       <div id="w-rez-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
       <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
@@ -1158,6 +1222,20 @@
         </div>
       </div>
       <div id="w-checkout-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div class="coupon-type-row" id="w-checkout-coupon-row">
+        <button type="button" class="btn-coupon btn-coupon-thermal active" data-checkout-coupon="thermal" id="w-checkout-kupon-termik">Kuponi Termik</button>
+        <button type="button" class="btn-coupon btn-coupon-fiscal" data-checkout-coupon="fiscal" id="w-checkout-kupon-fiskal">Kuponi Fiskal</button>
+      </div>
+      <div class="coupon-type-forced" id="w-checkout-coupon-forced" hidden></div>
+      <div class="pay-mixed-wrap" id="w-checkout-pay-mixed-wrap">
+        <label><input type="checkbox" id="w-checkout-pay-mixed" /> Pagesë e përzier</label>
+        <div id="w-checkout-pay-mixed-box" class="pay-mixed-box" hidden>
+          <div><label>Cash €</label><input id="w-checkout-pay-cash-amt" type="number" min="0" step="0.01" value="0" /></div>
+          <div><label>POS €</label><input id="w-checkout-pay-card-amt" type="number" min="0" step="0.01" value="0" /></div>
+          <div><label>Voucher €</label><input id="w-checkout-pay-voucher-amt" type="number" min="0" step="0.01" value="0" /></div>
+        </div>
+        <div id="w-checkout-pay-mixed-status" class="pay-mixed-status" hidden aria-live="polite"></div>
+      </div>
       <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
         <button type="button" class="btn btn-ghost" id="w-checkout-cancel">Anulo</button>
         <button type="button" class="btn btn-ghost" id="w-checkout-print">Print Faturë</button>
@@ -1274,6 +1352,15 @@
           <div class="payment-close-row">
             <button class="btn btn-payment-cash" id="btn-mbyll-cash">Cash</button>
             <button class="btn btn-payment-karte" id="btn-mbyll-karte">Kartë</button>
+          </div>
+          <div class="pay-mixed-wrap" id="pay-mixed-wrap">
+            <label><input type="checkbox" id="pay-mixed" /> Pagesë e përzier</label>
+            <div id="pay-mixed-box" class="pay-mixed-box" hidden>
+              <div><label>Cash €</label><input id="pay-cash-amt" type="number" min="0" step="0.01" value="0" /></div>
+              <div><label>POS €</label><input id="pay-card-amt" type="number" min="0" step="0.01" value="0" /></div>
+              <div><label>Voucher €</label><input id="pay-voucher-amt" type="number" min="0" step="0.01" value="0" /></div>
+            </div>
+            <div id="pay-mixed-status" class="pay-mixed-status" hidden aria-live="polite"></div>
           </div>
           <button type="button" class="btn btn-primary" id="btn-mbyll-dhome" style="width:100%;margin-top:0.4rem">Faturë në dhomë</button>
           <button type="button" class="btn btn-ghost btn-split-bill" id="btn-nda-faturen">Nda faturën</button>
@@ -1449,6 +1536,15 @@
         <button type="button" class="btn btn-payment-cash" id="btn-split-cash">Cash</button>
         <button type="button" class="btn btn-payment-karte" id="btn-split-karte">Kartë</button>
       </div>
+      <div class="pay-mixed-wrap" id="split-pay-mixed-wrap">
+        <label><input type="checkbox" id="split-pay-mixed" /> Pagesë e përzier</label>
+        <div id="split-pay-mixed-box" class="pay-mixed-box" hidden>
+          <div><label>Cash €</label><input id="split-pay-cash-amt" type="number" min="0" step="0.01" value="0" /></div>
+          <div><label>POS €</label><input id="split-pay-card-amt" type="number" min="0" step="0.01" value="0" /></div>
+          <div><label>Voucher €</label><input id="split-pay-voucher-amt" type="number" min="0" step="0.01" value="0" /></div>
+        </div>
+        <div id="split-pay-mixed-status" class="pay-mixed-status" hidden aria-live="polite"></div>
+      </div>
       <button type="button" class="btn btn-ghost" id="btn-split-cancel">Anulo</button>
       <div id="split-modal-msg" class="alert alert-error" hidden></div>
     </div>
@@ -1490,7 +1586,8 @@
   <script src="/js/cloud-status.js"></script>
   <script src="/js/menu-pos.js?v=8"></script>
   <script src="/js/waiter-calculator.js?v=3"></script>
-  <script src="/js/fiscal-payment-modal.js?v=2"></script>
+  <script src="/js/fiscal-payment-modal.js?v=3"></script>
+  <script src="/js/fiscal-mixed-payment.js?v=1"></script>
   <script src="/js/fiscal-offline-status.js?v=2"></script>
   <script>
     const user = kerkonHyrje("kamarier");
@@ -1544,9 +1641,14 @@
       waiterOnlinePop?.classList.remove("hidden");
       const title = document.getElementById("waiter-online-pop-title");
       if (title) {
-        title.textContent = waiterOnlineOrders.length === 1
-          ? tt("Porosi e re")
-          : `${waiterOnlineOrders.length} ${tt("porosi të reja")}`;
+        const hasGuestSvc = waiterOnlineOrders.some(
+          (x) => x.is_guest_hotel_service || x.order_kind === "guest_hotel_service",
+        );
+        title.textContent = hasGuestSvc
+          ? (waiterOnlineOrders.length === 1 ? tt("Kërkesë shërbimi") : `${waiterOnlineOrders.length} ${tt("kërkesa shërbimesh")}`)
+          : (waiterOnlineOrders.length === 1
+            ? tt("Porosi e re")
+            : `${waiterOnlineOrders.length} ${tt("porosi të reja")}`);
       }
     }
 
@@ -1569,13 +1671,17 @@
       const items = (o.items || []).slice(0, 4).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
       const src = o.source_label || "Online";
       const customer = o.customer_label || o.waiter_name || "Klient";
+      const isGuestSvc = o.is_guest_hotel_service || o.order_kind === "guest_hotel_service";
       const tn = parseTableNumFromCloudOrder(o);
-      const table = tn > 0 ? `T${tn}` : "Porosi online";
+      const table = isGuestSvc
+        ? (o.room_number ? `Dh. ${o.room_number}` : "Dhoma")
+        : (tn > 0 ? `T${tn}` : "Porosi online");
       const extra = orders.length > 1 ? `<small>+ ${orders.length - 1} ${tt("tjetër në radhë")}</small>` : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <strong>${src} · ${customer}</strong>
         <span>${table} · ${formatEuro(o.total || 0)}</span>
         <small>${items}</small>
+        ${isGuestSvc ? `<small style="color:#94a3b8">${tt("Shërbim hoteli — prano për ta dërguar te stafi")}</small>` : ""}
         ${extra}
       </div>`;
     }
@@ -2196,28 +2302,48 @@
           `<button type="button" class="btn btn-primary" id="w-rd-checkout">Check-out</button>` +
           `<button type="button" class="btn btn-ghost" id="w-rd-charge">Faturë në dhomë</button>`;
       } else if (st === "reserved") {
-        const tr = todayRes || lastReservationsCache.find((x) => Number(x.room_id) === Number(room.id));
+        const tr = todayRes || lastActiveReservationsList.find((x) => Number(x.room_id) === Number(room.id))
+          || lastReservationsCache.find((x) => Number(x.room_id) === Number(room.id));
         htmlBody =
           `<div class="checkout-bill-row"><span>Mysafiri</span><strong>${escHtml(tr?.guest_name || "—")}</strong></div>` +
           `<div class="checkout-bill-row"><span>Telefoni</span><strong>${escHtml(tr?.phone || "—")}</strong></div>` +
           `<div class="checkout-bill-row"><span>Check-in</span><strong>${escHtml(tr?.check_in_date || "sot")}</strong></div>` +
           `<div class="checkout-bill-row"><span>Check-out</span><strong>${escHtml(tr?.check_out_date || "—")}</strong></div>`;
+        if (Array.isArray(tr?.services) && tr.services.length) {
+          htmlBody += `<div style="margin:0.5rem 0 0.2rem;font-weight:700;color:#0f172a;font-size:0.85rem">Shërbime të rezervuara</div>`;
+          for (const s of tr.services) {
+            htmlBody += `<div class="checkout-bill-row"><span>${escHtml(s.service_name || "Shërbim")}${Number(s.quantity) > 1 ? " ×" + s.quantity : ""}</span><strong>${formatEuro(s.amount)}</strong></div>`;
+          }
+        }
         actions.innerHTML =
           tr
-            ? `<button type="button" class="btn btn-primary" id="w-rd-convert">Konverto në Check-in</button>`
+            ? `<button type="button" class="btn btn-ghost" id="w-rd-editrez">Ndrysho rezervimin</button>` +
+              `<button type="button" class="btn btn-primary" id="w-rd-convert">Konverto në Check-in</button>`
             : `<button type="button" class="btn btn-primary" id="w-rd-checkin">Check-in</button>`;
       } else if (st === "dirty") {
         htmlBody = `<p style="margin:0;color:#713f12;font-weight:600">Dhoma pret pastrimin para check-in të ri.</p>`;
         actions.innerHTML = `<button type="button" class="btn btn-primary" id="w-rd-clean">Pastro → E Lirë</button>`;
       } else {
-        htmlBody = `<p style="margin:0;color:#14532d;font-weight:600">Dhoma është e lirë — gati për check-in.</p>`;
-        actions.innerHTML = `<button type="button" class="btn btn-primary" id="w-rd-checkin">Check-in</button>`;
+        htmlBody = `<p style="margin:0;color:#14532d;font-weight:600">Dhoma është e lirë — rezervim ose check-in.</p>`;
+        actions.innerHTML =
+          `<button type="button" class="btn btn-ghost" id="w-rd-reserve">Rezervim</button>` +
+          `<button type="button" class="btn btn-primary" id="w-rd-checkin">Check-in</button>`;
       }
 
       body.innerHTML = htmlBody;
       document.getElementById("modal-w-room-detail").hidden = false;
 
       document.getElementById("w-rd-checkin")?.addEventListener("click", () => { mbyllRoomDetail(); hapWaiterCheckIn(room); });
+      document.getElementById("w-rd-reserve")?.addEventListener("click", () => {
+        mbyllRoomDetail();
+        hapRezervimForm(null, room.id);
+      });
+      document.getElementById("w-rd-editrez")?.addEventListener("click", () => {
+        const tr = todayRes || lastActiveReservationsList.find((x) => Number(x.room_id) === Number(room.id))
+          || lastReservationsCache.find((x) => Number(x.room_id) === Number(room.id));
+        mbyllRoomDetail();
+        if (tr) hapRezervimForm(tr);
+      });
       document.getElementById("w-rd-checkout")?.addEventListener("click", () => { mbyllRoomDetail(); hapWaiterCheckOut(room); });
       document.getElementById("w-rd-addsvc")?.addEventListener("click", () => {
         mbyllRoomDetail();
@@ -2521,7 +2647,11 @@
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td>${idx + 1}</td>` +
-          `<td><strong>${escHtml(r.guest_name)}</strong></td>` +
+          `<td><strong>${escHtml(r.guest_name)}</strong>` +
+          (Array.isArray(r.services) && r.services.length
+            ? `<span class="rez-svc-tag">${escHtml(r.services.map((s) => s.service_name).join(", "))}</span>`
+            : "") +
+          `</td>` +
           `<td>${escHtml(r.phone || "—")}</td>` +
           `<td>${escHtml(r.room_number || "—")}</td>` +
           `<td>${escHtml(r.check_in_date)}</td>` +
@@ -2576,6 +2706,113 @@
       if (msg) { msg.hidden = true; msg.textContent = ""; }
     }
 
+    let rezAvailableRoomsCache = [];
+    let rezSvcCatalog = null;
+    let rezSvcSelected = {};
+
+    async function ensureRezSvcCatalog() {
+      if (rezSvcCatalog) return rezSvcCatalog;
+      const res = await api("/api/waiter/services");
+      rezSvcCatalog = res.groups || [];
+      if (!rezSvcCatalog.length && (res.services || []).length) {
+        rezSvcCatalog = [{ name: "Shërbime", services: res.services }];
+      }
+      return rezSvcCatalog;
+    }
+
+    function getWaiterRezRoomPrice() {
+      const roomId = Number(document.getElementById("w-rez-room")?.value);
+      const room = rezAvailableRoomsCache.find((r) => Number(r.id) === roomId);
+      return Number(room?.price_per_night) || 0;
+    }
+
+    function formatWaiterRezSvcPrice(s, roomPrice) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "room_rate") return `${roomPrice.toFixed(2)} € / natë`;
+      if (mode === "variable") return "Çmim i lirë";
+      return `${Number(s.price || 0).toFixed(2)} €`;
+    }
+
+    function renderWaiterRezServicesPicker(existingServices) {
+      const box = document.getElementById("w-rez-services-picker");
+      if (!box) return;
+      rezSvcSelected = {};
+      for (const line of existingServices || []) {
+        rezSvcSelected[line.service_id] = {
+          quantity: line.quantity || 1,
+          amount: line.unit_price,
+          notes: line.notes || "",
+        };
+      }
+      const groups = rezSvcCatalog || [];
+      if (!groups.length) {
+        box.innerHTML = '<p style="color:#64748b;font-size:0.85rem">Nuk ka shërbime — pronari i shton te Admin → Shërbimet.</p>';
+        return;
+      }
+      const roomPrice = getWaiterRezRoomPrice();
+      box.innerHTML = groups.map((g) => {
+        const items = (g.services || []).filter((s) => s.active !== 0);
+        if (!items.length) return "";
+        return `<div class="rez-svc-cat">${escHtml(g.name)}</div>` +
+          items.map((s) => {
+            const sel = rezSvcSelected[s.id];
+            const checked = sel ? "checked" : "";
+            const qty = sel?.quantity || 1;
+            const showAmt = String(s.price_mode) === "variable";
+            const amtVal = sel?.amount ?? s.price ?? 0;
+            return `<label class="rez-svc-row">` +
+              `<input type="checkbox" class="rez-svc-check" data-svc-id="${s.id}" ${checked}>` +
+              `<span class="rez-svc-name">${escHtml(s.name)}</span>` +
+              `<span class="rez-svc-price">${escHtml(formatWaiterRezSvcPrice(s, roomPrice))}</span>` +
+              `<input type="number" class="rez-svc-qty" data-svc-id="${s.id}" min="1" max="99" value="${qty}" ${sel ? "" : "disabled"}>` +
+              (showAmt ? `<input type="number" class="rez-svc-amt" data-svc-id="${s.id}" min="0" step="0.01" value="${amtVal}" ${sel ? "" : "disabled"} placeholder="€">` : "") +
+              `</label>`;
+          }).join("");
+      }).join("");
+
+      box.querySelectorAll(".rez-svc-check").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const id = Number(cb.dataset.svcId);
+          const qtyEl = box.querySelector(`.rez-svc-qty[data-svc-id="${id}"]`);
+          const amtEl = box.querySelector(`.rez-svc-amt[data-svc-id="${id}"]`);
+          if (cb.checked) {
+            rezSvcSelected[id] = {
+              quantity: Number(qtyEl?.value) || 1,
+              amount: amtEl ? Number(amtEl.value) : undefined,
+              notes: "",
+            };
+            if (qtyEl) qtyEl.disabled = false;
+            if (amtEl) amtEl.disabled = false;
+          } else {
+            delete rezSvcSelected[id];
+            if (qtyEl) qtyEl.disabled = true;
+            if (amtEl) amtEl.disabled = true;
+          }
+        });
+      });
+      box.querySelectorAll(".rez-svc-qty").forEach((inp) => {
+        inp.addEventListener("input", () => {
+          const id = Number(inp.dataset.svcId);
+          if (rezSvcSelected[id]) rezSvcSelected[id].quantity = Number(inp.value) || 1;
+        });
+      });
+      box.querySelectorAll(".rez-svc-amt").forEach((inp) => {
+        inp.addEventListener("input", () => {
+          const id = Number(inp.dataset.svcId);
+          if (rezSvcSelected[id]) rezSvcSelected[id].amount = Number(inp.value);
+        });
+      });
+    }
+
+    function collectWaiterRezServicesPayload() {
+      return Object.entries(rezSvcSelected).map(([service_id, v]) => ({
+        service_id: Number(service_id),
+        quantity: Number(v.quantity) || 1,
+        amount: v.amount,
+        notes: v.notes || "",
+      }));
+    }
+
     async function refreshRezAvailableRooms(preferRoomId) {
       const inEl = document.getElementById("w-rez-in");
       const outEl = document.getElementById("w-rez-out");
@@ -2594,6 +2831,7 @@
           `/api/waiter/room-reservations/available-rooms?check_in=${encodeURIComponent(checkIn)}&check_out=${encodeURIComponent(checkOut)}${exclude}`,
         );
         const rooms = res.rooms || [];
+        rezAvailableRoomsCache = rooms;
         const prefer = preferRoomId != null ? Number(preferRoomId) : Number(sel.value || 0);
         if (!rooms.length) {
           sel.innerHTML = '<option value="">Nuk ka dhoma të lira për këto data</option>';
@@ -2605,19 +2843,31 @@
         if (prefer && rooms.some((r) => Number(r.id) === prefer)) {
           sel.value = String(prefer);
         }
+        renderWaiterRezServicesPicker(collectWaiterRezServicesPayload().map((s) => ({
+          service_id: s.service_id,
+          quantity: s.quantity,
+          unit_price: s.amount,
+          notes: s.notes,
+        })));
       } catch (err) {
         sel.innerHTML = `<option value="">${escHtml(err.message || "Gabim dhomat")}</option>`;
       }
     }
 
-    function hapRezervimForm(existing) {
+    async function hapRezervimForm(existing, preselectRoomId) {
       const modal = document.getElementById("modal-w-reservation");
       if (!modal) return;
+      await ensureRezSvcCatalog();
       const title = document.getElementById("w-rez-title");
       const idEl = document.getElementById("w-rez-id");
       const today = hotelTodayYmd();
-      idEl.value = existing ? String(existing.id) : "";
-      if (title) title.textContent = existing ? "Ndrysho rezervimin" : "Rezervim i ri";
+      idEl.value = existing?.id ? String(existing.id) : "";
+      const roomNo = existing?.room_number || "";
+      if (title) {
+        title.textContent = existing?.id
+          ? "Ndrysho rezervimin"
+          : (preselectRoomId ? `Rezervim — dhoma ${roomNo || preselectRoomId}` : "Rezervim i ri");
+      }
       document.getElementById("w-rez-name").value = existing?.guest_name || "";
       document.getElementById("w-rez-phone").value = existing?.phone || "";
       document.getElementById("w-rez-email").value = existing?.email || "";
@@ -2634,7 +2884,12 @@
       const msg = document.getElementById("w-rez-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
       modal.hidden = false;
-      refreshRezAvailableRooms(existing?.room_id).catch(() => {});
+      await refreshRezAvailableRooms(existing?.room_id || preselectRoomId).catch(() => {});
+      if (preselectRoomId && !existing?.id) {
+        const sel = document.getElementById("w-rez-room");
+        if (sel) sel.value = String(preselectRoomId);
+      }
+      renderWaiterRezServicesPicker(existing?.services || []);
     }
 
     async function ngarkoRezervimetWaiter() {
@@ -2900,7 +3155,9 @@
       if (dateOut) q.set("check_out_date", dateOut);
       q.set("services_total", services);
       const preview = await api(`/api/waiter/rooms/${roomId}/checkout-preview?${q}`);
+      waiterCheckoutPreview = preview;
       renderWaiterCheckoutBill(preview);
+      updateCheckoutMixedPaymentBar();
     }
 
     function mbyllWaiterCheckOut() {
@@ -2914,6 +3171,16 @@
       document.getElementById("w-checkout-out").value =
         room.active_guest?.check_out_date || hotelTodayYmd();
       document.getElementById("w-checkout-services").value = "0";
+      checkoutCouponType = "thermal";
+      document.querySelectorAll("[data-checkout-coupon]").forEach(b => {
+        b.classList.toggle("active", b.dataset.checkoutCoupon === checkoutCouponType);
+      });
+      const mixedCb = document.getElementById("w-checkout-pay-mixed");
+      if (mixedCb) mixedCb.checked = false;
+      ["w-checkout-pay-cash-amt", "w-checkout-pay-card-amt", "w-checkout-pay-voucher-amt"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "0";
+      });
       document.getElementById("w-checkout-bill").innerHTML = "Duke llogaritur…";
       document.getElementById("modal-w-checkout").hidden = false;
       try {
@@ -3048,6 +3315,14 @@
     };
     document.getElementById("w-rez-in")?.addEventListener("change", scheduleRezRoomReload);
     document.getElementById("w-rez-out")?.addEventListener("change", scheduleRezRoomReload);
+    document.getElementById("w-rez-room")?.addEventListener("change", () => {
+      renderWaiterRezServicesPicker(collectWaiterRezServicesPayload().map((s) => ({
+        service_id: s.service_id,
+        quantity: s.quantity,
+        unit_price: s.amount,
+        notes: s.notes,
+      })));
+    });
     document.getElementById("w-rez-save")?.addEventListener("click", async () => {
       const msg = document.getElementById("w-rez-msg");
       const btn = document.getElementById("w-rez-save");
@@ -3063,6 +3338,7 @@
         deposit: Number(document.getElementById("w-rez-deposit")?.value) || 0,
         notes: document.getElementById("w-rez-notes")?.value?.trim() || "",
         status: document.getElementById("w-rez-status")?.value || "confirmed",
+        services: collectWaiterRezServicesPayload(),
       };
       if (!body.guest_name) {
         if (msg) { msg.hidden = false; msg.textContent = "Emri i mysafirit është i detyrueshëm."; }
@@ -3143,16 +3419,36 @@
       const msg = document.getElementById("w-checkout-msg");
       const btn = document.getElementById("w-checkout-save");
       const roomId = document.getElementById("w-checkout-room-id")?.value;
+      const payInfo = await resolveCheckoutPayment();
+      if (!payInfo) return;
       const body = {
         check_out_date: document.getElementById("w-checkout-out")?.value || "",
         services_total: Number(document.getElementById("w-checkout-services")?.value) || 0,
+        payment_method: payInfo.payment_method,
+        coupon_type: effectiveCheckoutCouponType(),
+        fiscal_skip: effectiveCheckoutCouponType() === "thermal",
       };
+      if (payInfo.payment_splits) body.payment_splits = payInfo.payment_splits;
       if (btn) btn.disabled = true;
       try {
         const result = await api(`/api/waiter/rooms/${roomId}/check-out`, {
           method: "POST",
           body: JSON.stringify(body),
         });
+        if (effectiveCheckoutCouponType() === "thermal" && !result.printed && result.html) {
+          const doWinPrint = confirm(
+            (result.printMessage || "Printeri termik nuk u gjet.") +
+            "\n\nCheck-out u krye. Hap dialogun e printimit të Windows?"
+          );
+          if (doWinPrint) {
+            document.getElementById("print-fature").innerHTML = result.html || "";
+            window.print();
+          }
+        } else if (effectiveCheckoutCouponType() === "fiscal" && !result.printed && result.printMessage) {
+          alert(
+            `Kuponi fiskal NUK u printua.\n\n${result.printMessage}\n\nCheck-out u krye — dhoma është E Papastër.`
+          );
+        }
         mbyllWaiterCheckOut();
         await ngarkoDhomatWaiter();
         showWaiterRoomsMsg(
@@ -4055,24 +4351,55 @@
     let artikujNeTavoline = [];
     let menuGroupFilter = "";
     let couponType = "thermal";
+    let checkoutCouponType = "thermal";
     let registerModeForced = "auto"; // "auto" | "thermal" | "fiscal" — vendosur nga admini te Settings
     let activePromotions = [];
     let selectedPromotionId = "auto";
     let pricingPreview = null;
     let pricingPreviewTimer = null;
 
-    document.querySelectorAll("[data-coupon]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        couponType = btn.dataset.coupon || "thermal";
-        document.querySelectorAll("[data-coupon]").forEach(b => {
-          b.classList.toggle("active", b.dataset.coupon === couponType);
-        });
-      });
-    });
+    function isOnTableOrderScreen() {
+      const el = document.getElementById("ekrani-porosia");
+      return !!(el && !el.classList.contains("hidden") && tavolinaId);
+    }
+
+    function hasTableItemsToClose() {
+      return artikujNeTavoline.length > 0 || porosia.length > 0;
+    }
 
     function effectiveCouponType() {
       return registerModeForced === "auto" ? couponType : registerModeForced;
     }
+
+    function effectiveCheckoutCouponType() {
+      return registerModeForced === "auto" ? checkoutCouponType : registerModeForced;
+    }
+
+    async function closeTableWithCouponType(chosenType) {
+      if (registerModeForced === "auto") couponType = chosenType;
+      document.querySelectorAll("[data-coupon]").forEach(b => {
+        b.classList.toggle("active", b.dataset.coupon === couponType);
+      });
+      if (!isOnTableOrderScreen() || !hasTableItemsToClose()) return;
+      const payInfo = await resolveClosePayment("cash", false);
+      if (!payInfo) return;
+      await mbyllMePagese(payInfo);
+    }
+
+    document.querySelectorAll("[data-coupon]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        closeTableWithCouponType(btn.dataset.coupon || "thermal").catch(() => {});
+      });
+    });
+
+    document.querySelectorAll("[data-checkout-coupon]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        checkoutCouponType = btn.dataset.checkoutCoupon || "thermal";
+        document.querySelectorAll("[data-checkout-coupon]").forEach(b => {
+          b.classList.toggle("active", b.dataset.checkoutCoupon === checkoutCouponType);
+        });
+      });
+    });
 
     /** Modaliteti i faturës vendoset nga admini te Settings — këtu vetëm e reflektojmë, në mënyrë të dukshme. */
     function applyRegisterModeUi(state) {
@@ -4080,7 +4407,10 @@
       registerModeForced = state.mode === "fiscal" || state.mode === "thermal" ? state.mode : "auto";
       const row = document.getElementById("coupon-type-row");
       const forced = document.getElementById("coupon-type-forced");
+      const checkoutRow = document.getElementById("w-checkout-coupon-row");
+      const checkoutForced = document.getElementById("w-checkout-coupon-forced");
       if (row) row.hidden = registerModeForced !== "auto";
+      if (checkoutRow) checkoutRow.hidden = registerModeForced !== "auto";
       if (forced) {
         if (registerModeForced === "auto") {
           forced.hidden = true;
@@ -4088,6 +4418,15 @@
           forced.hidden = false;
           const label = registerModeForced === "fiscal" ? "Kupon Fiskal" : "Kupon Termik";
           forced.textContent = `Modaliteti i faturës: ${label} (vendosur nga pronari)`;
+        }
+      }
+      if (checkoutForced) {
+        if (registerModeForced === "auto") {
+          checkoutForced.hidden = true;
+        } else {
+          checkoutForced.hidden = false;
+          const label = registerModeForced === "fiscal" ? "Kupon Fiskal" : "Kupon Termik";
+          checkoutForced.textContent = `Modaliteti i faturës: ${label} (vendosur nga pronari)`;
         }
       }
       if (registerModeForced === "auto") {
@@ -4122,8 +4461,137 @@
       return [...map.values()];
     }
 
+    let waiterCheckoutPreview = null;
+
+    function getCheckoutTotal() {
+      return Number(waiterCheckoutPreview?.bill?.total) || 0;
+    }
+
+    function updateCheckoutMixedPaymentBar() {
+      if (!window.FiscalMixedPayment) return;
+      FiscalMixedPayment.updateMixedPaymentBar({
+        total: getCheckoutTotal(),
+        checkboxId: "w-checkout-pay-mixed",
+        statusId: "w-checkout-pay-mixed-status",
+        boxId: "w-checkout-pay-mixed-box",
+        ids: {
+          cash: "w-checkout-pay-cash-amt",
+          card: "w-checkout-pay-card-amt",
+          voucher: "w-checkout-pay-voucher-amt",
+        },
+      });
+    }
+
+    async function resolveCheckoutPayment() {
+      if (window.FiscalMixedPayment) {
+        const opts = {
+          total: getCheckoutTotal(),
+          checkboxId: "w-checkout-pay-mixed",
+          ids: {
+            cash: "w-checkout-pay-cash-amt",
+            card: "w-checkout-pay-card-amt",
+            voucher: "w-checkout-pay-voucher-amt",
+          },
+        };
+        if (FiscalMixedPayment.isMixedEnabled("w-checkout-pay-mixed")) {
+          try {
+            return FiscalMixedPayment.resolveMixedOrSinglePayment(opts);
+          } catch (e) {
+            alert(e.message);
+            return null;
+          }
+        }
+      }
+      if (window.FiscalPaymentModal) {
+        const method = await FiscalPaymentModal.resolvePaymentMethod(api, "cash");
+        if (method == null) return null;
+        return { payment_method: method };
+      }
+      return { payment_method: "cash" };
+    }
+
     function allOrderItemsForPricing() {
       return mergeOrderItemsClient(artikujNeTavoline, porosia);
+    }
+
+    function getCloseOrderTotal() {
+      if (pricingPreview && Number.isFinite(Number(pricingPreview.total))) {
+        return Number(pricingPreview.total);
+      }
+      return llogaritTotalin(allOrderItemsForPricing());
+    }
+
+    function getSplitSelectedTotal() {
+      return splitSelections.reduce(function (s, it) {
+        return s + it.price * it.payQty;
+      }, 0);
+    }
+
+    function updateWaiterMixedPaymentBar() {
+      if (!window.FiscalMixedPayment) return;
+      FiscalMixedPayment.updateMixedPaymentBar({ total: getCloseOrderTotal() });
+    }
+
+    function updateSplitMixedPaymentBar() {
+      if (!window.FiscalMixedPayment) return;
+      FiscalMixedPayment.updateMixedPaymentBar({
+        total: getSplitSelectedTotal(),
+        checkboxId: "split-pay-mixed",
+        statusId: "split-pay-mixed-status",
+        boxId: "split-pay-mixed-box",
+        ids: {
+          cash: "split-pay-cash-amt",
+          card: "split-pay-card-amt",
+          voucher: "split-pay-voucher-amt",
+        },
+      });
+    }
+
+    async function refreshWaiterFiscalMixedUi() {
+      const wrap = document.getElementById("pay-mixed-wrap");
+      const splitWrap = document.getElementById("split-pay-mixed-wrap");
+      const checkoutWrap = document.getElementById("w-checkout-pay-mixed-wrap");
+      if (wrap) wrap.hidden = false;
+      if (splitWrap) splitWrap.hidden = false;
+      if (checkoutWrap) checkoutWrap.hidden = false;
+      try {
+        if (window.FiscalPaymentModal) {
+          await FiscalPaymentModal.fetchFiscalEnabled(api);
+        }
+      } catch { /* ignore */ }
+      updateWaiterMixedPaymentBar();
+      updateSplitMixedPaymentBar();
+      updateCheckoutMixedPaymentBar();
+    }
+
+    async function resolveClosePayment(fallbackMethod, splitMode) {
+      if (window.FiscalMixedPayment) {
+        const opts = splitMode
+          ? {
+              total: getSplitSelectedTotal(),
+              checkboxId: "split-pay-mixed",
+              ids: {
+                cash: "split-pay-cash-amt",
+                card: "split-pay-card-amt",
+                voucher: "split-pay-voucher-amt",
+              },
+            }
+          : { total: getCloseOrderTotal() };
+        if (FiscalMixedPayment.isMixedEnabled(opts.checkboxId || "pay-mixed")) {
+          try {
+            return FiscalMixedPayment.resolveMixedOrSinglePayment(opts);
+          } catch (e) {
+            alert(e.message);
+            return null;
+          }
+        }
+      }
+      if (window.FiscalPaymentModal) {
+        const method = await FiscalPaymentModal.resolvePaymentMethod(api, fallbackMethod);
+        if (method == null) return null;
+        return { payment_method: method };
+      }
+      return { payment_method: fallbackMethod };
     }
 
     async function ngarkoPromocionetAktive() {
@@ -4181,6 +4649,7 @@
             ? `Zbritje (${pricingPreview.promotion_name})`
             : "Zbritje";
         }
+        updateWaiterMixedPaymentBar();
       } catch {
         pricingPreview = null;
         if (bar) bar.hidden = true;
@@ -4346,6 +4815,7 @@
       perditesoPorosine();
       await ngarkoPromocionetAktive().catch(() => {});
       schedulePricingPreview();
+      refreshWaiterFiscalMixedUi().catch(() => {});
       const gabimEl = document.getElementById("gabim-porosi");
       if (eHuaj) {
         shfaqGabim(gabimEl, "Tavolina e " + t.order.waiter_name + " — mund ta mbyllni, por jo shtoni artikuj.");
@@ -4499,6 +4969,7 @@
       }));
       renderSplitItems();
       document.getElementById("modal-split-bill").hidden = false;
+      refreshWaiterFiscalMixedUi().catch(() => {});
     }
 
     function closeSplitModal() {
@@ -4545,9 +5016,16 @@
       });
       const total = splitSelections.reduce((s, it) => s + it.price * it.payQty, 0);
       document.getElementById("split-selected-total").textContent = formatEuro(total);
+      updateSplitMixedPaymentBar();
     }
 
-    async function splitCloseAndPrint(paymentMethod) {
+    async function splitCloseAndPrintWithPay(fallbackMethod) {
+      const payInfo = await resolveClosePayment(fallbackMethod, true);
+      if (!payInfo) return;
+      return splitCloseAndPrint(payInfo);
+    }
+
+    async function splitCloseAndPrint(payInfo) {
       const msgEl = document.getElementById("split-modal-msg");
       if (msgEl) msgEl.hidden = true;
       const toPay = splitSelections
@@ -4568,17 +5046,19 @@
       btnCash.disabled = true;
       btnKarte.disabled = true;
       try {
-        const res = await api("/api/waiter/split-close-and-print", {
-          method: "POST",
-          body: JSON.stringify({
+        const body = {
             table_id: tavolinaId,
             items: toPay,
             pending_items: pendingItems,
-            payment_method: paymentMethod,
+            payment_method: payInfo.payment_method,
             coupon_type: effectiveCouponType(),
             fiscal_skip: effectiveCouponType() === "thermal",
             promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
-          }),
+          };
+        if (payInfo.payment_splits) body.payment_splits = payInfo.payment_splits;
+        const res = await api("/api/waiter/split-close-and-print", {
+          method: "POST",
+          body: JSON.stringify(body),
         });
         document.getElementById("print-fature").innerHTML = res.html || "";
         if (res.printed) {
@@ -4618,18 +5098,18 @@
     document.getElementById("split-modal-backdrop")?.addEventListener("click", closeSplitModal);
     document.getElementById("btn-split-cancel")?.addEventListener("click", closeSplitModal);
     document.getElementById("btn-split-cash")?.addEventListener("click", async () => {
-      const method = window.FiscalPaymentModal
-        ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash")
-        : "cash";
-      if (method == null) return;
-      splitCloseAndPrint(method);
+      await splitCloseAndPrintWithPay("cash");
     });
     document.getElementById("btn-split-karte")?.addEventListener("click", async () => {
-      const method = window.FiscalPaymentModal
-        ? await FiscalPaymentModal.resolvePaymentMethod(api, "karte")
-        : "karte";
-      if (method == null) return;
-      splitCloseAndPrint(method);
+      await splitCloseAndPrintWithPay("karte");
+    });
+    document.getElementById("pay-mixed")?.addEventListener("change", () => updateWaiterMixedPaymentBar());
+    ["pay-cash-amt", "pay-card-amt", "pay-voucher-amt"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", () => updateWaiterMixedPaymentBar());
+    });
+    document.getElementById("split-pay-mixed")?.addEventListener("change", () => updateSplitMixedPaymentBar());
+    ["split-pay-cash-amt", "split-pay-card-amt", "split-pay-voucher-amt"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", () => updateSplitMixedPaymentBar());
     });
 
     let _btnDergoLastMs = 0;
@@ -4693,7 +5173,8 @@
       }
     });
 
-    async function mbyllMePagese(paymentMethod) {
+    async function mbyllMePagese(payInfo) {
+      const paymentMethod = payInfo && payInfo.payment_method ? payInfo.payment_method : payInfo;
       const gabimEl = document.getElementById("gabim-porosi");
       shfaqGabim(gabimEl, "");
       const btnCash = document.getElementById("btn-mbyll-cash");
@@ -4715,16 +5196,18 @@
         const itemsToClose = porosia.length
           ? mergeOrderItemsClient(artikujNeTavoline, porosia)
           : (artikujNeTavoline.length ? artikujNeTavoline : undefined);
-        const res = await api("/api/waiter/close-and-print", {
-          method: "POST",
-          body: JSON.stringify({
+        const closeBody = {
             table_id: tavolinaId,
             items: itemsToClose,
             payment_method: paymentMethod,
             coupon_type: effectiveCouponType(),
             fiscal_skip: effectiveCouponType() === "thermal",
             promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
-          }),
+          };
+        if (payInfo && payInfo.payment_splits) closeBody.payment_splits = payInfo.payment_splits;
+        const res = await api("/api/waiter/close-and-print", {
+          method: "POST",
+          body: JSON.stringify(closeBody),
         });
         document.getElementById("print-fature").innerHTML = res.html || "";
         if (res.printed) {
@@ -4899,23 +5382,20 @@
       }
     }
 
+    document.getElementById("w-checkout-pay-mixed")?.addEventListener("change", () => updateCheckoutMixedPaymentBar());
+    ["w-checkout-pay-cash-amt", "w-checkout-pay-card-amt", "w-checkout-pay-voucher-amt"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", () => updateCheckoutMixedPaymentBar());
+    });
+
     document.getElementById("btn-mbyll-cash").addEventListener("click", async () => {
-      console.log("[waiter] Cash klik → resolvePaymentMethod", { hasFiscalModal: !!window.FiscalPaymentModal });
-      const method = window.FiscalPaymentModal
-        ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash")
-        : "cash";
-      console.log("[waiter] Cash → method=", method);
-      if (method == null) return;
-      mbyllMePagese(method);
+      const payInfo = await resolveClosePayment("cash", false);
+      if (!payInfo) return;
+      mbyllMePagese(payInfo);
     });
     document.getElementById("btn-mbyll-karte").addEventListener("click", async () => {
-      console.log("[waiter] Kartë klik → resolvePaymentMethod", { hasFiscalModal: !!window.FiscalPaymentModal });
-      const method = window.FiscalPaymentModal
-        ? await FiscalPaymentModal.resolvePaymentMethod(api, "karte")
-        : "karte";
-      console.log("[waiter] Kartë → method=", method);
-      if (method == null) return;
-      mbyllMePagese(method);
+      const payInfo = await resolveClosePayment("karte", false);
+      if (!payInfo) return;
+      mbyllMePagese(payInfo);
     });
     document.getElementById("btn-mbyll-dhome")?.addEventListener("click", () => {
       hapChargeRoomModal();

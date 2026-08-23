@@ -58,13 +58,9 @@
     return pill;
   }
 
-  var OWNER_NUI = "811314567";
-
   function applyStatus(pill, data) {
     if (!pill) return;
-    var nui = String((data && data.taxpayer_nui) || "").trim();
-    // FIS vetëm për Naser (NUI) — BABYLON / të tjerët nuk e shohin kurrë
-    if (!data || !data.enabled || nui !== OWNER_NUI) {
+    if (!data || !data.enabled) {
       pill.hidden = true;
       return;
     }
@@ -143,7 +139,6 @@
       if (data && data._fetch_failed && !pill.hidden) {
         applyStatus(pill, {
           enabled: true,
-          taxpayer_nui: OWNER_NUI,
           online: false,
           receipt_count: 0,
           pending_count: 0,

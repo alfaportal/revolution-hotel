@@ -2,6 +2,7 @@ node_modules/
 HOTEL/node_modules/
 HOTEL/dist/
 HOTEL/.protected-build/
+.portable-internal/
 dist/
 *.log
 dist-launch*.log

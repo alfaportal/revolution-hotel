@@ -23,35 +23,42 @@
 <body>
   <h1>Room Service</h1>
   <p class="sub" id="sub">Dhoma —</p>
+  <p class="sub" id="svc-link" style="margin-top:-0.5rem"><a href="#" id="link-room-services" style="color:#FF6B35">→ Shërbime hoteli (bazen, spa…)</a></p>
   <div id="msg" class="msg"></div>
   <div id="list">Duke ngarkuar…</div>
   <div class="bar">
     <strong id="cart-label">Shporta: 0.00 €</strong>
     <button type="button" id="btn-send">Dërgo në dhomë</button>
   </div>
+  <script src="/guest/guest-order-lib.js"></script>
   <script>
-    const params = new URLSearchParams(location.search);
-    const room = String(params.get("room") || "").trim();
-    document.getElementById("sub").textContent = room ? `Dhoma ${room}` : "Mungon numri i dhomës në QR";
-    const cart = new Map();
-    const fmt = (n) => Number(n || 0).toFixed(2) + " €";
-    function cartTotal() {
-      let t = 0;
-      for (const it of cart.values()) t += it.price * it.quantity;
-      return t;
-    }
-    function refreshCart() {
-      document.getElementById("cart-label").textContent = `Shporta: ${fmt(cartTotal())} (${[...cart.values()].reduce((s,i)=>s+i.quantity,0)} artikuj)`;
-    }
-    function addItem(it) {
-      const prev = cart.get(it.id) || { ...it, quantity: 0 };
-      prev.quantity += 1;
-      cart.set(it.id, prev);
-      refreshCart();
-    }
     (async () => {
+      const G = window.GuestOrder;
       const list = document.getElementById("list");
-      if (!room) { list.innerHTML = "<p class='err'>QR i pavlefshëm — mungon dhoma.</p>"; return; }
+      const msg = document.getElementById("msg");
+      const cart = G.createCart();
+      document.getElementById("sub").textContent = G.room
+        ? `Dhoma ${G.room} — ushqim/pije (room service)`
+        : "Mungon numri i dhomës në QR";
+      if (G.room) {
+        const a = document.getElementById("link-room-services");
+        if (a) a.href = `/guest/services.html?room=${encodeURIComponent(G.room)}`;
+      } else {
+        const sl = document.getElementById("svc-link");
+        if (sl) sl.hidden = true;
+      }
+
+      function refreshCart() {
+        document.getElementById("cart-label").textContent =
+          `Shporta: ${G.fmt(cart.total())} (${cart.count()} artikuj)`;
+      }
+
+      if (!G.room) {
+        list.innerHTML = "<p class='err'>QR i pavlefshëm — mungon dhoma.</p>";
+        document.getElementById("btn-send").disabled = true;
+        return;
+      }
+
       try {
         const r = await fetch("/api/guest/menu");
         const d = await r.json();
@@ -63,45 +70,42 @@
           byCat[c].push(it);
         }
         list.innerHTML = Object.keys(byCat).map((c) =>
-          `<div class="cat">${c}</div>` +
+          `<div class="cat">${G.esc(c)}</div>` +
           byCat[c].map((it) =>
-            `<div class="item"><span>${it.name}<br><small style="color:#94a3b8">${fmt(it.price)}</small></span><button type="button" data-id="${it.id}">+</button></div>`
+            `<div class="item"><span>${G.esc(it.name)}<br><small style="color:#94a3b8">${G.fmt(it.price)}</small></span><button type="button" data-id="${it.id}">+</button></div>`
           ).join("")
         ).join("") || "<p class='err'>Nuk ka artikuj.</p>";
         const byId = Object.fromEntries((d.items || []).map((x) => [String(x.id), x]));
         list.querySelectorAll("button[data-id]").forEach((btn) => {
           btn.addEventListener("click", () => {
             const it = byId[btn.getAttribute("data-id")];
-            if (it) addItem(it);
+            if (it) { cart.add(it); refreshCart(); }
           });
         });
       } catch (e) {
-        list.innerHTML = `<p class="err">${e.message || "Gabim"}</p>`;
+        list.innerHTML = `<p class="err">${G.esc(e.message || "Gabim")}</p>`;
       }
+
+      document.getElementById("btn-send").addEventListener("click", async () => {
+        msg.className = "msg";
+        if (cart.isEmpty()) {
+          msg.className = "msg err";
+          msg.textContent = "Shtoni artikuj në shportë.";
+          return;
+        }
+        try {
+          const result = await G.submitMenuCart(cart, {});
+          cart.clear();
+          refreshCart();
+          msg.className = "msg ok";
+          msg.textContent = result.message
+            || `Porosia u shtua te ${result.guest_name || "mysafiri"} — dhoma ${result.room_number || G.room}.`;
+        } catch (e) {
+          msg.className = "msg err";
+          msg.textContent = e.message || "Gabim";
+        }
+      });
     })();
-    document.getElementById("btn-send").addEventListener("click", async () => {
-      const msg = document.getElementById("msg");
-      const items = [...cart.values()].map((i) => ({
-        name: i.name, price: i.price, quantity: i.quantity,
-      }));
-      if (!items.length) { msg.className = "msg err"; msg.textContent = "Shtoni artikuj në shportë."; return; }
-      try {
-        const r = await fetch("/api/guest/room-order", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ room_number: room, items }),
-        });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.gabim || "Dërgimi dështoi");
-        cart.clear();
-        refreshCart();
-        msg.className = "msg ok";
-        msg.textContent = `Porosia u shtua te fatura e dhomës ${d.room_number} (${d.guest_name}).`;
-      } catch (e) {
-        msg.className = "msg err";
-        msg.textContent = e.message || "Gabim";
-      }
-    });
   </script>
 </body>
 </html>

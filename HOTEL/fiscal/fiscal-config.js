@@ -9,6 +9,13 @@
  */
 const FISCAL_RELEASE_LOCKED = false;
 
+/** Teste ATK/SEF në UI (Testo 100×, Kupon Provë, lista test, korrigjues) — vetëm projekti biznes. */
+const FISCAL_DEV_TOOLS_ENABLED = false;
+
+function isFiscalDevToolsEnabled() {
+  return FISCAL_DEV_TOOLS_ENABLED === true;
+}
+
 const EDITABLE_KEYS = [
   "fiscal_enabled",
   "taxpayer_nui",
@@ -138,6 +145,39 @@ function isFiscalReleaseLocked() {
   return FISCAL_RELEASE_LOCKED === true;
 }
 
+/** Fushat e detyrueshme të dyqanit (klienti) — jo të zhvilluesit. */
+const CLIENT_ACTIVATION_FIELDS = [
+  { key: "taxpayer_legal_name", label: "Emri ligjor i biznesit" },
+  { key: "taxpayer_nui", label: "NUI (9 shifra)" },
+  { key: "taxpayer_address", label: "Adresa e biznesit" },
+  { key: "unit_name", label: "Emri i njësisë" },
+  { key: "unit_phone", label: "Telefoni i njësisë" },
+  { key: "unit_number", label: "Numri i Njësisë ARBK" },
+  { key: "pos_id", label: "Nr. POS-it" },
+];
+
+function getFiscalActivationCheck(settings) {
+  const s = settings && typeof settings === "object" ? settings : {};
+  const missing = [];
+  for (const { key, label } of CLIENT_ACTIVATION_FIELDS) {
+    const raw =
+      key === "unit_number"
+        ? s.unit_number || s.business_unit_number
+        : s[key];
+    const val = String(raw ?? "").trim();
+    if (key === "taxpayer_nui") {
+      if (!/^\d{9}$/.test(val)) missing.push(label);
+      continue;
+    }
+    if (!val) missing.push(label);
+  }
+  return { complete: missing.length === 0, missing };
+}
+
+function isFiscalActivationComplete(settings) {
+  return getFiscalActivationCheck(settings).complete;
+}
+
 function saveFiscalSettings(data) {
   if (!data || typeof data !== "object") {
     throw new Error("Të dhënat mungojnë");
@@ -236,6 +276,21 @@ function saveFiscalSettings(data) {
     sefIdentifier = null;
   }
 
+  // Aktivizo SEF vetëm kur kolonat e dyqanit janë të plota (të dhënat e klientit).
+  const activation = getFiscalActivationCheck(next);
+  if (data.fiscal_enabled === false || data.fiscal_enabled === 0 || data.fiscal_enabled === "0") {
+    next.fiscal_enabled = false;
+  } else if (data.fiscal_enabled === true || data.fiscal_enabled === 1 || data.fiscal_enabled === "1") {
+    if (!activation.complete) {
+      throw new Error(
+        "Plotësoni të gjitha fushat e detyrueshme të dyqanit: " + activation.missing.join(", ")
+      );
+    }
+    next.fiscal_enabled = true;
+  } else {
+    next.fiscal_enabled = activation.complete;
+  }
+
   sqlite
     .prepare(
       `UPDATE fiscal_settings SET
@@ -302,5 +357,9 @@ module.exports = {
   saveFiscalSettings,
   isFiscalEnabled,
   isFiscalReleaseLocked,
+  isFiscalDevToolsEnabled,
+  FISCAL_DEV_TOOLS_ENABLED,
+  getFiscalActivationCheck,
+  isFiscalActivationComplete,
   FISCAL_RELEASE_LOCKED,
 };

@@ -816,6 +816,37 @@ function initSchema() {
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_room ON reservations(room_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations(check_in_date, check_out_date)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status)");
+  sqlRun(`
+    CREATE TABLE IF NOT EXISTS reservation_services (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id  INTEGER NOT NULL,
+      service_id      INTEGER NOT NULL,
+      quantity        INTEGER NOT NULL DEFAULT 1,
+      unit_price      REAL NOT NULL DEFAULT 0,
+      amount          REAL NOT NULL DEFAULT 0,
+      notes           TEXT NOT NULL DEFAULT '',
+      FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+      FOREIGN KEY (service_id) REFERENCES services(id)
+    )
+  `);
+  sqlRun("CREATE INDEX IF NOT EXISTS idx_reservation_services_res ON reservation_services(reservation_id)");
+  sqlRun(`
+    CREATE TABLE IF NOT EXISTS reservation_qr_pending (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id  INTEGER NOT NULL,
+      room_id         INTEGER NOT NULL,
+      line_type       TEXT NOT NULL DEFAULT 'menu',
+      service_id      INTEGER,
+      menu_item_id    INTEGER,
+      description     TEXT NOT NULL,
+      quantity        INTEGER NOT NULL DEFAULT 1,
+      unit_price      REAL NOT NULL DEFAULT 0,
+      amount          REAL NOT NULL DEFAULT 0,
+      notes           TEXT NOT NULL DEFAULT '',
+      FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
+    )
+  `);
+  sqlRun("CREATE INDEX IF NOT EXISTS idx_reservation_qr_pending_res ON reservation_qr_pending(reservation_id)");
   try {
     const piCols = sqlAll("PRAGMA table_info(purchase_invoices)");
     if (!piCols.some((c) => c.name === "supplier_nui")) {

@@ -394,6 +394,7 @@ function cloudReady(db) {
 
 function isLoginNotifyPendingOrder(o, db) {
   if (!o?.id || isExplicitlyAccepted(o)) return false;
+  if (typeof db?.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(o)) return true;
   if (typeof db?.isCloudPosAcceptQueueOrder === "function" && db.isCloudPosAcceptQueueOrder(o)) return true;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;
   const device = String(o?.device_id || "").trim().toUpperCase();
@@ -414,15 +415,20 @@ async function tick(db, printBarTicket) {
   if (tickInFlight) return tickInFlight;
   tickInFlight = (async () => {
   if (!cloudReady(db)) {
+    const localOnly = dropLocallyHandled(
+      db,
+      mergePending(db, [], safeListLocalPending(db), new Set()),
+    ).filter((o) => isLoginNotifyPendingOrder(o, db));
+    syncAlarmIds(localOnly);
     lastSnapshot = {
-      ok: false,
-      pending: 0,
-      orderIds: [],
-      orders: [],
+      ok: true,
+      pending: localOnly.length,
+      orderIds: localOnly.map((o) => o.id),
+      orders: localOnly,
       connected: false,
-      has_pending: false,
-      has_new: false,
-      message: "Vendosni çelësin e licencës te Admin → Cloud, pastaj «Testo lidhjen».",
+      has_pending: localOnly.length > 0,
+      has_new: localOnly.some((o) => !alarmIds.has(String(o.id))),
+      message: localOnly.length ? "Porosi lokale (QR / shërbime dhoma)" : "",
     };
     return lastSnapshot;
   }

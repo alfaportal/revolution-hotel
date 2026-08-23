@@ -1569,9 +1569,31 @@ function listRoomsWithGuests() {
     /* ignore */
   }
   const rooms = listRooms();
+  const todayReservations = listActiveReservationsOnDate();
+  const resByRoom = new Map();
+  for (const rv of todayReservations) {
+    resByRoom.set(Number(rv.room_id), rv);
+  }
   return rooms.map((room) => {
     const guest = getActiveGuestForRoom(room.id);
-    if (!guest) return { ...room, active_guest: null, stay: null };
+    const activeReservation = resByRoom.get(Number(room.id)) || null;
+    let display_status = String(room.status || "free");
+    if (
+      display_status === "free"
+      && activeReservation
+      && (activeReservation.status === "pending" || activeReservation.status === "confirmed")
+    ) {
+      display_status = "reserved";
+    }
+    if (!guest) {
+      return {
+        ...room,
+        active_guest: null,
+        stay: null,
+        active_reservation: activeReservation,
+        display_status,
+      };
+    }
     const bill = buildGuestBill(guest, room);
     return {
       ...room,
@@ -1591,6 +1613,8 @@ function listRoomsWithGuests() {
         charges_total: bill.charges_total,
         total: bill.total,
       },
+      active_reservation: activeReservation,
+      display_status: display_status === "reserved" ? "occupied" : display_status,
     };
   });
 }
@@ -2222,7 +2246,45 @@ function getCheckoutPreview(roomId, opts = {}) {
   return { guest, room, bill };
 }
 
-function checkOutGuest(roomId, { check_out_date, services_total, extra_services } = {}) {
+function buildCheckoutLogItems(bill, room) {
+  const items = [];
+  const nights = Number(bill.nights) || 0;
+  const roomTotal = Number(bill.room_total) || 0;
+  if (roomTotal > 0) {
+    items.push({
+      name: `Dhoma ${room.room_number || "—"} — ${nights} netë`,
+      quantity: nights > 0 ? nights : 1,
+      price: nights > 0 ? Number(bill.price_per_night) || roomTotal : roomTotal,
+    });
+  }
+  for (const c of bill.charges || []) {
+    const amt = Number(c.amount) || 0;
+    if (amt <= 0) continue;
+    items.push({
+      name: String(c.description || "Shërbim").trim(),
+      quantity: 1,
+      price: amt,
+    });
+  }
+  const extra = Number(bill.extra_services) || 0;
+  if (extra > 0) {
+    items.push({
+      name: "Shërbime ekstra (check-out)",
+      quantity: 1,
+      price: extra,
+    });
+  }
+  return items;
+}
+
+function checkOutGuest(roomId, {
+  check_out_date,
+  services_total,
+  extra_services,
+  payment_method = "cash",
+  payment_splits = null,
+  waiter_name = "Recepcion",
+} = {}) {
   const preview = getCheckoutPreview(roomId, {
     check_out_date,
     extra_services: extra_services != null ? extra_services : services_total,
@@ -2230,6 +2292,9 @@ function checkOutGuest(roomId, { check_out_date, services_total, extra_services 
   const { guest, room, bill } = preview;
 
   const paidTotal = Math.round((Number(bill.total) || 0) * 100) / 100;
+  const method = normalizePaymentMethod(payment_method, payment_splits);
+  const logMeta = shiftMetaForWaiter(waiter_name);
+  const logItems = buildCheckoutLogItems(bill, room);
   const run = sqlite.transaction(() => {
     /* Extra checkout → room_charge që të hyjë menjëherë te Kontabilisti me TVSH */
     const extra = Number(bill.extra_services) || 0;
@@ -2257,6 +2322,16 @@ function checkOutGuest(roomId, { check_out_date, services_total, extra_services 
     }
     sqlite.prepare("UPDATE rooms SET status = 'dirty' WHERE id = ?").run(Number(room.id));
     openHousekeepingTaskForRoom(room.id, { priority: 0 });
+    addDailyLogEntry({
+      table_number: String(room.room_number || guest.id),
+      waiter_name: waiter_name || "Recepcion",
+      items_json: JSON.stringify(logItems),
+      total: paidTotal,
+      receipt_number: `CO-${guest.id}`,
+      payment_method: method,
+      staff_id: logMeta.staff_id,
+      shift_id: logMeta.shift_id,
+    });
     return {
       guest: getGuestById(guest.id),
       room: getRoomById(room.id),
@@ -2567,13 +2642,538 @@ function normalizeReservationStatus(status, { allowCheckedIn = true } = {}) {
   return s;
 }
 
-function getRoomReservationById(id) {
+function listReservationServices(reservationId) {
   return sqlite.prepare(`
+    SELECT
+      rs.*,
+      s.name AS service_name,
+      s.price_mode,
+      s.vat_category
+    FROM reservation_services rs
+    JOIN services s ON s.id = rs.service_id
+    WHERE rs.reservation_id = ?
+    ORDER BY rs.id ASC
+  `).all(Number(reservationId));
+}
+
+function enrichReservationsWithServices(rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows || [];
+  const ids = rows.map((r) => Number(r.id)).filter(Boolean);
+  if (!ids.length) return rows;
+  const placeholders = ids.map(() => "?").join(",");
+  const allLines = sqlite.prepare(`
+    SELECT
+      rs.*,
+      s.name AS service_name,
+      s.price_mode,
+      s.vat_category
+    FROM reservation_services rs
+    JOIN services s ON s.id = rs.service_id
+    WHERE rs.reservation_id IN (${placeholders})
+    ORDER BY rs.id ASC
+  `).all(...ids);
+  const byRes = {};
+  for (const line of allLines) {
+    const k = line.reservation_id;
+    if (!byRes[k]) byRes[k] = [];
+    byRes[k].push(line);
+  }
+  return rows.map((r) => ({ ...r, services: byRes[r.id] || [] }));
+}
+
+function normalizeReservationServicesInput(services, roomId) {
+  if (!Array.isArray(services)) return [];
+  const room = getRoomById(roomId);
+  const out = [];
+  const seen = new Set();
+  for (const raw of services) {
+    const serviceId = Number(raw?.service_id);
+    if (!serviceId || seen.has(serviceId)) continue;
+    seen.add(serviceId);
+    const svc = getHotelServiceById(serviceId);
+    if (!svc || svc.active === 0) continue;
+
+    let qty = Number(raw?.quantity);
+    if (!Number.isFinite(qty) || qty < 1) qty = 1;
+    qty = Math.min(99, Math.trunc(qty));
+
+    const mode = normalizeServicePriceMode(svc.price_mode || "fixed");
+    let unit = Number(svc.price) || 0;
+    if (mode === "room_rate") {
+      unit = Number(room?.price_per_night) || 0;
+    } else if (mode === "variable") {
+      unit = raw?.amount != null ? Number(raw.amount) : NaN;
+      if (!Number.isFinite(unit) || unit < 0) {
+        throw new Error(`Shkruani çmimin për shërbimin «${svc.name}».`);
+      }
+    } else if (raw?.amount != null && raw.amount !== "") {
+      const override = Number(raw.amount);
+      if (Number.isFinite(override) && override >= 0) unit = override;
+    }
+
+    const lineTotal = Math.round(unit * qty * 100) / 100;
+    const notes = String(raw?.notes || "").trim().slice(0, 240);
+    out.push({
+      service_id: serviceId,
+      quantity: qty,
+      unit_price: unit,
+      amount: lineTotal,
+      notes,
+      service_name: svc.name,
+      vat_category: svc.vat_category || "18",
+    });
+  }
+  return out;
+}
+
+function replaceReservationServices(reservationId, services, roomId) {
+  const rvId = Number(reservationId);
+  const lines = normalizeReservationServicesInput(services, roomId);
+  const del = sqlite.prepare("DELETE FROM reservation_services WHERE reservation_id = ?");
+  const ins = sqlite.prepare(`
+    INSERT INTO reservation_services (reservation_id, service_id, quantity, unit_price, amount, notes)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const tx = sqlite.transaction(() => {
+    del.run(rvId);
+    for (const line of lines) {
+      ins.run(
+        rvId,
+        line.service_id,
+        line.quantity,
+        line.unit_price,
+        line.amount,
+        line.notes,
+      );
+    }
+  });
+  tx();
+  return lines;
+}
+
+function applyReservationServicesOnCheckIn(reservationId, guestId, roomId) {
+  const lines = listReservationServices(reservationId);
+  const applied = [];
+  for (const line of lines) {
+    let description = line.quantity > 1
+      ? `${line.quantity}× ${line.service_name}`
+      : String(line.service_name);
+    if (line.notes) description += ` — ${line.notes}`;
+    const charge = addRoomCharge({
+      guest_id: guestId,
+      room_id: roomId,
+      description,
+      amount: line.amount,
+      service_id: line.service_id,
+      vat_category: line.vat_category || "18",
+    });
+    applied.push(charge);
+  }
+  return applied;
+}
+
+function listReservationQrPending(reservationId) {
+  return sqlite.prepare(`
+    SELECT * FROM reservation_qr_pending
+    WHERE reservation_id = ?
+    ORDER BY id ASC
+  `).all(Number(reservationId));
+}
+
+function applyReservationQrPendingOnCheckIn(reservationId, guestId, roomId) {
+  const lines = listReservationQrPending(reservationId);
+  const applied = [];
+  for (const line of lines) {
+    const charge = addRoomCharge({
+      guest_id: guestId,
+      room_id: roomId,
+      description: line.description,
+      amount: line.amount,
+      service_id: line.service_id || null,
+      menu_item_id: line.menu_item_id || null,
+      vat_category: "18",
+    });
+    applied.push(charge);
+  }
+  if (lines.length) {
+    const stockItems = lines
+      .filter((l) => l.menu_item_id)
+      .map((l) => ({
+        menu_item_id: l.menu_item_id,
+        name: l.description,
+        quantity: l.quantity,
+        price: l.unit_price,
+      }));
+    if (stockItems.length) {
+      try {
+        decrementMenuItemStock(stockItems);
+      } catch (err) {
+        console.warn("[stock] reservation QR pending decrement:", err.message);
+      }
+    }
+    sqlite.prepare("DELETE FROM reservation_qr_pending WHERE reservation_id = ?").run(Number(reservationId));
+  }
+  return applied;
+}
+
+function appendReservationServiceLine(reservationId, roomId, rawLine) {
+  const rvId = Number(reservationId);
+  const lines = normalizeReservationServicesInput([rawLine], roomId);
+  if (!lines.length) throw new Error("Shërbimi nuk u gjet.");
+  const line = lines[0];
+  const existing = sqlite.prepare(`
+    SELECT id, quantity, unit_price, amount, notes
+    FROM reservation_services
+    WHERE reservation_id = ? AND service_id = ?
+  `).get(rvId, line.service_id);
+  if (existing) {
+    const qty = Math.min(99, (Number(existing.quantity) || 0) + line.quantity);
+    const amount = Math.round(qty * line.unit_price * 100) / 100;
+    const notes = [existing.notes, line.notes].filter(Boolean).join(" · ").slice(0, 240);
+    sqlite.prepare(`
+      UPDATE reservation_services
+      SET quantity = ?, unit_price = ?, amount = ?, notes = ?
+      WHERE id = ?
+    `).run(qty, line.unit_price, amount, notes, existing.id);
+  } else {
+    sqlite.prepare(`
+      INSERT INTO reservation_services (reservation_id, service_id, quantity, unit_price, amount, notes)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(rvId, line.service_id, line.quantity, line.unit_price, line.amount, line.notes);
+  }
+  return line;
+}
+
+function addReservationQrMenuLines(reservationId, roomId, items) {
+  const rvId = Number(reservationId);
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) throw new Error("Nuk ka artikuj.");
+  const enriched = enrichOrderItemsWithVat(list);
+  const ins = sqlite.prepare(`
+    INSERT INTO reservation_qr_pending (
+      reservation_id, room_id, line_type, service_id, menu_item_id,
+      description, quantity, unit_price, amount, notes
+    ) VALUES (?, ?, 'menu', NULL, ?, ?, ?, ?, ?, ?)
+  `);
+  const created = [];
+  for (const it of enriched) {
+    const name = String(it.name || "Artikull").trim() || "Artikull";
+    const qty = Number(it.quantity) || 1;
+    const price = Number(it.price) || 0;
+    const lineTotal = Math.round(qty * price * 100) / 100;
+    const mid = it.menu_item_id != null ? Number(it.menu_item_id) : null;
+    ins.run(
+      rvId,
+      Number(roomId),
+      mid != null && Number.isFinite(mid) ? mid : null,
+      `${qty}× ${name} (RS-QR)`,
+      qty,
+      price,
+      lineTotal,
+      "",
+    );
+    created.push({ name, quantity: qty, amount: lineTotal });
+  }
+  return created;
+}
+
+function resolveGuestRoomTarget(roomNumber) {
+  const num = String(roomNumber || "").trim();
+  if (!num) throw new Error("Numri i dhomës mungon.");
+  const room = listRooms().find((r) => String(r.room_number) === num);
+  if (!room) throw new Error(`Dhoma ${num} nuk u gjet.`);
+
+  const guest = getActiveGuestForRoom(room.id);
+  if (guest && String(room.status) === "occupied") {
+    return { mode: "occupied", room, guest };
+  }
+
+  const today = hotelTodayLocalYmd();
+  const reservation = sqlite.prepare(`
+    SELECT id FROM reservations
+    WHERE room_id = ?
+      AND status IN ('pending', 'confirmed')
+      AND check_out_date > ?
+    ORDER BY check_in_date ASC, id ASC
+    LIMIT 1
+  `).get(room.id, today);
+
+  if (reservation) {
+    return {
+      mode: "reserved",
+      room,
+      reservation: getRoomReservationById(reservation.id),
+    };
+  }
+
+  throw new Error("Dhoma nuk ka mysafir aktiv as rezervim — porosia nuk pranohet.");
+}
+
+function resolveGuestTableTarget(tableNumber) {
+  const n = Number(tableNumber);
+  if (!Number.isFinite(n) || n < 1) throw new Error("Numri i tavolinës mungon.");
+  const table = getTablesWithOrders().find((t) => Number(t.number) === n);
+  if (!table) throw new Error(`Tavolina T${n} nuk u gjet.`);
+  if (isTableInOnlinePickupZone(table)) {
+    throw new Error("Ky numër është për porosi online, jo tavolinë fizike.");
+  }
+  return table;
+}
+
+function buildGuestPublicOrderPayload({
+  items,
+  source,
+  source_label,
+  customer_name,
+  customer_phone,
+  table_number,
+  local_only,
+} = {}) {
+  const crypto = require("crypto");
+  const mapped = mapCloudItemsToLocal(Array.isArray(items) ? items : []);
+  if (!mapped.length) throw new Error("Porosia nuk ka artikuj të njohur.");
+  const total = mapped.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+  const name = String(customer_name || "").trim();
+  const phone = String(customer_phone || "").trim();
+  const label = name
+    ? (phone ? `${name} · ${phone}` : name)
+    : (phone || "Mysafir QR");
+  return {
+    id: crypto.randomUUID(),
+    source: String(source || "takeaway"),
+    source_label: String(source_label || "Takeaway · QR"),
+    customer_label: label,
+    customer_name: name,
+    customer_phone: phone,
+    waiter_name: String(source_label || "Takeaway · QR"),
+    device_id: local_only ? "WEB-PUBLIC-LOCAL" : "WEB-PUBLIC",
+    local_only: !!local_only,
+    table_number: Number(table_number) || 0,
+    items: mapped,
+    items_json: mapped,
+    total: Math.round(total * 100) / 100,
+    ordered_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  };
+}
+
+function submitGuestPublicMenuOrder({
+  items,
+  order_kind,
+  table_number,
+  customer_name,
+  customer_phone,
+} = {}) {
+  const kind = String(order_kind || "takeaway").trim().toLowerCase();
+  let payload;
+  if (kind === "table") {
+    const table = resolveGuestTableTarget(table_number);
+    payload = buildGuestPublicOrderPayload({
+      items,
+      source: "qr",
+      source_label: `QR · T${table.number}`,
+      customer_name,
+      customer_phone,
+      table_number: table.number,
+      local_only: true,
+    });
+  } else {
+    payload = buildGuestPublicOrderPayload({
+      items,
+      source: "takeaway",
+      source_label: "Takeaway · QR Meny",
+      customer_name,
+      customer_phone,
+      table_number: 0,
+      local_only: true,
+    });
+  }
+  upsertPendingCloudOrders([payload]);
+  return {
+    ok: true,
+    order_id: payload.id,
+    pending: true,
+    total: payload.total,
+    label: payload.source_label,
+  };
+}
+
+function submitGuestRoomMenuOrder(roomNumber, items) {
+  const target = resolveGuestRoomTarget(roomNumber);
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) throw new Error("Zgjidhni të paktën një artikull.");
+
+  if (target.mode === "occupied") {
+    const created = addRoomChargesFromOrderItems(
+      target.guest.id,
+      target.room.id,
+      list,
+      { source: "room_service", decrement_stock: true },
+    );
+    return {
+      ok: true,
+      mode: "occupied",
+      count: created.length,
+      guest_name: target.guest.guest_name,
+      room_number: target.room.room_number,
+      message: "Porosia u shtua te fatura e dhomës.",
+    };
+  }
+
+  const created = addReservationQrMenuLines(
+    target.reservation.id,
+    target.room.id,
+    list,
+  );
+  return {
+    ok: true,
+    mode: "reserved",
+    count: created.length,
+    guest_name: target.reservation.guest_name,
+    room_number: target.room.room_number,
+    reservation_id: target.reservation.id,
+    message: "Porosia u ruajt me rezervimin — shkon te fatura në check-in.",
+  };
+}
+
+function buildGuestServiceOrderPayload(target, serviceLines) {
+  const crypto = require("crypto");
+  const rawLines = Array.isArray(serviceLines) ? serviceLines : [];
+  const normalized = [];
+  for (const raw of rawLines) {
+    normalized.push(...normalizeReservationServicesInput([raw], target.room.id));
+  }
+  if (!normalized.length) throw new Error("Shërbimi nuk u gjet.");
+
+  const guestName = target.mode === "occupied"
+    ? String(target.guest.guest_name || "").trim()
+    : String(target.reservation.guest_name || "").trim();
+  const roomNum = String(target.room.room_number || "").trim();
+  const items = normalized.map((line) => {
+    const svc = getHotelServiceById(line.service_id);
+    return {
+      service_id: line.service_id,
+      name: line.service_name,
+      category_name: svc?.category_name || "",
+      quantity: line.quantity,
+      price: line.unit_price,
+      amount: line.amount,
+      notes: line.notes || "",
+    };
+  });
+  const total = Math.round(items.reduce((s, i) => s + (Number(i.amount) || 0), 0) * 100) / 100;
+  const servicePayload = normalized.map((line, idx) => ({
+    service_id: line.service_id,
+    quantity: line.quantity,
+    amount: line.unit_price,
+    notes: line.notes || rawLines[idx]?.notes || "",
+  }));
+
+  return {
+    id: crypto.randomUUID(),
+    order_kind: "guest_hotel_service",
+    source: "guest_service",
+    source_label: `Shërbim hoteli · Dh. ${roomNum}`,
+    customer_label: guestName ? `${guestName} · Dh. ${roomNum}` : `Dh. ${roomNum}`,
+    customer_name: guestName,
+    room_number: roomNum,
+    room_id: target.room.id,
+    target_mode: target.mode,
+    reservation_id: target.mode === "reserved" ? Number(target.reservation.id) : null,
+    guest_id: target.mode === "occupied" ? Number(target.guest.id) : null,
+    service_lines: servicePayload,
+    waiter_name: `Mysafir · Dh. ${roomNum}`,
+    device_id: "WEB-GUEST-SERVICE",
+    local_only: true,
+    table_number: 0,
+    items,
+    items_json: items,
+    total,
+    ordered_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  };
+}
+
+function applyGuestHotelServiceOrder(order) {
+  const roomNum = String(order?.room_number || "").trim();
+  if (!roomNum) throw new Error("Numri i dhomës mungon.");
+  const target = resolveGuestRoomTarget(roomNum);
+  const rawLines = Array.isArray(order?.service_lines) && order.service_lines.length
+    ? order.service_lines
+    : (Array.isArray(order?.items) ? order.items.map((i) => ({
+      service_id: i.service_id,
+      quantity: i.quantity,
+      amount: i.price,
+      notes: i.notes,
+    })) : []);
+  if (!rawLines.length) throw new Error("Porosia nuk ka shërbime.");
+
+  const applied = [];
+  if (target.mode === "occupied") {
+    for (const raw of rawLines) {
+      applied.push(addServiceChargeToRoom(target.room.id, raw.service_id, {
+        quantity: raw.quantity,
+        amount: raw.amount,
+        notes: raw.notes,
+      }));
+    }
+    return {
+      ok: true,
+      mode: "occupied",
+      count: applied.length,
+      room_number: target.room.room_number,
+      guest_name: target.guest.guest_name,
+    };
+  }
+
+  for (const raw of rawLines) {
+    appendReservationServiceLine(target.reservation.id, target.room.id, raw);
+    applied.push(raw);
+  }
+  return {
+    ok: true,
+    mode: "reserved",
+    count: applied.length,
+    room_number: target.room.room_number,
+    guest_name: target.reservation.guest_name,
+    reservation_id: target.reservation.id,
+  };
+}
+
+function submitGuestRoomServiceOrder(roomNumber, serviceLines) {
+  const target = resolveGuestRoomTarget(roomNumber);
+  const lines = Array.isArray(serviceLines) ? serviceLines : [];
+  if (!lines.length) throw new Error("Zgjidhni të paktën një shërbim.");
+
+  const payload = buildGuestServiceOrderPayload(target, lines);
+  upsertPendingCloudOrders([payload]);
+
+  const guestName = target.mode === "occupied"
+    ? target.guest.guest_name
+    : target.reservation.guest_name;
+
+  return {
+    ok: true,
+    pending: true,
+    order_id: payload.id,
+    mode: target.mode,
+    count: payload.items.length,
+    guest_name: guestName,
+    room_number: target.room.room_number,
+    message: "Kërkesa u dërgua — stafi (bazen, spa, recepsion…) do t'ju konfirmojë së shpejti.",
+  };
+}
+
+function getRoomReservationById(id) {
+  const row = sqlite.prepare(`
     SELECT rv.*, r.room_number, r.floor, r.type AS room_type, r.price_per_night, r.status AS room_status
     FROM reservations rv
     LEFT JOIN rooms r ON r.id = rv.room_id
     WHERE rv.id = ?
   `).get(Number(id)) || null;
+  if (!row) return null;
+  row.services = listReservationServices(row.id);
+  return row;
 }
 
 function datesOverlap(aIn, aOut, bIn, bOut) {
@@ -2643,7 +3243,7 @@ function listRoomReservations({ status, from, to, on_date, limit } = {}) {
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const lim = Math.min(500, Math.max(1, Number(limit) || 200));
-  return sqlite.prepare(`
+  const rows = sqlite.prepare(`
     SELECT
       rv.*,
       r.room_number,
@@ -2657,6 +3257,7 @@ function listRoomReservations({ status, from, to, on_date, limit } = {}) {
     ORDER BY rv.check_in_date ASC, rv.id ASC
     LIMIT ${lim}
   `).all(...params);
+  return enrichReservationsWithServices(rows);
 }
 
 function hotelTodayLocalYmd() {
@@ -2666,7 +3267,7 @@ function hotelTodayLocalYmd() {
 
 function listTodaysRoomReservations(dateYmd) {
   const day = dateYmd ? parseHotelDate(dateYmd) : hotelTodayLocalYmd();
-  return sqlite.prepare(`
+  const rows = sqlite.prepare(`
     SELECT
       rv.*,
       r.room_number,
@@ -2680,6 +3281,7 @@ function listTodaysRoomReservations(dateYmd) {
       AND rv.status IN ('pending', 'confirmed')
     ORDER BY rv.id ASC
   `).all(day);
+  return enrichReservationsWithServices(rows);
 }
 
 /** Rezervime aktive që mbulojnë një datë (për ngjyrën blu të dhomës). */
@@ -2781,6 +3383,7 @@ function createRoomReservation({
   notes,
   deposit,
   status,
+  services,
 } = {}) {
   const name = String(guest_name || "").trim();
   if (!name) throw new Error("Emri i mysafirit është i detyrueshëm.");
@@ -2811,6 +3414,9 @@ function createRoomReservation({
     notesVal,
     st,
   );
+  if (Array.isArray(services) && services.length) {
+    replaceReservationServices(r.lastInsertRowid, services, Number(room_id));
+  }
   return getRoomReservationById(r.lastInsertRowid);
 }
 
@@ -2825,6 +3431,7 @@ function updateRoomReservation(id, {
   notes,
   deposit,
   status,
+  services,
 } = {}) {
   const row = getRoomReservationById(id);
   if (!row) throw new Error("Rezervimi nuk u gjet.");
@@ -2855,10 +3462,13 @@ function updateRoomReservation(id, {
       SET room_id = ?, guest_name = ?, phone = ?, email = ?, check_in_date = ?, check_out_date = ?,
           persons = ?, deposit = ?, notes = ?, status = ?
       WHERE id = ?
-    `).run(
+    `    ).run(
       roomId, name, phoneVal, emailVal, inDate, outDate,
       Math.trunc(personsNum), depositVal, notesVal, st, Number(id),
     );
+    if (services !== undefined) {
+      replaceReservationServices(id, services, roomId);
+    }
     return getRoomReservationById(id);
   }
   assertRoomReservationAvailable(roomId, inDate, outDate, id);
@@ -2871,6 +3481,9 @@ function updateRoomReservation(id, {
     roomId, name, phoneVal, emailVal, inDate, outDate,
     Math.trunc(personsNum), depositVal, notesVal, st, Number(id),
   );
+  if (services !== undefined) {
+    replaceReservationServices(id, services, roomId);
+  }
   return getRoomReservationById(id);
 }
 
@@ -2961,12 +3574,25 @@ function convertReservationToCheckIn(reservationId) {
     notes: rv.notes || "",
   });
 
+  const serviceCharges = applyReservationServicesOnCheckIn(
+    reservationId,
+    result.guest.id,
+    rv.room_id,
+  );
+  const qrPendingCharges = applyReservationQrPendingOnCheckIn(
+    reservationId,
+    result.guest.id,
+    rv.room_id,
+  );
+
   sqlite.prepare(`
     UPDATE reservations SET status = 'checked_in' WHERE id = ?
   `).run(Number(reservationId));
 
   return {
     ...result,
+    service_charges: serviceCharges,
+    qr_pending_charges: qrPendingCharges,
     reservation: getRoomReservationById(reservationId),
   };
 }
@@ -4328,9 +4954,17 @@ function isCloudStaffWaiterOrder(cloudOrder) {
   return orderDeviceId(cloudOrder) === "WEB-WAITER";
 }
 
+/** Porosi shërbimesh hoteli nga QR i dhomës — stafi pranon si takeaway. */
+function isGuestHotelServiceOrder(cloudOrder) {
+  if (!cloudOrder) return false;
+  if (String(cloudOrder.order_kind || "").trim() === "guest_hotel_service") return true;
+  return orderDeviceId(cloudOrder) === "WEB-GUEST-SERVICE";
+}
+
 /** Takeaway / delivery / web publike — jo tavolinë fizike me QR */
 function isCloudOnlinePickupOrder(cloudOrder) {
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
+  if (isGuestHotelServiceOrder(cloudOrder)) return true;
   const device = orderDeviceId(cloudOrder);
   if (device === "WEB-PUBLIC") return true;
   const blob = orderTextBlob(cloudOrder);
@@ -4382,12 +5016,14 @@ function isPhysicalVenueTable(tableRow) {
 function enrichCloudOrderForWaiter(cloudOrder) {
   if (!cloudOrder?.id) return cloudOrder;
   const staff = isCloudStaffWaiterOrder(cloudOrder);
-  const qr = !staff && isCloudQrTableOrder(cloudOrder);
+  const guestSvc = isGuestHotelServiceOrder(cloudOrder);
+  const qr = !staff && !guestSvc && isCloudQrTableOrder(cloudOrder);
   return {
     ...cloudOrder,
     is_staff_waiter: staff,
+    is_guest_hotel_service: guestSvc,
     is_qr_table: qr,
-    is_online_pickup: !staff && !qr && isCloudOnlinePickupOrder(cloudOrder),
+    is_online_pickup: !staff && !qr && !guestSvc && isCloudOnlinePickupOrder(cloudOrder),
     qr_table_number: qr ? parseQrTableNumberFromCloudOrder(cloudOrder) : 0,
   };
 }
@@ -4664,8 +5300,10 @@ function sendOrder({ table_id, waiter_name, items }) {
   })();
 }
 
-function normalizePaymentMethod(raw) {
+function normalizePaymentMethod(raw, paymentSplits) {
+  if (Array.isArray(paymentSplits) && paymentSplits.length > 1) return "mixed";
   const v = String(raw || "cash").trim().toLowerCase();
+  if (v === "mixed") return "mixed";
   // HAPI 4 — metodat SEF (ruajtje në orders.payment_method); closeTable nuk ndryshohet
   if (
     [
@@ -4689,6 +5327,7 @@ function paymentMethodLabel(method) {
   const labels = {
     cash: "Cash",
     karte: "Kartë",
+    mixed: "E përzier",
     debit_card: "Debit kartelë",
     credit_card: "Kredit kartelë",
     bank_account: "Llogari bankare",
@@ -9318,6 +9957,12 @@ function getVersionInfo() {
   ensureHotelServiceCategoryPhotos,
   setHotelServiceCategoryPhoto,
     addServiceChargeToRoom,
+    submitGuestRoomMenuOrder,
+    submitGuestRoomServiceOrder,
+    applyGuestHotelServiceOrder,
+    buildGuestServiceOrderPayload,
+    submitGuestPublicMenuOrder,
+    resolveGuestRoomTarget,
     listGuestsHistory,
     listHotelGuestsCrm,
     getHotelGuestCrmProfile,
@@ -9356,6 +10001,7 @@ function getVersionInfo() {
     isCloudQrTableOrder,
     isCloudPosAcceptQueueOrder,
     isCloudOnlinePickupOrder,
+    isGuestHotelServiceOrder,
     isCloudStaffWaiterOrder,
     parseQrTableNumberFromCloudOrder,
     isPhysicalVenueTable,
