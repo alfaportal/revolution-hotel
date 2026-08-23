@@ -153,6 +153,13 @@ function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
   };
 }
 
+function buildLocalWaiterPersonalUrl(baseUrl, webToken) {
+  const base = trimTrailingSlash(baseUrl);
+  const t = String(webToken || "").trim();
+  if (!base || !t) return "";
+  return `${base}/login.html?w=${encodeURIComponent(t)}`;
+}
+
 function buildWaiterKdsUrl(slug, key, webToken) {
   const s = normalizeSlug(slug);
   if (!s) return "";
@@ -161,17 +168,13 @@ function buildWaiterKdsUrl(slug, key, webToken) {
   return buildAccessLink(null, s, key, "waiter", extra);
 }
 
-/** https://revolution-pos.com/hotel/{slug}/waiter/{token}?key={key} */
+/** https://revolution-pos.com/hotel/{slug}/waiter?key={key}&w={token} */
 function buildWaiterPersonalUrl(slug, key, webToken) {
   const s = normalizeSlug(slug);
-  const k = String(key || "").trim();
   const token = String(webToken || "").trim();
   if (!s || !token) return "";
-  const origin = getPublicCloudServerUrl(s);
-  const params = new URLSearchParams();
-  if (k) params.set("key", k);
-  const qs = params.toString();
-  return `${origin}/hotel/${encodeURIComponent(s)}/waiter/${encodeURIComponent(token)}${qs ? `?${qs}` : ""}`;
+  const extra = `w=${encodeURIComponent(token)}`;
+  return buildAccessLink(null, s, key, "waiter", extra);
 }
 
 module.exports = {
@@ -190,6 +193,7 @@ module.exports = {
   buildCloudAccessLinks,
   buildWaiterKdsUrl,
   buildWaiterPersonalUrl,
+  buildLocalWaiterPersonalUrl,
   trimTrailingSlash,
   normalizeSlug,
 };

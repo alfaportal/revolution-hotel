@@ -566,6 +566,10 @@ function initSchema() {
   if (!staffCols.some(c => c.name === "card_uid")) {
     sqlRun("ALTER TABLE staff ADD COLUMN card_uid TEXT");
   }
+  if (!staffCols.some(c => c.name === "web_token")) {
+    sqlRun("ALTER TABLE staff ADD COLUMN web_token TEXT");
+  }
+  sqlRun("CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_web_token ON staff(web_token) WHERE web_token IS NOT NULL AND web_token <> ''");
   const orderCols = sqlAll("PRAGMA table_info(orders)");
   if (!orderCols.some(c => c.name === "payment_method")) {
     sqlRun("ALTER TABLE orders ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");

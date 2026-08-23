@@ -4,19 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Shërbimet — Hotel</title>
+  <link rel="stylesheet" href="/guest/guest-menu.css">
   <style>
-    :root { --bg:#0f172a; --card:#1e293b; --txt:#f1f5f9; --muted:#94a3b8; --acc:#FF6B35; }
+    :root { --bg:#0f172a; --txt:#f1f5f9; --muted:#94a3b8; --acc:#FF6B35; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--txt); padding:1rem 1rem 6rem; }
     h1 { font-size:1.35rem; margin:0 0 0.35rem; }
     .sub { color:var(--muted); margin:0 0 1rem; font-size:0.9rem; }
-    .cat { color:var(--acc); font-weight:700; margin:1.1rem 0 0.45rem; font-size:0.85rem; display:flex; align-items:center; gap:0.5rem; }
-    .cat-photo { width:2rem; height:2rem; object-fit:cover; border-radius:6px; flex:none; }
-    .item { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.65rem 0.75rem; background:var(--card); border-radius:10px; margin-bottom:0.45rem; }
-    .item button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:0.35rem 0.65rem; font-weight:700; cursor:pointer; }
-    .price { color:var(--acc); font-weight:700; white-space:nowrap; }
     .err { color:#fca5a5; } .ok { color:#86efac; }
-    .bar { position:fixed; left:0; right:0; bottom:0; background:#111827; border-top:1px solid #334155; padding:0.75rem 1rem; display:flex; gap:0.75rem; align-items:center; }
+    .bar { position:fixed; left:0; right:0; bottom:0; background:#111827; border-top:1px solid #334155; padding:0.75rem 1rem; display:flex; gap:0.75rem; align-items:center; z-index:40; }
     .bar strong { flex:1; }
     .bar button { background:var(--acc); color:#fff; border:0; border-radius:10px; padding:0.7rem 1rem; font-weight:800; cursor:pointer; }
   </style>
@@ -25,16 +21,22 @@
   <h1 id="title">Shërbimet</h1>
   <p class="sub" id="sub">Lista e shërbimeve me çmime</p>
   <div id="msg" class="sub"></div>
+  <div id="menu-shell" class="guest-menu-shell" hidden>
+    <div class="menu-group-bar" id="cat-bar"></div>
+    <div class="menu-photo-grid" id="svc-grid"></div>
+  </div>
   <div id="list">Duke ngarkuar…</div>
   <div class="bar">
     <strong id="cart-label">Shporta: 0.00 €</strong>
     <button type="button" id="btn-send">Porosit</button>
   </div>
   <script src="/guest/guest-order-lib.js"></script>
+  <script src="/guest/guest-menu-ui.js"></script>
   <script>
     (async () => {
       const G = window.GuestOrder;
       const list = document.getElementById("list");
+      const shell = document.getElementById("menu-shell");
       const msg = document.getElementById("msg");
       const cart = G.createCart();
       document.getElementById("sub").textContent = G.room
@@ -52,6 +54,19 @@
         return G.fmt(s.price);
       }
 
+      function addService(s) {
+        if (String(s.price_mode) === "variable") {
+          const val = prompt(`Çmimi për «${s.name}» (€):`, String(s.price || "0"));
+          if (val == null) return;
+          const p = Number(val);
+          if (!Number.isFinite(p) || p < 0) return;
+          cart.add({ ...s, price: p, price_mode: "variable" });
+        } else {
+          cart.add(s);
+        }
+        refreshCart();
+      }
+
       try {
         if (!G.room) {
           list.innerHTML = "<p class='err'>Mungon dhoma në QR. Përdorni kodin e dhomës suaj.</p>";
@@ -63,42 +78,21 @@
         if (!r.ok) throw new Error(d.gabim || "Gabim");
         document.getElementById("title").textContent = (d.hotel_name || "Hotel") + " — Shërbime";
         const groups = d.groups || [];
-        const flat = d.services || [];
-        if (!groups.length && !flat.length) {
+        if (!groups.length && !(d.services || []).length) {
           list.innerHTML = "<p class='err'>Nuk ka shërbime.</p>";
           return;
         }
-        const renderService = (s) =>
-          `<div class="item" data-svc="${s.id}">` +
-          `<span>${G.esc(s.name)}<br><small style="color:#94a3b8">${G.esc(priceLabel(s))}</small></span>` +
-          `<button type="button" data-add="${s.id}">+</button></div>`;
-        if (groups.length) {
-          list.innerHTML = groups.map((g) =>
-            `<div class="cat">` + (g.photo ? `<img class="cat-photo" src="${G.esc(g.photo)}" alt="">` : "") +
-            `<span>${G.esc(g.name || "Të tjera")}</span></div>` +
-            (g.services || []).map(renderService).join("")
-          ).join("");
-        } else {
-          list.innerHTML = flat.map(renderService).join("");
-        }
-        const svcMap = {};
-        for (const g of groups) for (const s of g.services || []) svcMap[s.id] = s;
-        for (const s of flat) svcMap[s.id] = s;
-        list.querySelectorAll("[data-add]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const s = svcMap[btn.getAttribute("data-add")];
-            if (!s) return;
-            if (String(s.price_mode) === "variable") {
-              const val = prompt(`Çmimi për «${s.name}» (€):`, String(s.price || "0"));
-              if (val == null) return;
-              const p = Number(val);
-              if (!Number.isFinite(p) || p < 0) return;
-              cart.add({ ...s, price: p, price_mode: "variable" });
-            } else {
-              cart.add(s);
-            }
-            refreshCart();
-          });
+        const normalizedGroups = groups.length
+          ? groups
+          : [{ id: null, name: "Të tjera", services: d.services || [] }];
+        list.hidden = true;
+        shell.hidden = false;
+        GuestMenuUI.renderGuestServices({
+          barEl: document.getElementById("cat-bar"),
+          gridEl: document.getElementById("svc-grid"),
+          groups: normalizedGroups,
+          priceLabel,
+          onAdd: addService,
         });
       } catch (e) {
         list.innerHTML = `<p class="err">${G.esc(e.message || "Gabim")}</p>`;

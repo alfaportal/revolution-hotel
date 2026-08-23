@@ -6862,6 +6862,60 @@ function validatePin(pin) {
   return p;
 }
 
+function generateStaffWebToken() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function ensureStaffWebToken(staffId) {
+  const id = Number(staffId);
+  if (!id) return null;
+  const row = sqlite.prepare("SELECT id, web_token FROM staff WHERE id = ?").get(id);
+  if (!row) return null;
+  const existing = String(row.web_token || "").trim();
+  if (existing) return existing;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const token = generateStaffWebToken();
+    try {
+      sqlite.prepare(`
+        UPDATE staff SET web_token = ?
+        WHERE id = ? AND (web_token IS NULL OR TRIM(web_token) = '')
+      `).run(token, id);
+      const updated = sqlite.prepare("SELECT web_token FROM staff WHERE id = ?").get(id);
+      const val = String(updated?.web_token || "").trim();
+      if (val) return val;
+    } catch (e) {
+      if (!String(e.message || "").includes("UNIQUE")) throw e;
+    }
+  }
+  return String(sqlite.prepare("SELECT web_token FROM staff WHERE id = ?").get(id)?.web_token || "").trim() || null;
+}
+
+function findStaffByWebToken(token) {
+  const t = String(token || "").trim().toLowerCase();
+  if (!t || t.length < 8) return null;
+  return sqlite.prepare(`
+    SELECT * FROM staff
+    WHERE LOWER(TRIM(web_token)) = ? AND active = 1
+  `).get(t);
+}
+
+function regenerateStaffWebToken(staffId) {
+  const id = Number(staffId);
+  if (!id) throw new Error("Kamarieri nuk u gjet");
+  const row = sqlite.prepare("SELECT id FROM staff WHERE id = ?").get(id);
+  if (!row) throw new Error("Kamarieri nuk u gjet");
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const token = generateStaffWebToken();
+    try {
+      sqlite.prepare("UPDATE staff SET web_token = ? WHERE id = ?").run(token, id);
+      return token;
+    } catch (e) {
+      if (!String(e.message || "").includes("UNIQUE")) throw e;
+    }
+  }
+  throw new Error("Nuk u gjenerua linku i ri — provoni përsëri.");
+}
+
 function pinInUse(pin, excludeId = null) {
   const row = excludeId != null
     ? sqlite.prepare("SELECT id FROM staff WHERE pin = ? AND id != ?").get(pin, excludeId)
@@ -6874,7 +6928,22 @@ function addStaff(name, pin) {
   if (!trimmed) throw new Error("Shkruani emrin e kamarierit");
   const p = validatePin(pin);
   if (pinInUse(p)) throw new Error("Ky PIN përdoret tashmë");
-  sqlite.prepare("INSERT INTO staff (name, pin, active) VALUES (?, ?, 1)").run(trimmed, p);
+  let token = generateStaffWebToken();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const r = sqlite.prepare(
+        "INSERT INTO staff (name, pin, active, web_token) VALUES (?, ?, 1, ?)",
+      ).run(trimmed, p, token);
+      return { id: Number(r.lastInsertRowid), web_token: token };
+    } catch (e) {
+      if (String(e.message || "").includes("UNIQUE") && String(e.message || "").includes("web_token")) {
+        token = generateStaffWebToken();
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("Nuk u shtua punonjësi — provoni përsëri.");
 }
 
 function updateStaffPin(id, pin) {
@@ -10044,6 +10113,9 @@ function getVersionInfo() {
     getStaffForLogin,
     addStaff,
     updateStaffPin,
+    ensureStaffWebToken,
+    findStaffByWebToken,
+    regenerateStaffWebToken,
     findStaffByPin,
     updateStaffCard,
     clearStaffCard,

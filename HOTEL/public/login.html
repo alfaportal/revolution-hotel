@@ -551,6 +551,10 @@
     const gabimEl = document.getElementById("gabim");
     const pinPanel = document.getElementById("pin-panel");
     const pinDots = [...document.querySelectorAll("#pin-display .pin-dot")];
+    const urlParams = new URLSearchParams(window.location.search);
+    let personalWebToken = String(urlParams.get("w") || "").trim();
+    let personalStaffId = null;
+    let personalStaffName = "";
 
     let pinValue = "";
     let pinBusy = false;
@@ -615,7 +619,11 @@
         const res = await fetch("/api/login/pin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pin: pinToSend }),
+          body: JSON.stringify({
+            pin: pinToSend,
+            staff_id: personalStaffId || undefined,
+            web_token: personalWebToken || undefined,
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.token) {
@@ -757,6 +765,28 @@
     document.getElementById("fjalekalimi").addEventListener("keydown", e => {
       if (e.key === "Enter") document.getElementById("hyr-admin").click();
     });
+
+    (async function bootstrapPersonalWaiterLink() {
+      if (!personalWebToken) return;
+      const hint = document.getElementById("pin-hint-login");
+      try {
+        const data = await api(`/api/login/waiter-bootstrap?w=${encodeURIComponent(personalWebToken)}`);
+        if (!data.ok) {
+          personalWebToken = "";
+          if (hint) hint.textContent = data.gabim || "Linku i kamarierit nuk është i vlefshëm.";
+          shfaqGabim(gabimEl, data.gabim || "Linku i kamarierit nuk është i vlefshëm.");
+          return;
+        }
+        personalStaffId = data.staff_id;
+        personalStaffName = data.name || "";
+        if (hint && personalStaffName) {
+          hint.textContent = `Link personal — ${personalStaffName}. Shkruani PIN-in tuaj (4 shifra).`;
+        }
+      } catch {
+        personalWebToken = "";
+        if (hint) hint.textContent = "Linku personal nuk u verifikua — përdorni PIN-in normal.";
+      }
+    })();
   </script>
   <script src="/js/order-alarm-sound.js"></script>
   <script src="/js/cloud-status.js"></script>

@@ -106,7 +106,7 @@ const { printClosedTableReceipt } = require("./close-table-print");
 const { buildXReportHtml, buildZReportHtml, buildXReportLines, buildZReportLines, buildDailySummaryLines } = require("./shift-report-html");
 const { diffOrderItems } = require("./kitchen-ticket-html");
 const menuStockPhotos = require("./menu-stock-photos");
-const { getPublicCloudServerUrl, buildCloudAccessLinks, buildWaiterPersonalUrl } = require("./cloud-server-url");
+const { getPublicCloudServerUrl, buildCloudAccessLinks, buildWaiterPersonalUrl, buildLocalWaiterPersonalUrl } = require("./cloud-server-url");
 const { buildDitariReportHtml } = require("./ditari-report");
 const {
   buildMenuPrintHtml,
@@ -682,17 +682,28 @@ function canShowKdsStaffLinks() {
   return t === "pako_3" || t === "pako_4" || t === "pako_5";
 }
 
-function resolveStaffWaiterUrl(cloudWaiter) {
-  if (!cloudWaiter) return "";
-  const fromCloud = String(cloudWaiter.waiter_url || "").trim();
+function resolveStaffWaiterUrl(cloudWaiter, staffRow) {
+  if (!staffRow || staffRow.id == null) {
+    return buildLocalStaffLinks().waiter_url;
+  }
+  const token = db.ensureStaffWebToken(staffRow.id);
+  const fromCloud = String(cloudWaiter?.waiter_url || "").trim();
   if (fromCloud) return fromCloud;
   const settings = db.getCloudSettings();
   const slug = settings.kitchen_slug || settings.cloud_client_id || "";
   const key = settings.kitchen_key || "";
-  return buildWaiterPersonalUrl(slug, key, cloudWaiter.web_token);
+  const cloudToken = String(cloudWaiter?.web_token || token || "").trim();
+  if (slug && cloudToken) {
+    const cloudPersonal = buildWaiterPersonalUrl(slug, key, cloudToken);
+    if (cloudPersonal) return cloudPersonal;
+  }
+  if (token) {
+    return buildLocalWaiterPersonalUrl(getLocalServerBaseUrl(), token);
+  }
+  return buildLocalStaffLinks().waiter_url;
 }
 
-function getLocalAdminUrl() {
+function getLocalServerBaseUrl() {
   const port = process.env.ACTUAL_PORT || process.env.PORT || 3001;
   let ip = "";
   for (const ifName of Object.keys(os.networkInterfaces())) {
@@ -705,7 +716,56 @@ function getLocalAdminUrl() {
     if (ip) break;
   }
   if (!ip) ip = "127.0.0.1";
-  return `http://${ip}:${port}/admin.html`;
+  return `http://${ip}:${port}`.replace(/\/+$/, "");
+}
+
+function getLocalAdminUrl() {
+  return `${getLocalServerBaseUrl()}/admin.html`;
+}
+
+/** Linke stafi në LAN (telefon/tablet në të njëjtin Wi‑Fi). */
+function buildLocalStaffLinks() {
+  const base = getLocalServerBaseUrl();
+  const isHotel = String(VERSION.appType || "").trim() === "hotel";
+  return {
+    waiter_url: `${base}/login.html`,
+    kitchen_url: isHotel ? "" : `${base}/kitchen.html`,
+    bar_url: isHotel ? "" : `${base}/bar.html`,
+    kiosk_url: `${base}/guest/menu.html`,
+    public_page_url: `${base}/guest/menu.html`,
+    housekeeping_url: `${base}/login.html`,
+    reception_url: `${base}/login.html`,
+  };
+}
+
+function resolveStaffLinksPayload(db) {
+  const local = buildLocalStaffLinks();
+  const settings = db.getCloudSettings();
+  const slug = String(settings.kitchen_slug || settings.cloud_client_id || "").trim();
+  const key = String(settings.kitchen_key || "").trim();
+  const cloud = slug
+    ? buildCloudAccessLinks(getPublicCloudServerUrl(), {
+      kitchen_slug: slug,
+      kitchen_key: key,
+      client_id: slug,
+    })
+    : {};
+  const merged = {
+    local_base_url: local.waiter_url.replace(/\/login\.html$/i, ""),
+    waiter_url: cloud.waiter_url || local.waiter_url,
+    kitchen_url: cloud.kitchen_url || local.kitchen_url,
+    bar_url: cloud.bar_url || local.bar_url,
+    kiosk_url: cloud.kiosk_url || local.kiosk_url,
+    public_page_url: cloud.public_page_url || local.public_page_url,
+    housekeeping_url: local.housekeeping_url,
+    reception_url: local.reception_url,
+    cloud_waiter_url: cloud.waiter_url || "",
+    cloud_kitchen_url: cloud.kitchen_url || "",
+    cloud_bar_url: cloud.bar_url || "",
+    links_ready: true,
+    local_mode: !cloud.waiter_url && !cloud.kitchen_url,
+  };
+  return merged;
 }
 
 function cloudSyncLinksPayload(settings, status) {
@@ -1059,6 +1119,26 @@ app.get("/api/login/waiters", (_req, res) => {
   res.json({ waiters: db.getStaffForLogin() });
 });
 
+/** Bootstrap për link personal ?w=token — tregon emrin e kamarierit para PIN. */
+app.get("/api/login/waiter-bootstrap", (req, res) => {
+  try {
+    const w = String(req.query.w || req.query.web_token || "").trim();
+    if (!w) return res.json({ ok: false });
+    const staff = db.findStaffByWebToken(w);
+    if (!staff) {
+      return res.json({ ok: false, invalid: true, gabim: "Linku i kamarierit nuk është i vlefshëm." });
+    }
+    return res.json({
+      ok: true,
+      staff_id: staff.id,
+      name: staff.name,
+      has_pin: !!staff.pin,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.get("/api/login/online-orders", async (_req, res) => {
   try {
     ensureOnlineOrdersWatcher();
@@ -1135,9 +1215,10 @@ app.post("/api/login/online-orders/acknowledge", async (req, res) => {
 });
 
 app.get("/api/login/bar-url", (_req, res) => {
+  const links = resolveStaffLinksPayload(db);
   res.json({
     ok: true,
-    bar_url: cloudSync.getBarScreenUrl(db) || "",
+    bar_url: links.bar_url || cloudSync.getBarScreenUrl(db) || "",
     cloud_ready: cloudSync.isCloudConfigured(db),
   });
 });
@@ -1231,6 +1312,7 @@ app.post("/api/login/emergency", async (req, res) => {
 app.post("/api/login/pin", async (req, res) => {
   const pin = String(req.body.pin ?? "").trim();
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
+  const webToken = String(req.body.web_token || req.body.w || "").trim();
   if (!/^\d{4}$/.test(pin)) {
     return res.status(400).json({ gabim: "PIN duhet të jetë 4 shifra" });
   }
@@ -1238,6 +1320,12 @@ app.post("/api/login/pin", async (req, res) => {
     const staff = db.findStaffByPin(pin);
     if (!staff) {
       return res.status(401).json({ gabim: "PIN i gabuar!" });
+    }
+    if (webToken) {
+      const linked = db.findStaffByWebToken(webToken);
+      if (!linked || linked.id !== staff.id) {
+        return res.status(401).json({ gabim: "PIN i gabuar për këtë link personal!" });
+      }
     }
     if (staffId != null && staff.id !== staffId) {
       return res.status(401).json({ gabim: "PIN i gabuar për këtë kamarier!" });
@@ -4212,13 +4300,16 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
   const byName = new Map(
     cloudWaiters.map(w => [normalizeStaffName(w.name), w]),
   );
+  const staffRows = db.getStaff();
+  const staffById = new Map(staffRows.map((s) => [Number(s.id), s]));
   res.json({
     kds_enabled: kdsEnabled,
     staff: staff.map(s => {
+      const full = staffById.get(Number(s.id)) || null;
       const cw = kdsEnabled ? byName.get(normalizeStaffName(s.name)) : null;
       return {
         ...s,
-        waiter_url: kdsEnabled ? resolveStaffWaiterUrl(cw) : "",
+        waiter_url: resolveStaffWaiterUrl(cw, full),
       };
     }),
     active_today: db.getActiveStaffToday(),
@@ -4232,10 +4323,12 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
     return res.status(400).json({ gabim: "PIN duhet të jetë 4 shifra" });
   }
   try {
-    db.addStaff(name, pin);
+    const created = db.addStaff(name, pin);
     syncCatalogToCloud();
     void cloudSync.pushStaffAsync(db);
-    res.json({ ok: true });
+    const full = db.getStaff().find(s => Number(s.id) === Number(created.id));
+    const waiter_url = resolveStaffWaiterUrl(null, full || { id: created.id, web_token: created.web_token });
+    res.json({ ok: true, staff_id: created.id, waiter_url });
   } catch (e) {
     res.status(400).json({ gabim: e.message.includes("UNIQUE") ? "Ky emër ekziston tashmë" : e.message });
   }
@@ -4245,10 +4338,29 @@ app.put("/api/staff/:id/pin", auth, adminOnly, (req, res) => {
   const { pin } = req.body;
   if (!pin) return res.status(400).json({ gabim: "Shkruani PIN-in (4 shifra)" });
   try {
-    db.updateStaffPin(Number(req.params.id), pin);
+    const id = Number(req.params.id);
+    db.updateStaffPin(id, pin);
     syncCatalogToCloud();
     void cloudSync.pushStaffAsync(db);
-    res.json({ ok: true });
+    const full = db.getStaff().find(s => Number(s.id) === id);
+    res.json({
+      ok: true,
+      waiter_url: resolveStaffWaiterUrl(null, full),
+    });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/staff/:id/regenerate-link", auth, adminOnly, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    db.regenerateStaffWebToken(id);
+    const full = db.getStaff().find(s => Number(s.id) === id);
+    res.json({
+      ok: true,
+      waiter_url: resolveStaffWaiterUrl(null, full),
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -4973,17 +5085,17 @@ app.get("/api/hotel-qrs/:room/png", auth, adminOnly, async (req, res) => {
 /** Katalog publik lokal për QR (pa auth, pa cloud). */
 app.get("/api/guest/menu", (_req, res) => {
   try {
-    const items = (db.getMenuItems(true) || []).map((it) => ({
-      id: it.id,
-      name: it.name,
-      category: it.category,
-      price: Number(it.price) || 0,
-      photo: it.photo || "",
-    }));
+    const items = (db.getMenuItems(true) || []).map(toMenuItemDto);
     const settings = db.getSettings();
+    const present = new Set(items.map((it) => it.category));
+    const categories = (db.getCategories() || []).filter((c) => present.has(c));
+    for (const c of present) {
+      if (!categories.includes(c)) categories.push(c);
+    }
     res.json({
       ok: true,
       hotel_name: settings.business_name || "Hotel",
+      categories,
       items,
     });
   } catch (e) {
@@ -5209,26 +5321,31 @@ app.get("/api/cloud/failures", auth, adminOnly, (req, res) => {
 });
 
 app.get("/api/cloud-sync", auth, adminOnly, async (_req, res) => {
-  /* Hotel: pa checkConnection / rrjet — settings bosh + offline. */
   try {
+    const licenseMod = require("./license");
+    const settings = db.getCloudSettings();
+    const links = resolveStaffLinksPayload(db);
+    const hasCloudSlug = !!(settings.kitchen_slug || settings.cloud_client_id);
     res.json({
       ok: true,
-      server_url: "",
-      celesi: "",
-      kitchen_slug: "",
-      kitchen_key: "",
-      cloud_client_id: "",
-      cloud_client_name: "",
-      connected: false,
-      offline: true,
-      links_ready: false,
-      waiter_url: "",
-      bar_url: "",
-      kitchen_url: "",
-      kiosk_url: "",
-      public_page_url: "",
-      status_message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-      message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
+      server_url: hasCloudSlug ? getPublicCloudServerUrl() : links.local_base_url,
+      celesi: String(settings.cloud_license_key || db.getSetting?.("cloud_license_key", "") || "").trim(),
+      kitchen_slug: settings.kitchen_slug || "",
+      kitchen_key: settings.kitchen_key ? "••••" : "",
+      cloud_client_id: settings.cloud_client_id || "",
+      cloud_client_name: settings.cloud_client_name || "",
+      device_id: licenseMod.getMachineId(),
+      connected: !!hasCloudSlug,
+      offline: !hasCloudSlug,
+      links_ready: true,
+      local_mode: !!links.local_mode,
+      ...links,
+      status_message: hasCloudSlug
+        ? "Linke lokale (LAN) + cloud (revolution-pos.com) — kopjoni për stafin."
+        : "Linke lokale (LAN) — telefoni duhet të jetë në të njëjtin Wi‑Fi si PC-ja e hotelit.",
+      message: hasCloudSlug
+        ? "Linke lokale (LAN) + cloud."
+        : "Linke lokale (LAN) — pa cloud hotel ende.",
     });
   } catch (e) {
     res.status(500).json({ gabim: e.message });

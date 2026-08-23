@@ -20,7 +20,7 @@ assert.equal(VERSION.packageTier, "pako_5", "package-tier duhet Paketa 4 (pako_5
 assert.equal(VERSION.packageLabel, "4", "packageLabel duhet 4");
 
 const url = buildWaiterPersonalUrl("demo-kafe", "kk-123", "wt-abc");
-assert.match(url, /\/waiter\//, "URL kamarieri duhet /waiter/");
+assert.match(url, /\/waiter(\/|\?)/, "URL kamarieri duhet /waiter");
 assert.match(url, /[?&]key=/, "URL kamarieri duhet key=");
 assert.match(url, /[?&]w=wt-abc/, "URL kamarieri duhet w=token");
 assert.equal(buildWaiterPersonalUrl("", "k", "t"), "", "URL bosh pa slug");

@@ -1136,7 +1136,6 @@
     /* Kërkon rank >= 2 (Standard+): QR Kodet, Cilësimet > Cloud & linke */
     /* Punonjësit (stafi) është VETËM show/hide veçori — RFID-i i tij mbetet gjithmonë i dukshëm në të gjitha paketat. */
     body.tier-rank-1 [data-panel="qr-tavolinat"], body.tier-rank-1 #panel-qr-tavolinat,
-    body.tier-rank-1 [data-settings-go="cloud"], body.tier-rank-1 #panel-cloud,
     /* Kërkon rank >= 3 (Pro+): Stoku, Promocione, Raportet (me X/Z), Blerjet */
     body.tier-rank-1 [data-panel="stoku"], body.tier-rank-1 #panel-stoku,
     body.tier-rank-1 [data-panel="promocione"], body.tier-rank-1 #panel-promocione, body.tier-rank-1 #modal-promotion,
@@ -1149,7 +1148,6 @@
     body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
     body.tier-rank-1 [data-settings-go="licenca"], body.tier-rank-1 #panel-licenca,
     body.tier-rank-1 #btn-menu-scan-ai, body.tier-rank-1 #modal-menu-scan,
-    body.tier-rank-1 #cloud-row-kitchen,
 
     body.tier-rank-2 [data-panel="stoku"], body.tier-rank-2 #panel-stoku,
     body.tier-rank-2 [data-panel="promocione"], body.tier-rank-2 #panel-promocione, body.tier-rank-2 #modal-promotion,
@@ -1161,14 +1159,12 @@
     body.tier-rank-2 [data-panel="kontabilisti"], body.tier-rank-2 #panel-kontabilisti,
     body.tier-rank-2 [data-settings-go="licenca"], body.tier-rank-2 #panel-licenca,
     body.tier-rank-2 #btn-menu-scan-ai, body.tier-rank-2 #modal-menu-scan,
-    body.tier-rank-2 #cloud-row-kitchen,
 
     body.tier-rank-3 [data-panel="rezervime"], body.tier-rank-3 #panel-rezervime, body.tier-rank-3 #modal-reservation,
     body.tier-rank-3 [data-panel="ditari"], body.tier-rank-3 #panel-ditari,
     body.tier-rank-3 [data-panel="kontabilisti"], body.tier-rank-3 #panel-kontabilisti,
     body.tier-rank-3 [data-settings-go="licenca"], body.tier-rank-3 #panel-licenca,
     body.tier-rank-3 #btn-menu-scan-ai, body.tier-rank-3 #modal-menu-scan,
-    body.tier-rank-3 #cloud-row-kitchen,
 
     /* AI — butonat/skanimet fshehur derisa /api/ai/status → enabled; paneli AI mbetet i dukshëm */
     body:not(.ai-package-on) #btn-menu-scan-ai,
@@ -1683,7 +1679,7 @@
       <button type="button" class="settings-subnav-btn" data-settings-go="lokal">Lokal &amp; biznesi</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="restorant">Restorant &amp; Bar</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="fiskale">Fiskale &amp; printer</button>
-      <button type="button" class="settings-subnav-btn" data-settings-go="cloud" hidden>Cloud &amp; linke</button>
+      <button type="button" class="settings-subnav-btn" data-settings-go="cloud">Linke stafi</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="licenca">Licenca</button>
     </nav>
 
@@ -3008,13 +3004,13 @@
           <strong>Fiskale &amp; printer</strong>
           <span>TVSh, printer termik, kuzhina dhe arka fiskale</span>
         </button>
-        <button type="button" class="settings-hub-btn" data-settings-go="cloud" hidden>
-          <span class="settings-hub-icon settings-hub-icon-cyan">C</span>
-          <strong>Cloud &amp; linke</strong>
-          <span>Server online, linke kamarier/kuzhinë/kiosk</span>
+        <button type="button" class="settings-hub-btn" data-settings-go="cloud">
+          <span class="settings-hub-icon settings-hub-icon-cyan">L</span>
+          <strong>Linke stafi</strong>
+          <span>Kamarier, kuzhinë, bar, takeaway — kopjo për çdo punonjës</span>
         </button>
         <button type="button" class="settings-hub-btn" data-settings-go="licenca">
-          <span class="settings-hub-icon settings-hub-icon-amber">L</span>
+          <span class="settings-hub-icon settings-hub-icon-amber">K</span>
           <strong>Licenca</strong>
           <span>ID e pajisjes dhe çelësi i aktivizimit</span>
         </button>
@@ -3603,8 +3599,8 @@
         <div class="settings-card-head">
           <span class="settings-hub-icon settings-hub-icon-cyan">C</span>
           <div>
-            <div class="settings-card-title">Cloud &amp; linke</div>
-            <p class="settings-card-desc">Hoteli punon vetëm me SQLite lokal. URL-të e cloud do të konfigurohen kur hoteli të ketë serverin e vet.</p>
+            <div class="settings-card-title">Linke stafi</div>
+            <p class="settings-card-desc">Kopjoni linkun për çdo rol (telefon/tablet në të njëjtin Wi‑Fi). QR takeaway/recepsion — te skeda <strong>QR Kodet</strong>.</p>
           </div>
         </div>
         <div id="cloud-status-box" class="printer-status-box pending">
@@ -3638,35 +3634,59 @@
         <div class="fiscal-save-msg" id="msg-cloud"></div>
         <div id="web-app-links" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--ngjyr-border)">
           <p style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem">
-            Linket e stafit për telefon (do të konfigurohen me cloud). Emrat janë gati — fushat mbeten bosh derisa cloud të aktivizohet.
+            Linket për stafin — kopjoni dhe dërgojini punonjësit (WhatsApp, SMS). Telefoni duhet të jetë në të njëjtin Wi‑Fi si PC-ja e hotelit.
           </p>
-          <p id="cloud-links-hint" style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem">Cloud i hotelit nuk është konfiguruar ende — punon vetëm SQLite lokal.</p>
+          <p id="cloud-links-hint" style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem"></p>
           <div class="fiscal-field-row" id="cloud-row-waiter">
-            <label>Kamarierë (restoranti)</label>
+            <label>Kamarierë (hyrje e përgjithshme)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-waiter-url" readonly placeholder="Do të konfigurohet me cloud" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-waiter-url" readonly placeholder="http://192.168.x.x:3001/login.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-waiter-url">Kopjo</button>
+            </div>
+            <p class="field-hint" style="margin:0.35rem 0 0">Link personal për çdo kamarier — te skeda <strong>Stafi</strong> → Ndrysho → Kopjo.</p>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-kitchen">
+            <label>Kuzhina (ekran porosish)</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-kitchen-url" readonly placeholder="http://192.168.x.x:3001/kitchen.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kitchen-url">Kopjo</button>
+            </div>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-bar">
+            <label>Bar (pije)</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-bar-url" readonly placeholder="http://192.168.x.x:3001/bar.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-bar-url">Kopjo</button>
+            </div>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-kiosk">
+            <label>Takeaway / Meny publike (recepsion)</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-kiosk-url" readonly placeholder="http://192.168.x.x:3001/guest/menu.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kiosk-url">Kopjo</button>
+            </div>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-public">
+            <label>Meny mysafir (QR tavolinë / pa dhomë)</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-public-url" readonly placeholder="http://192.168.x.x:3001/guest/menu.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-public-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-housekeeping">
-            <label>Pastrues (housekeeping nga telefoni)</label>
+            <label>Pastrues (housekeeping)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-hk-url" readonly placeholder="Do të konfigurohet me cloud" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-hk-url" readonly placeholder="http://192.168.x.x:3001/login.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-hk-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-reception">
-            <label>Recepsionist (dhomat nga telefoni)</label>
+            <label>Recepsion (hyrje staf)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-reception-url" readonly placeholder="Do të konfigurohet me cloud" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-reception-url" readonly placeholder="http://192.168.x.x:3001/login.html" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-reception-url">Kopjo</button>
             </div>
           </div>
-          <!-- fusha të vjetra të fshehura (kompatibilitet JS) -->
-          <input type="hidden" id="cloud-bar-url" value="">
-          <input type="hidden" id="cloud-kitchen-url" value="">
-          <input type="hidden" id="cloud-kiosk-url" value="">
-          <input type="hidden" id="cloud-public-url" value="">
         </div>
       </div>
       <div class="card">
@@ -3737,6 +3757,7 @@
         >
         <div class="staff-rfid-actions" style="margin-top:0.35rem">
           <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-waiter">Kopjo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-regen-waiter">Link i ri</button>
         </div>
         <p id="staff-modal-waiter-hint" class="links-hint" style="margin:0.35rem 0 0" hidden></p>
       </div>
@@ -11427,6 +11448,15 @@
           : '<span class="staff-badge staff-badge-off">Joaktiv</span>';
         const pinText = s.has_pin ? "••••" : "Nuk është vendosur";
         const rfidText = s.has_card ? escMenuAttr(s.card_uid) : "Nuk është vendosur";
+        const linkHtml = s.waiter_url
+          ? `<div class="staff-detail-row staff-detail-link">
+              <dt>Link telefon</dt>
+              <dd>
+                <input type="text" class="staff-link-input" readonly value="${escMenuAttr(s.waiter_url)}" style="font-family:monospace;font-size:0.68rem;width:100%">
+                <button type="button" class="btn btn-ghost btn-sm staff-copy-link-btn" data-copy-link="${escMenuAttr(s.waiter_url)}">Kopjo</button>
+              </dd>
+            </div>`
+          : "";
 
         card.innerHTML = `
           <div class="staff-card-head">
@@ -11452,8 +11482,22 @@
               <dt>RFID</dt>
               <dd class="staff-rfid-code">${rfidText}</dd>
             </div>
+            ${linkHtml}
           </dl>
           <button type="button" class="staff-edit-btn" data-staff-edit="${s.id}">Ndrysho punonjësin</button>`;
+
+        card.querySelector(".staff-copy-link-btn")?.addEventListener("click", async function () {
+          const val = this.getAttribute("data-copy-link") || "";
+          if (!val) return;
+          try {
+            await navigator.clipboard.writeText(val);
+            const orig = this.textContent;
+            this.textContent = "U kopjua!";
+            setTimeout(() => { this.textContent = orig; }, 1500);
+          } catch {
+            prompt("Kopjoni linkun:", val);
+          }
+        });
 
         card.querySelector("[data-staff-edit]").addEventListener("click", () => { void hapModalStafit(s); });
         grid.appendChild(card);
@@ -11480,9 +11524,8 @@
       }
       stafModalAktual = s;
       document.getElementById("staff-modal-title").textContent = s.name;
-      document.getElementById("staff-modal-sub").textContent = stafKdsEnabled
-        ? "Kamarier — menaxhoni PIN-in, linkun për telefonin dhe kartelën RFID"
-        : "Kamarier — menaxhoni PIN-in dhe kartelën RFID";
+      document.getElementById("staff-modal-sub").textContent =
+        "Kopjoni linkun personal për telefonin e kamarierit — hapet hyrja vetëm për të, pastaj PIN 4-shifror.";
       document.getElementById("staff-modal-shift").textContent = s.shift_label || "—";
       const pinEl = document.getElementById("staff-modal-pin");
       pinEl.textContent = s.has_pin ? "••••" : "Nuk është vendosur";
@@ -11490,19 +11533,24 @@
       const cardInput = document.getElementById("staff-modal-card-input");
       cardInput.value = s.has_card ? (s.card_uid || "") : "";
       document.getElementById("staff-modal-card-del-btn").hidden = !s.has_card;
-      const waiterUrl = stafKdsEnabled ? (s.waiter_url || "") : "";
+      const waiterUrl = s.waiter_url || "";
       document.getElementById("staff-modal-waiter-url").value = waiterUrl;
-      document.getElementById("staff-modal-waiter-block").hidden = !stafKdsEnabled;
+      document.getElementById("staff-modal-waiter-block").hidden = false;
       const copyWaiterBtn = document.getElementById("staff-modal-copy-waiter");
+      const regenBtn = document.getElementById("staff-modal-regen-waiter");
       const waiterHint = document.getElementById("staff-modal-waiter-hint");
       if (copyWaiterBtn) copyWaiterBtn.disabled = !waiterUrl;
+      if (regenBtn) regenBtn.disabled = !s.has_pin;
       if (waiterHint) {
-        if (stafKdsEnabled && !waiterUrl) {
+        if (!s.has_pin) {
           waiterHint.hidden = false;
-          waiterHint.textContent = "Linku shfaqet kur kamarieri ka PIN 4-shifror dhe emri përputhet me cloud-in (sinkronizohet automatikisht).";
+          waiterHint.textContent = "Vendosni PIN 4-shifror — pastaj gjenerohet linku personal automatikisht.";
+        } else if (waiterUrl) {
+          waiterHint.hidden = false;
+          waiterHint.textContent = "Dërgojeni këtë link kamarierit (WhatsApp/SMS). Hap linkun → shkruan PIN-in e vet.";
         } else {
-          waiterHint.hidden = true;
-          waiterHint.textContent = "";
+          waiterHint.hidden = false;
+          waiterHint.textContent = "Duke gjeneruar linkun… rifreskoni listën e stafit.";
         }
       }
       document.getElementById("modal-staff").hidden = false;
@@ -11527,6 +11575,19 @@
         setTimeout(() => { this.textContent = orig; }, 1500);
       } catch {
         prompt("Kopjoni linkun e kamarierit:", val);
+      }
+    });
+
+    document.getElementById("staff-modal-regen-waiter")?.addEventListener("click", async function () {
+      if (!stafModalAktual?.id) return;
+      if (!confirm("Gjeneroni link të ri? Linku i vjetër nuk punon më.")) return;
+      try {
+        const r = await api(`/api/staff/${stafModalAktual.id}/regenerate-link`, { method: "POST" });
+        document.getElementById("staff-modal-waiter-url").value = r.waiter_url || "";
+        document.getElementById("staff-modal-waiter-block").hidden = false;
+        await ngarkoStafin();
+      } catch (e) {
+        alert(e.message || "Gabim");
       }
     });
 
@@ -11659,7 +11720,7 @@
         alert("PIN duhet të jetë 4 shifra");
         return;
       }
-      await api("/api/staff", {
+      const created = await api("/api/staff", {
         method: "POST",
         body: JSON.stringify({
           name: document.getElementById("staf-emri").value,
@@ -11669,7 +11730,15 @@
       document.getElementById("staf-emri").value = "";
       document.getElementById("staf-pin").value = "";
       document.getElementById("staff-add-card").hidden = true;
-      ngarkoStafin();
+      await ngarkoStafin();
+      if (created.waiter_url) {
+        try {
+          await navigator.clipboard.writeText(created.waiter_url);
+          alert(`Punonjësi u shtua.\n\nLinku personal u kopjua në clipboard:\n${created.waiter_url}`);
+        } catch {
+          prompt("Punonjësi u shtua. Kopjoni linkun personal:", created.waiter_url);
+        }
+      }
     });
 
     function registerModeLabel(mode) {
@@ -12250,28 +12319,36 @@
       const hint = document.getElementById("cloud-links-hint");
       if (links) links.hidden = false;
 
-      const waiterEl = document.getElementById("cloud-waiter-url");
-      const hkEl = document.getElementById("cloud-hk-url");
-      const recEl = document.getElementById("cloud-reception-url");
-      if (waiterEl) waiterEl.value = s.waiter_url || "";
-      if (hkEl) hkEl.value = s.housekeeping_url || s.kitchen_url || "";
-      if (recEl) recEl.value = s.reception_url || s.bar_url || "";
-
-      const barHidden = document.getElementById("cloud-bar-url");
-      const kitchenHidden = document.getElementById("cloud-kitchen-url");
-      const kioskHidden = document.getElementById("cloud-kiosk-url");
-      const publicHidden = document.getElementById("cloud-public-url");
-      if (barHidden) barHidden.value = s.bar_url || "";
-      if (kitchenHidden) kitchenHidden.value = s.kitchen_url || "";
-      if (kioskHidden) kioskHidden.value = s.kiosk_url || "";
-      if (publicHidden) publicHidden.value = s.public_page_url || "";
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || "";
+      };
+      const toggleRow = (rowId, val) => {
+        const row = document.getElementById(rowId);
+        if (row) row.hidden = !String(val || "").trim();
+      };
+      setVal("cloud-waiter-url", s.waiter_url);
+      setVal("cloud-kitchen-url", s.kitchen_url);
+      setVal("cloud-bar-url", s.bar_url);
+      setVal("cloud-kiosk-url", s.kiosk_url);
+      setVal("cloud-public-url", s.public_page_url);
+      setVal("cloud-hk-url", s.housekeeping_url || "");
+      setVal("cloud-reception-url", s.reception_url || "");
+      toggleRow("cloud-row-kitchen", s.kitchen_url);
+      toggleRow("cloud-row-bar", s.bar_url);
+      toggleRow("cloud-row-kiosk", s.kiosk_url);
+      toggleRow("cloud-row-public", s.public_page_url);
+      toggleRow("cloud-row-housekeeping", s.housekeeping_url);
+      toggleRow("cloud-row-reception", s.reception_url);
 
       if (hint) {
         hint.hidden = false;
-        if (s.connected && (s.waiter_url || s.housekeeping_url || s.reception_url)) {
-          hint.textContent = "Linket e stafit janë gati për kopjim.";
+        if (s.local_mode) {
+          hint.textContent = "Modi LAN — linket përdorin IP-në e PC-së (" + (s.local_base_url || "Wi‑Fi lokal") + "). QR print — te skeda QR Kodet. Link personal kamarier — te Stafi.";
+        } else if (s.links_ready) {
+          hint.textContent = "Linke gati. Kamarierët personalë (telefon) — te skeda Stafi → Kopjo linkun.";
         } else {
-          hint.textContent = "Cloud i hotelit nuk është konfiguruar ende — punon vetëm SQLite lokal. Emrat e linqeve janë gati.";
+          hint.textContent = "Duke ngarkuar linket…";
         }
       }
     }
@@ -12279,17 +12356,17 @@
     async function ngarkoCloudSync() {
       try {
         const s = await api("/api/cloud-sync");
-        document.getElementById("cloud-server-fixed").value = "";
-        document.getElementById("cloud-license-key").value = "";
+        document.getElementById("cloud-server-fixed").value = s.server_url || s.local_base_url || "";
+        document.getElementById("cloud-license-key").value = s.celesi || "";
         document.getElementById("cloud-device-id").value = s.device_id || "";
         vendosStatusinCloud(
-          false,
-          "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-          true,
+          !!s.connected,
+          s.status_message || s.message || "Linke lokale (LAN).",
+          !!s.offline,
         );
-        vendosLinketCloud({ ...s, connected: false, links_ready: false, bar_url: "", waiter_url: "", kitchen_url: "", kiosk_url: "", public_url: "" });
+        vendosLinketCloud(s);
       } catch (err) {
-        vendosStatusinCloud(false, err.message || "Nuk u lexua statusi i serverit.", true);
+        vendosStatusinCloud(false, err.message || "Nuk u lexuan linket.", true);
       }
     }
 
@@ -12309,6 +12386,18 @@
 
     document.getElementById("btn-copy-waiter-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-waiter-url", this);
+    });
+    document.getElementById("btn-copy-kitchen-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-kitchen-url", this);
+    });
+    document.getElementById("btn-copy-bar-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-bar-url", this);
+    });
+    document.getElementById("btn-copy-kiosk-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-kiosk-url", this);
+    });
+    document.getElementById("btn-copy-public-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-public-url", this);
     });
     document.getElementById("btn-copy-hk-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-hk-url", this);
