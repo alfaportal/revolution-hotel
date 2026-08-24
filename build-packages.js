@@ -13,11 +13,11 @@ const path = require("path");
 const ROOT = __dirname;
 const PROTECTED_DIR = path.join(ROOT, ".protected-build");
 const DIST_DIR = path.join(ROOT, "dist");
-const OBFUSCATE_SCRIPT = path.join(ROOT, "..", "scripts", "obfuscate-build.mjs");
+const OBFUSCATE_SCRIPT = path.join(ROOT, "scripts", "obfuscate-build.mjs");
 const {
   cleanDistBeforeBuild,
   finalizeDistDelivery,
-} = require(path.join(ROOT, "..", "scripts", "build-deliver.cjs"));
+} = require(path.join(ROOT, "scripts", "build-deliver.cjs"));
 
 const BUILD_MAC =
   process.argv.includes("--mac") || process.env.HOTEL_BUILD_MAC === "1";
@@ -129,7 +129,7 @@ function rimraf(dir) {
 function prepareObfuscatedBuild() {
   console.log("\n=== Obfuskim (prepare-only) ===");
   execFileSync(process.execPath, [OBFUSCATE_SCRIPT, "HOTEL", "--prepare-only"], {
-    cwd: path.join(ROOT, ".."),
+    cwd: ROOT,
     stdio: "inherit",
   });
   if (!fs.existsSync(PROTECTED_DIR)) {
@@ -330,7 +330,7 @@ function buildOne(pkg) {
     // Portable i hapur (DLL) — VETËM staging i brendshëm, JO dist/ Desktop/USB klienti.
     // VeraCrypt USB: lexo nga .portable-internal, jo nga dist/.
     const unpackedSrc = path.join(protectedDist, "win-unpacked");
-    const internalPortable = path.join(ROOT, "..", ".portable-internal");
+    const internalPortable = path.join(ROOT, ".portable-internal");
     if (fs.existsSync(unpackedSrc)) {
       rimraf(internalPortable);
       fs.cpSync(unpackedSrc, internalPortable, { recursive: true });

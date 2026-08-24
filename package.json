@@ -8,9 +8,9 @@
     "test": "node tests/protected-functions.test.js",
     "prebuild": "node scripts/pre-build-check.js",
     "fiscal:logo": "node fiscal/assets/generate-rks-mf-logo.js",
-    "build": "node ../scripts/download-menu-stock-photos.mjs && node build-packages.js",
+    "build": "node scripts/download-menu-stock-photos.mjs && node build-packages.js",
     "build:packages": "node build-packages.js",
-    "build:prepare": "node ../scripts/obfuscate-build.mjs HOTEL --prepare-only",
+    "build:prepare": "node scripts/obfuscate-build.mjs HOTEL --prepare-only",
     "icons": "node build/make-icon.js",
     "build:plain": "npm run icons && electron-builder --win --x64",
     "postinstall": "electron-rebuild -f -w better-sqlite3"

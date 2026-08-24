@@ -22,8 +22,9 @@ const appName = process.argv[2] || "HOTEL";
 const prepareOnly = process.argv.includes("--prepare-only");
 /** Vetëm staging i brendshëm — NUK shkon në Desktop / USB klienti. */
 const portableInternal = process.argv.includes("--portable-internal");
-const appDir = path.join(root, appName);
-const outDir = path.join(appDir, ".protected-build");
+const nestedAppDir = path.join(root, appName);
+const appDir = fs.existsSync(nestedAppDir) ? nestedAppDir : root;
+const outDir = path.join(root, ".protected-build");
 
 /** Të gjithë JS që dërgohen në instalues (build.files + public/js). */
 const OBFUSCATE_FILES = [
