@@ -1,10 +1,11 @@
 /**
  * Revolution HOTEL — Electron entry
- * Integrity → (licenca fikur përkohësisht për test lokal) → DB ready → server → UI
+ * Integrity (prod) → Hardware lock HotelLicense (prod) → DB ready → server → UI → security-alert
  */
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const pkg = require("./package.json");
 
 const REGION = (() => {
   try {
@@ -43,8 +44,111 @@ if (isProd) {
 }
 
 let mainWindow = null;
+let splashWindow = null;
 let httpServer = null;
 let appReadyForQuit = false;
+const STARTUP_T0 = Date.now();
+const startupMarks = [];
+
+function startupMark(label) {
+  const ms = Date.now() - STARTUP_T0;
+  startupMarks.push({ label, ms });
+  console.log(`[startup] ${label} +${ms}ms`);
+  return ms;
+}
+
+function waitForLocalHttp(port, timeoutMs = 15000) {
+  const http = require("http");
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tryOnce = () => {
+      if (Date.now() > deadline) {
+        resolve(false);
+        return;
+      }
+      const req = http.get(
+        { hostname: "127.0.0.1", port, path: "/", timeout: 800 },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode > 0 && res.statusCode < 500);
+        },
+      );
+      req.on("error", () => setTimeout(tryOnce, 150));
+      req.on("timeout", () => {
+        req.destroy();
+        setTimeout(tryOnce, 150);
+      });
+    };
+    tryOnce();
+  });
+}
+
+function closeSplash() {
+  if (!splashWindow) return;
+  try {
+    if (!splashWindow.isDestroyed()) splashWindow.close();
+  } catch {
+    /* ignore */
+  }
+  splashWindow = null;
+}
+
+function createSplash() {
+  try {
+    splashWindow = new BrowserWindow({
+      width: 460,
+      height: 340,
+      frame: false,
+      resizable: false,
+      movable: true,
+      center: true,
+      show: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      backgroundColor: "#0b1220",
+      icon: path.join(__dirname, "build", "icon.ico"),
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        devTools: false,
+      },
+    });
+    splashWindow.setMenuBarVisibility(false);
+    splashWindow.once("ready-to-show", () => {
+      if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
+    });
+    splashWindow.loadFile(path.join(__dirname, "public", "splash.html")).catch(() => {
+      try {
+        splashWindow.show();
+      } catch {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    console.warn("[startup] splash:", e.message);
+  }
+}
+
+function getPreloadPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "app.asar", "preload.js");
+  }
+  return path.join(__dirname, "preload.js");
+}
+
+function registerAuditExportIpc() {
+  ipcMain.handle("audit-export-pick-path", (event, format) => {
+    try {
+      const { BrowserWindow } = require("electron");
+      const { pickAuditSaveDialog } = require("./fiscal/fiscal-audit");
+      const win = event?.sender ? BrowserWindow.fromWebContents(event.sender) : null;
+      return pickAuditSaveDialog(format, win);
+    } catch (e) {
+      console.error("[audit-export] Save dialog:", e && e.message ? e.message : e);
+      return null;
+    }
+  });
+}
 
 function resolveWindowTitle() {
   try {
@@ -88,6 +192,8 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     try {
+      createSplash();
+      startupMark("splash");
       const userData = path.join(app.getPath("appData"), "Revolution HOTEL");
       fs.mkdirSync(userData, { recursive: true });
       try {
@@ -95,17 +201,148 @@ if (!gotTheLock) {
       } catch {
         /* ignore */
       }
+
+      const resetFlag = path.join(userData, ".factory-reset-pending");
+      // Flag jashtë userData — nuk humbet nëse wipe dështon pjesërisht / DB e kyçur.
+      const resetFlagExternal = path.join(
+        app.getPath("appData"),
+        "RevolutionInvest",
+        "hotel-factory-reset-pending",
+      );
+
+      const wipeDirHard = (dir) => {
+        if (!dir || !fs.existsSync(dir)) return;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          let left = 0;
+          for (const name of fs.readdirSync(dir)) {
+            const p = path.join(dir, name);
+            try {
+              fs.rmSync(p, { recursive: true, force: true });
+            } catch {
+              left += 1;
+            }
+          }
+          if (left === 0) return;
+          const waitUntil = Date.now() + 250;
+          while (Date.now() < waitUntil) {
+            /* retry delay for locked DB */
+          }
+        }
+      };
+
+      const factoryResetRequested =
+        fs.existsSync(resetFlag) || fs.existsSync(resetFlagExternal);
+
+      // Rivendos si të re: fshi KREJT të dhënat lokale (si instalim i ri).
+      // Licenca mbetet në %APPDATA%\RevolutionInvest\HotelLicense.
+      if (factoryResetRequested) {
+        wipeDirHard(userData);
+        try {
+          const localSibling = path.join(
+            process.env.LOCALAPPDATA || "",
+            path.basename(userData),
+          );
+          if (
+            localSibling &&
+            process.env.LOCALAPPDATA &&
+            localSibling !== userData
+          ) {
+            wipeDirHard(localSibling);
+          }
+        } catch {
+          /* ignore */
+        }
+        try {
+          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
+          fs.unlinkSync(resetFlagExternal);
+        } catch {
+          /* ignore */
+        }
+        try {
+          fs.unlinkSync(resetFlag);
+        } catch {
+          /* ignore */
+        }
+        process.env.HOTEL_FACTORY_RESET_AT = new Date().toISOString();
+        fs.mkdirSync(userData, { recursive: true });
+      }
+
       process.env.DB_PATH = path.join(userData, "hotel.db");
 
-      // Integritet + licencë fikur përkohësisht — prioritet: hapet pa ngrirë
+      global["__scheduleFactoryResetRelaunch"] = () => {
+        try {
+          fs.mkdirSync(userData, { recursive: true });
+          fs.writeFileSync(resetFlag, new Date().toISOString(), "utf8");
+          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
+          fs.writeFileSync(resetFlagExternal, new Date().toISOString(), "utf8");
+        } catch (e) {
+          dialog.showErrorBox(
+            APP_NAME,
+            "Nuk u shkrua flag-u i rivendosjes: " + (e.message || e),
+          );
+          return;
+        }
+        try {
+          httpServer?.close();
+        } catch {
+          /* ignore */
+        }
+        app.relaunch();
+        app.exit(0);
+      };
 
-      // Licenca fikur përkohësisht për test lokal
+      /* Shtresa 0: Integrity (prod) — asar / instalim i dëmtuar */
+      if (isProd) {
+        try {
+          const { verifyPackagedIntegrity } = require("./integrity-check");
+          const integ = verifyPackagedIntegrity(app);
+          if (!integ.ok) {
+            closeSplash();
+            dialog.showErrorBox(
+              "Integriteti i programit",
+              (integ.reason || "Kontrolli dështoi.") +
+                "\nKontaktoni +383 48707880 dhe riinstaloni Setup zyrtar.",
+            );
+            app.quit();
+            return;
+          }
+          } catch (e) {
+            closeSplash();
+            dialog.showErrorBox("Integriteti i programit", e.message || String(e));
+          app.quit();
+          return;
+        }
+      }
 
-      // DB inline async — pa Worker / pa Atomics.wait
+      /* Hardware lock lokal (HotelLicense) — SHA256(motherboard+disk+install-salt). JO cloud.
+         HOTEL nuk është regjistruar te licencat, pra nuk ka kod për të kërkuar:
+         kthe në true vetëm kur klientët e HOTEL-it të kenë licencë. */
+      const HOTEL_LICENSE_CODE_REQUIRED = false;
+      if (isProd && HOTEL_LICENSE_CODE_REQUIRED) {
+        const licenseGuard = require("./fiscal/license-guard");
+        let hw = { ok: false, grace: null };
+        try {
+          hw = await licenseGuard.ensureHardwareLicense(app);
+          if (typeof hw === "boolean") hw = { ok: hw, grace: null };
+        } catch (e) {
+          dialog.showErrorBox("Licenca", e.message || String(e));
+          app.quit();
+          return;
+        }
+        if (!hw || !hw.ok) {
+          app.quit();
+          return;
+        }
+        global.__hwLicenseGrace = licenseGuard.getGraceBannerInfo(app);
+      }
+
+      // DB in-process (db-engine) — await whenReady para serverit
       const database = require("./database");
       try {
         await database.whenReady();
+        startupMark("db");
       } catch (e) {
+        closeSplash();
         dialog.showErrorBox(
           `${APP_NAME} — Database`,
           `Nuk u nis databaza.\n\n${e.message || e}`,
@@ -114,11 +351,25 @@ if (!gotTheLock) {
         return;
       }
 
+      try {
+        const { purgeLegacyAuditNoise } = require("./fiscal/fiscal-audit");
+        const purged = purgeLegacyAuditNoise();
+        if (!purged.skipped && purged.deleted > 0) {
+          console.log(`[hotel] audit log: u fshinë ${purged.deleted} rreshta test/debug`);
+        }
+      } catch (e) {
+        console.warn("[hotel] audit purge:", e.message);
+      }
+
+      registerAuditExportIpc();
+
       const { startServer } = require("./server");
       let started;
       try {
         started = await startServer();
+        startupMark("server");
       } catch (e) {
+        closeSplash();
         dialog.showErrorBox(
           `${APP_NAME} — Serveri`,
           `Nuk u nis serveri lokal.\n\n${e.message || e}`,
@@ -135,9 +386,9 @@ if (!gotTheLock) {
         height: 800,
         minWidth: 900,
         minHeight: 600,
-        title: resolveWindowTitle(),
-        backgroundColor: "#0f172a",
-        show: true,
+        title: `${resolveWindowTitle()} v${pkg.version || "?"}`,
+        backgroundColor: "#0b1220",
+        show: false,
         icon: fs.existsSync(iconIco)
           ? iconIco
           : fs.existsSync(logoPath)
@@ -148,6 +399,7 @@ if (!gotTheLock) {
           contextIsolation: true,
           backgroundThrottling: false,
           devTools: !isProd,
+          preload: getPreloadPath(),
         },
       });
       try {
@@ -155,13 +407,6 @@ if (!gotTheLock) {
       } catch {
         /* ignore */
       }
-      try {
-        mainWindow.focus();
-        mainWindow.moveTop();
-      } catch {
-        /* ignore */
-      }
-
       global.__electronMainWindow = mainWindow;
 
       if (isProd) {
@@ -199,30 +444,112 @@ if (!gotTheLock) {
 
       appReadyForQuit = true;
 
+      const url = started.url || `http://127.0.0.1:${started.port}/`;
+      const httpReady = await waitForLocalHttp(started.port, 15000);
+      if (!httpReady) {
+        closeSplash();
+        dialog.showErrorBox(APP_NAME, "Serveri nuk u nis në kohë");
+        app.quit();
+        return;
+      }
+      startupMark("http-ready");
+
+      let mainShown = false;
+      const showMainWindow = () => {
+        if (mainShown || !mainWindow || mainWindow.isDestroyed()) return;
+        const loaded = String(mainWindow.webContents.getURL() || "");
+        if (!loaded || loaded === "about:blank") return;
+        mainShown = true;
+        startupMark("page-ready");
+        closeSplash();
+        mainWindow.show();
+        try {
+          mainWindow.focus();
+        } catch {
+          /* ignore */
+        }
+        refreshWindowTitle();
+        try {
+          fs.writeFileSync(
+            path.join(userData, "startup-last.json"),
+            JSON.stringify({
+              ms: Date.now() - STARTUP_T0,
+              at: new Date().toISOString(),
+              marks: startupMarks,
+              mem: process.memoryUsage(),
+            }),
+            "utf8",
+          );
+        } catch {
+          /* ignore */
+        }
+      };
+
       mainWindow.webContents.on("did-finish-load", () => {
         refreshWindowTitle();
+        showMainWindow();
+      });
+      mainWindow.webContents.on("did-fail-load", (_e, _code, _desc, _url, isMainFrame) => {
+        if (!isMainFrame || mainShown) return;
+        setTimeout(() => {
+          if (!mainShown && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.loadURL(url).catch(() => {});
+          }
+        }, 400);
       });
 
       mainWindow.on("closed", () => {
         mainWindow = null;
       });
 
-      const url = started.url || `http://127.0.0.1:${started.port}/`;
       try {
         await mainWindow.loadURL(url);
       } catch {
         await new Promise((r) => setTimeout(r, 400));
-        await mainWindow.loadURL(url);
+        await mainWindow.loadURL(url).catch(() => {});
       }
-      refreshWindowTitle();
+      setTimeout(() => {
+        if (!mainShown && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.loadURL(url).catch(() => {});
+        }
+      }, 4000);
+      setTimeout(() => {
+        if (!mainShown) {
+          closeSplash();
+          dialog.showErrorBox(
+            APP_NAME,
+            "Faqja e hyrjes nuk u hap. Mbylleni programin dhe hapeni përsëri.",
+          );
+        }
+      }, 20000);
+
+      /* security-alert: njoftime lokale (queue); cloud post dështon në silent në hotel offline */
       try {
-        mainWindow.show();
-        mainWindow.focus();
+        const sec = require("./security-alert");
+        if (typeof sec.startSecurityAlertFlush === "function") {
+          setTimeout(() => {
+            try {
+              sec.startSecurityAlertFlush(app);
+            } catch {
+              /* ignore */
+            }
+          }, 2500);
+        }
       } catch {
         /* ignore */
       }
 
-      // security-alert flush fikur përkohësisht — mund të ngrisë UI pas hapjes
+      setInterval(() => {
+        try {
+          const m = process.memoryUsage();
+          const rssMb = Math.round(m.rss / 1048576);
+          const heapMb = Math.round(m.heapUsed / 1048576);
+          console.log(`[mem] rss=${rssMb}MB heap=${heapMb}MB`);
+          if (rssMb >= 500) console.warn(`[mem] RAM ${rssMb}MB (>500MB)`);
+        } catch {
+          /* ignore */
+        }
+      }, 60000).unref?.();
     } catch (e) {
       dialog.showErrorBox(APP_NAME, e.message || String(e));
       app.quit();

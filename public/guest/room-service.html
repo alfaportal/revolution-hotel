@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+
+<html lang="sq">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Room Service</title>
+
+  <link rel="stylesheet" href="/guest/guest-menu.css">
+
+  <style>
+
+    :root { --bg:#0f172a; --txt:#f1f5f9; --muted:#94a3b8; --acc:#FF6B35; }
+
+    * { box-sizing: border-box; }
+
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--txt); padding:1rem 1rem 5.5rem; }
+
+    h1 { font-size:1.3rem; margin:0 0 0.25rem; }
+
+    .sub { color:var(--muted); margin:0 0 1rem; font-size:0.9rem; }
+
+    .msg { margin:0.5rem 0; font-size:0.9rem; }
+
+    .ok { color:#86efac; } .err { color:#fca5a5; }
+
+    .bar { position:fixed; left:0; right:0; bottom:0; background:#111827; border-top:1px solid #334155; padding:0.75rem 1rem; display:flex; gap:0.75rem; align-items:center; z-index:40; }
+
+    .bar strong { flex:1; }
+
+    .bar button { background:var(--acc); color:#fff; border:0; border-radius:10px; padding:0.7rem 1rem; font-weight:800; cursor:pointer; }
+
+  </style>
+
+</head>
+
+<body>
+
+  <h1>Room Service</h1>
+
+  <p class="sub" id="sub">Dhoma —</p>
+
+  <p class="sub" id="svc-link" style="margin-top:-0.5rem"><a href="#" id="link-room-services" style="color:#FF6B35">→ Shërbime hoteli (bazen, spa…)</a></p>
+
+  <div id="msg" class="msg"></div>
+
+  <div id="menu-shell" class="guest-menu-shell" hidden>
+
+    <div class="menu-group-bar" id="cat-bar"></div>
+
+    <div class="menu-photo-grid" id="menu-grid"></div>
+
+  </div>
+
+  <div id="list">Duke ngarkuar…</div>
+
+  <div class="bar">
+
+    <strong id="cart-label">Shporta: 0.00 €</strong>
+
+    <button type="button" id="btn-send">Dërgo në dhomë</button>
+
+  </div>
+
+  <script src="/guest/guest-order-lib.js"></script>
+
+  <script src="/guest/guest-menu-ui.js"></script>
+
+  <script>
+
+    (async () => {
+
+      const G = window.GuestOrder;
+
+      const list = document.getElementById("list");
+
+      const shell = document.getElementById("menu-shell");
+
+      const msg = document.getElementById("msg");
+
+      const cart = G.createCart();
+
+      document.getElementById("sub").textContent = G.room
+
+        ? `Dhoma ${G.room} — ushqim/pije (room service)`
+
+        : "Mungon numri i dhomës në QR";
+
+      if (G.room) {
+
+        const a = document.getElementById("link-room-services");
+
+        if (a) a.href = `/guest/services.html?room=${encodeURIComponent(G.room)}`;
+
+      } else {
+
+        const sl = document.getElementById("svc-link");
+
+        if (sl) sl.hidden = true;
+
+      }
+
+
+
+      function refreshCart() {
+
+        document.getElementById("cart-label").textContent =
+
+          `Shporta: ${G.fmt(cart.total())} (${cart.count()} artikuj)`;
+
+      }
+
+
+
+      if (!G.room) {
+
+        list.innerHTML = "<p class='err'>QR i pavlefshëm — mungon dhoma.</p>";
+
+        document.getElementById("btn-send").disabled = true;
+
+        return;
+
+      }
+
+
+
+      try {
+
+        const r = await fetch("/api/guest/menu");
+
+        const d = await r.json();
+
+        if (!r.ok) throw new Error(d.gabim || "Gabim");
+
+        list.hidden = true;
+
+        shell.hidden = false;
+
+        GuestMenuUI.renderGuestMenu({
+
+          barEl: document.getElementById("cat-bar"),
+
+          gridEl: document.getElementById("menu-grid"),
+
+          items: d.items || [],
+
+          categories: d.categories || [],
+
+          formatEuro: G.fmt,
+
+          onSelect: (it) => { cart.add(it); refreshCart(); },
+
+        });
+
+      } catch (e) {
+
+        list.innerHTML = `<p class="err">${G.esc(e.message || "Gabim")}</p>`;
+
+      }
+
+
+
+      document.getElementById("btn-send").addEventListener("click", async () => {
+
+        msg.className = "msg";
+
+        if (cart.isEmpty()) {
+
+          msg.className = "msg err";
+
+          msg.textContent = "Shtoni artikuj në shportë.";
+
+          return;
+
+        }
+
+        try {
+
+          const result = await G.submitMenuCart(cart, {});
+
+          cart.clear();
+
+          refreshCart();
+
+          msg.className = "msg ok";
+
+          msg.textContent = result.message
+
+            || `Porosia u shtua te ${result.guest_name || "mysafiri"} — dhoma ${result.room_number || G.room}.`;
+
+        } catch (e) {
+
+          msg.className = "msg err";
+
+          msg.textContent = e.message || "Gabim";
+
+        }
+
+      });
+
+    })();
+
+  </script>
+
+</body>
+
+</html>
+
+

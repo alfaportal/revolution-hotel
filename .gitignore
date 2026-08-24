@@ -1,16 +1,26 @@
 node_modules/
-HOTEL/node_modules/
-HOTEL/dist/
-HOTEL/.protected-build/
-.portable-internal/
-dist/
-*.log
-dist-launch*.log
-_hotel-build*.log
 restaurant.db
 restaurant.db-wal
 restaurant.db-shm
-.env
-.env.*
-.DS_Store
-Thumbs.db
+hotel.db
+hotel.db-wal
+hotel.db-shm
+node_setup.msi
+node-v*.msi
+*.msi
+
+# Enkriptim / secrets
+.db-master.dpapi
+.db-master.scrypt
+.db-install-salt
+
+# Build output
+dist/
+dist-build-*/
+.protected-build/
+.portable-internal/
+usb-package/
+
+# Logs / local
+slow-ops.jsonl
+migration-backups/
