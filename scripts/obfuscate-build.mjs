@@ -22,8 +22,18 @@ const appName = process.argv[2] || "HOTEL";
 const prepareOnly = process.argv.includes("--prepare-only");
 /** Vetëm staging i brendshëm — NUK shkon në Desktop / USB klienti. */
 const portableInternal = process.argv.includes("--portable-internal");
-const nestedAppDir = path.join(root, appName);
-const appDir = fs.existsSync(nestedAppDir) ? nestedAppDir : root;
+function resolveAppDir(rootDir, name) {
+  const nested = path.join(rootDir, name);
+  if (
+    fs.existsSync(nested) &&
+    fs.statSync(nested).isDirectory() &&
+    fs.existsSync(path.join(nested, "package.json"))
+  ) {
+    return nested;
+  }
+  return rootDir;
+}
+const appDir = resolveAppDir(root, appName);
 const outDir = path.join(root, ".protected-build");
 
 /** Të gjithë JS që dërgohen në instalues (build.files + public/js). */
