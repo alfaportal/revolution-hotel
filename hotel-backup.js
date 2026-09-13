@@ -33,12 +33,32 @@ function stampMigrationBackupName(migrationId) {
 }
 
 /**
- * Snapshot i databazës para migrimit destruktiv (DROP/RENAME).
+ * Snapshot i databazës para migrimit destruktiv (DROP/RENAME/ALTER).
  * Ruhet te {dataDir}/migration-backups/pre-<id>-<timestamp>/
+ *
+ * Përdorimi:
+ *   createPreMigrationBackup("emri-i-migrimit", { dbPath, flushSave, exportPlain })
+ *   createPreMigrationBackup({ migrationId: "...", dbPath, flushSave, exportPlain })
+ *
  * @throws nëse kopjimi dështon ose backup-i del bosh
  */
-function createPreMigrationBackup({ migrationId, dbPath, flushSave, exportPlain } = {}) {
-  const resolvedPath = dbPath || path.join(getHotelDataDir(), "hotel.db");
+function createPreMigrationBackup(migrationIdOrOpts, backupCtx) {
+  let opts;
+  if (typeof migrationIdOrOpts === "string") {
+    if (!backupCtx || typeof backupCtx.flushSave !== "function") {
+      throw new Error(
+        `createPreMigrationBackup("${migrationIdOrOpts}") kërkon backupCtx me flushSave.`,
+      );
+    }
+    opts = { migrationId: migrationIdOrOpts, ...backupCtx };
+  } else {
+    opts = migrationIdOrOpts || {};
+  }
+
+  const migrationId = opts.migrationId;
+  const flushSave = opts.flushSave;
+  const exportPlain = opts.exportPlain;
+  const resolvedPath = opts.dbPath || path.join(getHotelDataDir(), "hotel.db");
   const dataDir = path.dirname(resolvedPath);
   if (typeof flushSave === "function") flushSave();
 

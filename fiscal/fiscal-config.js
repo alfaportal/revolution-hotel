@@ -1,12 +1,9 @@
 /**
- * fiscal/fiscal-config.js — HAPI 2: lexon/ruan fiscal_settings (SQLite).
- * Kur fiscal_enabled=0, asgjë fiskale nuk aktivizohet.
- *
- * FISCAL_RELEASE_LOCKED=true → fiskalizimi mbetet OFF (pa toggle publik).
- * Hapet vetëm me leje eksplicite (vendos false).
- * 2026-08-06: hapur për TEST lokal (print). ATK është i ndaluar te HOTEL —
- * vetëm moduli SEF komunikon me SIATK (shih fiscal-offline.js).
+ * fiscal/fiscal-config.js — lexon/ruan fiscal_settings (SQLite).
+ * HOTEL: print lokal default; ATK HTTP vetëm kur pronari e lejon (HOTEL_ATK_SEND_ALLOWED).
  */
+const { isLocalPrintOnly } = require("./fiscal-test-mode-store");
+
 const FISCAL_RELEASE_LOCKED = false;
 
 /** Teste ATK/SEF në UI (Testo 100×, Kupon Provë, lista test, korrigjues) — vetëm projekti biznes. */
@@ -29,6 +26,10 @@ const EDITABLE_KEYS = [
   "unit_phone",
   "pos_id",
   "language",
+  "application_id",
+  "atk_api_url",
+  "fiscalization_number",
+  "sef_code",
 ];
 
 const DEFAULTS = {
@@ -50,7 +51,8 @@ const DEFAULTS = {
   sef_identifier: "",
   certificate_path: "",
   private_key_path: "",
-  atk_api_url: "",
+  atk_api_url: "https://fiskalizimi-test.atk-ks.org",
+  application_id: "",
   daily_receipt_counter: 0,
   total_receipt_counter: 0,
   last_z_report_date: "",
@@ -100,7 +102,11 @@ function normalizeRow(row) {
     sef_identifier: row.sef_identifier != null ? String(row.sef_identifier) : "",
     certificate_path: row.certificate_path != null ? String(row.certificate_path) : "",
     private_key_path: row.private_key_path != null ? String(row.private_key_path) : "",
-    atk_api_url: row.atk_api_url != null ? String(row.atk_api_url) : "",
+    atk_api_url:
+      row.atk_api_url != null && String(row.atk_api_url).trim()
+        ? String(row.atk_api_url).trim()
+        : "https://fiskalizimi-test.atk-ks.org",
+    application_id: row.application_id != null ? String(row.application_id) : "",
     daily_receipt_counter: Number(row.daily_receipt_counter) || 0,
     total_receipt_counter: Number(row.total_receipt_counter) || 0,
     last_z_report_date: row.last_z_report_date != null ? String(row.last_z_report_date) : "",
@@ -135,14 +141,27 @@ function getFiscalSettings() {
 function isFiscalEnabled() {
   if (FISCAL_RELEASE_LOCKED) return false;
   try {
-    return !!getFiscalSettings().fiscal_enabled;
+    const s = getFiscalSettings();
+    if (!s.fiscal_enabled) return false;
+    if (isLocalPrintOnly()) return isFiscalActivationComplete(s);
+    return isFiscalActivationComplete(s);
   } catch {
     return false;
   }
 }
 
 function isFiscalReleaseLocked() {
-  return FISCAL_RELEASE_LOCKED === true;
+  if (FISCAL_RELEASE_LOCKED) return true;
+  if (isLocalPrintOnly()) return false;
+  return !isFiscalActivationComplete(getFiscalSettings());
+}
+
+function getMissingFiscalProfileFields(settings) {
+  return getFiscalActivationCheck(settings).missing;
+}
+
+function isFiscalProfileComplete(settings) {
+  return getFiscalActivationCheck(settings).complete;
 }
 
 /** Fushat e detyrueshme të dyqanit (klienti) — jo të zhvilluesit. */
@@ -228,6 +247,9 @@ function saveFiscalSettings(data) {
     `ALTER TABLE fiscal_settings ADD COLUMN unit_phone TEXT`,
     `ALTER TABLE fiscal_settings ADD COLUMN unit_number TEXT`,
     `ALTER TABLE fiscal_settings ADD COLUMN total_receipt_counter INTEGER DEFAULT 0`,
+    `ALTER TABLE fiscal_settings ADD COLUMN application_id TEXT`,
+    `ALTER TABLE fiscal_settings ADD COLUMN atk_api_url TEXT`,
+    `ALTER TABLE fiscal_settings ADD COLUMN fiscalization_number TEXT`,
   ]) {
     try {
       sqlite.prepare(colSql).run();
@@ -297,6 +319,10 @@ function saveFiscalSettings(data) {
         pos_id = ?,
         sef_identifier = ?,
         language = ?,
+        atk_api_url = ?,
+        fiscalization_number = ?,
+        sef_code = ?,
+        application_id = ?,
         updated_at = datetime('now','localtime')
       WHERE id = 1`
     )
@@ -313,7 +339,11 @@ function saveFiscalSettings(data) {
       next.unit_phone || null,
       next.pos_id || null,
       sefIdentifier,
-      next.language || "sq"
+      next.language || "sq",
+      next.atk_api_url || "https://fiskalizimi-test.atk-ks.org",
+      next.fiscalization_number || null,
+      next.sef_code || null,
+      next.application_id || null
     );
 
   // Sinkronizo cache i18n nga DB (pa rishkruar)
@@ -336,5 +366,7 @@ module.exports = {
   FISCAL_DEV_TOOLS_ENABLED,
   getFiscalActivationCheck,
   isFiscalActivationComplete,
+  getMissingFiscalProfileFields,
+  isFiscalProfileComplete,
   FISCAL_RELEASE_LOCKED,
 };

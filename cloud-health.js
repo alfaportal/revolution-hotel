@@ -35,8 +35,14 @@ let lastHealth = {
   checked_at: null,
 };
 
-/** Hotel: asnjë thirrje te serveri i hotelit. */
+/** Hotel: sync i plotë cloud OFF — vetëm API licencë lejohet kur HOTEL_CLOUD_DISABLED. */
 const HOTEL_CLOUD_DISABLED = true;
+
+function isLicenseApiPath(reqPath) {
+  const p = String(reqPath || "");
+  return /^\/api\/v1\/license\//.test(p);
+}
+
 
 function bindCloudHealthDb(db) {
   boundDb = db;
@@ -278,12 +284,21 @@ function startHealthMonitor(db) {
 }
 
 async function requestJsonWithFallback(method, path, payload, options = {}) {
-  if (HOTEL_CLOUD_DISABLED || !CLOUD_SERVER_URLS.length || !activeServerUrl) {
+  const licenseOnly = isLicenseApiPath(path);
+  if (
+    !licenseOnly &&
+    (HOTEL_CLOUD_DISABLED || !CLOUD_SERVER_URLS.length || !activeServerUrl)
+  ) {
     throw new Error("Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.");
   }
   const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT_MS;
   const extraHeaders = options.headers || {};
-  const order = [activeServerUrl, ...CLOUD_SERVER_URLS.filter(u => u !== activeServerUrl)].filter(Boolean);
+  let order = [activeServerUrl, ...CLOUD_SERVER_URLS.filter(u => u !== activeServerUrl)].filter(
+    Boolean,
+  );
+  if (licenseOnly && (!order.length || HOTEL_CLOUD_DISABLED)) {
+    order = [PRIMARY_CLOUD_SERVER, ...CLOUD_SERVER_URLS].filter(Boolean);
+  }
   if (!order.length) {
     throw new Error("Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.");
   }

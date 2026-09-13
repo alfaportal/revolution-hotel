@@ -165,6 +165,7 @@
     /* ——— Cilësimet (pronari) — temë e errët si Fiskalizimi ——— */
     #panel-cilësimet,
     #panel-lokal,
+    #panel-fiskalizimi,
     #panel-fiskale,
     #panel-cloud,
     #panel-licenca,
@@ -175,6 +176,9 @@
     #settings-subnav-bar.settings-subnav-global {
       background: #12121f;
       border-bottom: 1px solid #2e2e45;
+    }
+    #settings-subnav-bar[hidden] {
+      display: none !important;
     }
     #settings-subnav-bar .settings-subnav-btn {
       background: #1a1a2e;
@@ -190,6 +194,39 @@
       background: #FF6B35;
       border-color: #FF6B35;
       color: #fff;
+    }
+
+    #fiscal-sef-subnav.fiscal-sef-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 0 0 1rem;
+      padding: 0 0 0.75rem;
+      border-bottom: 1px solid #2e2e45;
+    }
+    #fiscal-sef-subnav.fiscal-sef-tabs button {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    #fiscal-sef-subnav.fiscal-sef-tabs button:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    #fiscal-sef-subnav.fiscal-sef-tabs button.active {
+      color: #fff;
+      background: rgba(255, 107, 53, 0.22);
+    }
+    .fiscal-sef-panel[hidden] {
+      display: none !important;
+    }
+    #fiscal-main-config-wrap[hidden] {
+      display: none !important;
     }
 
     #panel-cilësimet .settings-page-title {
@@ -223,6 +260,7 @@
     #panel-cilësimet .settings-danger-desc { color: #f5c2c2; }
 
     #panel-lokal .settings-sub-back,
+    #panel-fiskalizimi .settings-sub-back,
     #panel-fiskale .settings-sub-back,
     #panel-cloud .settings-sub-back,
     #panel-licenca .settings-sub-back {
@@ -232,6 +270,7 @@
     }
 
     #panel-lokal .settings-card,
+    #panel-fiskalizimi .settings-card,
     #panel-fiskale .settings-card,
     #panel-cloud .settings-card,
     #panel-cloud > .card,
@@ -246,6 +285,7 @@
     }
 
     #panel-lokal .settings-card-head,
+    #panel-fiskalizimi .settings-card-head,
     #panel-fiskale .settings-card-head,
     #panel-cloud .settings-card-head,
     #panel-licenca .settings-card-head {
@@ -255,6 +295,7 @@
     }
 
     #panel-lokal .settings-card-title,
+    #panel-fiskalizimi .settings-card-title,
     #panel-fiskale .settings-card-title,
     #panel-cloud .settings-card-title {
       color: #fff !important;
@@ -273,12 +314,14 @@
     }
 
     #panel-lokal .settings-card-desc,
+    #panel-fiskalizimi .settings-card-desc,
     #panel-fiskale .settings-card-desc,
     #panel-cloud .settings-card-desc {
       color: #a0a0b8 !important;
     }
 
     #panel-lokal .settings-hub-icon,
+    #panel-fiskalizimi .settings-hub-icon,
     #panel-fiskale .settings-hub-icon,
     #panel-cloud .settings-hub-icon,
     #panel-licenca .settings-hub-icon {
@@ -288,14 +331,17 @@
     }
 
     #panel-lokal label,
+    #panel-fiskalizimi label,
     #panel-fiskale label,
     #panel-cloud label,
     #panel-licenca label,
     #panel-lokal .settings-field label,
+    #panel-fiskalizimi .settings-field label,
     #panel-fiskale .settings-field label,
     #panel-cloud .settings-field label,
     #panel-licenca .settings-field label,
     #panel-lokal .fiscal-field-row > label,
+    #panel-fiskalizimi .fiscal-field-row > label,
     #panel-fiskale .fiscal-field-row > label,
     #panel-cloud .fiscal-field-row > label,
     #panel-licenca .fiscal-field-row > label {
@@ -305,6 +351,7 @@
     }
 
     #panel-lokal .settings-subtitle,
+    #panel-fiskalizimi .settings-subtitle,
     #panel-fiskale .settings-subtitle,
     #panel-cloud .settings-subtitle {
       color: #fff !important;
@@ -313,6 +360,7 @@
     }
 
     #panel-lokal .settings-divider,
+    #panel-fiskalizimi .settings-divider,
     #panel-fiskale .settings-divider,
     #panel-cloud .settings-divider,
     #panel-cloud #web-app-links {
@@ -320,12 +368,15 @@
     }
 
     #panel-lokal .settings-field-hint,
+    #panel-fiskalizimi .settings-field-hint,
     #panel-fiskale .settings-field-hint,
     #panel-cloud .settings-field-hint,
     #panel-lokal .field-hint,
+    #panel-fiskalizimi .field-hint,
     #panel-fiskale .field-hint,
     #panel-cloud .field-hint,
     #panel-lokal .settings-card p,
+    #panel-fiskalizimi .settings-card p,
     #panel-fiskale .settings-card p,
     #panel-cloud .settings-card p,
     #panel-cloud > .card p,
@@ -337,6 +388,10 @@
     #panel-lokal .settings-field select,
     #panel-lokal .settings-form input,
     #panel-lokal .settings-form select,
+    #panel-fiskalizimi .settings-field input,
+    #panel-fiskalizimi .settings-field select,
+    #panel-fiskalizimi .settings-form input,
+    #panel-fiskalizimi .settings-form select,
     #panel-fiskale .settings-field input,
     #panel-fiskale .settings-field select,
     #panel-fiskale .settings-form input,
@@ -347,6 +402,8 @@
     #panel-licenca .settings-field select,
     #panel-lokal .fiscal-field-actions input,
     #panel-lokal .fiscal-field-actions select,
+    #panel-fiskalizimi .fiscal-field-actions input,
+    #panel-fiskalizimi .fiscal-field-actions select,
     #panel-fiskale .fiscal-field-actions input,
     #panel-fiskale .fiscal-field-actions select,
     #panel-cloud .fiscal-field-actions input,
@@ -368,6 +425,10 @@
     #panel-lokal .settings-field select:focus,
     #panel-lokal .settings-form input:focus,
     #panel-lokal .settings-form select:focus,
+    #panel-fiskalizimi .settings-field input:focus,
+    #panel-fiskalizimi .settings-field select:focus,
+    #panel-fiskalizimi .fiscal-field-actions input:focus,
+    #panel-fiskalizimi .fiscal-field-actions select:focus,
     #panel-fiskale .settings-field input:focus,
     #panel-fiskale .settings-field select:focus,
     #panel-cloud .settings-field input:focus,
@@ -384,12 +445,16 @@
     }
 
     #panel-lokal .settings-field input::placeholder,
+    #panel-fiskalizimi .settings-field input::placeholder,
     #panel-fiskale .settings-field input::placeholder,
     #panel-cloud input::placeholder,
     #panel-licenca input::placeholder {
       color: #6b6b82;
     }
 
+    #panel-fiskalizimi .settings-field input:disabled,
+    #panel-fiskalizimi .settings-field select:disabled,
+    #panel-fiskalizimi .sef-readonly,
     #panel-fiskale .settings-field input:disabled,
     #panel-fiskale .settings-field select:disabled,
     #panel-fiskale .sef-readonly,
@@ -402,6 +467,7 @@
     }
 
     #panel-lokal .settings-checkbox-label,
+    #panel-fiskalizimi .settings-checkbox-label,
     #panel-fiskale .settings-checkbox-label,
     #panel-cloud .settings-checkbox-label {
       color: #e8e8ef !important;
@@ -413,6 +479,7 @@
     }
 
     #panel-lokal .printer-status-box.pending,
+    #panel-fiskalizimi .printer-status-box.pending,
     #panel-fiskale .printer-status-box.pending,
     #panel-cloud .printer-status-box.pending,
     #panel-licenca .printer-status-box.pending {
@@ -421,6 +488,7 @@
       color: #a0a0b8;
     }
     #panel-lokal .printer-status-box.connected,
+    #panel-fiskalizimi .printer-status-box.connected,
     #panel-fiskale .printer-status-box.connected,
     #panel-cloud .printer-status-box.connected,
     #panel-licenca .printer-status-box.connected {
@@ -429,6 +497,7 @@
       color: #86efac;
     }
     #panel-lokal .printer-status-box.disconnected,
+    #panel-fiskalizimi .printer-status-box.disconnected,
     #panel-fiskale .printer-status-box.disconnected,
     #panel-cloud .printer-status-box.disconnected,
     #panel-licenca .printer-status-box.disconnected {
@@ -438,6 +507,7 @@
     }
 
     #panel-lokal .btn-primary,
+    #panel-fiskalizimi .btn-primary,
     #panel-fiskale .btn-primary,
     #panel-cloud .btn-primary,
     #panel-licenca .btn-primary {
@@ -446,6 +516,7 @@
       color: #fff !important;
     }
     #panel-lokal .btn-primary:hover,
+    #panel-fiskalizimi .btn-primary:hover,
     #panel-fiskale .btn-primary:hover,
     #panel-cloud .btn-primary:hover,
     #panel-licenca .btn-primary:hover {
@@ -453,6 +524,7 @@
       border-color: #e85a28 !important;
     }
     #panel-lokal .btn-primary:disabled,
+    #panel-fiskalizimi .btn-primary:disabled,
     #panel-fiskale .btn-primary:disabled,
     #panel-cloud .btn-primary:disabled,
     #panel-licenca .btn-primary:disabled {
@@ -461,6 +533,7 @@
     }
 
     #panel-lokal .settings-card .btn-ghost,
+    #panel-fiskalizimi .settings-card .btn-ghost,
     #panel-fiskale .settings-card .btn-ghost,
     #panel-cloud .settings-card .btn-ghost,
     #panel-cloud > .card .btn-ghost,
@@ -470,6 +543,7 @@
       color: #c8c8d8;
     }
     #panel-lokal .settings-card .btn-ghost:hover,
+    #panel-fiskalizimi .settings-card .btn-ghost:hover,
     #panel-fiskale .settings-card .btn-ghost:hover,
     #panel-cloud .settings-card .btn-ghost:hover,
     #panel-cloud > .card .btn-ghost:hover,
@@ -480,6 +554,7 @@
     }
 
     #panel-lokal .fiscal-save-msg,
+    #panel-fiskalizimi .fiscal-save-msg,
     #panel-fiskale .fiscal-save-msg,
     #panel-cloud .fiscal-save-msg,
     #panel-licenca .fiscal-save-msg {
@@ -487,25 +562,33 @@
     }
 
     #panel-lokal .alert-error,
+    #panel-fiskalizimi .alert-error,
     #panel-fiskale .alert-error {
       background: rgba(239, 68, 68, 0.12);
       border-color: #ef4444;
       color: #fca5a5;
     }
 
-    #card-fiscalizimi:not(.fiscal-ui-visible) {
-      display: none !important;
+    #panel-fiskalizimi .settings-page-title {
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    #panel-fiskalizimi .settings-page-sub {
+      color: #a0a0b8;
+    }
+
+    #card-fiscalizimi {
+      /* Tab Fiskalizimi — gjithmonë i dukshëm kur zgjidhet tab-i */
     }
     #fiscal-unlock-wrap {
-      margin-top: 1rem;
-    }
-    #fiscal-unlock-wrap[hidden] {
       display: none !important;
     }
-    #fiskale-panel-secret-title {
+    #fiskalizimi-panel-secret-title {
       user-select: none;
       cursor: default;
     }
+    #card-fiscalizimi .sef-toggle-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -555,37 +638,55 @@
     #card-fiscalizimi .sef-switch input:checked + .sef-switch-slider::before {
       transform: translateX(20px);
     }
+    #panel-audit .sef-audit-box,
     #card-fiscalizimi .sef-audit-box {
       margin-top: 1rem;
       padding-top: 1rem;
       border-top: 1px solid #2e2e45;
     }
+    #panel-audit .sef-audit-box {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+    #panel-audit .sef-audit-title,
+    #panel-test-atk .sef-audit-title,
+    #panel-paper-block .sef-audit-title,
     #card-fiscalizimi .sef-audit-title {
       font-weight: 700;
       color: #fff;
       margin: 0 0 0.75rem;
       font-size: 0.95rem;
     }
+    #panel-audit .sef-audit-dates,
     #card-fiscalizimi .sef-audit-dates {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0.75rem;
       margin-bottom: 0.75rem;
     }
+    #panel-audit .sef-audit-actions,
     #card-fiscalizimi .sef-audit-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       align-items: center;
     }
+    #panel-audit .btn-sef-audit,
+    #panel-test-atk .btn-sef-audit,
+    #panel-paper-block .btn-sef-audit,
     #card-fiscalizimi .btn-sef-audit {
       background: transparent;
       border: 1px solid #FF6B35;
       color: #FF6B35;
     }
+    #panel-audit .btn-sef-audit:hover,
+    #panel-test-atk .btn-sef-audit:hover,
+    #panel-paper-block .btn-sef-audit:hover,
     #card-fiscalizimi .btn-sef-audit:hover {
       background: rgba(255, 107, 53, 0.15);
     }
+    #panel-test-atk .sef-field8-box,
     #card-fiscalizimi .sef-field8-box {
       margin-top: 1rem;
       padding: 0.85rem 1rem;
@@ -593,12 +694,14 @@
       border: 1px solid #2e2e45;
       border-radius: 8px;
     }
+    #panel-test-atk .sef-field8-box p.sef-field8-desc,
     #card-fiscalizimi .sef-field8-box p.sef-field8-desc {
       color: #a0a0b8;
       font-size: 0.85rem;
       line-height: 1.45;
       margin: 0 0 0.75rem;
     }
+    #panel-test-atk .sef-field8-receipt-row,
     #card-fiscalizimi .sef-field8-receipt-row {
       display: flex;
       flex-wrap: wrap;
@@ -606,20 +709,25 @@
       align-items: flex-end;
       margin-bottom: 0.5rem;
     }
+    #panel-test-atk .sef-field8-receipt-row .settings-field,
     #card-fiscalizimi .sef-field8-receipt-row .settings-field {
       margin: 0;
       min-width: 140px;
     }
+    #panel-test-atk .sef-field8-receipt-row input,
+    #panel-test-atk .sef-field8-receipt-row select,
     #card-fiscalizimi .sef-field8-receipt-row input,
     #card-fiscalizimi .sef-field8-receipt-row select {
       max-width: 320px;
     }
+    #panel-test-atk .sef-field8-actions,
     #card-fiscalizimi .sef-field8-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       margin-top: 0.65rem;
     }
+    #panel-test-atk #discount-e2e-box,
     #card-fiscalizimi #discount-e2e-box {
       margin-top: 0.65rem;
       padding: 0.65rem 0.75rem;
@@ -633,6 +741,7 @@
       overflow: auto;
       font-family: ui-monospace, Consolas, monospace;
     }
+    #panel-paper-block .sef-paper-block-box,
     #card-fiscalizimi .sef-paper-block-box {
       margin-top: 1rem;
       padding: 0.85rem 1rem;
@@ -640,12 +749,14 @@
       border: 1px solid #2e2e45;
       border-radius: 8px;
     }
+    #panel-paper-block .sef-paper-block-box p.sef-paper-desc,
     #card-fiscalizimi .sef-paper-block-box p.sef-paper-desc {
       color: #a0a0b8;
       font-size: 0.85rem;
       line-height: 1.45;
       margin: 0 0 0.75rem;
     }
+    #panel-paper-block #paper-block-box,
     #card-fiscalizimi #paper-block-box {
       margin: 0.5rem 0;
       padding: 0.65rem 0.75rem;
@@ -656,31 +767,37 @@
       font-size: 0.82rem;
       line-height: 1.45;
     }
+    #panel-paper-block #paper-block-box[hidden],
     #card-fiscalizimi #paper-block-box[hidden] {
       display: none !important;
     }
+    #panel-paper-block .sef-paper-actions,
     #card-fiscalizimi .sef-paper-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       margin-top: 0.65rem;
     }
+    #panel-paper-block .btn-paper-enable,
     #card-fiscalizimi .btn-paper-enable {
       background: #f39c12;
       border-color: #e67e22;
       color: #fff;
     }
+    #panel-paper-block .btn-paper-register,
     #card-fiscalizimi .btn-paper-register {
       background: #27ae60;
       border-color: #219a52;
       color: #fff;
     }
+    #panel-paper-block #paper-block-list,
     #card-fiscalizimi #paper-block-list {
       margin: 0.65rem 0 0;
       padding-left: 1.2rem;
       font-size: 0.85rem;
       color: #a0a0b8;
     }
+    #panel-paper-block .sef-paper-issue-form,
     #card-fiscalizimi .sef-paper-issue-form {
       display: flex;
       flex-wrap: wrap;
@@ -690,13 +807,16 @@
       padding-top: 0.75rem;
       border-top: 1px solid #2e2e45;
     }
+    #panel-paper-block .sef-paper-issue-form .settings-field,
     #card-fiscalizimi .sef-paper-issue-form .settings-field {
       margin: 0;
       min-width: 120px;
     }
+    #panel-test-atk #discount-e2e-box[hidden],
     #card-fiscalizimi #discount-e2e-box[hidden] {
       display: none !important;
     }
+    #panel-audit #msg-fiscal-audit,
     #card-fiscalizimi #msg-fiscal-audit {
       color: #FF6B35;
       font-size: 0.8rem;
@@ -1257,7 +1377,7 @@
     body.tier-rank-1 [data-panel="rezervime"], body.tier-rank-1 #panel-rezervime, body.tier-rank-1 #modal-reservation,
     body.tier-rank-1 [data-panel="ditari"], body.tier-rank-1 #panel-ditari,
     body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
-    body.tier-rank-1 [data-settings-go="licenca"], body.tier-rank-1 #panel-licenca,
+    body.tier-rank-1 [data-panel="licenca"], body.tier-rank-1 #panel-licenca,
     body.tier-rank-1 #btn-menu-scan-ai, body.tier-rank-1 #modal-menu-scan,
 
     body.tier-rank-2 [data-panel="stoku"], body.tier-rank-2 #panel-stoku,
@@ -1268,13 +1388,13 @@
     body.tier-rank-2 [data-panel="rezervime"], body.tier-rank-2 #panel-rezervime, body.tier-rank-2 #modal-reservation,
     body.tier-rank-2 [data-panel="ditari"], body.tier-rank-2 #panel-ditari,
     body.tier-rank-2 [data-panel="kontabilisti"], body.tier-rank-2 #panel-kontabilisti,
-    body.tier-rank-2 [data-settings-go="licenca"], body.tier-rank-2 #panel-licenca,
+    body.tier-rank-2 [data-panel="licenca"], body.tier-rank-2 #panel-licenca,
     body.tier-rank-2 #btn-menu-scan-ai, body.tier-rank-2 #modal-menu-scan,
 
     body.tier-rank-3 [data-panel="rezervime"], body.tier-rank-3 #panel-rezervime, body.tier-rank-3 #modal-reservation,
     body.tier-rank-3 [data-panel="ditari"], body.tier-rank-3 #panel-ditari,
     body.tier-rank-3 [data-panel="kontabilisti"], body.tier-rank-3 #panel-kontabilisti,
-    body.tier-rank-3 [data-settings-go="licenca"], body.tier-rank-3 #panel-licenca,
+    body.tier-rank-3 [data-panel="licenca"], body.tier-rank-3 #panel-licenca,
     body.tier-rank-3 #btn-menu-scan-ai, body.tier-rank-3 #modal-menu-scan,
 
     /* AI — butonat/skanimet fshehur derisa /api/ai/status → enabled; paneli AI mbetet i dukshëm */
@@ -1780,7 +1900,12 @@
       <button type="button" class="admin-tab-btn" data-panel="qr-tavolinat">QR Kodet</button>
       <button type="button" class="admin-tab-btn" data-panel="raportet">Raportet</button>
       <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
+      <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
+      <button type="button" class="admin-tab-btn" data-panel="audit">Audit</button>
+      <button type="button" class="admin-tab-btn" data-panel="test-atk">Test ATK</button>
+      <button type="button" class="admin-tab-btn" data-panel="paper-block">Bllokimi i letrës</button>
       <button type="button" class="admin-tab-btn" data-panel="cilësimet">Cilësimet</button>
+      <button type="button" class="admin-tab-btn" data-panel="licenca">Licenca</button>
       <button type="button" class="admin-tab-btn" data-panel="blerjet">Blerjet</button>
       <button type="button" class="admin-tab-btn" data-panel="kontabilisti">Kontabilisti</button>
       <button type="button" class="admin-tab-btn" data-panel="ai">AI</button>
@@ -1789,9 +1914,8 @@
     <nav class="settings-subnav settings-subnav-global" id="settings-subnav-bar" hidden>
       <button type="button" class="settings-subnav-btn" data-settings-go="lokal">Lokal &amp; biznesi</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="restorant">Restorant &amp; Bar</button>
-      <button type="button" class="settings-subnav-btn" data-settings-go="fiskale">Fiskale &amp; printer</button>
+      <button type="button" class="settings-subnav-btn" data-settings-go="fiskale">Printer &amp; TVSh</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="cloud">Linke stafi</button>
-      <button type="button" class="settings-subnav-btn" data-settings-go="licenca">Licenca</button>
     </nav>
 
     <main class="admin-main">
@@ -3103,7 +3227,7 @@
     <section id="panel-cilësimet" class="panel">
       <div class="settings-page-header">
         <h2 class="settings-page-title">Cilësimet</h2>
-        <p class="settings-page-sub">Konfiguroni biznesin, printerin, cloud-in dhe licencën e aplikacionit</p>
+        <p class="settings-page-sub">Konfiguroni biznesin, printerin dhe linket e stafit</p>
       </div>
       <div class="settings-hub-grid">
         <button type="button" class="settings-hub-btn" data-settings-go="lokal">
@@ -3118,18 +3242,13 @@
         </button>
         <button type="button" class="settings-hub-btn" data-settings-go="fiskale">
           <span class="settings-hub-icon settings-hub-icon-violet">P</span>
-          <strong>Fiskale &amp; printer</strong>
-          <span>TVSh, printer termik, kuzhina dhe arka fiskale</span>
+          <strong>Printer &amp; TVSh</strong>
+          <span>Printer termik, kuzhina, arka fiskale dhe modaliteti i kuponit</span>
         </button>
         <button type="button" class="settings-hub-btn" data-settings-go="cloud">
           <span class="settings-hub-icon settings-hub-icon-cyan">L</span>
           <strong>Linke stafi</strong>
           <span>Kamarier, kuzhinë, bar, takeaway — kopjo për çdo punonjës</span>
-        </button>
-        <button type="button" class="settings-hub-btn" data-settings-go="licenca">
-          <span class="settings-hub-icon settings-hub-icon-amber">K</span>
-          <strong>Licenca</strong>
-          <span>ID e pajisjes dhe çelësi i aktivizimit</span>
         </button>
       </div>
 
@@ -3169,7 +3288,10 @@
 
     <!-- LICENCA -->
     <section id="panel-licenca" class="panel">
-      <button type="button" class="btn btn-ghost settings-sub-back" data-settings-back>← Kthehu te cilësimet</button>
+      <div class="settings-page-header">
+        <h2 class="settings-page-title">Licenca</h2>
+        <p class="settings-page-sub">ID e pajisjes dhe çelësi i aktivizimit për këtë kompjuter POS</p>
+      </div>
       <div class="card settings-card">
         <div class="card-title">Licenca e aplikacionit</div>
         <p style="margin-bottom:1rem;color:var(--ngjyr-muted);font-size:0.85rem">
@@ -3264,14 +3386,263 @@
       </div>
     </section>
 
-    <!-- FISKALE & PRINTER -->
+    <!-- FISKALIZIMI (tab kryesor) -->
+    <section id="panel-fiskalizimi" class="panel">
+      <div class="settings-page-header" style="margin:0 0 0.75rem">
+        <h2 class="settings-page-title" id="fiskalizimi-panel-secret-title">Fiskalizimi</h2>
+        <p class="settings-page-sub">SEF / ATK — konfigurimi i fiskalizimit dhe lidhja me ATK.</p>
+      </div>
+
+      <div class="card settings-card" id="card-fiscalizimi">
+        <div class="settings-card-head">
+          <span class="settings-hub-icon">F</span>
+          <div>
+            <div class="settings-card-title" data-fi18n="fiscalization">Fiskalizimi</div>
+            <p class="settings-card-desc" data-fi18n="fiscalization_desc">SEF / ATK — aktivizohet vetëm kur toggle është ON. Të dhënat ruhen lokalisht.</p>
+          </div>
+        </div>
+
+        <div class="sef-toggle-row">
+          <span class="sef-toggle-label" data-fi18n="enable_fiscalization">Aktivizo Fiskalizimin</span>
+          <label class="sef-switch" for="sef-fiscal-enabled">
+            <input type="checkbox" id="sef-fiscal-enabled">
+            <span class="sef-switch-slider"></span>
+          </label>
+        </div>
+        <p class="settings-card-desc" id="sef-fiscal-locked-hint" style="margin:.35rem 0 1rem;color:var(--ngjyr-muted,#888)" hidden>
+          Fiskalizimi është i mbyllur për momentin — ende nuk është i disponueshëm.
+        </p>
+
+        <div class="settings-field" id="sef-print-mode-wrap" hidden style="margin-bottom:1rem">
+          <label for="sef-print-mode" data-fi18n="print_mode_label">Printimi i kuponit fiskal</label>
+          <select id="sef-print-mode">
+            <option value="replace" selected data-fi18n="print_mode_replace">Zëvendëso — vetëm kupon fiskal në mbyllje (kuponi i porosisë printohet gjithmonë)</option>
+            <option value="addon" data-fi18n="print_mode_addon">Shtesë — kupon normal mbylljeje + kupon fiskal</option>
+          </select>
+        </div>
+
+        <div id="sef-fiscal-fields" class="settings-form-grid-2">
+          <div class="settings-field">
+            <label for="sef-taxpayer-nui" data-fi18n="taxpayer_nui_label">NUI (9 shifra)</label>
+            <input type="text" id="sef-taxpayer-nui" maxlength="9" inputmode="numeric" pattern="\d{9}" data-fi18n-placeholder="taxpayer_nui_placeholder" placeholder="p.sh. 123456789">
+          </div>
+          <div class="settings-field">
+            <label for="sef-taxpayer-nf" data-fi18n="taxpayer_nf_label">Numri Fiskal</label>
+            <input type="text" id="sef-taxpayer-nf" data-fi18n-placeholder="taxpayer_nf_placeholder" placeholder="Numri fiskal">
+          </div>
+          <div class="settings-field">
+            <label for="sef-taxpayer-vat" data-fi18n="taxpayer_vat_label">Nr. TVSH</label>
+            <input type="text" id="sef-taxpayer-vat" data-fi18n-placeholder="taxpayer_vat_placeholder" placeholder="Numri i TVSH-së">
+          </div>
+          <div class="settings-field">
+            <label for="sef-taxpayer-legal-name" data-fi18n="taxpayer_legal_name_label">Emri ligjor i biznesit</label>
+            <input type="text" id="sef-taxpayer-legal-name" data-fi18n-placeholder="taxpayer_legal_name_placeholder" placeholder="Emri ligjor">
+          </div>
+          <div class="settings-field" style="grid-column:1/-1">
+            <label for="sef-taxpayer-address" data-fi18n="taxpayer_address_label">Adresa e biznesit</label>
+            <input type="text" id="sef-taxpayer-address" data-fi18n-placeholder="taxpayer_address_placeholder" placeholder="Adresa">
+          </div>
+          <div class="settings-field">
+            <label for="sef-unit-number" data-fi18n="unit_number_label">Numri i Njësisë (ARBK)</label>
+            <input type="text" id="sef-unit-number" data-fi18n-placeholder="unit_number_placeholder" placeholder="p.sh. 5130484 — nga ARBK">
+          </div>
+          <div class="settings-field">
+            <label for="sef-unit-name" data-fi18n="unit_name_label">Emri i njësisë</label>
+            <input type="text" id="sef-unit-name" data-fi18n-placeholder="unit_name_placeholder" placeholder="Emri i degës / njësisë">
+          </div>
+          <div class="settings-field">
+            <label for="sef-unit-phone" data-fi18n="unit_phone_label">Telefoni i njësisë</label>
+            <input type="text" id="sef-unit-phone" data-fi18n-placeholder="unit_phone_placeholder" placeholder="p.sh. 044 123 456">
+          </div>
+          <div class="settings-field">
+            <label for="sef-pos-id" data-fi18n="pos_id_label">Nr. POS-it</label>
+            <input type="text" id="sef-pos-id" data-fi18n-placeholder="pos_id_placeholder" placeholder="Nr. POS-it">
+          </div>
+          <div class="settings-field">
+            <label for="sef-fiscalization-number" data-fi18n="fiscalization_number_label">Nr. Fiskalizimit</label>
+            <input type="text" id="sef-fiscalization-number" data-fi18n-placeholder="fiscalization_number_placeholder" placeholder="Plotësohet nga ATK / EDI">
+          </div>
+          <div class="settings-field">
+            <label for="sef-sef-code" data-fi18n="sef_code_label">Kodi SEF</label>
+            <input type="text" id="sef-sef-code" class="sef-readonly" readonly data-fi18n-placeholder="sef_code_placeholder" placeholder="Plotësohet pas certifikimit">
+          </div>
+          <div class="settings-field">
+            <label for="sef-language" data-fi18n="language_label">Gjuha</label>
+            <select id="sef-language">
+              <option value="sq" data-fi18n="lang_sq">Shqip</option>
+              <option value="sr" data-fi18n="lang_sr">Serbisht</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-form-actions settings-form-actions-inline">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-fiscalizimi-save" data-fi18n="save_fiscalization">Ruaj Fiskalizimin</button>
+          <button type="button" class="btn btn-sm" id="btn-kupon-korrigjues" data-fi18n="corrective_coupon" hidden>Kupon Korrigjues</button>
+          <button type="button" class="btn btn-sm" id="btn-fiscal-receipts-list" data-fi18n="view_fiscal_receipts" hidden>Shiko Kuponët Fiskalë</button>
+          <div class="fiscal-save-msg" id="msg-fiscalizimi"></div>
+        </div>
+      </div>
+
+      <div class="card settings-card" id="card-fiscalizimi-atk" style="margin-top:1rem">
+        <div class="settings-card-head">
+          <span class="settings-hub-icon settings-hub-icon-cyan">A</span>
+          <div>
+            <div class="settings-card-title">Lidhja me ATK</div>
+            <p class="settings-card-desc">URL, Application ID dhe çelësat — pa certifikatë ATK nuk lidhet me serverin. Tani: vetëm lokal (ATK i ndalur).</p>
+          </div>
+        </div>
+        <div class="settings-form-grid-2">
+          <div class="settings-field">
+            <label for="sef-atk-url">URL e ATK (TEST ose PROD)</label>
+            <select id="sef-atk-url">
+              <option value="https://fiskalizimi-test.atk-ks.org">TEST — fiskalizimi-test.atk-ks.org</option>
+              <option value="https://fiskalizimi.atk-ks.org">PROD — fiskalizimi.atk-ks.org</option>
+            </select>
+          </div>
+          <div class="settings-field">
+            <label for="sef-application-id">Application ID (nga ATK pas certifikimit)</label>
+            <input type="text" id="sef-application-id" inputmode="numeric" placeholder="p.sh. 756192120167">
+          </div>
+          <div class="settings-field" style="grid-column:1/-1">
+            <label for="sef-keys-dir">Folderi i çelësave / certifikatës</label>
+            <input type="text" id="sef-keys-dir" class="sef-readonly" readonly>
+            <button type="button" class="btn btn-sm" id="btn-open-keys-folder" style="margin-top:0.5rem">Hap folderin e çelësave</button>
+            <p class="settings-field-hint" style="margin-top:0.5rem">
+              ATK të jep: <code>private-key.pem</code> + <code>signed-certificate.pem</code>.
+              Kopjoji në këtë folder. Pa certifikatë të nënshkruar nga ATK, dërgimi te TEST/PROD dështon.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUDIT (tab kryesor — si biznes SEF) -->
+    <section id="panel-audit" class="panel">
+      <div class="card settings-card" id="fiscal-sef-panel-audit">
+        <div class="sef-audit-box" id="sef-audit-box">
+          <div class="sef-audit-title" data-fi18n="audit_log_title">Audit Log (WRITE-ONCE)</div>
+          <div class="sef-audit-dates">
+            <div class="settings-field">
+              <label for="sef-audit-from" data-fi18n="audit_from">Nga</label>
+              <input type="date" id="sef-audit-from">
+            </div>
+            <div class="settings-field">
+              <label for="sef-audit-to" data-fi18n="audit_to">Deri</label>
+              <input type="date" id="sef-audit-to">
+            </div>
+          </div>
+          <div class="sef-audit-actions">
+            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-audit-csv" data-fi18n="export_audit_csv">Eksporto Audit Log (CSV)</button>
+            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-audit-pdf" data-fi18n="export_audit_pdf">Eksporto Audit Log (PDF)</button>
+            <div class="fiscal-save-msg" id="msg-fiscal-audit"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEST ATK (tab kryesor) -->
+    <section id="panel-test-atk" class="panel">
+      <div class="card settings-card" id="fiscal-sef-panel-test-atk">
+        <div class="sef-field8-box" id="sef-field8-box">
+          <div class="sef-audit-title">Test ATK — field 8 (discount)</div>
+          <p class="sef-field8-desc">
+            Preview lokal (pa dërgim). <strong>HOTEL:</strong> dërgimi te ATK është i ndaluar — vetëm preview lokal.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:6px;margin:0 0 10px;font-size:0.85rem">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a0a0b8">
+              <input type="radio" name="e2e-source" value="receipt" checked style="width:auto;margin:0" />
+              <span>Kuponi ekzistues (NUIKF ose lista)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a0a0b8">
+              <input type="radio" name="e2e-source" value="sample" style="width:auto;margin:0" />
+              <span>Shembull statik (8 artikuj, 110.90 €)</span>
+            </label>
+          </div>
+          <div id="e2e-receipt-wrap" class="sef-field8-receipt-wrap">
+            <div class="sef-field8-receipt-row">
+              <div class="settings-field">
+                <label for="e2e-nuikf">NUIKF</label>
+                <input type="text" id="e2e-nuikf" maxlength="16" placeholder="16 shifra" autocomplete="off" />
+              </div>
+              <div class="settings-field">
+                <label for="e2e-receipt-pick">Kuponët e fundit</label>
+                <select id="e2e-receipt-pick">
+                  <option value="">— zgjidh nga lista —</option>
+                </select>
+              </div>
+              <button type="button" class="btn btn-sm btn-sef-audit" id="btn-e2e-refresh-receipts">Rifresko</button>
+            </div>
+            <p id="e2e-receipt-hint" style="color:#888;font-size:0.82rem;margin:0;line-height:1.4"></p>
+          </div>
+          <p id="e2e-sample-hint" class="sef-field8-desc" hidden>Do përdoret shembulli statik (8 artikuj, 110.90 €).</p>
+          <div class="sef-field8-actions">
+            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-discount-e2e-preview">Preview field 8 (lokal)</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-discount-e2e-send">Dërgo te ATK TEST (E2E)</button>
+          </div>
+          <pre id="discount-e2e-box" hidden></pre>
+          <div class="fiscal-save-msg" id="msg-field8-atk"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BLLOKIMI I LETRËS (tab kryesor) -->
+    <section id="panel-paper-block" class="panel">
+      <div class="card settings-card" id="fiscal-sef-panel-paper-block">
+        <div class="sef-paper-block-box" id="sef-paper-block-box">
+          <div class="sef-audit-title">Bllokimi i letrës (Neni 45)</div>
+          <p class="sef-paper-desc">
+            Kur SEF ndalon plotësisht, aktivizohet automatikisht (ose manualisht).
+            Lëshoni kupon nga blloku fizik me numër serik, regjistroni këtu (lokal — pa ATK live për HOTEL).
+          </p>
+          <div id="paper-block-box" hidden></div>
+          <div class="sef-paper-actions">
+            <button type="button" class="btn btn-sm btn-paper-enable" id="btn-paper-enable">Aktivizo bllokimin e letrës</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-paper-disable">Çaktivizo</button>
+            <button type="button" class="btn btn-sm btn-paper-register" id="btn-paper-register-all">Regjistro të gjithë në SEF</button>
+          </div>
+          <ul id="paper-block-list"></ul>
+          <div class="sef-paper-issue-form" id="paper-block-issue-wrap" hidden>
+            <div class="settings-field">
+              <label for="paper-serial-no">Nr. serik (blloku fizik)</label>
+              <input type="text" id="paper-serial-no" autocomplete="off" placeholder="p.sh. BLK-001234" />
+            </div>
+            <div class="settings-field">
+              <label for="paper-item-name">Përshkrimi</label>
+              <input type="text" id="paper-item-name" placeholder="Shërbim / artikull" />
+            </div>
+            <div class="settings-field">
+              <label for="paper-item-qty">Sasia</label>
+              <input type="number" id="paper-item-qty" min="0.001" step="0.001" value="1" />
+            </div>
+            <div class="settings-field">
+              <label for="paper-item-price">Çmimi (€)</label>
+              <input type="number" id="paper-item-price" min="0" step="0.01" placeholder="0.00" />
+            </div>
+            <div class="settings-field">
+              <label for="paper-payment">Pagesa</label>
+              <select id="paper-payment">
+                <option value="cash">Cash</option>
+                <option value="card">Kartë</option>
+                <option value="bank">Bankë</option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-paper-issue">Regjistro kuponin</button>
+          </div>
+          <div class="fiscal-save-msg" id="paper-block-msg"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINTER & TVSH (Cilësimet) -->
     <section id="panel-fiskale" class="panel">
       <button type="button" class="btn btn-ghost settings-sub-back" data-settings-back>← Kthehu te cilësimet</button>
-      <div class="settings-page-header" style="margin:0 0 1rem">
-        <h2 class="settings-page-title" id="fiskale-panel-secret-title">Fiskale &amp; printer</h2>
-        <p class="settings-page-sub">TVSh, printer termik, kuzhina dhe arka fiskale</p>
+      <div class="settings-page-header" style="margin:0 0 0.75rem">
+        <h2 class="settings-page-title">Printer &amp; TVSh</h2>
+        <p class="settings-page-sub">TVSh, printer termik, kuzhina dhe arka fiskale.</p>
       </div>
-      <div class="card settings-card">
+
+      <div id="fiscal-main-config-wrap" class="fiscal-sef-panel">
+      <div class="card settings-card" id="card-tvsh">
         <div class="settings-card-head">
           <span class="settings-hub-icon settings-hub-icon-violet">%</span>
           <div>
@@ -3581,218 +3952,85 @@
         </div>
         <p id="fiscal-com-hint" style="margin-top:0.75rem;color:var(--ngjyr-muted);font-size:0.8rem"></p>
       </div>
-
-      <!-- Fiskalizimi SEF — i fshehur; vetëm NUI Naser ose kod sekret -->
-      <div class="card settings-card" id="fiscal-unlock-wrap" hidden>
-        <div class="settings-card-head">
-          <span class="settings-hub-icon">·</span>
-          <div>
-            <div class="settings-card-title">Hyrje e kufizuar</div>
-            <p class="settings-card-desc">Shkruani kodin për të hapur seksionin Fiskalizimi</p>
-          </div>
-        </div>
-        <div class="settings-field">
-          <label for="fiscal-unlock-code">Kod</label>
-          <div class="fiscal-field-actions">
-            <input type="password" id="fiscal-unlock-code" autocomplete="off" placeholder="••••••••">
-            <button type="button" class="btn btn-primary btn-sm" id="btn-fiscal-unlock">Hap</button>
-          </div>
-          <div class="fiscal-save-msg" id="msg-fiscal-unlock"></div>
-        </div>
-      </div>
-
-      <div class="card settings-card" id="card-fiscalizimi" hidden>
-        <div class="settings-card-head">
-          <span class="settings-hub-icon">F</span>
-          <div>
-            <div class="settings-card-title" data-fi18n="fiscalization">Fiskalizimi</div>
-            <p class="settings-card-desc" data-fi18n="fiscalization_desc">SEF — plotësoni të dhënat e dyqanit; aktivizohet automatikisht kur fushat e detyrueshme janë të plota. Pa lidhje ATK.</p>
-          </div>
-        </div>
-
-        <div class="sef-toggle-row">
-          <span class="sef-toggle-label" data-fi18n="enable_fiscalization">Aktivizo Fiskalizimin</span>
-          <label class="sef-switch" for="sef-fiscal-enabled">
-            <input type="checkbox" id="sef-fiscal-enabled">
-            <span class="sef-switch-slider"></span>
-          </label>
-        </div>
-        <p class="settings-card-desc" id="sef-fiscal-locked-hint" style="margin:.35rem 0 1rem;color:var(--ngjyr-muted,#888)">
-          Fiskalizimi është i mbyllur për momentin — ende nuk është i disponueshëm.
-        </p>
-
-        <div class="settings-field" id="sef-print-mode-wrap" hidden style="margin-bottom:1rem">
-          <label for="sef-print-mode" data-fi18n="print_mode_label">Printimi i kuponit fiskal</label>
-          <select id="sef-print-mode">
-            <option value="replace" selected data-fi18n="print_mode_replace">Zëvendëso — vetëm kupon fiskal në mbyllje (kuponi i porosisë printohet gjithmonë)</option>
-            <option value="addon" data-fi18n="print_mode_addon">Shtesë — kupon normal mbylljeje + kupon fiskal</option>
-          </select>
-        </div>
-
-        <div id="sef-fiscal-fields" class="settings-form-grid-2">
-          <div class="settings-field">
-            <label for="sef-taxpayer-nui" data-fi18n="taxpayer_nui_label">NUI (9 shifra)</label>
-            <input type="text" id="sef-taxpayer-nui" maxlength="9" inputmode="numeric" pattern="\d{9}" data-fi18n-placeholder="taxpayer_nui_placeholder" placeholder="p.sh. 123456789">
-          </div>
-          <div class="settings-field">
-            <label for="sef-taxpayer-nf" data-fi18n="taxpayer_nf_label">Numri Fiskal</label>
-            <input type="text" id="sef-taxpayer-nf" data-fi18n-placeholder="taxpayer_nf_placeholder" placeholder="Numri fiskal">
-          </div>
-          <div class="settings-field">
-            <label for="sef-taxpayer-vat" data-fi18n="taxpayer_vat_label">Nr. TVSH</label>
-            <input type="text" id="sef-taxpayer-vat" data-fi18n-placeholder="taxpayer_vat_placeholder" placeholder="Numri i TVSH-së">
-          </div>
-          <div class="settings-field">
-            <label for="sef-taxpayer-legal-name" data-fi18n="taxpayer_legal_name_label">Emri ligjor i biznesit</label>
-            <input type="text" id="sef-taxpayer-legal-name" data-fi18n-placeholder="taxpayer_legal_name_placeholder" placeholder="Emri ligjor">
-          </div>
-          <div class="settings-field" style="grid-column:1/-1">
-            <label for="sef-taxpayer-address" data-fi18n="taxpayer_address_label">Adresa e biznesit</label>
-            <input type="text" id="sef-taxpayer-address" data-fi18n-placeholder="taxpayer_address_placeholder" placeholder="Adresa">
-          </div>
-          <div class="settings-field">
-            <label for="sef-unit-number" data-fi18n="unit_number_label">Numri i Njësisë (ARBK)</label>
-            <input type="text" id="sef-unit-number" data-fi18n-placeholder="unit_number_placeholder" placeholder="p.sh. 5130484 — nga ARBK">
-          </div>
-          <div class="settings-field">
-            <label for="sef-unit-name" data-fi18n="unit_name_label">Emri i njësisë</label>
-            <input type="text" id="sef-unit-name" data-fi18n-placeholder="unit_name_placeholder" placeholder="Emri i degës / njësisë">
-          </div>
-          <div class="settings-field">
-            <label for="sef-unit-phone" data-fi18n="unit_phone_label">Telefoni i njësisë</label>
-            <input type="text" id="sef-unit-phone" data-fi18n-placeholder="unit_phone_placeholder" placeholder="p.sh. 044 123 456">
-          </div>
-          <div class="settings-field">
-            <label for="sef-pos-id" data-fi18n="pos_id_label">Nr. POS-it</label>
-            <input type="text" id="sef-pos-id" data-fi18n-placeholder="pos_id_placeholder" placeholder="Nr. POS-it">
-          </div>
-          <div class="settings-field">
-            <label for="sef-fiscalization-number" data-fi18n="fiscalization_number_label">Nr. Fiskalizimit</label>
-            <input type="text" id="sef-fiscalization-number" class="sef-readonly" readonly data-fi18n-placeholder="fiscalization_number_placeholder" placeholder="Plotësohet nga ATK">
-          </div>
-          <div class="settings-field">
-            <label for="sef-sef-code" data-fi18n="sef_code_label">Kodi SEF</label>
-            <input type="text" id="sef-sef-code" class="sef-readonly" readonly data-fi18n-placeholder="sef_code_placeholder" placeholder="Plotësohet pas certifikimit">
-          </div>
-          <div class="settings-field">
-            <label for="sef-language" data-fi18n="language_label">Gjuha</label>
-            <select id="sef-language">
-              <option value="sq" data-fi18n="lang_sq">Shqip</option>
-              <option value="sr" data-fi18n="lang_sr">Serbisht</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="settings-form-actions settings-form-actions-inline">
-          <button type="button" class="btn btn-primary btn-sm" id="btn-fiscalizimi-save" data-fi18n="save_fiscalization">Ruaj Fiskalizimin</button>
-          <div class="fiscal-save-msg" id="msg-fiscalizimi"></div>
-        </div>
-
-        <div class="sef-audit-box" id="sef-audit-box" hidden>
-          <div class="sef-audit-title" data-fi18n="audit_log_title">Audit Log (WRITE-ONCE)</div>
-          <div class="sef-audit-dates">
-            <div class="settings-field">
-              <label for="sef-audit-from" data-fi18n="audit_from">Nga</label>
-              <input type="date" id="sef-audit-from">
-            </div>
-            <div class="settings-field">
-              <label for="sef-audit-to" data-fi18n="audit_to">Deri</label>
-              <input type="date" id="sef-audit-to">
-            </div>
-          </div>
-          <div class="sef-audit-actions">
-            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-audit-csv" data-fi18n="export_audit_csv">Eksporto Audit Log (CSV)</button>
-            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-audit-pdf" data-fi18n="export_audit_pdf">Eksporto Audit Log (PDF)</button>
-            <div class="fiscal-save-msg" id="msg-fiscal-audit"></div>
-          </div>
-        </div>
-
-        <div class="sef-field8-box" id="sef-field8-box" hidden>
-          <div class="sef-audit-title">Test ATK — field 8 (discount)</div>
-          <p class="sef-field8-desc">
-            Preview lokal (pa dërgim) ose dërgim i vetëm te <strong>ATK TEST</strong> me konfirmim.
-            Zgjidhni kupon ekzistues me NUIKF ose nga lista, ose shembull statik.
-          </p>
-          <div style="display:flex;flex-direction:column;gap:6px;margin:0 0 10px;font-size:0.85rem">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a0a0b8">
-              <input type="radio" name="e2e-source" value="receipt" checked style="width:auto;margin:0" />
-              <span>Kuponi ekzistues (NUIKF ose lista)</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a0a0b8">
-              <input type="radio" name="e2e-source" value="sample" style="width:auto;margin:0" />
-              <span>Shembull statik (8 artikuj, 110.90 €)</span>
-            </label>
-          </div>
-          <div id="e2e-receipt-wrap" class="sef-field8-receipt-wrap">
-            <div class="sef-field8-receipt-row">
-              <div class="settings-field">
-                <label for="e2e-nuikf">NUIKF</label>
-                <input type="text" id="e2e-nuikf" maxlength="16" placeholder="16 shifra" autocomplete="off" />
-              </div>
-              <div class="settings-field">
-                <label for="e2e-receipt-pick">Kuponët e fundit</label>
-                <select id="e2e-receipt-pick">
-                  <option value="">— zgjidh nga lista —</option>
-                </select>
-              </div>
-              <button type="button" class="btn btn-sm btn-sef-audit" id="btn-e2e-refresh-receipts">Rifresko</button>
-            </div>
-            <p id="e2e-receipt-hint" style="color:#888;font-size:0.8rem;margin:0;line-height:1.4"></p>
-          </div>
-          <p id="e2e-sample-hint" class="sef-field8-desc" hidden>Do përdoret shembulli statik (8 artikuj, 110.90 €).</p>
-          <div class="sef-field8-actions">
-            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-discount-e2e-preview">Preview field 8 (lokal)</button>
-            <button type="button" class="btn btn-sm btn-primary" id="btn-discount-e2e-send">Dërgo te ATK TEST (E2E)</button>
-          </div>
-          <pre id="discount-e2e-box" hidden></pre>
-          <div class="fiscal-save-msg" id="msg-field8-atk"></div>
-        </div>
-
-        <div class="sef-paper-block-box" id="sef-paper-block-box" hidden>
-          <div class="sef-audit-title">Bllokimi i letrës (Neni 45)</div>
-          <p class="sef-paper-desc">
-            Kur SEF ndalon plotësisht, aktivizohet automatikisht (ose manualisht).
-            Lëshoni kupon nga blloku fizik me numër serik, regjistroni këtu,
-            pastaj fiskalizoni në SEF kur pajisja rikthehet.
-          </p>
-          <div id="paper-block-box" hidden></div>
-          <div class="sef-paper-actions">
-            <button type="button" class="btn btn-sm btn-paper-enable" id="btn-paper-enable">Aktivizo bllokimin e letrës</button>
-            <button type="button" class="btn btn-sm btn-ghost" id="btn-paper-disable">Çaktivizo</button>
-            <button type="button" class="btn btn-sm btn-paper-register" id="btn-paper-register-all">Regjistro të gjithë në SEF</button>
-          </div>
-          <ul id="paper-block-list"></ul>
-          <div class="sef-paper-issue-form" id="paper-block-issue-wrap" hidden>
-            <div class="settings-field">
-              <label for="paper-serial-no">Nr. serik (blloku fizik)</label>
-              <input type="text" id="paper-serial-no" autocomplete="off" placeholder="p.sh. BLK-001234" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-item-name">Përshkrimi</label>
-              <input type="text" id="paper-item-name" placeholder="Shërbim / artikull" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-item-qty">Sasia</label>
-              <input type="number" id="paper-item-qty" min="0.001" step="0.001" value="1" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-item-price">Çmimi (€)</label>
-              <input type="number" id="paper-item-price" min="0" step="0.01" placeholder="0.00" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-payment">Pagesa</label>
-              <select id="paper-payment">
-                <option value="cash">Cash</option>
-                <option value="card">Kartë</option>
-                <option value="bank">Bankë</option>
-              </select>
-            </div>
-            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-paper-issue">Regjistro kuponin</button>
-          </div>
-          <div class="fiscal-save-msg" id="paper-block-msg"></div>
-        </div>
-      </div>
+      </div><!-- /fiscal-main-config-wrap -->
     </section>
+
+    <div id="modal-fiscal-receipts" class="table-modal" hidden>
+      <div class="table-modal-backdrop" id="frl-backdrop"></div>
+      <div class="table-modal-content">
+        <h2 data-fi18n="fiscal_receipts_title">Kuponët Fiskalë</h2>
+        <p class="frl-sub" data-fi18n="fiscal_receipts_sub">Të gjitha kuponët — më i riu lart. Vetëm lexim.</p>
+        <div class="frl-table-wrap">
+          <table class="frl-table">
+            <thead>
+              <tr>
+                <th data-fi18n="col_nuikf">NUIKF</th>
+                <th data-fi18n="col_daily">Nr. ditor</th>
+                <th data-fi18n="col_datetime">Data / Ora</th>
+                <th data-fi18n="col_type">Tipi</th>
+                <th data-fi18n="col_total">Totali</th>
+                <th data-fi18n="col_payment">Pagesa</th>
+                <th data-fi18n="col_operator">Operatori</th>
+                <th data-fi18n="col_status">Statusi</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="frl-tbody">
+              <tr><td colspan="9" style="color:#a0a0b8" data-fi18n="loading">Duke ngarkuar…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="frl-footer">
+          <span class="frl-count" id="frl-count"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="frl-close" data-fi18n="close">Mbyll</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-fiscal-receipt-view" class="table-modal" hidden>
+      <div class="table-modal-backdrop" id="frv-backdrop"></div>
+      <div class="table-modal-content">
+        <h2 data-fi18n="fiscal_receipt_view_title">Kupon Fiskal</h2>
+        <p class="frv-meta" id="frv-meta"></p>
+        <pre class="frv-body" id="frv-body"></pre>
+        <div class="frv-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="frv-close" data-fi18n="close">Mbyll</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-fiscal-correction" class="table-modal" hidden>
+      <div class="table-modal-backdrop" id="fcc-backdrop"></div>
+      <div class="table-modal-content">
+        <h2 data-fi18n="corrective_coupon">Kupon Korrigjues</h2>
+        <p class="fcc-sub" data-fi18n="correction_sub">Shkruani NUIKF e kuponit origjinal.</p>
+        <label for="fcc-nuikf" data-fi18n="original_nuikf">NUIKF origjinal</label>
+        <div style="display:flex;gap:0.5rem;align-items:flex-start">
+          <input type="text" id="fcc-nuikf" maxlength="16" placeholder="16 karaktere" style="flex:1;text-transform:uppercase">
+          <button type="button" class="btn btn-ghost btn-sm" id="fcc-lookup" data-fi18n="lookup">Kërko</button>
+        </div>
+        <div id="fcc-details" class="fcc-details" hidden></div>
+        <div id="fcc-form" hidden>
+          <label for="fcc-type" data-fi18n="correction_type">Tipi i korrigjimit</label>
+          <select id="fcc-type">
+            <option value="cancel" data-fi18n="type_cancel">Anulim</option>
+            <option value="return" data-fi18n="type_return">Kthim malli</option>
+            <option value="storno" data-fi18n="type_storno">Storno</option>
+          </select>
+          <div id="fcc-items-wrap" hidden>
+            <label data-fi18n="return_items">Artikujt për kthim</label>
+            <div class="fcc-items" id="fcc-items"></div>
+          </div>
+          <label for="fcc-reason" data-fi18n="reason_label">Arsyeja</label>
+          <textarea id="fcc-reason" rows="2" placeholder="Arsyeja e korrigjimit"></textarea>
+          <div class="fcc-actions">
+            <button type="button" class="btn btn-sm btn-fcc-primary" id="fcc-confirm" data-fi18n="confirm_print">Konfirmo &amp; Printo</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="fcc-close" data-fi18n="close">Mbyll</button>
+          </div>
+        </div>
+        <div class="fcc-msg" id="fcc-msg"></div>
+      </div>
+    </div>
 
     <!-- CLOUD & LINKE -->
     <section id="panel-cloud" class="panel">
@@ -4838,7 +5076,7 @@
     ndertoFushatFiskale();
 
     let adminSettingsMode = false;
-    const SETTINGS_PANELS = ["lokal", "restorant", "fiskale", "cloud", "licenca"];
+    const SETTINGS_PANELS = ["lokal", "restorant", "fiskale", "cloud"];
 
     function updateAdminClock() {
       const el = document.getElementById("admin-clock");
@@ -4860,6 +5098,13 @@
       if (bar) bar.hidden = !show;
     }
 
+    function switchFiscalSefTab(tab) {
+      if (tab === "printer") {
+        ngarkoPrinterin();
+        ngarkoArkenFiskale();
+      }
+    }
+
     function showSettingsSubpanel(name) {
       adminSettingsMode = true;
       document.querySelectorAll(".admin-tab-btn").forEach(t => t.classList.remove("active"));
@@ -4869,8 +5114,10 @@
       updateSettingsSubnav(name);
       const panel = document.getElementById("panel-" + name);
       if (panel) panel.classList.add("active");
-      if (name === "licenca") ngarkoLicencen();
-      if (name === "fiskale") { ngarkoPrinterin(); ngarkoArkenFiskale(); ngarkoFiscalizimin(); }
+      if (name === "fiskale") {
+        ngarkoPrinterin();
+        ngarkoArkenFiskale();
+      }
       if (name === "cloud") ngarkoCloudSync();
       if (name === "restorant") {
         ngarkoMenaxhimTavolinash();
@@ -4912,6 +5159,14 @@
         if (!document.getElementById("raport-nga").value) applyRaportPreset("sot");
         ngarkoRaportet();
       }
+      if (name === "fiskalizimi") ngarkoFiscalizimin();
+      if (name === "audit") { /* audit log */ }
+      if (name === "test-atk") {
+        updateField8SourceUi();
+        loadField8ReceiptPicker().catch(() => {});
+      }
+      if (name === "paper-block") refreshPaperBlockUi().catch(() => {});
+      if (name === "licenca") ngarkoLicencen();
       if (name === "stafi") ngarkoStafin();
       if (name === "stoku") {
         ngarkoMenu()
@@ -4940,6 +5195,10 @@
 
     document.querySelectorAll("[data-settings-go]").forEach(btn => {
       btn.addEventListener("click", () => showSettingsSubpanel(btn.dataset.settingsGo));
+    });
+
+    document.querySelectorAll("[data-fiscal-sef-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => switchFiscalSefTab(btn.dataset.fiscalSefTab));
     });
 
     document.querySelectorAll("[data-settings-back]").forEach(btn => {
@@ -12131,27 +12390,74 @@
         "sef-unit-name",
         "sef-unit-phone",
         "sef-pos-id",
+        "sef-fiscalization-number",
         "sef-language",
+        "sef-atk-url",
+        "sef-application-id",
       ];
       for (const id of ids) {
         const el = document.getElementById(id);
         if (el) el.disabled = false;
       }
+      const keysDir = document.getElementById("sef-keys-dir");
+      if (keysDir) keysDir.disabled = true;
       const saveBtn = document.getElementById("btn-fiscalizimi-save");
       if (saveBtn) saveBtn.disabled = false;
+    }
+
+    function readFiscalFormPayload() {
+      const nui = (document.getElementById("sef-taxpayer-nui")?.value || "").trim();
+      return {
+        fiscal_enabled: !!document.getElementById("sef-fiscal-enabled")?.checked,
+        taxpayer_nui: nui,
+        taxpayer_nf: document.getElementById("sef-taxpayer-nf")?.value || "",
+        taxpayer_vat_number: document.getElementById("sef-taxpayer-vat")?.value || "",
+        taxpayer_legal_name: document.getElementById("sef-taxpayer-legal-name")?.value || "",
+        taxpayer_address: document.getElementById("sef-taxpayer-address")?.value || "",
+        unit_number: document.getElementById("sef-unit-number")?.value || "",
+        business_unit_number: document.getElementById("sef-unit-number")?.value || "",
+        unit_name: document.getElementById("sef-unit-name")?.value || "",
+        unit_phone: document.getElementById("sef-unit-phone")?.value || "",
+        pos_id: document.getElementById("sef-pos-id")?.value || "",
+        fiscalization_number: (document.getElementById("sef-fiscalization-number")?.value || "").trim(),
+        sef_code: (document.getElementById("sef-sef-code")?.value || "").trim(),
+        language: document.getElementById("sef-language")?.value || "sq",
+        application_id: (document.getElementById("sef-application-id")?.value || "").trim(),
+        atk_api_url: document.getElementById("sef-atk-url")?.value || "https://fiskalizimi-test.atk-ks.org",
+      };
+    }
+
+    function setAtkUrlSelectValue(url) {
+      const sel = document.getElementById("sef-atk-url");
+      if (!sel) return;
+      const v = String(url || "https://fiskalizimi-test.atk-ks.org").trim();
+      if (![...sel.options].some((o) => o.value === v)) {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      }
+      sel.value = v;
+    }
+
+    async function loadFiscalKeysDir() {
+      try {
+        const data = await api("/api/fiscal/atk-status");
+        const atk = data.atk || data;
+        if (atk?.keys_dir) {
+          const keysDirEl = document.getElementById("sef-keys-dir");
+          if (keysDirEl) keysDirEl.value = atk.keys_dir;
+        }
+      } catch {
+        /* ignore */
+      }
     }
 
     const FISCAL_UNLOCK_CODE = "FISKALIZIM2026";
     const FISCAL_UNLOCK_KEY = "fiscal_ui_unlock_v1";
     function applySefFiscalFeatures(active) {
-      const auditBox = document.getElementById("sef-audit-box");
       const printWrap = document.getElementById("sef-print-mode-wrap");
-      const field8Box = document.getElementById("sef-field8-box");
-      const paperBox = document.getElementById("sef-paper-block-box");
-      if (auditBox) auditBox.hidden = !active;
       if (printWrap) printWrap.hidden = !active;
-      if (field8Box) field8Box.hidden = !active;
-      if (paperBox) paperBox.hidden = !active;
       if (active) {
         updateField8SourceUi();
         loadField8ReceiptPicker().catch(() => {});
@@ -12174,14 +12480,12 @@
       } catch { /* */ }
     }
 
-    function setFiscalUiVisible(visible) {
+    function setFiscalUiVisible(_visible) {
       const card = document.getElementById("card-fiscalizimi");
-      const unlockWrap = document.getElementById("fiscal-unlock-wrap");
       if (card) {
-        card.hidden = !visible;
-        card.classList.toggle("fiscal-ui-visible", !!visible);
+        card.hidden = false;
+        card.classList.add("fiscal-ui-visible");
       }
-      if (visible && unlockWrap) unlockWrap.hidden = true;
     }
 
     function showFiscalUnlockPrompt() {
@@ -12204,7 +12508,8 @@
       let clicks = 0;
       let clickTimer = null;
       const titles = [
-        document.getElementById("fiskale-panel-secret-title"),
+        document.getElementById("fiskalizimi-panel-secret-title"),
+        document.querySelector('.admin-tab-btn[data-panel="fiskalizimi"]'),
         document.querySelector('.settings-hub-btn[data-settings-go="fiskale"] strong'),
         document.querySelector('.settings-subnav-btn[data-settings-go="fiskale"]'),
       ].filter(Boolean);
@@ -12254,19 +12559,42 @@
 
     async function ngarkoFiscalizimin() {
       const msg = document.getElementById("msg-fiscalizimi");
+      const btnCorr = document.getElementById("btn-kupon-korrigjues");
+      const btnReceiptsList = document.getElementById("btn-fiscal-receipts-list");
       try {
         const s = await api("/api/fiscal-config");
         setFiscalUiVisible(true);
         applySefFieldsEditable();
-        const locked = !!s.fiscal_release_locked;
-        const enabled = locked ? false : !!s.fiscal_enabled;
+        const profileOk = !!s.fiscal_profile_complete;
+        const localOnly = s.fiscal_local_only !== false;
+        const locked = localOnly ? false : !!s.fiscal_release_locked;
+        const fiscalActive = !!s.fiscal_enabled && (profileOk || localOnly);
         const toggleEl = document.getElementById("sef-fiscal-enabled");
         if (toggleEl) {
-          toggleEl.checked = enabled;
+          toggleEl.checked = !!s.fiscal_enabled;
           toggleEl.disabled = locked;
         }
         const lockHint = document.getElementById("sef-fiscal-locked-hint");
-        if (lockHint) lockHint.hidden = !locked;
+        if (lockHint) {
+          if (profileOk && s.fiscal_enabled) {
+            lockHint.hidden = false;
+            lockHint.textContent = localOnly
+              ? "Print lokal aktiv. ATK i ndalur — plotësoni Application ID + certifikatë për lidhje të ardhshme."
+              : "Fiskalizimi aktiv.";
+          } else if (localOnly && s.fiscal_enabled) {
+            lockHint.hidden = false;
+            const missing = (s.fiscal_missing_fields || s.activation?.missing || []).join(", ");
+            lockHint.textContent = missing
+              ? `Print lokal aktiv. Për ATK plotësoni: ${missing}.`
+              : "Print lokal aktiv — ATK ende i ndalur.";
+          } else {
+            lockHint.hidden = !((s.fiscal_missing_fields || s.activation?.missing || []).length);
+            const missing = (s.fiscal_missing_fields || s.activation?.missing || []).join(", ");
+            lockHint.textContent = missing
+              ? `Plotësoni fushat: ${missing}`
+              : "Plotësoni të dhënat e firmës, pastaj aktivizoni fiskalizimin.";
+          }
+        }
         document.getElementById("sef-taxpayer-nui").value = s.taxpayer_nui || "";
         document.getElementById("sef-taxpayer-nf").value = s.taxpayer_nf || "";
         document.getElementById("sef-taxpayer-vat").value = s.taxpayer_vat_number || "";
@@ -12278,23 +12606,29 @@
         document.getElementById("sef-unit-phone").value = s.unit_phone || "";
         document.getElementById("sef-pos-id").value = s.pos_id || "";
         document.getElementById("sef-fiscalization-number").value = s.fiscalization_number || "";
-        document.getElementById("sef-sef-code").value = s.sef_code || "";
+        document.getElementById("sef-sef-code").value = s.sef_code || s.sef_identifier || "";
         document.getElementById("sef-language").value = s.language === "sr" ? "sr" : "sq";
-        applySefFiscalFeatures(enabled);
-        if (msg && s.activation && !s.activation.complete && !enabled) {
+        setAtkUrlSelectValue(s.atk_api_url);
+        const appIdEl = document.getElementById("sef-application-id");
+        if (appIdEl) appIdEl.value = s.application_id || "";
+        applySefFiscalFeatures(!!s.fiscal_enabled);
+        if (btnCorr) btnCorr.hidden = !fiscalActive;
+        if (btnReceiptsList) btnReceiptsList.hidden = !fiscalActive;
+        if (msg && !s.fiscal_enabled && s.activation && !s.activation.complete) {
           msg.textContent =
             "Plotësoni fushat e dyqanit (*), pastaj «Ruaj Fiskalizimin» — aktivizohet automatikisht.";
           msg.style.color = "var(--ngjyr-muted,#888)";
-        } else if (msg && enabled) {
+        } else if (msg && s.fiscal_enabled) {
           msg.textContent = "";
         }
         const printWrap = document.getElementById("sef-print-mode-wrap");
-        if (printWrap) printWrap.hidden = !enabled;
+        if (printWrap) printWrap.hidden = !s.fiscal_enabled;
         try {
           const pm = await api("/api/fiscal-print-mode");
           const sel = document.getElementById("sef-print-mode");
           if (sel && pm.mode) sel.value = pm.mode === "replace" ? "replace" : "addon";
         } catch (_e) { /* */ }
+        await loadFiscalKeysDir();
         // Default date range: muaji aktual
         const fromEl = document.getElementById("sef-audit-from");
         const toEl = document.getElementById("sef-audit-to");
@@ -12306,7 +12640,6 @@
           toEl.value = `${y}-${m}-${String(now.getDate()).padStart(2, "0")}`;
         }
         await applyFiscalI18n(s.language === "sr" ? "sr" : "sq");
-        if (msg) msg.textContent = "";
       } catch (err) {
         setFiscalUiVisible(isFiscalUiUnlocked());
         if (msg) {
@@ -12315,8 +12648,33 @@
         }
         applySefFieldsEditable();
         applySefFiscalFeatures(false);
+        if (btnCorr) btnCorr.hidden = true;
+        if (btnReceiptsList) btnReceiptsList.hidden = true;
       }
     }
+
+    document.getElementById("btn-open-keys-folder")?.addEventListener("click", async () => {
+      const msg = document.getElementById("msg-fiscalizimi");
+      try {
+        const data = await api("/api/fiscal/open-keys-folder", { method: "POST", body: "{}" });
+        if (data.keys_dir) {
+          const keysDirEl = document.getElementById("sef-keys-dir");
+          if (keysDirEl) keysDirEl.value = data.keys_dir;
+        }
+        if (msg) {
+          msg.textContent = "Folderi i çelësave u hap.";
+          msg.style.color = "#FF6B35";
+          setTimeout(() => {
+            if (msg.textContent === "Folderi i çelësave u hap.") msg.textContent = "";
+          }, 2000);
+        }
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Nuk u hap folderi";
+          msg.style.color = "#ef4444";
+        }
+      }
+    });
 
     document.getElementById("sef-fiscal-enabled")?.addEventListener("change", async () => {
       const toggle = document.getElementById("sef-fiscal-enabled");
@@ -12327,12 +12685,31 @@
       const on = toggle.checked;
       console.log("[admin] sef-fiscal-enabled toggle →", on, "(ruajtje e menjëhershme)");
       applySefFiscalFeatures(on);
-      // Ruaj menjëherë fiscal_enabled — pa pritur «Ruaj Fiskalizimin»
+      const btnCorr = document.getElementById("btn-kupon-korrigjues");
+      if (btnCorr) btnCorr.hidden = !on;
+      const btnReceiptsList = document.getElementById("btn-fiscal-receipts-list");
+      if (btnReceiptsList) btnReceiptsList.hidden = !on;
+      const printWrap = document.getElementById("sef-print-mode-wrap");
+      if (printWrap) printWrap.hidden = !on;
+      const nui = (document.getElementById("sef-taxpayer-nui")?.value || "").trim();
+      if (on && nui && !/^\d{9}$/.test(nui)) {
+        toggle.checked = false;
+        applySefFiscalFeatures(false);
+        if (btnCorr) btnCorr.hidden = true;
+        if (btnReceiptsList) btnReceiptsList.hidden = true;
+        if (printWrap) printWrap.hidden = true;
+        const msg = document.getElementById("msg-fiscalizimi");
+        if (msg) {
+          msg.textContent = fiscalUiT("nui_invalid", "NUI duhet të ketë saktësisht 9 shifra");
+          msg.style.color = "var(--ngjyr-danger, #ef4444)";
+        }
+        return;
+      }
       const msg = document.getElementById("msg-fiscalizimi");
       try {
         await api("/api/fiscal-config", {
           method: "PUT",
-          body: JSON.stringify(on ? { fiscal_enabled: true } : { fiscal_enabled: false }),
+          body: JSON.stringify(readFiscalFormPayload()),
         });
         if (window.FiscalPaymentModal) FiscalPaymentModal.invalidateCache();
         console.log("[admin] fiscal_enabled u ruajt në SQLite:", on);
@@ -12347,10 +12724,14 @@
             }
           }, 2500);
         }
+        await ngarkoFiscalizimin();
       } catch (err) {
         console.error("[admin] ruajtja e fiscal_enabled dështoi:", err);
         document.getElementById("sef-fiscal-enabled").checked = !on;
         applySefFiscalFeatures(!on);
+        if (btnCorr) btnCorr.hidden = !on;
+        if (btnReceiptsList) btnReceiptsList.hidden = !on;
+        if (printWrap) printWrap.hidden = !on;
         if (msg) {
           msg.textContent = err.message || "Ruajtja e toggle dështoi";
           msg.style.color = "#ef4444";
@@ -12393,14 +12774,24 @@
     let _fiscalUiTr = {};
 
     function paintFiscalI18nDom(tr) {
-      document.querySelectorAll("#card-fiscalizimi [data-fi18n]").forEach((el) => {
-        const key = el.getAttribute("data-fi18n");
-        if (key && tr[key] != null) el.textContent = tr[key];
-      });
-      document.querySelectorAll("#card-fiscalizimi [data-fi18n-placeholder]").forEach((el) => {
-        const key = el.getAttribute("data-fi18n-placeholder");
-        if (key && tr[key] != null) el.setAttribute("placeholder", tr[key]);
-      });
+      const roots = [
+        "#panel-fiskalizimi",
+        "#card-fiscalizimi",
+        "#card-fiscalizimi-atk",
+        "#modal-fiscal-receipts",
+        "#modal-fiscal-receipt-view",
+        "#modal-fiscal-correction",
+      ];
+      for (const root of roots) {
+        document.querySelectorAll(`${root} [data-fi18n]`).forEach((el) => {
+          const key = el.getAttribute("data-fi18n");
+          if (key && tr[key] != null) el.textContent = tr[key];
+        });
+        document.querySelectorAll(`${root} [data-fi18n-placeholder]`).forEach((el) => {
+          const key = el.getAttribute("data-fi18n-placeholder");
+          if (key && tr[key] != null) el.setAttribute("placeholder", tr[key]);
+        });
+      }
     }
 
     async function applyFiscalI18n(lang) {
@@ -12915,10 +13306,247 @@
       }
     });
 
+    let fccOriginal = null;
+
+    function escHtmlFrl(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function statusClassFiscalReceipt(r) {
+      const st = String(r.status || "").toLowerCase();
+      if (st.includes("atk") || st.includes("sent") || r.atk_ok) return "frl-status-sent";
+      if (st.includes("offline")) return "frl-status-offline";
+      return "frl-status-pending";
+    }
+
+    function mbyllFiscalCorrectionModal() {
+      const m = document.getElementById("modal-fiscal-correction");
+      if (m) m.hidden = true;
+      fccOriginal = null;
+    }
+
+    function hapFiscalCorrectionModal() {
+      const m = document.getElementById("modal-fiscal-correction");
+      if (!m) return;
+      m.hidden = false;
+      document.getElementById("fcc-nuikf").value = "";
+      document.getElementById("fcc-details").hidden = true;
+      document.getElementById("fcc-form").hidden = true;
+      document.getElementById("fcc-msg").textContent = "";
+    }
+
+    function renderFccItems(items) {
+      const box = document.getElementById("fcc-items");
+      if (!box) return;
+      box.innerHTML = "";
+      for (const it of items || []) {
+        const row = document.createElement("div");
+        row.className = "fcc-item-row";
+        row.innerHTML =
+          `<span>${escHtmlFrl(it.name)}</span>` +
+          `<input type="number" min="0" max="${Number(it.quantity || it.qty || 1)}" step="1" value="${Number(it.quantity || it.qty || 1)}" data-fcc-name="${escHtmlFrl(it.name)}">`;
+        box.appendChild(row);
+      }
+    }
+
+    function collectFccReturnItems() {
+      const out = [];
+      document.querySelectorAll("#fcc-items .fcc-item-row").forEach((row) => {
+        const inp = row.querySelector("input[type=number]");
+        const qty = Number(inp?.value) || 0;
+        const name = inp?.getAttribute("data-fcc-name") || "";
+        if (qty <= 0 || !name) return;
+        const orig = (fccOriginal?.items || []).find((x) => x.name === name) || {};
+        out.push({
+          name,
+          quantity: qty,
+          qty,
+          price: orig.price ?? orig.unit_price,
+          unit_price: orig.unit_price ?? orig.price,
+          vat_norm: orig.vat_norm || "E",
+        });
+      });
+      return out;
+    }
+
+    function mbyllFiscalReceiptsModal() {
+      const m = document.getElementById("modal-fiscal-receipts");
+      if (m) m.hidden = true;
+    }
+
+    function mbyllFiscalReceiptViewModal() {
+      const m = document.getElementById("modal-fiscal-receipt-view");
+      if (m) m.hidden = true;
+    }
+
+    async function hapFiscalReceiptView(id) {
+      const modal = document.getElementById("modal-fiscal-receipt-view");
+      const meta = document.getElementById("frv-meta");
+      const body = document.getElementById("frv-body");
+      if (!modal || !body) return;
+      body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
+      if (meta) meta.textContent = "";
+      modal.hidden = false;
+      try {
+        const res = await api("/api/fiscal-receipts/" + encodeURIComponent(id));
+        const r = res.receipt || {};
+        if (meta) {
+          meta.textContent =
+            "NUIKF " + (r.nuikf || "-") + " · " + (r.fiscal_date || "") + " " + (r.fiscal_time || "");
+        }
+        body.textContent = r.print_text || fiscalUiT("empty", "(bosh)");
+      } catch (err) {
+        body.textContent = err.message || "Gabim";
+      }
+    }
+
+    async function hapFiscalReceiptsModal() {
+      const modal = document.getElementById("modal-fiscal-receipts");
+      const tbody = document.getElementById("frl-tbody");
+      const countEl = document.getElementById("frl-count");
+      if (!modal || !tbody) return;
+      modal.hidden = false;
+      tbody.innerHTML =
+        '<tr><td colspan="9" style="color:#a0a0b8">' +
+        escHtmlFrl(fiscalUiT("loading", "Duke ngarkuar…")) +
+        "</td></tr>";
+      if (countEl) countEl.textContent = "";
+      try {
+        const res = await api("/api/fiscal-receipts?limit=500");
+        const rows = Array.isArray(res.receipts) ? res.receipts : [];
+        if (!rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="9" style="color:#a0a0b8">Nuk ka kuponë fiskalë ende.</td></tr>';
+          if (countEl) countEl.textContent = "0";
+          return;
+        }
+        tbody.innerHTML = "";
+        for (const r of rows) {
+          const tr = document.createElement("tr");
+          tr.innerHTML =
+            "<td><code>" + escHtmlFrl(r.nuikf) + "</code></td>" +
+            "<td>" + escHtmlFrl(r.daily_number) + "</td>" +
+            "<td>" + escHtmlFrl((r.fiscal_date || "") + " " + (r.fiscal_time || "")) + "</td>" +
+            "<td>" + escHtmlFrl(r.receipt_type_label || r.receipt_type) + "</td>" +
+            "<td>" + Number(r.total_amount || 0).toFixed(2) + " €</td>" +
+            "<td>" + escHtmlFrl(r.payment_label || r.payment_method) + "</td>" +
+            "<td>" + escHtmlFrl(r.operator_name) + "</td>" +
+            "<td class=\"" + statusClassFiscalReceipt(r) + "\">" + escHtmlFrl(r.status) + "</td>" +
+            "<td><button type=\"button\" class=\"btn-frl-view\" data-frl-id=\"" + escHtmlFrl(r.id) + "\">Shiko</button></td>";
+          tbody.appendChild(tr);
+        }
+        if (countEl) countEl.textContent = String(rows.length) + " kuponë";
+        tbody.querySelectorAll("[data-frl-id]").forEach((btn) => {
+          btn.addEventListener("click", () => hapFiscalReceiptView(btn.getAttribute("data-frl-id")));
+        });
+      } catch (err) {
+        tbody.innerHTML =
+          '<tr><td colspan="9" style="color:#ef4444">' + escHtmlFrl(err.message) + "</td></tr>";
+      }
+    }
+
+    document.getElementById("btn-kupon-korrigjues")?.addEventListener("click", hapFiscalCorrectionModal);
+    document.getElementById("btn-fiscal-receipts-list")?.addEventListener("click", hapFiscalReceiptsModal);
+    document.getElementById("fcc-backdrop")?.addEventListener("click", mbyllFiscalCorrectionModal);
+    document.getElementById("fcc-close")?.addEventListener("click", mbyllFiscalCorrectionModal);
+    document.getElementById("frl-backdrop")?.addEventListener("click", mbyllFiscalReceiptsModal);
+    document.getElementById("frl-close")?.addEventListener("click", mbyllFiscalReceiptsModal);
+    document.getElementById("frv-backdrop")?.addEventListener("click", mbyllFiscalReceiptViewModal);
+    document.getElementById("frv-close")?.addEventListener("click", mbyllFiscalReceiptViewModal);
+
+    document.getElementById("fcc-type")?.addEventListener("change", () => {
+      const type = document.getElementById("fcc-type").value;
+      const itemsWrap = document.getElementById("fcc-items-wrap");
+      if (itemsWrap) itemsWrap.hidden = type !== "return";
+    });
+
+    document.getElementById("fcc-lookup")?.addEventListener("click", async () => {
+      const msg = document.getElementById("fcc-msg");
+      const nuikf = (document.getElementById("fcc-nuikf").value || "").trim().toUpperCase();
+      document.getElementById("fcc-nuikf").value = nuikf;
+      if (!nuikf) {
+        msg.textContent = "Shkruani NUIKF";
+        msg.style.color = "#ef4444";
+        return;
+      }
+      msg.textContent = "Duke kërkuar...";
+      try {
+        const res = await api(`/api/fiscal-correction/lookup/${encodeURIComponent(nuikf)}`);
+        fccOriginal = res.original;
+        document.getElementById("fcc-details").hidden = false;
+        document.getElementById("fcc-details").innerHTML =
+          `<div><strong>NUIKF:</strong> ${escHtmlFrl(fccOriginal.nuikf)}</div>` +
+          `<div>Totali: ${Number(fccOriginal.total_amount || 0).toFixed(2)} €</div>`;
+        document.getElementById("fcc-form").hidden = false;
+        renderFccItems(fccOriginal.items || []);
+        document.getElementById("fcc-type").value = "cancel";
+        document.getElementById("fcc-items-wrap").hidden = true;
+        msg.textContent = "";
+      } catch (err) {
+        fccOriginal = null;
+        document.getElementById("fcc-form").hidden = true;
+        document.getElementById("fcc-details").hidden = true;
+        msg.textContent = err.message || "Nuk u gjet";
+        msg.style.color = "#ef4444";
+      }
+    });
+
+    document.getElementById("fcc-confirm")?.addEventListener("click", async () => {
+      const msg = document.getElementById("fcc-msg");
+      if (!fccOriginal) {
+        msg.textContent = "Kërkoni fillimisht kuponin origjinal";
+        msg.style.color = "#ef4444";
+        return;
+      }
+      const type = document.getElementById("fcc-type").value;
+      const reason = (document.getElementById("fcc-reason").value || "").trim();
+      if (!reason) {
+        msg.textContent = "Shkruani arsyen";
+        msg.style.color = "#ef4444";
+        return;
+      }
+      let items = null;
+      if (type === "return") {
+        items = collectFccReturnItems();
+        if (!items.length) {
+          msg.textContent = "Zgjidhni artikuj për kthim";
+          msg.style.color = "#ef4444";
+          return;
+        }
+      }
+      const btn = document.getElementById("fcc-confirm");
+      btn.disabled = true;
+      try {
+        const res = await api("/api/fiscal-correction", {
+          method: "POST",
+          body: JSON.stringify({
+            original_nuikf: fccOriginal.nuikf,
+            correction_type: type,
+            items,
+            reason,
+          }),
+        });
+        msg.style.color = "#FF6B35";
+        msg.textContent = res.printed
+          ? `U krijua NUIKF ${res.receipt?.nuikf} dhe u printua.`
+          : `U krijua NUIKF ${res.receipt?.nuikf}.`;
+        setTimeout(() => mbyllFiscalCorrectionModal(), 2200);
+      } catch (err) {
+        msg.textContent = err.message || "Gabim";
+        msg.style.color = "#ef4444";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     document.getElementById("btn-fiscalizimi-save")?.addEventListener("click", async () => {
       const msg = document.getElementById("msg-fiscalizimi");
-      const nui = (document.getElementById("sef-taxpayer-nui").value || "").trim();
-      if (nui && !/^\d{9}$/.test(nui)) {
+      const payload = readFiscalFormPayload();
+      if (payload.taxpayer_nui && !/^\d{9}$/.test(payload.taxpayer_nui)) {
         msg.textContent = fiscalUiT("nui_invalid", "NUI duhet të ketë saktësisht 9 shifra");
         msg.style.color = "var(--ngjyr-danger, #ef4444)";
         return;
@@ -12926,27 +13554,16 @@
       try {
         const resp = await api("/api/fiscal-config", {
           method: "PUT",
-          body: JSON.stringify({
-            taxpayer_nui: nui,
-            taxpayer_nf: document.getElementById("sef-taxpayer-nf").value,
-            taxpayer_vat_number: document.getElementById("sef-taxpayer-vat").value,
-            taxpayer_legal_name: document.getElementById("sef-taxpayer-legal-name").value,
-            taxpayer_address: document.getElementById("sef-taxpayer-address").value,
-            unit_number: document.getElementById("sef-unit-number").value,
-            business_unit_number: document.getElementById("sef-unit-number").value,
-            unit_name: document.getElementById("sef-unit-name").value,
-            unit_phone: document.getElementById("sef-unit-phone").value,
-            pos_id: document.getElementById("sef-pos-id").value,
-            language: document.getElementById("sef-language").value,
-          }),
+          body: JSON.stringify(payload),
         });
         if (window.FiscalPaymentModal) FiscalPaymentModal.invalidateCache();
         let savedMsg = fiscalUiT("saved_ok", "U ruajt!");
         if (resp.fiscal_enabled) {
-          savedMsg += " — Fiskalizimi u aktivizua (të dhënat e dyqanit).";
+          savedMsg += resp.fiscal_local_only !== false
+            ? " — Print lokal aktiv (ATK i ndalur)."
+            : " — Fiskalizimi u aktivizua.";
         } else if (resp.activation && resp.activation.missing && resp.activation.missing.length) {
-          savedMsg +=
-            " — Mungon: " + resp.activation.missing.slice(0, 4).join(", ");
+          savedMsg += " — Mungon: " + resp.activation.missing.slice(0, 4).join(", ");
         }
         msg.textContent = savedMsg;
         msg.style.color = "#FF6B35";
@@ -13673,8 +14290,11 @@
       } catch { /* ignore */ }
       ngarkoSettings().catch(() => {});
       ngarkoPasqyra();
-      const licencaHash = location.hash === "#licenca";
-      if (licencaHash) showSettingsSubpanel("licenca");
+      if (location.hash === "#licenca") switchAdminPanel("licenca");
+      if (window.hotelElectron && typeof window.hotelElectron.onLicensePackageUpdated === "function") {
+        window.hotelElectron.onLicensePackageUpdated(() => ngarkoLicencen().catch(() => {}));
+        window.hotelElectron.onLicenseKeyUpdated(() => ngarkoLicencen().catch(() => {}));
+      }
       initDitariDateInputs();
       setTimeout(() => {
         refreshHotelDiskStatusUi().catch(() => {});
@@ -13706,8 +14326,6 @@
 
     initCloudStatusIndicator("cloud-status-pill");
     if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
-    setFiscalUiVisible(false);
-    bindFiscalSecretUnlock();
   </script>
 </body>
 </html>

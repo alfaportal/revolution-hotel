@@ -607,6 +607,21 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   gap: 0.4rem;
 }
 
+#ekrani-porosia .payment-checkout-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+#ekrani-porosia .payment-checkout-actions .btn {
+  font-size: 0.82rem;
+  padding: 0.65rem 0.5rem;
+  white-space: normal;
+  line-height: 1.2;
+}
+
 #ekrani-porosia .btn-payment-cash,
 #ekrani-porosia .btn-payment-karte {
   min-height: 40px;

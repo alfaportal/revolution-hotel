@@ -1,7 +1,30 @@
 /**
- * ATK_TEST_MODE — mjedisi TEST; HTTP bllokohet vetëm me FISCAL_LOCAL_RUN=1.
+ * ATK — default LOKAL (pa HTTP). Aktivizohet vetëm me HOTEL_ATK_SEND_ALLOWED=1 ose atk_send_allowed=1.
  */
-const { isFiscalLocalRun, isAtkHost } = require("./fiscal-local-env");
+const { isFiscalLocalRun } = require("./fiscal-local-env");
+
+function isLocalPrintOnly() {
+  try {
+    const database = require("../database");
+    const v = database.getSetting("local_print_only", "1");
+    if (v === "0" || v === 0 || v === false || v === "false") return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function isAtkSendAllowedByOwner() {
+  if (/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
+    return true;
+  }
+  try {
+    const database = require("../database");
+    return database.getSetting("atk_send_allowed", "0") === "1";
+  } catch {
+    return false;
+  }
+}
 
 function isAtkTestMode() {
   const env = process.env.ATK_TEST_MODE ?? process.env.FISCAL_TEST_MODE;
@@ -11,15 +34,16 @@ function isAtkTestMode() {
   }
   try {
     const database = require("../database");
-    const v = database.getSetting("atk_test_mode", "1");
+    const v = database.getSetting("atk_test_mode", "0");
     return v === "1" || v === 1 || v === true || v === "true";
   } catch {
-    return true;
+    return false;
   }
 }
 
 function isAtkTransmissionBlocked() {
-  return isFiscalLocalRun();
+  if (!isAtkSendAllowedByOwner()) return true;
+  return isFiscalLocalRun() || isLocalPrintOnly();
 }
 
 function isFiscalMemoryOnly() {
@@ -27,9 +51,9 @@ function isFiscalMemoryOnly() {
 }
 
 module.exports = {
-  isFiscalLocalRun,
-  isAtkHost,
   isAtkTestMode,
+  isLocalPrintOnly,
+  isAtkSendAllowedByOwner,
   isAtkTransmissionBlocked,
   isFiscalMemoryOnly,
 };

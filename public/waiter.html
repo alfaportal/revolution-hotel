@@ -1345,24 +1345,18 @@
           <button class="btn btn-primary" id="btn-dergo">Dërgo porosinë</button>
           <button class="btn btn-danger" id="btn-anullo" hidden>Anullo porosinë</button>
           <div class="coupon-type-row" id="coupon-type-row">
-            <button type="button" class="btn-coupon btn-coupon-thermal active" data-coupon="thermal" id="btn-kupon-termik">Kuponi Termik</button>
             <button type="button" class="btn-coupon btn-coupon-fiscal" data-coupon="fiscal" id="btn-kupon-fiskal">Kuponi Fiskal</button>
+            <button type="button" class="btn-coupon btn-coupon-thermal active" data-coupon="thermal" id="btn-kupon-termik">Kuponi Termik</button>
           </div>
           <div class="coupon-type-forced" id="coupon-type-forced" hidden></div>
           <div class="payment-close-row">
             <button class="btn btn-payment-cash" id="btn-mbyll-cash">Cash</button>
             <button class="btn btn-payment-karte" id="btn-mbyll-karte">Kartë</button>
           </div>
-          <div class="pay-mixed-wrap" id="pay-mixed-wrap">
-            <label><input type="checkbox" id="pay-mixed" /> Pagesë e përzier</label>
-            <div id="pay-mixed-box" class="pay-mixed-box" hidden>
-              <div><label>Cash €</label><input id="pay-cash-amt" type="number" min="0" step="0.01" value="0" /></div>
-              <div><label>POS €</label><input id="pay-card-amt" type="number" min="0" step="0.01" value="0" /></div>
-              <div><label>Voucher €</label><input id="pay-voucher-amt" type="number" min="0" step="0.01" value="0" /></div>
-            </div>
-            <div id="pay-mixed-status" class="pay-mixed-status" hidden aria-live="polite"></div>
+          <div class="payment-checkout-actions">
+            <button type="button" class="btn btn-primary" id="btn-paguaj-fiskal">Paguaj + Kupon fiskal</button>
+            <button type="button" class="btn btn-ghost" id="btn-paguaj-termik">Paguaj (Termik)</button>
           </div>
-          <button type="button" class="btn btn-primary" id="btn-mbyll-dhome" style="width:100%;margin-top:0.4rem">Faturë në dhomë</button>
           <button type="button" class="btn btn-ghost btn-split-bill" id="btn-nda-faturen">Nda faturën</button>
         </div>
         <div id="gabim-porosi" class="alert alert-error" hidden></div>
@@ -4375,20 +4369,12 @@
       return registerModeForced === "auto" ? checkoutCouponType : registerModeForced;
     }
 
-    async function closeTableWithCouponType(chosenType) {
-      if (registerModeForced === "auto") couponType = chosenType;
-      document.querySelectorAll("[data-coupon]").forEach(b => {
-        b.classList.toggle("active", b.dataset.coupon === couponType);
-      });
-      if (!isOnTableOrderScreen() || !hasTableItemsToClose()) return;
-      const payInfo = await resolveClosePayment("cash", false);
-      if (!payInfo) return;
-      await mbyllMePagese(payInfo);
-    }
-
     document.querySelectorAll("[data-coupon]").forEach(btn => {
       btn.addEventListener("click", () => {
-        closeTableWithCouponType(btn.dataset.coupon || "thermal").catch(() => {});
+        couponType = btn.dataset.coupon || "thermal";
+        document.querySelectorAll("[data-coupon]").forEach(b => {
+          b.classList.toggle("active", b.dataset.coupon === couponType);
+        });
       });
     });
 
@@ -5173,46 +5159,75 @@
       }
     });
 
-    async function mbyllMePagese(payInfo) {
-      const paymentMethod = payInfo && payInfo.payment_method ? payInfo.payment_method : payInfo;
+    async function mbyllMePagese(paymentMethod, opts = {}) {
+      const payInfo = paymentMethod && typeof paymentMethod === "object" && paymentMethod.payment_method
+        ? paymentMethod
+        : null;
+      const method = payInfo
+        ? payInfo.payment_method
+        : (Array.isArray(paymentMethod) ? paymentMethod[0]?.method : paymentMethod);
+      const couponTypeOpt = opts.couponType != null ? opts.couponType : effectiveCouponType();
+      const fiscalSkip =
+        opts.fiscalSkip === true ||
+        (opts.fiscalSkip !== false && couponTypeOpt === "thermal");
       const gabimEl = document.getElementById("gabim-porosi");
       shfaqGabim(gabimEl, "");
       const btnCash = document.getElementById("btn-mbyll-cash");
       const btnKarte = document.getElementById("btn-mbyll-karte");
-      const btnDhome = document.getElementById("btn-mbyll-dhome");
       const btnTermik = document.getElementById("btn-kupon-termik");
       const btnFiskal = document.getElementById("btn-kupon-fiskal");
+      const btnPaguajFiskal = document.getElementById("btn-paguaj-fiskal");
+      const btnPaguajTermik = document.getElementById("btn-paguaj-termik");
       btnCash.disabled = true;
       btnKarte.disabled = true;
-      if (btnDhome) btnDhome.disabled = true;
       btnTermik.disabled = true;
       btnFiskal.disabled = true;
+      if (btnPaguajFiskal) btnPaguajFiskal.disabled = true;
+      if (btnPaguajTermik) btnPaguajTermik.disabled = true;
       const prevCash = btnCash.textContent;
       const prevKarte = btnKarte.textContent;
-      const prevDhome = btnDhome ? btnDhome.textContent : "";
-      if (paymentMethod === "cash") btnCash.textContent = "Duke mbyllur...";
-      else if (paymentMethod === "karte") btnKarte.textContent = "Duke mbyllur...";
+      if (method === "cash") btnCash.textContent = "Duke mbyllur...";
+      else if (method === "karte") btnKarte.textContent = "Duke mbyllur...";
       try {
         const itemsToClose = porosia.length
           ? mergeOrderItemsClient(artikujNeTavoline, porosia)
           : (artikujNeTavoline.length ? artikujNeTavoline : undefined);
         const closeBody = {
-            table_id: tavolinaId,
-            items: itemsToClose,
-            payment_method: paymentMethod,
-            coupon_type: effectiveCouponType(),
-            fiscal_skip: effectiveCouponType() === "thermal",
-            promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
-          };
+          table_id: tavolinaId,
+          items: itemsToClose,
+          coupon_type: couponTypeOpt,
+          fiscal_skip: couponTypeOpt === "thermal",
+          promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
+          ...(Array.isArray(paymentMethod)
+            ? { payment_method: paymentMethod[0].method, payment_splits: paymentMethod }
+            : { payment_method: method }),
+        };
         if (payInfo && payInfo.payment_splits) closeBody.payment_splits = payInfo.payment_splits;
         const res = await api("/api/waiter/close-and-print", {
           method: "POST",
           body: JSON.stringify(closeBody),
         });
         document.getElementById("print-fature").innerHTML = res.html || "";
-        if (res.printed) {
-          /* Printim i qetë te printeri — mbyllja e menjëhershme është normale */
-        } else if (effectiveCouponType() === "thermal") {
+        const fiscalWanted = couponTypeOpt === "fiscal" && !fiscalSkip;
+        const fiscalOk = !!res.fiscal_printed;
+        if (fiscalWanted && !fiscalOk) {
+          const msg =
+            res.fiscal_receipt?.printMessage ||
+            res.printMessage ||
+            (!res.sef_enabled
+              ? "Fiskalizimi është OFF. Admin → Fiskalizimi → aktivizo toggle-in dhe ruaj NUI + të dhënat e firmës."
+              : "Printeri fiskal nuk printoi kuponin e plotë.");
+          shfaqGabim(gabimEl, msg);
+          alert(
+            `Kuponi fiskal NUK u printua si duhet.\n\n${msg}\n\n` +
+            "Tavolina u mbyll — shitja është regjistruar.\n\n" +
+            (res.sef_enabled
+              ? "Kontrollo: Admin → Fiskalizimi → «Print lokal» ON + printeri fiskal."
+              : "Hap Admin → Fiskalizimi → ndez fiskalizimin dhe ruaj.")
+          );
+        } else if (res.printed) {
+          /* Printim i qetë te printeri */
+        } else if (fiscalSkip || couponTypeOpt === "thermal") {
           const msg = res.printMessage || "Nuk u gjet printer termik.";
           shfaqGabim(gabimEl, msg);
           const doWinPrint = confirm(
@@ -5222,7 +5237,7 @@
             "Për printim automatik pa dialog: Admin → Fiskale & printer → zgjidhni printerin termik."
           );
           if (doWinPrint && res.html) window.print();
-        } else if (effectiveCouponType() === "fiscal") {
+        } else if (couponTypeOpt === "fiscal") {
           const msg = res.printMessage || "Printeri fiskal nuk është konfiguruar.";
           shfaqGabim(gabimEl, msg);
           alert(
@@ -5253,7 +5268,7 @@
               method: "POST",
               body: JSON.stringify({
                 order_id: cloudId,
-                payment_method: paymentMethod,
+                payment_method: method,
                 items: itemsToClose,
               }),
             });
@@ -5274,12 +5289,10 @@
       } finally {
         btnCash.disabled = false;
         btnKarte.disabled = false;
-        if (btnDhome) {
-          btnDhome.disabled = false;
-          btnDhome.textContent = prevDhome;
-        }
         btnTermik.disabled = false;
         btnFiskal.disabled = false;
+        if (btnPaguajFiskal) btnPaguajFiskal.disabled = false;
+        if (btnPaguajTermik) btnPaguajTermik.disabled = false;
         btnCash.textContent = prevCash;
         btnKarte.textContent = prevKarte;
       }
@@ -5382,24 +5395,36 @@
       }
     }
 
-    document.getElementById("w-checkout-pay-mixed")?.addEventListener("change", () => updateCheckoutMixedPaymentBar());
-    ["w-checkout-pay-cash-amt", "w-checkout-pay-card-amt", "w-checkout-pay-voucher-amt"].forEach((id) => {
-      document.getElementById(id)?.addEventListener("input", () => updateCheckoutMixedPaymentBar());
+    document.getElementById("btn-paguaj-fiskal")?.addEventListener("click", async () => {
+      const method = window.FiscalPaymentModal
+        ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
+        : "cash";
+      if (method == null) return;
+      mbyllMePagese(method, { checkout: true, fiscalSkip: false, couponType: "fiscal" });
+    });
+    document.getElementById("btn-paguaj-termik")?.addEventListener("click", async () => {
+      const method = window.FiscalPaymentModal
+        ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
+        : "cash";
+      if (method == null) return;
+      mbyllMePagese(method, { checkout: true, fiscalSkip: true, couponType: "thermal" });
     });
 
     document.getElementById("btn-mbyll-cash").addEventListener("click", async () => {
-      const payInfo = await resolveClosePayment("cash", false);
-      if (!payInfo) return;
-      mbyllMePagese(payInfo);
+      const method = window.FiscalPaymentModal
+        ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
+        : "cash";
+      if (method == null) return;
+      mbyllMePagese(method);
     });
     document.getElementById("btn-mbyll-karte").addEventListener("click", async () => {
-      const payInfo = await resolveClosePayment("karte", false);
-      if (!payInfo) return;
-      mbyllMePagese(payInfo);
+      const method = window.FiscalPaymentModal
+        ? await FiscalPaymentModal.resolvePaymentMethod(api, "karte", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
+        : "karte";
+      if (method == null) return;
+      mbyllMePagese(method);
     });
-    document.getElementById("btn-mbyll-dhome")?.addEventListener("click", () => {
-      hapChargeRoomModal();
-    });
+
     document.getElementById("w-charge-room-backdrop")?.addEventListener("click", mbyllChargeRoomModal);
     document.getElementById("w-charge-room-cancel")?.addEventListener("click", mbyllChargeRoomModal);
 

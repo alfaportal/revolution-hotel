@@ -337,6 +337,127 @@ const HARD_LICENSE_FAIL_CODES = new Set([
   "OFFLINE_EXPIRED",
 ]);
 
+/** Revokim ose licencë e fshirë — purge i plotë si instalim i ri. */
+const FULL_PURGE_LICENSE_CODES = new Set(["REVOKED", "NOT_FOUND"]);
+
+function wipeDirHard(dir) {
+  if (!dir || !fs.existsSync(dir)) return;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let left = 0;
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      try {
+        fs.rmSync(p, { recursive: true, force: true });
+      } catch {
+        left += 1;
+      }
+    }
+    if (left === 0) return;
+    const waitUntil = Date.now() + 250;
+    while (Date.now() < waitUntil) {
+      /* retry delay for locked DB */
+    }
+  }
+}
+
+/**
+ * Revokim licencë = PC i ri: fshi DB, settings, cache, licencë, salt, hw-lic.
+ * Pas kësaj kërkohet licencë e re nga zero (HARDWARE_ID i ri).
+ */
+function purgeAllClientDataAfterRevoke(app) {
+  if (!app) return;
+  registerInstallContext(app);
+  try {
+    global.__restaurantHttpServer?.close();
+  } catch {
+    /* ignore */
+  }
+
+  let userData = "";
+  try {
+    userData = app.getPath("userData");
+    wipeDirHard(userData);
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const localSibling = path.join(
+      process.env.LOCALAPPDATA || "",
+      path.basename(userData || "Revolution HOTEL"),
+    );
+    if (process.env.LOCALAPPDATA && localSibling && localSibling !== userData) {
+      wipeDirHard(localSibling);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  for (const dir of legacyLicenseDirs(app)) {
+    if (userData && dir === userData) continue;
+    try {
+      wipeDirHard(dir);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  for (const extra of ["Revolution HOTEL Pako", "Revolution HOTEL Pako AI"]) {
+    try {
+      wipeDirHard(path.join(app.getPath("appData"), extra));
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (process.env.LOCALAPPDATA) {
+        wipeDirHard(path.join(process.env.LOCALAPPDATA, extra));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  try {
+    const licRoot = path.join(app.getPath("appData"), LICENSE_STORAGE_REL);
+    if (fs.existsSync(licRoot)) {
+      fs.rmSync(licRoot, { recursive: true, force: true });
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const extFlag = path.join(
+      app.getPath("appData"),
+      "RevolutionInvest",
+      "hotel-factory-reset-pending",
+    );
+    if (fs.existsSync(extFlag)) fs.unlinkSync(extFlag);
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    if (userData) fs.mkdirSync(userData, { recursive: true });
+  } catch {
+    /* ignore */
+  }
+}
+
+function handleLicenseHardFail(app, code) {
+  purgeAllClientDataAfterRevoke(app);
+  const message =
+    code === "NOT_FOUND"
+      ? "Licenca nuk u gjet. Kontaktoni Revolution Invest."
+      : "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
+  return {
+    blocked: true,
+    message,
+    purged: true,
+    code: code || "REVOKED",
+  };
+}
+
 function clearActivationFiles(app) {
   wipeAllActivationData(app);
 }
@@ -421,6 +542,9 @@ async function validateLicenseOnline(key, opts = {}) {
     if (parsed.code === "REVOKED") {
       markLicenseRevokedLocally(_electronApp, parsed.message);
     }
+    if (parsed.code && FULL_PURGE_LICENSE_CODES.has(parsed.code)) {
+      if (_electronApp) handleLicenseHardFail(_electronApp, parsed.code);
+    }
     return {
       valid: false,
       code: parsed.code || null,
@@ -470,6 +594,9 @@ async function validateLicenseHeartbeat(key) {
     }
     if (parsed.code === "REVOKED") {
       markLicenseRevokedLocally(_electronApp, parsed.message);
+    }
+    if (parsed.code && FULL_PURGE_LICENSE_CODES.has(parsed.code)) {
+      if (_electronApp) handleLicenseHardFail(_electronApp, parsed.code);
     }
     return {
       valid: false,
@@ -591,10 +718,12 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
         onFactoryReset(beat);
         return;
       }
+      if (!beat.valid && beat.code && FULL_PURGE_LICENSE_CODES.has(beat.code)) {
+        handleLicenseHardFail(app, beat.code);
+        if (typeof onForceLogout === "function") onForceLogout(beat);
+        return;
+      }
       if (!beat.valid && beat.code && HARD_LICENSE_FAIL_CODES.has(beat.code)) {
-        if (beat.code === "REVOKED") {
-          markLicenseRevokedLocally(app, beat.message);
-        }
         clearStoredLicense(app);
         if (typeof onForceLogout === "function") onForceLogout(beat);
         return;
@@ -894,6 +1023,96 @@ function readLocalRevokeBlock(app) {
   }
 }
 
+const REVOCATION_FAIL_CODES = new Set(["REVOKED", "NOT_FOUND"]);
+
+function isRevocationCode(code) {
+  return REVOCATION_FAIL_CODES.has(String(code || "").trim());
+}
+
+function purgeAllLicenseArtifacts(app, _message, opts = {}) {
+  registerInstallContext(app);
+  if (opts.allowReactivation !== false) {
+    clearLicenseRevokedLocally(app);
+  }
+  clearStoredLicense(app);
+  try {
+    const lg = require("./fiscal/license-guard");
+    if (lg && typeof lg.writeStoredLicenseKey === "function" && app) {
+      const recPath = lg.licenseStorageRoot && lg.licenseStorageRoot(app);
+      if (recPath) {
+        const hwFile = require("path").join(recPath, ".hw-license.json");
+        try {
+          if (require("fs").existsSync(hwFile)) require("fs").unlinkSync(hwFile);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Poll — pas regjistrimit nga admini, serveri kthen çelësin për këtë Hardware ID. */
+async function claimByHardwareFromCloud(app) {
+  const VERSION = require("./version-config");
+  registerInstallContext(app);
+  const hw = getHardwareIdForDisplay(app);
+  if (!hw) {
+    return { valid: false, code: "MISSING_HARDWARE", message: "Mungon Hardware ID." };
+  }
+  try {
+    const res = await requestJson("POST", getServerUrl(), "/api/v1/license/check", {
+      hardware_id: hw,
+      device_id: getMachineId(),
+      hostname: os.hostname(),
+      app_type: VERSION.appType || "hotel",
+    });
+    let parsed = {};
+    try {
+      parsed = JSON.parse(res.data || "{}");
+    } catch {
+      parsed = {};
+    }
+    if (res.status < 400 && parsed.valid && (parsed.celesi || parsed.license_key)) {
+      const key = parsed.celesi || parsed.license_key;
+      clearLicenseRevokedLocally(app);
+      writeStoredLicense(app, key);
+      markOnlineLicense(app, key);
+      writeActivationRecord(app, key, activationMetaFromOnline(parsed));
+      try {
+        const lg = require("./fiscal/license-guard");
+        if (lg && typeof lg.writeStoredLicenseKey === "function") {
+          lg.writeStoredLicenseKey(app, key, { source: "cloud" });
+        }
+      } catch {
+        /* ignore */
+      }
+      return {
+        valid: true,
+        code: parsed.code || "OK",
+        message: parsed.message || "Licenca u gjet nga Hardware ID.",
+        celesi: key,
+        license_key: key,
+        client_id: parsed.client_id || "",
+        client_name: parsed.client_name || "",
+        package_tier: parsed.package_tier || "",
+      };
+    }
+    return {
+      valid: false,
+      code: parsed.code || "NOT_FOUND",
+      message: parsed.message || parsed.gabim || "Nuk ka licencë për këtë Hardware ID.",
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      code: "OFFLINE",
+      message: err.message || "Nuk u lidh me serverin e licencës.",
+    };
+  }
+}
+
 /** Dërgo Hardware ID 16 te cloud — admini e sheh te Licencat dhe Gjenero funksionon. */
 async function reportHardwareIdToCloud(app) {
   try {
@@ -1140,12 +1359,9 @@ async function ensureActivated(app) {
             refreshLicenseOnline(key, app);
             return true;
           }
-          if (vOnline.code === "REVOKED") {
-            markLicenseRevokedLocally(app, vOnline.message);
-            clearStoredLicense(app);
-            lastError =
-              vOnline.message ||
-              "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
+          if (FULL_PURGE_LICENSE_CODES.has(vOnline.code)) {
+            const fail = handleLicenseHardFail(app, vOnline.code);
+            lastError = vOnline.message || fail.message;
           } else {
             lastError = offlineExpiredMessage();
           }
@@ -1164,11 +1380,16 @@ async function ensureActivated(app) {
         }
 
         if (v.code && HARD_LICENSE_FAIL_CODES.has(v.code)) {
-          if (v.code === "REVOKED") markLicenseRevokedLocally(app, v.message);
-          clearStoredLicense(app);
-          if (v.code === "REVOKED") {
-            lastError =
-              v.message || "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
+          if (FULL_PURGE_LICENSE_CODES.has(v.code)) {
+            const fail = handleLicenseHardFail(app, v.code);
+            lastError = fail.message;
+          } else {
+            if (v.code === "REVOKED") markLicenseRevokedLocally(app, v.message);
+            clearStoredLicense(app);
+            if (v.code === "REVOKED") {
+              lastError =
+                v.message || "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
+            }
           }
         }
       }
@@ -1378,6 +1599,7 @@ module.exports = {
   registerInstallContext,
   validateLicenseKey,
   validateLicenseAsync,
+  validateLicenseOnline,
   validateLicenseHeartbeat,
   validateEmergencyUnlock,
   requestEmergencyCodeToOwner,
@@ -1387,9 +1609,21 @@ module.exports = {
   getMachineId,
   getHardwareIdForDisplay,
   readStoredLicense,
+  writeStoredLicense,
+  clearStoredLicense,
   getLicenseStatus,
   getLicenseStatusForApp,
   getLoginLicenseDisplay,
   activateWithKey,
   fetchWaitersList,
+  reportHardwareIdToCloud,
+  claimByHardwareFromCloud,
+  claimByHardwareId: claimByHardwareFromCloud,
+  isRevocationCode,
+  purgeAllLicenseArtifacts,
+  isWithinCloudOfflineWindow,
+  HARD_LICENSE_FAIL_CODES,
+  REVOCATION_FAIL_CODES,
+  clearLicenseRevokedLocally,
+  readLocalRevokeBlock,
 };

@@ -614,8 +614,15 @@ function promptHardwareActivation(app, opts = {}) {
     let subText = "Programi hapet vetëm pasi të aktivizohet për këtë kompjuter.";
     if (reason === "trial_expired") {
       subText = "Prova 7-ditore ka përfunduar. Futni License Key vjetor.";
-    } else if (reason === "annual_expired") {
+    } else if (reason === "annual_expired" || reason === "expired") {
       subText = MSG_LICENSE_EXPIRED;
+    } else if (reason === "offline_expired") {
+      subText =
+        "Licenca ka skaduar offline. Lidhu me internet dhe aktivizo përsëri, ose kontaktoni " +
+        CONTACT_PHONE +
+        ".";
+    } else if (reason === "revoked") {
+      subText = "Licenca është çaktivizuar. Kontaktoni " + CONTACT_PHONE + " për çelës të ri.";
     } else if (reason === "trial_used") {
       subText = `Trial është përdorur në këtë kompjuter. Futni License Key vjetor. Kontaktoni ${CONTACT_PHONE}.`;
     }
@@ -628,6 +635,7 @@ function promptHardwareActivation(app, opts = {}) {
         ipcMain.removeHandler("hw-lic-try");
         ipcMain.removeHandler("hw-lic-close");
         ipcMain.removeHandler("hw-lic-whatsapp");
+        ipcMain.removeHandler("hw-lic-poll-cloud");
       } catch {
         /* ignore */
       }
@@ -700,7 +708,7 @@ function promptHardwareActivation(app, opts = {}) {
       <div class="err" id="e"></div>
       <button type="button" class="primary" id="b">Aktivizo</button>
       <button type="button" class="ghost" id="c">Mbyll</button>
-      <p class="phone">WhatsApp / tel: <b>${CONTACT_PHONE}</b><br>Dërgoni foto të ID-së (këto numra) për aktivizim.</p>
+      <p class="phone">WhatsApp / tel: <b>${CONTACT_PHONE}</b><br>Dërgoni foto të ID-së (këto numra) për aktivizim.<br>Duke pritur regjistrimin nga admini…</p>
     </div></div>
     <script>
       const { ipcRenderer } = require('electron');
@@ -743,10 +751,32 @@ function promptHardwareActivation(app, opts = {}) {
         if (e.key === 'Enter' && !btn.disabled) submit();
         if (e.key === 'Escape') quitApp();
       });
+      const poll = setInterval(async () => {
+        try {
+          const r = await ipcRenderer.invoke('hw-lic-poll-cloud');
+          if (r && r.ok) clearInterval(poll);
+        } catch (_e) {}
+      }, 3000);
       setTimeout(() => { try { emailEl.focus(); } catch (_e) {} }, 80);
     </script></body></html>`;
 
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+    ipcMain.handle("hw-lic-poll-cloud", async () => {
+      try {
+        const license = require(path.join(__dirname, "..", "license"));
+        const claimed = await license.claimByHardwareFromCloud(app);
+        if (claimed && claimed.valid && (claimed.celesi || claimed.license_key)) {
+          const ck = claimed.celesi || claimed.license_key;
+          writeStoredLicenseKey(app, ck, { source: "cloud" });
+          finish(true);
+          return { ok: true };
+        }
+        return { ok: false };
+      } catch {
+        return { ok: false };
+      }
+    });
 
     ipcMain.handle("hw-lic-whatsapp", async (_e, payload) => {
       try {
@@ -790,6 +820,16 @@ function promptHardwareActivation(app, opts = {}) {
             }
           }
           writeStoredLicenseKey(app, raw, { source: "hardware", match, email });
+          try {
+            const licenseMod = require(path.join(__dirname, "..", "license"));
+            const claimed = await licenseMod.claimByHardwareFromCloud(app);
+            if (claimed && claimed.valid && (claimed.celesi || claimed.license_key)) {
+              const ck = claimed.celesi || claimed.license_key;
+              writeStoredLicenseKey(app, ck, { source: "cloud", email });
+            }
+          } catch {
+            /* HMAC lokale mjafton; boot pret cloud */
+          }
           finish(true);
           return { ok: true };
         }
@@ -862,7 +902,7 @@ async function allowWithGraceOrBlock(app, reason, formatted) {
           title: "Licenca ka problem",
           message: "Licenca ka problem. Kontaktoni " + CONTACT_PHONE + ".",
           detail:
-            "Programi vazhdon me punu për 48 orë.\n\n" +
+            "Programi vazhdon me punu për 24 orë.\n\n" +
             `Mbeten rreth ${status.hoursLeft} orë.\n` +
             `ID i pajisjes: ${formatted}\n\n` +
             "Dërgoni foto të ID-së në WhatsApp (" +

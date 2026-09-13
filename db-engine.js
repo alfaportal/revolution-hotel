@@ -258,28 +258,59 @@ async function bootDatabase(cfg) {
     if (!inTx) saveDb();
   }
 
-/** Migrim një herë: reservations + reservations_local → tabela e përbashkët reservations. */
-function migrateReservationsUnifiedSchema(sqlRun, sqlAll, backupCtx) {
-  const cols = sqlAll("PRAGMA table_info(reservations)");
-  if (!cols.length) return;
-  if (cols.some((c) => c.name === "reservation_type")) return;
-
-  if (!backupCtx || typeof backupCtx.flushSave !== "function") {
-    throw new Error(
-      "Migrimi reservations-unified kërkon backup — konteksti i backup-it mungon.",
+  function tableExists(name) {
+    return (
+      sqlAll("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [name])
+        .length > 0
     );
   }
-  const backupDir = createPreMigrationBackup({
-    migrationId: "reservations-unified",
-    dbPath: backupCtx.dbPath,
-    flushSave: backupCtx.flushSave,
-    exportPlain: backupCtx.exportPlain,
-  });
-  console.log("[db-engine] Pre-migration backup (reservations-unified):", backupDir);
 
-  const hasLocal = sqlAll(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='reservations_local'",
-  ).length > 0;
+  /**
+   * Backup universal para çdo migrimi strukturor — thirret me emrin e migrimit.
+   * @returns {boolean} true nëse migrimi u ekzekutua
+   */
+  function runSchemaMigration(migrationId, backupCtx, needsMigration, applyMigration) {
+    if (typeof needsMigration !== "function" || typeof applyMigration !== "function") {
+      throw new Error(`Migrimi "${migrationId}": needsMigration dhe applyMigration duhen funksione.`);
+    }
+    if (!needsMigration()) return false;
+    if (!backupCtx || typeof backupCtx.flushSave !== "function") {
+      throw new Error(`Migrimi "${migrationId}" kërkon backup — konteksti i backup-it mungon.`);
+    }
+    const backupDir = createPreMigrationBackup(migrationId, backupCtx);
+    console.log(`[db-engine] Pre-migration backup (${migrationId}):`, backupDir);
+    applyMigration();
+    console.log(`[db-engine] migration OK: ${migrationId}`);
+    return true;
+  }
+
+  function migrateAddColumns(migrationId, tableName, columnDefs, backupCtx) {
+    runSchemaMigration(
+      migrationId,
+      backupCtx,
+      () => {
+        if (!tableExists(tableName)) return false;
+        const names = new Set(sqlAll(`PRAGMA table_info(${tableName})`).map((c) => c.name));
+        return columnDefs.some(([col]) => !names.has(col));
+      },
+      () => {
+        const names = new Set(sqlAll(`PRAGMA table_info(${tableName})`).map((c) => c.name));
+        for (const [col, decl] of columnDefs) {
+          if (!names.has(col)) {
+            sqlRun(`ALTER TABLE ${tableName} ADD COLUMN ${col} ${decl}`);
+          }
+        }
+      },
+    );
+  }
+
+/** Migrim një herë: reservations + reservations_local → tabela e përbashkët reservations. */
+function applyReservationsUnifiedSchemaMigration(sqlRun, sqlAll) {
+  const cols = sqlAll("PRAGMA table_info(reservations)");
+  const hasLocal =
+    sqlAll(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='reservations_local'",
+    ).length > 0;
 
   sqlRun("PRAGMA foreign_keys = OFF");
 
@@ -403,10 +434,15 @@ function migrateReservationsUnifiedSchema(sqlRun, sqlAll, backupCtx) {
   sqlRun("CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_legacy_local_uq ON reservations(legacy_local_id) WHERE legacy_local_id IS NOT NULL AND legacy_local_id <> ''");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_cloud ON reservations(cloud_id)");
   sqlRun("PRAGMA foreign_keys = ON");
-  console.log("[db-engine] reservations unified migration OK");
 }
 
 function initSchema() {
+  const backupCtx = {
+    dbPath,
+    flushSave,
+    exportPlain: () => Buffer.from(db.export()),
+  };
+
   sqlExec(`
   CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
@@ -708,105 +744,139 @@ function initSchema() {
   } catch (_) {
     /* mund të ketë dublikata të vjetra — mos ndalo start */
   }
-  const guestCols = sqlAll("PRAGMA table_info(guests)");
-  const guestColNames = new Set(guestCols.map((c) => c.name));
-  const guestMigrations = [
-    ["document_id", "TEXT NOT NULL DEFAULT ''"],
-    ["email", "TEXT NOT NULL DEFAULT ''"],
-    ["nationality", "TEXT NOT NULL DEFAULT ''"],
-    ["deposit", "REAL NOT NULL DEFAULT 0"],
-    ["notes", "TEXT NOT NULL DEFAULT ''"],
-    ["total_paid", "REAL NOT NULL DEFAULT 0"],
-  ];
-  for (const [col, decl] of guestMigrations) {
-    if (!guestColNames.has(col)) {
-      sqlRun(`ALTER TABLE guests ADD COLUMN ${col} ${decl}`);
-    }
-  }
+  migrateAddColumns(
+    "guests-columns",
+    "guests",
+    [
+      ["document_id", "TEXT NOT NULL DEFAULT ''"],
+      ["email", "TEXT NOT NULL DEFAULT ''"],
+      ["nationality", "TEXT NOT NULL DEFAULT ''"],
+      ["deposit", "REAL NOT NULL DEFAULT 0"],
+      ["notes", "TEXT NOT NULL DEFAULT ''"],
+      ["total_paid", "REAL NOT NULL DEFAULT 0"],
+    ],
+    backupCtx,
+  );
 
-  const reservationCols = sqlAll("PRAGMA table_info(reservations)");
-  const reservationColNames = new Set(reservationCols.map((c) => c.name));
-  const reservationMigrations = [
-    ["email", "TEXT NOT NULL DEFAULT ''"],
-    ["notes", "TEXT NOT NULL DEFAULT ''"],
-    ["deposit", "REAL NOT NULL DEFAULT 0"],
-  ];
-  for (const [col, decl] of reservationMigrations) {
-    if (!reservationColNames.has(col)) {
-      sqlRun(`ALTER TABLE reservations ADD COLUMN ${col} ${decl}`);
-    }
-  }
-  migrateReservationsUnifiedSchema(sqlRun, sqlAll, {
-    dbPath,
-    flushSave,
-    exportPlain: () => Buffer.from(db.export()),
-  });
+  migrateAddColumns(
+    "reservations-columns",
+    "reservations",
+    [
+      ["email", "TEXT NOT NULL DEFAULT ''"],
+      ["notes", "TEXT NOT NULL DEFAULT ''"],
+      ["deposit", "REAL NOT NULL DEFAULT 0"],
+    ],
+    backupCtx,
+  );
 
-  const staffCols = sqlAll("PRAGMA table_info(staff)");
-  if (!staffCols.some(c => c.name === "pin")) {
-    sqlRun("ALTER TABLE staff ADD COLUMN pin TEXT");
-  }
-  if (!staffCols.some(c => c.name === "card_uid")) {
-    sqlRun("ALTER TABLE staff ADD COLUMN card_uid TEXT");
-  }
-  if (!staffCols.some(c => c.name === "web_token")) {
-    sqlRun("ALTER TABLE staff ADD COLUMN web_token TEXT");
-  }
-  sqlRun("CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_web_token ON staff(web_token) WHERE web_token IS NOT NULL AND web_token <> ''");
-  const orderCols = sqlAll("PRAGMA table_info(orders)");
-  if (!orderCols.some(c => c.name === "payment_method")) {
-    sqlRun("ALTER TABLE orders ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
-  }
-  if (!orderCols.some(c => c.name === "batch_count")) {
-    sqlRun("ALTER TABLE orders ADD COLUMN batch_count INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!orderCols.some(c => c.name === "last_slip_items_json")) {
-    sqlRun("ALTER TABLE orders ADD COLUMN last_slip_items_json TEXT NOT NULL DEFAULT '[]'");
-  }
-  if (!orderCols.some(c => c.name === "cloud_order_id")) {
-    sqlRun("ALTER TABLE orders ADD COLUMN cloud_order_id TEXT");
-  }
-  if (!orderCols.some(c => c.name === "source_label")) {
-    sqlRun("ALTER TABLE orders ADD COLUMN source_label TEXT NOT NULL DEFAULT ''");
-  }
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_orders_cloud_id ON orders(cloud_order_id)");
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS pending_cloud_orders (
-      cloud_id       TEXT PRIMARY KEY,
-      payload_json   TEXT NOT NULL,
-      first_seen_at  TEXT NOT NULL,
-      last_seen_at   TEXT NOT NULL
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_pending_cloud_last_seen ON pending_cloud_orders(last_seen_at)");
-  const logCols = sqlAll("PRAGMA table_info(daily_log)");
-  if (!logCols.some(c => c.name === "payment_method")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
-  }
-  if (!logCols.some(c => c.name === "staff_id")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN staff_id INTEGER");
-  }
-  if (!logCols.some(c => c.name === "shift_id")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN shift_id INTEGER");
-  }
-  if (!logCols.some(c => c.name === "subtotal")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN subtotal REAL NOT NULL DEFAULT 0");
-  }
-  if (!logCols.some(c => c.name === "discount_total")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN discount_total REAL NOT NULL DEFAULT 0");
-  }
-  if (!logCols.some(c => c.name === "promotion_id")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN promotion_id INTEGER");
-  }
-  if (!logCols.some(c => c.name === "promotion_name")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN promotion_name TEXT NOT NULL DEFAULT ''");
-  }
-  if (!logCols.some(c => c.name === "cloud_sale_id")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN cloud_sale_id TEXT");
-  }
-  if (!logCols.some(c => c.name === "order_id")) {
-    sqlRun("ALTER TABLE daily_log ADD COLUMN order_id INTEGER");
-  }
+  runSchemaMigration(
+    "reservations-unified",
+    backupCtx,
+    () => {
+      const cols = sqlAll("PRAGMA table_info(reservations)");
+      if (!cols.length) return false;
+      return !cols.some((c) => c.name === "reservation_type");
+    },
+    () => applyReservationsUnifiedSchemaMigration(sqlRun, sqlAll),
+  );
+
+  runSchemaMigration(
+    "staff-columns",
+    backupCtx,
+    () => {
+      if (!tableExists("staff")) return false;
+      const staffCols = sqlAll("PRAGMA table_info(staff)");
+      return ["pin", "card_uid", "web_token"].some(
+        (col) => !staffCols.some((c) => c.name === col),
+      );
+    },
+    () => {
+      const staffCols = sqlAll("PRAGMA table_info(staff)");
+      if (!staffCols.some((c) => c.name === "pin")) {
+        sqlRun("ALTER TABLE staff ADD COLUMN pin TEXT");
+      }
+      if (!staffCols.some((c) => c.name === "card_uid")) {
+        sqlRun("ALTER TABLE staff ADD COLUMN card_uid TEXT");
+      }
+      if (!staffCols.some((c) => c.name === "web_token")) {
+        sqlRun("ALTER TABLE staff ADD COLUMN web_token TEXT");
+      }
+      sqlRun(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_web_token ON staff(web_token) WHERE web_token IS NOT NULL AND web_token <> ''",
+      );
+    },
+  );
+
+  runSchemaMigration(
+    "orders-columns",
+    backupCtx,
+    () => {
+      if (!tableExists("orders")) return false;
+      const orderCols = sqlAll("PRAGMA table_info(orders)");
+      return [
+        "payment_method",
+        "batch_count",
+        "last_slip_items_json",
+        "cloud_order_id",
+        "source_label",
+      ].some((col) => !orderCols.some((c) => c.name === col));
+    },
+    () => {
+      const orderCols = sqlAll("PRAGMA table_info(orders)");
+      if (!orderCols.some((c) => c.name === "payment_method")) {
+        sqlRun("ALTER TABLE orders ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
+      }
+      if (!orderCols.some((c) => c.name === "batch_count")) {
+        sqlRun("ALTER TABLE orders ADD COLUMN batch_count INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!orderCols.some((c) => c.name === "last_slip_items_json")) {
+        sqlRun("ALTER TABLE orders ADD COLUMN last_slip_items_json TEXT NOT NULL DEFAULT '[]'");
+      }
+      if (!orderCols.some((c) => c.name === "cloud_order_id")) {
+        sqlRun("ALTER TABLE orders ADD COLUMN cloud_order_id TEXT");
+      }
+      if (!orderCols.some((c) => c.name === "source_label")) {
+        sqlRun("ALTER TABLE orders ADD COLUMN source_label TEXT NOT NULL DEFAULT ''");
+      }
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_orders_cloud_id ON orders(cloud_order_id)");
+    },
+  );
+
+  runSchemaMigration(
+    "pending-cloud-orders-table",
+    backupCtx,
+    () => !tableExists("pending_cloud_orders"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS pending_cloud_orders (
+          cloud_id       TEXT PRIMARY KEY,
+          payload_json   TEXT NOT NULL,
+          first_seen_at  TEXT NOT NULL,
+          last_seen_at   TEXT NOT NULL
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_pending_cloud_last_seen ON pending_cloud_orders(last_seen_at)",
+      );
+    },
+  );
+
+  migrateAddColumns(
+    "daily-log-columns",
+    "daily_log",
+    [
+      ["payment_method", "TEXT NOT NULL DEFAULT 'cash'"],
+      ["staff_id", "INTEGER"],
+      ["shift_id", "INTEGER"],
+      ["subtotal", "REAL NOT NULL DEFAULT 0"],
+      ["discount_total", "REAL NOT NULL DEFAULT 0"],
+      ["promotion_id", "INTEGER"],
+      ["promotion_name", "TEXT NOT NULL DEFAULT ''"],
+      ["cloud_sale_id", "TEXT"],
+      ["order_id", "INTEGER"],
+    ],
+    backupCtx,
+  );
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_cloud_sale ON daily_log(cloud_sale_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_order_id ON daily_log(order_id)");
   try {
@@ -816,177 +886,222 @@ function initSchema() {
   } catch {
     /* ekzistojnë duplikata — rebuild i pastron */
   }
-  const catCols = sqlAll("PRAGMA table_info(categories)");
-  if (!catCols.some(c => c.name === "active")) {
-    sqlRun("ALTER TABLE categories ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
-  }
-  const menuCols = sqlAll("PRAGMA table_info(menu_items)");
-  if (!menuCols.some(c => c.name === "photo")) {
-    sqlRun("ALTER TABLE menu_items ADD COLUMN photo TEXT");
-  }
-  if (!menuCols.some(c => c.name === "stock_qty")) {
-    sqlRun("ALTER TABLE menu_items ADD COLUMN stock_qty REAL NOT NULL DEFAULT 0");
-  }
-  if (!menuCols.some(c => c.name === "low_stock_threshold")) {
-    sqlRun("ALTER TABLE menu_items ADD COLUMN low_stock_threshold REAL NOT NULL DEFAULT 0");
-  }
-  if (!menuCols.some(c => c.name === "vat_category")) {
-    sqlRun("ALTER TABLE menu_items ADD COLUMN vat_category TEXT NOT NULL DEFAULT '18'");
-  }
-  if (!menuCols.some(c => c.name === "sort_order")) {
-    sqlRun("ALTER TABLE menu_items ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
-    const rows = sqlAll("SELECT id, category FROM menu_items ORDER BY category, name, id");
-    let prevCat = null;
-    let idx = 0;
-    for (const r of rows) {
-      if (r.category !== prevCat) {
-        prevCat = r.category;
-        idx = 0;
+
+  migrateAddColumns(
+    "categories-active",
+    "categories",
+    [["active", "INTEGER NOT NULL DEFAULT 1"]],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "menu-items-columns",
+    backupCtx,
+    () => {
+      if (!tableExists("menu_items")) return false;
+      const menuCols = sqlAll("PRAGMA table_info(menu_items)");
+      return [
+        "photo",
+        "stock_qty",
+        "low_stock_threshold",
+        "vat_category",
+        "sort_order",
+        "barcode",
+      ].some((col) => !menuCols.some((c) => c.name === col));
+    },
+    () => {
+      const menuCols = sqlAll("PRAGMA table_info(menu_items)");
+      if (!menuCols.some((c) => c.name === "photo")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN photo TEXT");
       }
-      sqlRun("UPDATE menu_items SET sort_order = ? WHERE id = ?", [idx, r.id]);
-      idx += 1;
-    }
-  }
-  if (!menuCols.some(c => c.name === "barcode")) {
-    sqlRun("ALTER TABLE menu_items ADD COLUMN barcode TEXT");
-  }
-  const tableCols = sqlAll("PRAGMA table_info(tables)");
-  if (!tableCols.some(c => c.name === "display_name")) {
-    sqlRun("ALTER TABLE tables ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
-  }
-  if (!tableCols.some(c => c.name === "zone_id")) {
-    sqlRun("ALTER TABLE tables ADD COLUMN zone_id INTEGER");
-  }
-  if (!tableCols.some(c => c.name === "sort_order")) {
-    sqlRun("ALTER TABLE tables ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
-  }
-  const zoneCount = sqlGet("SELECT COUNT(*) AS c FROM table_zones").c;
-  if (zoneCount === 0) {
-    const L = localeLayoutLabels();
-    /* Hotel: zona F&B — Restoranti, Bari, Terrasa */
-    sqlRun("INSERT INTO table_zones (name, sort_order) VALUES (?, 0)", ["Restoranti"]);
-    sqlRun("INSERT INTO table_zones (name, sort_order) VALUES (?, 1)", ["Bari"]);
-    sqlRun("INSERT INTO table_zones (name, sort_order) VALUES (?, 2)", ["Terrasa"]);
-    const defaultZone = sqlGet("SELECT id FROM table_zones ORDER BY sort_order, id LIMIT 1");
-    if (defaultZone?.id) {
-      sqlRun("UPDATE tables SET zone_id = ? WHERE zone_id IS NULL", [defaultZone.id]);
-    }
-    sqlRun(
-      `UPDATE tables SET display_name = ? || number
-       WHERE display_name IS NULL OR TRIM(display_name) = ''`,
-      [L.tablePrefix],
-    );
-  }
-  const shiftCols = sqlAll("PRAGMA table_info(waiter_shifts)");
-  if (!shiftCols.some(c => c.name === "opening_cash")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN opening_cash REAL");
-  }
-  if (!shiftCols.some(c => c.name === "closing_cash_actual")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN closing_cash_actual REAL");
-  }
-  if (!shiftCols.some(c => c.name === "expected_closing_cash")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN expected_closing_cash REAL");
-  }
-  if (!shiftCols.some(c => c.name === "cash_difference")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN cash_difference REAL");
-  }
-  if (!shiftCols.some(c => c.name === "cash_sales_total")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN cash_sales_total REAL");
-  }
-  if (!shiftCols.some(c => c.name === "card_sales_total")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN card_sales_total REAL");
-  }
-  if (!shiftCols.some(c => c.name === "order_count_total")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN order_count_total INTEGER");
-  }
-  if (!shiftCols.some(c => c.name === "total_sales")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN total_sales REAL");
-  }
-  if (!shiftCols.some(c => c.name === "handed_over_to_staff_id")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN handed_over_to_staff_id INTEGER");
-  }
-  if (!shiftCols.some(c => c.name === "handover_id")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN handover_id INTEGER");
-  }
-  if (!shiftCols.some(c => c.name === "discount_total")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN discount_total REAL");
-  }
-  if (!shiftCols.some(c => c.name === "closing_reason")) {
-    sqlRun("ALTER TABLE waiter_shifts ADD COLUMN closing_reason TEXT NOT NULL DEFAULT ''");
-  }
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS shift_handovers (
-      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-      from_shift_id         INTEGER NOT NULL,
-      from_staff_id         INTEGER NOT NULL,
-      from_waiter_name      TEXT NOT NULL,
-      to_staff_id           INTEGER NOT NULL,
-      to_waiter_name        TEXT NOT NULL,
-      handover_cash         REAL NOT NULL,
-      expected_cash         REAL NOT NULL,
-      closing_discrepancy   REAL NOT NULL DEFAULT 0,
-      opening_cash_accepted REAL,
-      opening_discrepancy   REAL,
-      status                TEXT NOT NULL DEFAULT 'pending',
-      created_at            TEXT NOT NULL,
-      accepted_at           TEXT,
-      to_shift_id           INTEGER,
-      FOREIGN KEY (from_shift_id) REFERENCES waiter_shifts(id)
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_handover_to_pending ON shift_handovers(to_staff_id, status)");
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS expenses (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      expense_date  TEXT NOT NULL,
-      vendor_name   TEXT NOT NULL DEFAULT '',
-      description   TEXT NOT NULL DEFAULT '',
-      category      TEXT NOT NULL DEFAULT 'tjeter',
-      amount        REAL NOT NULL DEFAULT 0,
-      entered_by    TEXT NOT NULL DEFAULT '',
-      created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)");
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS atk_payroll (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      year_month TEXT NOT NULL,
-      first_name TEXT NOT NULL DEFAULT '',
-      last_name TEXT NOT NULL DEFAULT '',
-      individual_number TEXT NOT NULL DEFAULT '',
-      gross_salary REAL NOT NULL DEFAULT 0,
-      employee_pension REAL NOT NULL DEFAULT 0,
-      employer_pension REAL NOT NULL DEFAULT 0,
-      employee_supplement REAL NOT NULL DEFAULT 0,
-      employer_supplement REAL NOT NULL DEFAULT 0,
-      primary_job INTEGER NOT NULL DEFAULT 1,
-      include_contributions INTEGER NOT NULL DEFAULT 1,
-      apply_wage_tax INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_atk_payroll_ym ON atk_payroll(year_month)");
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS atk_rent (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      year_month TEXT NOT NULL,
-      nui TEXT NOT NULL DEFAULT '',
-      party_name TEXT NOT NULL DEFAULT '',
-      interest REAL NOT NULL DEFAULT 0,
-      royalties REAL NOT NULL DEFAULT 0,
-      lottery REAL NOT NULL DEFAULT 0,
-      rent_gross REAL NOT NULL DEFAULT 0,
-      non_resident_entertainment REAL NOT NULL DEFAULT 0,
-      non_resident_services REAL NOT NULL DEFAULT 0,
-      special_payments REAL NOT NULL DEFAULT 0,
-      area_m2 REAL NOT NULL DEFAULT 0,
-      monthly_rent REAL NOT NULL DEFAULT 0,
-      country TEXT NOT NULL DEFAULT 'Kosovë',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_atk_rent_ym ON atk_rent(year_month)");
+      if (!menuCols.some((c) => c.name === "stock_qty")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN stock_qty REAL NOT NULL DEFAULT 0");
+      }
+      if (!menuCols.some((c) => c.name === "low_stock_threshold")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN low_stock_threshold REAL NOT NULL DEFAULT 0");
+      }
+      if (!menuCols.some((c) => c.name === "vat_category")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN vat_category TEXT NOT NULL DEFAULT '18'");
+      }
+      if (!menuCols.some((c) => c.name === "sort_order")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+        const rows = sqlAll("SELECT id, category FROM menu_items ORDER BY category, name, id");
+        let prevCat = null;
+        let idx = 0;
+        for (const r of rows) {
+          if (r.category !== prevCat) {
+            prevCat = r.category;
+            idx = 0;
+          }
+          sqlRun("UPDATE menu_items SET sort_order = ? WHERE id = ?", [idx, r.id]);
+          idx += 1;
+        }
+      }
+      if (!menuCols.some((c) => c.name === "barcode")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN barcode TEXT");
+      }
+    },
+  );
+
+  migrateAddColumns(
+    "tables-columns",
+    "tables",
+    [
+      ["display_name", "TEXT NOT NULL DEFAULT ''"],
+      ["zone_id", "INTEGER"],
+      ["sort_order", "INTEGER NOT NULL DEFAULT 0"],
+    ],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "tables-zones-default",
+    backupCtx,
+    () => tableExists("table_zones") && sqlGet("SELECT COUNT(*) AS c FROM table_zones").c === 0,
+    () => {
+      const L = localeLayoutLabels();
+      sqlRun("INSERT INTO table_zones (name, sort_order) VALUES (?, 0)", ["Restoranti"]);
+      sqlRun("INSERT INTO table_zones (name, sort_order) VALUES (?, 1)", ["Bari"]);
+      sqlRun("INSERT INTO table_zones (name, sort_order) VALUES (?, 2)", ["Terrasa"]);
+      const defaultZone = sqlGet("SELECT id FROM table_zones ORDER BY sort_order, id LIMIT 1");
+      if (defaultZone?.id) {
+        sqlRun("UPDATE tables SET zone_id = ? WHERE zone_id IS NULL", [defaultZone.id]);
+      }
+      sqlRun(
+        `UPDATE tables SET display_name = ? || number
+         WHERE display_name IS NULL OR TRIM(display_name) = ''`,
+        [L.tablePrefix],
+      );
+    },
+  );
+
+  migrateAddColumns(
+    "waiter-shifts-columns",
+    "waiter_shifts",
+    [
+      ["opening_cash", "REAL"],
+      ["closing_cash_actual", "REAL"],
+      ["expected_closing_cash", "REAL"],
+      ["cash_difference", "REAL"],
+      ["cash_sales_total", "REAL"],
+      ["card_sales_total", "REAL"],
+      ["order_count_total", "INTEGER"],
+      ["total_sales", "REAL"],
+      ["handed_over_to_staff_id", "INTEGER"],
+      ["handover_id", "INTEGER"],
+      ["discount_total", "REAL"],
+      ["closing_reason", "TEXT NOT NULL DEFAULT ''"],
+    ],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "shift-handovers-table",
+    backupCtx,
+    () => !tableExists("shift_handovers"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS shift_handovers (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          from_shift_id         INTEGER NOT NULL,
+          from_staff_id         INTEGER NOT NULL,
+          from_waiter_name      TEXT NOT NULL,
+          to_staff_id           INTEGER NOT NULL,
+          to_waiter_name        TEXT NOT NULL,
+          handover_cash         REAL NOT NULL,
+          expected_cash         REAL NOT NULL,
+          closing_discrepancy   REAL NOT NULL DEFAULT 0,
+          opening_cash_accepted REAL,
+          opening_discrepancy   REAL,
+          status                TEXT NOT NULL DEFAULT 'pending',
+          created_at            TEXT NOT NULL,
+          accepted_at           TEXT,
+          to_shift_id           INTEGER,
+          FOREIGN KEY (from_shift_id) REFERENCES waiter_shifts(id)
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_handover_to_pending ON shift_handovers(to_staff_id, status)",
+      );
+    },
+  );
+
+  runSchemaMigration(
+    "expenses-table",
+    backupCtx,
+    () => !tableExists("expenses"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS expenses (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          expense_date  TEXT NOT NULL,
+          vendor_name   TEXT NOT NULL DEFAULT '',
+          description   TEXT NOT NULL DEFAULT '',
+          category      TEXT NOT NULL DEFAULT 'tjeter',
+          amount        REAL NOT NULL DEFAULT 0,
+          entered_by    TEXT NOT NULL DEFAULT '',
+          created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+      `);
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)");
+    },
+  );
+
+  runSchemaMigration(
+    "atk-payroll-table",
+    backupCtx,
+    () => !tableExists("atk_payroll"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS atk_payroll (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          year_month TEXT NOT NULL,
+          first_name TEXT NOT NULL DEFAULT '',
+          last_name TEXT NOT NULL DEFAULT '',
+          individual_number TEXT NOT NULL DEFAULT '',
+          gross_salary REAL NOT NULL DEFAULT 0,
+          employee_pension REAL NOT NULL DEFAULT 0,
+          employer_pension REAL NOT NULL DEFAULT 0,
+          employee_supplement REAL NOT NULL DEFAULT 0,
+          employer_supplement REAL NOT NULL DEFAULT 0,
+          primary_job INTEGER NOT NULL DEFAULT 1,
+          include_contributions INTEGER NOT NULL DEFAULT 1,
+          apply_wage_tax INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+      `);
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_atk_payroll_ym ON atk_payroll(year_month)");
+    },
+  );
+
+  runSchemaMigration(
+    "atk-rent-table",
+    backupCtx,
+    () => !tableExists("atk_rent"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS atk_rent (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          year_month TEXT NOT NULL,
+          nui TEXT NOT NULL DEFAULT '',
+          party_name TEXT NOT NULL DEFAULT '',
+          interest REAL NOT NULL DEFAULT 0,
+          royalties REAL NOT NULL DEFAULT 0,
+          lottery REAL NOT NULL DEFAULT 0,
+          rent_gross REAL NOT NULL DEFAULT 0,
+          non_resident_entertainment REAL NOT NULL DEFAULT 0,
+          non_resident_services REAL NOT NULL DEFAULT 0,
+          special_payments REAL NOT NULL DEFAULT 0,
+          area_m2 REAL NOT NULL DEFAULT 0,
+          monthly_rent REAL NOT NULL DEFAULT 0,
+          country TEXT NOT NULL DEFAULT 'Kosovë',
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+      `);
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_atk_rent_ym ON atk_rent(year_month)");
+    },
+  );
+
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_date_status ON daily_log(date, status)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_orders_status_table ON orders(status, table_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)");
@@ -1003,55 +1118,78 @@ function initSchema() {
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_room ON reservations(room_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations(check_in_date, check_out_date)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status)");
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS reservation_services (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      reservation_id  INTEGER NOT NULL,
-      service_id      INTEGER NOT NULL,
-      quantity        INTEGER NOT NULL DEFAULT 1,
-      unit_price      REAL NOT NULL DEFAULT 0,
-      amount          REAL NOT NULL DEFAULT 0,
-      notes           TEXT NOT NULL DEFAULT '',
-      FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
-      FOREIGN KEY (service_id) REFERENCES services(id)
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_reservation_services_res ON reservation_services(reservation_id)");
-  sqlRun(`
-    CREATE TABLE IF NOT EXISTS reservation_qr_pending (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      reservation_id  INTEGER NOT NULL,
-      room_id         INTEGER NOT NULL,
-      line_type       TEXT NOT NULL DEFAULT 'menu',
-      service_id      INTEGER,
-      menu_item_id    INTEGER,
-      description     TEXT NOT NULL,
-      quantity        INTEGER NOT NULL DEFAULT 1,
-      unit_price      REAL NOT NULL DEFAULT 0,
-      amount          REAL NOT NULL DEFAULT 0,
-      notes           TEXT NOT NULL DEFAULT '',
-      FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
-    )
-  `);
-  sqlRun("CREATE INDEX IF NOT EXISTS idx_reservation_qr_pending_res ON reservation_qr_pending(reservation_id)");
-  try {
-    const piCols = sqlAll("PRAGMA table_info(purchase_invoices)");
-    if (!piCols.some((c) => c.name === "supplier_nui")) {
-      sqlRun("ALTER TABLE purchase_invoices ADD COLUMN supplier_nui TEXT NOT NULL DEFAULT ''");
-    }
-    if (!piCols.some((c) => c.name === "supplier_vat")) {
-      sqlRun("ALTER TABLE purchase_invoices ADD COLUMN supplier_vat TEXT NOT NULL DEFAULT ''");
-    }
-    if (!piCols.some((c) => c.name === "vat_rate")) {
-      sqlRun("ALTER TABLE purchase_invoices ADD COLUMN vat_rate REAL NOT NULL DEFAULT 18");
-    }
-    if (!piCols.some((c) => c.name === "purchase_kind")) {
-      sqlRun("ALTER TABLE purchase_invoices ADD COLUMN purchase_kind TEXT NOT NULL DEFAULT 'goods'");
-    }
-  } catch (_) { /* */ }
-  try {
-    const piiCols = sqlAll("PRAGMA table_info(purchase_invoice_items)");
-    if (!piiCols.some((c) => c.name === "vat_rate")) {
+  runSchemaMigration(
+    "reservation-services-table",
+    backupCtx,
+    () => !tableExists("reservation_services"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS reservation_services (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          reservation_id  INTEGER NOT NULL,
+          service_id      INTEGER NOT NULL,
+          quantity        INTEGER NOT NULL DEFAULT 1,
+          unit_price      REAL NOT NULL DEFAULT 0,
+          amount          REAL NOT NULL DEFAULT 0,
+          notes           TEXT NOT NULL DEFAULT '',
+          FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+          FOREIGN KEY (service_id) REFERENCES services(id)
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_reservation_services_res ON reservation_services(reservation_id)",
+      );
+    },
+  );
+
+  runSchemaMigration(
+    "reservation-qr-pending-table",
+    backupCtx,
+    () => !tableExists("reservation_qr_pending"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS reservation_qr_pending (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          reservation_id  INTEGER NOT NULL,
+          room_id         INTEGER NOT NULL,
+          line_type       TEXT NOT NULL DEFAULT 'menu',
+          service_id      INTEGER,
+          menu_item_id    INTEGER,
+          description     TEXT NOT NULL,
+          quantity        INTEGER NOT NULL DEFAULT 1,
+          unit_price      REAL NOT NULL DEFAULT 0,
+          amount          REAL NOT NULL DEFAULT 0,
+          notes           TEXT NOT NULL DEFAULT '',
+          FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_reservation_qr_pending_res ON reservation_qr_pending(reservation_id)",
+      );
+    },
+  );
+
+  migrateAddColumns(
+    "purchase-invoices-columns",
+    "purchase_invoices",
+    [
+      ["supplier_nui", "TEXT NOT NULL DEFAULT ''"],
+      ["supplier_vat", "TEXT NOT NULL DEFAULT ''"],
+      ["vat_rate", "REAL NOT NULL DEFAULT 18"],
+      ["purchase_kind", "TEXT NOT NULL DEFAULT 'goods'"],
+    ],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "purchase-invoice-items-vat-rate",
+    backupCtx,
+    () => {
+      if (!tableExists("purchase_invoice_items")) return false;
+      const piiCols = sqlAll("PRAGMA table_info(purchase_invoice_items)");
+      return !piiCols.some((c) => c.name === "vat_rate");
+    },
+    () => {
       sqlRun("ALTER TABLE purchase_invoice_items ADD COLUMN vat_rate REAL NOT NULL DEFAULT 18");
       sqlRun(`
         UPDATE purchase_invoice_items
@@ -1060,27 +1198,29 @@ function initSchema() {
           18
         )
       `);
-    }
-  } catch (_) { /* */ }
-  try {
-    const exCols = sqlAll("PRAGMA table_info(expenses)");
-    if (!exCols.some((c) => c.name === "vendor_nui")) {
-      sqlRun("ALTER TABLE expenses ADD COLUMN vendor_nui TEXT NOT NULL DEFAULT ''");
-    }
-    if (!exCols.some((c) => c.name === "vat_rate")) {
-      sqlRun("ALTER TABLE expenses ADD COLUMN vat_rate REAL NOT NULL DEFAULT 18");
-    }
-  } catch (_) { /* */ }
+    },
+  );
+
+  migrateAddColumns(
+    "expenses-columns",
+    "expenses",
+    [
+      ["vendor_nui", "TEXT NOT NULL DEFAULT ''"],
+      ["vat_rate", "REAL NOT NULL DEFAULT 18"],
+    ],
+    backupCtx,
+  );
+
   const count = sqlGet("SELECT COUNT(*) AS c FROM categories").c;
   if (count === 0) {
     VERSION.defaultCategories.forEach((name, i) => {
       sqlRun("INSERT INTO categories (name, sort_order) VALUES (?, ?)", [name, i]);
     });
   }
-  try {
-    const svcCols = sqlAll("PRAGMA table_info(services)");
-    const svcColNames = new Set(svcCols.map((c) => c.name));
-    const svcMigrations = [
+  migrateAddColumns(
+    "services-columns",
+    "services",
+    [
       ["category_id", "INTEGER"],
       ["icon", "TEXT NOT NULL DEFAULT ''"],
       ["photo", "TEXT NOT NULL DEFAULT ''"],
@@ -1088,50 +1228,38 @@ function initSchema() {
       ["price_mode", "TEXT NOT NULL DEFAULT 'fixed'"],
       ["active", "INTEGER NOT NULL DEFAULT 1"],
       ["vat_category", "TEXT NOT NULL DEFAULT '18'"],
-    ];
-    for (const [col, decl] of svcMigrations) {
-      if (!svcColNames.has(col)) {
-        sqlRun(`ALTER TABLE services ADD COLUMN ${col} ${decl}`);
-      }
-    }
-  } catch (_) { /* */ }
+    ],
+    backupCtx,
+  );
 
-  try {
-    const catCols = sqlAll("PRAGMA table_info(service_categories)");
-    if (!catCols.some((c) => c.name === "photo")) {
-      sqlRun("ALTER TABLE service_categories ADD COLUMN photo TEXT NOT NULL DEFAULT ''");
-    }
-  } catch (_) { /* */ }
+  migrateAddColumns(
+    "service-categories-photo",
+    "service_categories",
+    [["photo", "TEXT NOT NULL DEFAULT ''"]],
+    backupCtx,
+  );
 
-  try {
-    const rcCols = sqlAll("PRAGMA table_info(room_charges)");
-    const rcNames = new Set(rcCols.map((c) => c.name));
-    const rcMigrations = [
+  migrateAddColumns(
+    "room-charges-columns",
+    "room_charges",
+    [
       ["service_id", "INTEGER"],
       ["menu_item_id", "INTEGER"],
       ["vat_category", "TEXT NOT NULL DEFAULT '18'"],
-    ];
-    for (const [col, decl] of rcMigrations) {
-      if (!rcNames.has(col)) {
-        sqlRun(`ALTER TABLE room_charges ADD COLUMN ${col} ${decl}`);
-      }
-    }
-  } catch (_) { /* */ }
+    ],
+    backupCtx,
+  );
 
-  try {
-    const printerCols = sqlAll("PRAGMA table_info(printers)");
-    const printerColNames = new Set(printerCols.map((c) => c.name));
-    const printerMigrations = [
+  migrateAddColumns(
+    "printers-columns",
+    "printers",
+    [
       ["connection_type", "TEXT NOT NULL DEFAULT 'usb'"],
       ["ip_address", "TEXT NOT NULL DEFAULT ''"],
       ["port", "INTEGER NOT NULL DEFAULT 9100"],
-    ];
-    for (const [col, decl] of printerMigrations) {
-      if (!printerColNames.has(col)) {
-        sqlRun(`ALTER TABLE printers ADD COLUMN ${col} ${decl}`);
-      }
-    }
-  } catch (_) { /* */ }
+    ],
+    backupCtx,
+  );
 
   try {
     ensureHotelServiceCatalogSeed(sqlGet, sqlRun, sqlAll);
@@ -1154,14 +1282,28 @@ function initSchema() {
     /* ignore */
   }
 
-  // HAPI 1 — skema fiskale (tabela të reja; nuk prek funksionet e mbrojtura)
+  runSchemaMigration(
+    "fiscal-schema",
+    backupCtx,
+    () => !tableExists("fiscal_receipts"),
+    () => {
+      const { initFiscalDB } = require("./fiscal/fiscal-db");
+      initFiscalDB({
+        exec: (sql) => sqlExec(sql),
+        run: (sql) => sqlRun(sql),
+        get: (sql, params) => sqlGet(sql, params || []),
+      });
+    },
+  );
   try {
-    const { initFiscalDB } = require("./fiscal/fiscal-db");
-    initFiscalDB({
-      exec: (sql) => sqlExec(sql),
-      run: (sql) => sqlRun(sql),
-      get: (sql, params) => sqlGet(sql, params || []),
-    });
+    if (tableExists("fiscal_receipts")) {
+      const { initFiscalDB } = require("./fiscal/fiscal-db");
+      initFiscalDB({
+        exec: (sql) => sqlExec(sql),
+        run: (sql) => sqlRun(sql),
+        get: (sql, params) => sqlGet(sql, params || []),
+      });
+    }
   } catch (e) {
     console.warn("[fiscal-db] initFiscalDB:", e.message);
   }

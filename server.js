@@ -3,10 +3,18 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
+/** Urdhër pronari: asgjë te ATK deri HOTEL_ATK_SEND_ALLOWED=1 */
+if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
+  process.env.FISCAL_LOCAL_RUN = "1";
+  process.env.ATK_AUTO_SEND = "0";
+}
 const db = require("./database");
 const printer = require("./printer");
 const fiscalRegister = require("./fiscal-register");
 const fiscalConfig = require("./fiscal/fiscal-config");
+const fiscalTestMode = require("./fiscal/fiscal-test-mode-store");
+const { getAtkStatus } = require("./fiscal/fiscal-atk-api");
+const { getKeysDir } = require("./fiscal/fiscal-crypto");
 const fiscalPayment = require("./fiscal/fiscal-payment");
 const fiscalCorrection = require("./fiscal/fiscal-correction");
 const fiscalOffline = require("./fiscal/fiscal-offline");
@@ -5587,10 +5595,14 @@ function fiscalDevToolsForbidden(res) {
 app.get("/api/fiscal-config", auth, adminOnly, (_req, res) => {
   try {
     const settings = fiscalConfig.getFiscalSettings();
+    const missing = fiscalConfig.getMissingFiscalProfileFields?.(settings) || [];
     res.json({
       ...settings,
       activation: fiscalConfig.getFiscalActivationCheck(settings),
       fiscal_release_locked: !!fiscalConfig.isFiscalReleaseLocked?.(),
+      fiscal_profile_complete: !!fiscalConfig.isFiscalProfileComplete?.(settings),
+      fiscal_missing_fields: missing,
+      fiscal_local_only: !!fiscalTestMode.isLocalPrintOnly?.(),
       dev_tools_enabled: !!fiscalConfig.isFiscalDevToolsEnabled?.(),
     });
   } catch (e) {
@@ -5605,7 +5617,7 @@ app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
       body.fiscal_enabled = false;
     }
     const saved = fiscalConfig.saveFiscalSettings(body);
-    const activation = fiscalConfig.getFiscalActivationCheck(saved);
+    const missing = fiscalConfig.getMissingFiscalProfileFields?.(saved) || [];
     try {
       if (saved.fiscal_enabled) {
         fiscalOffline.startOfflineMonitor();
@@ -5618,18 +5630,60 @@ app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
     res.json({
       ok: true,
       ...saved,
-      activation,
+      activation: fiscalConfig.getFiscalActivationCheck(saved),
       fiscal_release_locked: !!fiscalConfig.isFiscalReleaseLocked?.(),
+      fiscal_profile_complete: !!fiscalConfig.isFiscalProfileComplete?.(saved),
+      fiscal_missing_fields: missing,
+      fiscal_local_only: !!fiscalTestMode.isLocalPrintOnly?.(),
     });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
 });
 
+app.get("/api/fiscal/atk-status", auth, adminOnly, async (_req, res) => {
+  try {
+    try {
+      if (typeof fiscalOffline.checkInternetConnection === "function") {
+        await fiscalOffline.checkInternetConnection();
+      }
+    } catch {
+      /* */
+    }
+    let offline = null;
+    let offlineWarning = null;
+    try {
+      offline = fiscalOffline.getOfflineStatus?.() || null;
+      offlineWarning = fiscalOffline.getOfflineWarning?.() || null;
+    } catch {
+      /* */
+    }
+    res.json({
+      ok: true,
+      atk: getAtkStatus(),
+      offline,
+      offline_warning: offlineWarning,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/fiscal/open-keys-folder", auth, adminOnly, (_req, res) => {
+  try {
+    const dir = getKeysDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const { exec } = require("child_process");
+    exec(`explorer "${dir.replace(/"/g, "")}"`);
+    res.json({ ok: true, keys_dir: dir });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
 /* Lista e kuponëve fiskalë — vetëm pronari */
 app.get("/api/fiscal-receipts", auth, adminOnly, (req, res) => {
   try {
-    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5643,7 +5697,6 @@ app.get("/api/fiscal-receipts", auth, adminOnly, (req, res) => {
 
 app.get("/api/fiscal-receipts/:id", auth, adminOnly, (req, res) => {
   try {
-    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5661,7 +5714,6 @@ app.get("/api/fiscal-receipts/:id", auth, adminOnly, (req, res) => {
 /** Print nga Print Preview — reprint origjinal, pa INSERT të ri. */
 app.post("/api/fiscal-receipts/:id/print", auth, adminOnly, async (req, res) => {
   try {
-    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5778,7 +5830,6 @@ app.get("/api/fiscal-enabled", auth, (_req, res) => {
 /* HAPI 7 — kuponë korrigjues (vetëm pronari) */
 app.get("/api/fiscal-correction/lookup/:nuikf", auth, adminOnly, (req, res) => {
   try {
-    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -5800,7 +5851,6 @@ app.get("/api/fiscal-correction/lookup/:nuikf", auth, adminOnly, (req, res) => {
 
 app.post("/api/fiscal-correction", auth, adminOnly, async (req, res) => {
   try {
-    if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -6631,6 +6681,17 @@ const MAX_PORT = START_PORT + 10;
 
 function onServerListening(server, port) {
   process.env.ACTUAL_PORT = String(port);
+  try {
+    db.setSetting("local_print_only", "1");
+    if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
+      db.setSetting("atk_send_allowed", "0");
+      db.setSetting("atk_auto_send", "0");
+      process.env.FISCAL_LOCAL_RUN = "1";
+      process.env.ATK_AUTO_SEND = "0";
+    }
+  } catch (e) {
+    console.warn("[fiscal] local lockdown:", e.message);
+  }
   if (process.env.DB_PATH) {
     try {
       fs.writeFileSync(

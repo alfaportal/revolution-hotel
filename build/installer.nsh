@@ -1,4 +1,5 @@
-; License kept. Wipe local data on install. No program JS changes.
+; UPDATE (isUpdated): ruan DB, licencë, settings — vetëm skedarët e programit.
+; Instalim i ri / çinstalim i vërtetë: pastron app + licencë + salt (HARDWARE_ID i ri).
 ; Lock script: build\hotel-lock.ps1
 ;
 ; Shortcuts point to ProgramData\...\Start.cmd (NOT $INSTDIR, NOT %LOCALAPPDATA%).
@@ -44,6 +45,11 @@
   !insertmacro WipeHotelLocalDataDir "$LOCALAPPDATA\Revolution HOTEL Pako AI"
 !macroend
 
+!macro WipeHotelLicenseDir
+  IfFileExists "$APPDATA\RevolutionInvest\HotelLicense\*" 0 +2
+    RMDir /r "$APPDATA\RevolutionInvest\HotelLicense"
+!macroend
+
 !macro HotelLaunchDir
   ; Shared for all users (perMachine). Do not use LOCALAPPDATA (Admin-only path).
   ; ReadEnvStr — $COMMONAPPDATA breaks when PRODUCT_NAME has spaces (NSIS var parse).
@@ -70,13 +76,10 @@
   !insertmacro HotelLaunchDir
   RMDir /r "$R7"
   RMDir /r "$LOCALAPPDATA\${PRODUCT_NAME}-Launch"
-  ; Hardware lock: fshi salt/hw-lic VETËM në çinstalim të vërtetë.
-  ; Gjatë UPDATE (instalim mbi të vjetrin) electron-builder e vë isUpdated=true
-  ; — MOS fshi, përndryshe HARDWARE_ID ndryshon dhe licenca thyhet.
+  ; App + licencë: fshi VETËM në çinstalim të vërtetë (jo UPDATE).
   ${ifNot} ${isUpdated}
-    Delete "$APPDATA\RevolutionInvest\HotelLicense\.install-salt"
-    Delete "$APPDATA\RevolutionInvest\HotelLicense\.hw-lic"
-    RMDir "$APPDATA\RevolutionInvest\HotelLicense"
+    !insertmacro WipeAllHotelLocalData
+    !insertmacro WipeHotelLicenseDir
   ${endIf}
 !macroend
 
@@ -104,7 +107,11 @@
   SetDetailsPrint none
   SetDetailsView hide
 
-  !insertmacro WipeAllHotelLocalData
+  ; UPDATE: mos fshi DB/licencë/settings — vetëm instalim i ri pastron të dhënat.
+  ${ifNot} ${isUpdated}
+    !insertmacro WipeAllHotelLocalData
+    !insertmacro WipeHotelLicenseDir
+  ${endIf}
   Delete "$DESKTOP\Revolution HOTEL Pako.lnk"
   Delete "$DESKTOP\Revolution HOTEL Pako AI.lnk"
   Delete "$SMPROGRAMS\Revolution HOTEL Pako.lnk"
