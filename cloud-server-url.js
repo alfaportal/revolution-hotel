@@ -6,6 +6,9 @@
 const crypto = require("crypto");
 const PUBLIC_HOTEL_ORIGIN = "https://revolution-pos.com";
 
+/** Prefix publik — revolution-pos.com/hotel/* (proxy te revolution-hotel-server). */
+const HOTEL_WEB_PREFIX = "/hotel";
+
 const PRIMARY_CLOUD_SERVER = PUBLIC_HOTEL_ORIGIN;
 const BACKUP_CLOUD_SERVERS = [];
 const PUBLIC_CLOUD_SERVER = PUBLIC_HOTEL_ORIGIN;
@@ -128,7 +131,7 @@ function buildPublicMenuUrl(baseUrl, slug, tableNumber = 1) {
   const s = normalizeSlug(slug);
   if (!s || !base) return "";
   const table = Math.max(1, Number(tableNumber) || 1);
-  return `${base}/menu/${encodeURIComponent(s)}/${table}`;
+  return `${base}${HOTEL_WEB_PREFIX}/menu/${encodeURIComponent(s)}/${table}`;
 }
 
 /**
@@ -140,7 +143,7 @@ function buildStaffAccessLink(baseUrl, slug, key, role, extraQuery = "") {
   const r = String(role || "").trim().toLowerCase();
   if (!s || !base || !STAFF_ACCESS_ROLES.has(r)) return "";
 
-  let url = `${base}/${encodeURIComponent(r)}/${encodeURIComponent(s)}`;
+  let url = `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(r)}/${encodeURIComponent(s)}`;
   const params = new URLSearchParams();
   const k = String(key || "").trim();
   if (k) params.set("key", k);
@@ -165,10 +168,10 @@ function buildLocalAccessLink(baseUrl, slug, key, role, extraQuery = "") {
     return buildStaffAccessLink(base, s, key, r, extraQuery);
   }
   if (r === "room-service") {
-    return `${base}/guest/room-service.html`;
+    return `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html`;
   }
   if (r === "services") {
-    return `${base}/guest/services.html`;
+    return `${base}${HOTEL_WEB_PREFIX}/guest/services.html`;
   }
   return buildStaffAccessLink(base, s, key, r, extraQuery);
 }
@@ -298,6 +301,24 @@ function buildWaiterPersonalUrl(slug, key, webToken) {
   return buildAccessLink(null, s, key, "waiter", extra);
 }
 
+/** Mysafir — shërbime / room service (cloud; hotel-server duhet t’i servojë statiket). */
+function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "") {
+  const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
+  const room = encodeURIComponent(String(roomNumber || "").trim());
+  const p = String(page || "").trim().toLowerCase();
+  if (p === "services") {
+    return room
+      ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}`
+      : `${base}${HOTEL_WEB_PREFIX}/guest/services.html`;
+  }
+  if (p === "room-service" || p === "room_service") {
+    return room
+      ? `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html?room=${room}`
+      : `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html`;
+  }
+  return "";
+}
+
 module.exports = {
   PRIMARY_CLOUD_SERVER,
   BACKUP_CLOUD_SERVER,
@@ -306,6 +327,8 @@ module.exports = {
   CLOUD_SERVER_URLS,
   DEFAULT_CLOUD_SERVER,
   PUBLIC_HOTEL_ORIGIN,
+  HOTEL_WEB_PREFIX,
+  buildHotelGuestPublicUrl,
   isLocalOrPrivateServerUrl,
   normalizeCloudServerUrl,
   getPublicCloudServerUrl,

@@ -5,7 +5,12 @@
  */
 const os = require("os");
 const QRCode = require("qrcode");
-const { isLocalOrPrivateServerUrl, buildPublicMenuUrl } = require("./cloud-server-url");
+const {
+  isLocalOrPrivateServerUrl,
+  buildPublicMenuUrl,
+  buildHotelGuestPublicUrl,
+  PUBLIC_HOTEL_ORIGIN,
+} = require("./cloud-server-url");
 
 function escHtml(s) {
   return String(s ?? "")
@@ -28,11 +33,19 @@ function detectLanBase(port) {
 }
 
 function resolveQrBaseUrl(db) {
+  const slug = resolveHotelQrSlug(db);
+  const cloudDefault = String(PUBLIC_HOTEL_ORIGIN || "https://revolution-pos.com").replace(/\/+$/, "");
   let custom = "";
   try {
     custom = String(db.getSetting?.("hotel_qr_base_url", "") || "").trim();
   } catch {
     custom = "";
+  }
+  if (slug) {
+    if (!custom || isLocalOrPrivateServerUrl(custom)) {
+      return cloudDefault;
+    }
+    return custom.replace(/\/+$/, "");
   }
   if (custom) return custom.replace(/\/+$/, "");
   return detectLanBase().replace(/\/+$/, "");
@@ -61,17 +74,18 @@ function isCloudQrBase(base) {
 
 function buildHotelQrUrls(base, roomNumber, slug = "") {
   const b = String(base || "").replace(/\/+$/, "");
-  const room = encodeURIComponent(String(roomNumber || "").trim());
-  const venueSlug = encodeURIComponent(String(slug || "").trim());
+  const roomRaw = String(roomNumber || "").trim();
+  const roomEnc = encodeURIComponent(roomRaw);
+  const venueSlug = String(slug || "").trim();
 
   if (isCloudQrBase(b) && venueSlug) {
-    const num = room || "1";
+    const tableSeg = roomRaw ? Math.max(1, Number(roomRaw.replace(/\D/g, "")) || 1) : 1;
+    const menuUrl = buildPublicMenuUrl(b, venueSlug, tableSeg);
+    const menuWithRoom = roomRaw ? `${menuUrl}?room=${roomEnc}` : menuUrl;
     return {
-      room_service: buildPublicMenuUrl(b, slug, num),
-      menu: buildPublicMenuUrl(b, slug, num),
-      services: room
-        ? `${b}/guest/services.html?room=${room}`
-        : `${b}/guest/services.html`,
+      room_service: menuWithRoom,
+      menu: menuWithRoom,
+      services: buildHotelGuestPublicUrl(b, "services", roomRaw),
     };
   }
 

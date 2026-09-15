@@ -453,7 +453,14 @@ async function tick(db, printBarTicket) {
       if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) return false;
       const device = String(o.device_id || "").trim().toUpperCase();
       if (device === "WEB-WAITER") return true;
-      // Porosi QR/kiosk që janë pranuar (nuk shfaqen në radhën pending të POS)
+      if (
+        typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+        && db.isQrTableOrderSubjectToAcceptGate(o)
+        && typeof db.isCloudOrderAcceptedForImport === "function"
+        && !db.isCloudOrderAcceptedForImport(o)
+      ) {
+        return false;
+      }
       if (isExplicitlyAccepted(o) && isPosAcceptQueueOrder(o, db)) return true;
       return false;
     });

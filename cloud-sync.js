@@ -24,19 +24,36 @@ function electronApp() {
   }
 }
 
-/** Hotel: pa cloud hotel — mos auto-mbush çelës / URL. */
-function ensureAutoCloudConfig(_db) {
-  return;
+function ensureAutoCloudConfig(db) {
+  if (!db) return;
+  const license = require("./license");
+  const eapp = electronApp();
+
+  const settingsKey = normalizeKey(db.getSetting("cloud_license_key", ""));
+  const fileKey = normalizeKey(eapp ? license.readStoredLicense(eapp) : "");
+
+  if (fileKey && fileKey !== settingsKey) {
+    db.updateCloudSettings({ cloud_license_key: fileKey });
+  } else if (!settingsKey && fileKey) {
+    db.updateCloudSettings({ cloud_license_key: fileKey });
+  }
 }
 
 function getConfig(db) {
+  ensureAutoCloudConfig(db);
+
   const license = require("./license");
   const VERSION = require("./version-config");
+  const eapp = electronApp();
+
+  const settingsKey = db.getSetting("cloud_license_key", "");
+  const fileKey = eapp ? license.readStoredLicense(eapp) : "";
+  const celesi = normalizeKey(settingsKey || fileKey);
 
   return {
-    serverUrl: "",
+    serverUrl: cloudHealth.getActiveServerUrl(),
     publicServerUrl: getPublicCloudServerUrl(),
-    celesi: "",
+    celesi,
     deviceId: license.getMachineId(),
     appType: VERSION.appType || "hotel",
   };
@@ -86,6 +103,24 @@ function parseCloudJson(data) {
   }
 }
 
+/** Pas sync/update — lidh UUID cloud te porosia lokale (mbyllje nga telefoni WEB-WAITER). */
+function attachCloudIdFromSyncResponse(db, order, response) {
+  if (!db?.db || !order?.id || !response || response.status >= 400) return;
+  const parsed = parseCloudJson(response.data);
+  const cloudId = String(parsed?.sale?.id || "").trim();
+  if (!cloudId) return;
+  try {
+    db.db.prepare(`
+      UPDATE orders SET cloud_order_id = COALESCE(NULLIF(cloud_order_id, ''), ?)
+      WHERE id = ?
+    `).run(cloudId, order.id);
+    if (typeof db.linkCloudOrderId === "function") db.linkCloudOrderId(order.id, cloudId);
+    console.log(`[cloud/sync] linked local order#${order.id} -> cloud ${cloudId}`);
+  } catch (e) {
+    console.warn("[cloud/sync] link cloud_order_id:", e.message);
+  }
+}
+
 function extractCloudCredentials(parsed) {
   return {
     client_id: parsed.client_id || "",
@@ -130,15 +165,120 @@ function operationalCloudStatus(db, health, cfg, message) {
   };
 }
 
-async function checkConnection(_db) {
-  /* Hotel: pa cloud — mos thirr rrjetin. */
-  return {
-    connected: false,
-    offline: true,
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-    kitchen_slug: "",
-    links_ready: false,
+async function checkConnection(db) {
+  const health = cloudHealth.getHealthStatus();
+  const cfg = getConfig(db);
+  const cached = readCachedKitchenAccess(db);
+
+  if (!health.online) {
+    return {
+      ok: false,
+      connected: false,
+      offline: true,
+      message: health.message,
+      client_id: cached.client_id,
+      client_name: cached.client_name,
+      kitchen_slug: cached.kitchen_slug,
+      kitchen_key: cached.kitchen_key,
+      links_stale: cached.has_access,
+    };
+  }
+
+  if (!cfg.serverUrl) {
+    return { ok: false, connected: false, message: "Mungon Server URL." };
+  }
+  if (!cfg.celesi) {
+    return { ok: false, connected: false, message: "Mungon çelësi i licencës." };
+  }
+
+  const payload = {
+    celesi: cfg.celesi,
+    device_id: cfg.deviceId,
+    app_type: cfg.appType,
   };
+
+  try {
+    let response = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/license/heartbeat",
+      payload,
+      { timeoutMs: 8000 },
+    );
+    let parsed = parseCloudJson(response.data);
+
+    if (!(response.status < 400 && parsed.valid)) {
+      response = await requestJson(
+        "POST",
+        cfg.serverUrl,
+        "/api/v1/license/access-links",
+        payload,
+        { timeoutMs: 10000 },
+      );
+      parsed = parseCloudJson(response.data);
+      if (response.status === 404) {
+        response = await requestJson(
+          "POST",
+          cfg.serverUrl,
+          "/api/v1/license/validate",
+          payload,
+          { timeoutMs: 10000 },
+        );
+        parsed = parseCloudJson(response.data);
+      }
+    }
+
+    if (response.status < 400 && parsed.valid) {
+      const creds = extractCloudCredentials(parsed);
+      if (creds.client_id || (creds.kitchen_slug && creds.kitchen_key)) {
+        db.updateKitchenAccess(creds);
+      }
+      const { PUBLIC_HOTEL_ORIGIN } = require("./cloud-server-url");
+      if (typeof db.setSetting === "function") {
+        const cur = String(db.getSetting("hotel_qr_base_url", "") || "").trim();
+        if (!cur || require("./cloud-server-url").isLocalOrPrivateServerUrl(cur)) {
+          db.setSetting("hotel_qr_base_url", PUBLIC_HOTEL_ORIGIN.replace(/\/+$/, ""));
+        }
+      }
+      ensureKdsEventsListener(db);
+      return {
+        ok: true,
+        connected: true,
+        operational: true,
+        links_stale: false,
+        message: parsed.message || "I lidhur me Revolution HOTEL cloud.",
+        ...creds,
+      };
+    }
+
+    const stale = operationalCloudStatus(
+      db,
+      health,
+      cfg,
+      parsed.message || parsed.gabim || `Licenca nuk u validua (HTTP ${response.status}).`,
+    );
+    if (stale) {
+      ensureKdsEventsListener(db);
+      return stale;
+    }
+
+    return {
+      ok: false,
+      connected: false,
+      message: parsed.message || parsed.gabim || `Licenca nuk u validua (HTTP ${response.status}).`,
+    };
+  } catch (err) {
+    const stale = operationalCloudStatus(db, health, cfg, err.message || "Nuk u lidh me serverin.");
+    if (stale) {
+      ensureKdsEventsListener(db);
+      return stale;
+    }
+    return {
+      ok: false,
+      connected: false,
+      message: err.message || "Nuk u lidh me serverin.",
+    };
+  }
 }
 
 /** Porosi e importuar nga cloud (telefon/QR) — mos krijo rresht të ri me device_id të POS-it. */
@@ -240,6 +380,7 @@ function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } 
         console.warn("Cloud update:", r.status, r.data?.slice?.(0, 120));
       } else {
         console.log("Cloud update OK: T", built.payload.table_number);
+        attachCloudIdFromSyncResponse(db, order, r);
       }
     })
     .catch(err => {
@@ -358,9 +499,15 @@ function pushTableCancelled(db, tableId) {
     .catch(err => console.warn("Cloud cancel dështoi:", err.message));
 }
 
-/** Hotel: zero cloud derisa të ketë serverin e vet. */
-function isCloudConfigured(_db) {
-  return false;
+function isCloudConfigured(db) {
+  try {
+    if (!db) return false;
+    ensureAutoCloudConfig(db);
+    const cfg = getConfig(db);
+    return !!(cfg.celesi && cfg.serverUrl);
+  } catch {
+    return false;
+  }
 }
 
 function getBarScreenUrl(db) {
@@ -661,14 +808,72 @@ function syncCatalogToCloud(db) {
  * Sinkronizim i plotë: lidhja → slug/linket → menu/staff/tavolina → foto → gjendja tavolinave.
  * Përdoret në nisje, ruajtje cloud dhe butonin «Sinkronizo gjithçka».
  */
-async function fullCloudSync(_db) {
-  return {
-    ok: false,
+async function fullCloudSync(db) {
+  const result = {
     connected: false,
-    catalog_ok: false,
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
+    message: "",
     kitchen_slug: "",
+    catalog_ok: false,
+    photos_updated: 0,
+    tables_synced: false,
   };
+
+  if (!isCloudConfigured(db)) {
+    result.message = "Vendosni çelësin e licencës (Admin → Cloud / Licenca).";
+    return result;
+  }
+
+  try {
+    const status = await checkConnection(db);
+    result.connected = !!status.connected;
+    result.message = status.message || "";
+    result.kitchen_slug = status.kitchen_slug || db.getCloudSettings().kitchen_slug || "";
+
+    if (!result.connected) {
+      if (!result.message) {
+        result.message = "Cloud offline ose licenca nuk u validua — menuja NUK shkon në telefon/QR.";
+      }
+      return result;
+    }
+
+    const catalog = await pushCatalogAsync(db);
+    result.catalog_ok = !!catalog.ok;
+    result.menu_items = Number(catalog.menu_items) || 0;
+    result.categories = Number(catalog.categories) || 0;
+    result.staff = Number(catalog.staff) || 0;
+    if (!catalog.ok && catalog.message) {
+      result.message = catalog.message;
+    }
+
+    const photos = await pullMenuPhotosFromCloud(db);
+    result.photos_updated = photos.updated || 0;
+
+    reconcileAllTablesWithCloud(db);
+    result.tables_synced = true;
+
+    try {
+      const reservationSync = require("./reservation-sync");
+      result.reservations = await reservationSync.syncPendingReservations(db);
+    } catch (err) {
+      result.reservations = { synced: 0, conflicts: 0, errors: [err.message] };
+    }
+
+    try {
+      const waiterSync = await syncClosedWebWaiterSales(db);
+      result.waiter_sales_synced = waiterSync.imported || 0;
+    } catch (err) {
+      console.warn("[cloud/sync] fullSync waiter closed:", err.message);
+    }
+
+    if (result.connected && result.catalog_ok) {
+      result.message =
+        `Sinkronizimi OK — ${result.menu_items} artikuj, ${result.categories} kategori në cloud (QR/telefon).`;
+    }
+    return result;
+  } catch (err) {
+    result.message = err.message || "Sync dështoi.";
+    return result;
+  }
 }
 
 /** Vendos emrin e biznesit nga licenca (Super Admin) vetëm nëse lokalisht është bosh. */
@@ -812,17 +1017,78 @@ async function fetchOnlineOrdersViaKitchen(db) {
   return null;
 }
 
-async function fetchOnlineOrders(_db) {
-  // Hotel cloud sync is local-only; never hit the network for online orders.
-  return {
-    ok: true,
-    connected: false,
-    pending: 0,
-    has_pending: false,
-    orders: [],
-    all_orders: [],
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-  };
+async function fetchOnlineOrders(db) {
+  const cfg = getConfig(db);
+  if (!cfg.serverUrl) {
+    return { ok: true, connected: false, pending: 0, has_pending: false, orders: [] };
+  }
+
+  if (!cfg.celesi) {
+    const viaKitchen = await fetchOnlineOrdersViaKitchen(db);
+    if (viaKitchen) return viaKitchen;
+    return {
+      ok: true,
+      connected: false,
+      pending: 0,
+      has_pending: false,
+      orders: [],
+      message: "Mungon çelësi i licencës.",
+    };
+  }
+
+  try {
+    const res = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/license/online-orders",
+      {
+        celesi: cfg.celesi,
+        device_id: cfg.deviceId,
+      },
+      { timeoutMs: 12000 },
+    );
+    const parsed = parseCloudJson(res.data);
+    if (res.status < 400 && parsed.ok) {
+      const allOrders = Array.isArray(parsed.all_orders)
+        ? parsed.all_orders
+        : (Array.isArray(parsed.orders) ? parsed.orders : []);
+      const pendingFromApi = Array.isArray(parsed.orders) ? parsed.orders : [];
+      const orders = pendingFromApi.length
+        ? pendingFromApi
+        : allOrders.filter(o => !isCloudOrderAccepted(o));
+      return {
+        ok: true,
+        connected: true,
+        pending: Number(parsed.pending) || orders.length,
+        has_pending: !!parsed.has_pending || orders.length > 0,
+        orders,
+        all_orders: allOrders,
+      };
+    }
+    const viaKitchen = await fetchOnlineOrdersViaKitchen(db);
+    if (viaKitchen) return viaKitchen;
+
+    const licenseErr = parsed.gabim || parsed.message || "Nuk u ngarkuan porositë.";
+    return {
+      ok: false,
+      connected: res.status > 0,
+      pending: 0,
+      has_pending: false,
+      orders: [],
+      message: licenseErr,
+    };
+  } catch (err) {
+    const viaKitchen = await fetchOnlineOrdersViaKitchen(db);
+    if (viaKitchen) return viaKitchen;
+    return {
+      ok: false,
+      connected: false,
+      pending: 0,
+      has_pending: false,
+      orders: [],
+      message: err.message || "Pa internet.",
+    };
+  }
 }
 
 async function pushStaffAsync(db) {

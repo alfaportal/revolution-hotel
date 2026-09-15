@@ -5151,6 +5151,64 @@ function isCloudStaffWaiterOrder(cloudOrder) {
   return orderDeviceId(cloudOrder) === "WEB-WAITER";
 }
 
+function parseRoomNumberFromCloudOrder(cloudOrder) {
+  if (!cloudOrder) return "";
+  const direct = String(cloudOrder.room_number ?? "").trim();
+  if (direct) return direct;
+  const blob = [
+    cloudOrder.customer_label,
+    cloudOrder.source_label,
+    cloudOrder.waiter_name,
+    cloudOrder.notes,
+  ].filter(Boolean).join(" ");
+  let m = blob.match(/\bDh\.?\s*(\d+[A-Za-z]?)\b/i);
+  if (m) return String(m[1]).trim();
+  m = blob.match(/room[=:\s]+(\d+[A-Za-z]?)/i);
+  if (m) return String(m[1]).trim();
+  const metaRoom = String(cloudOrder.meta?.room || cloudOrder.query_room || "").trim();
+  if (metaRoom) return metaRoom;
+  return "";
+}
+
+/** Porosi menu/room service nga cloud — dhomë e zënë → faturë dhomës (jo tavolinë restoranti). */
+function tryApplyCloudRoomMenuOrder(cloudOrder) {
+  if (!cloudOrder || isGuestHotelServiceOrder(cloudOrder) || isCloudStaffWaiterOrder(cloudOrder)) {
+    return null;
+  }
+  const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
+  if (!roomNum) return null;
+  const rawItems = cloudOrder.items || cloudOrder.items_json || [];
+  const list = Array.isArray(rawItems) ? rawItems : [];
+  if (!list.length) return null;
+  const mapped = mapCloudItemsToLocal(list);
+  if (!mapped.length) return null;
+  return submitGuestRoomMenuOrder(roomNum, mapped);
+}
+
+/** Porosi QR tavolinë — pranim para auto-importit (WEB-KIOSK / QR cloud). */
+function isQrTableOrderSubjectToAcceptGate(cloudOrder) {
+  if (isCloudStaffWaiterOrder(cloudOrder)) return false;
+  if (isCloudQrTableOrder(cloudOrder)) return true;
+  const device = String(cloudOrder?.device_id || "").trim().toUpperCase();
+  if (device === "WEB-KIOSK" || device === "WEB-PUBLIC") {
+    const tn = Number(cloudOrder?.table_number) || parseTableNumberFromCloudOrder(cloudOrder) || 0;
+    if (tn > 0 && !isCloudOnlinePickupOrder(cloudOrder) && !parseRoomNumberFromCloudOrder(cloudOrder)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isCloudOrderAcceptedForImport(cloudOrder) {
+  const at = cloudOrder?.accepted_at;
+  if (at != null && String(at).trim() !== "") return true;
+  if (String(cloudOrder?.accepted_by_waiter_name || "").trim()) return true;
+  if (isQrTableOrderSubjectToAcceptGate(cloudOrder)) return false;
+  const handler = String(cloudOrder?.accepted_by || "").trim();
+  const customer = String(cloudOrder?.customer_label || "").trim();
+  return !!(handler && handler !== customer);
+}
+
 /** Porosi shërbimesh hoteli nga QR i dhomës — stafi pranon si takeaway. */
 function isGuestHotelServiceOrder(cloudOrder) {
   if (!cloudOrder) return false;
@@ -7236,31 +7294,39 @@ const { DEFAULT_CLOUD_SERVER, normalizeCloudServerUrl, getPublicCloudServerUrl }
 function getCloudSettings() {
   const license = require("./license");
   return {
-    cloud_server_url: "",
-    cloud_license_key: "",
-    kitchen_slug: "",
-    kitchen_key: "",
-    cloud_client_id: "",
-    cloud_client_name: "",
+    cloud_server_url: getPublicCloudServerUrl(),
+    cloud_license_key: getSetting("cloud_license_key", ""),
+    kitchen_slug: getSetting("kitchen_slug", ""),
+    kitchen_key: getSetting("kitchen_key", ""),
+    cloud_client_id: getSetting("cloud_client_id", ""),
+    cloud_client_name: getSetting("cloud_client_name", ""),
     device_id: license.getMachineId(),
   };
 }
 
-function updateCloudSettings(_opts) {
-  try {
-    sqlite.prepare("DELETE FROM settings WHERE key = ?").run("cloud_license_key");
-  } catch {
-    /* ignore */
+function updateCloudSettings({ cloud_license_key }) {
+  if (cloud_license_key != null) {
+    const key = String(cloud_license_key).trim().toUpperCase().replace(/\s+/g, "");
+    if (key) setSetting("cloud_license_key", key);
+    else sqlite.prepare("DELETE FROM settings WHERE key = ?").run("cloud_license_key");
   }
 }
 
-function updateKitchenAccess(_opts) {
-  for (const k of ["kitchen_slug", "kitchen_key", "cloud_client_id", "cloud_client_name"]) {
-    try {
-      sqlite.prepare("DELETE FROM settings WHERE key = ?").run(k);
-    } catch {
-      /* ignore */
-    }
+function updateKitchenAccess({ kitchen_slug, kitchen_key, client_id, client_name, client_tipi } = {}) {
+  if (kitchen_slug != null && String(kitchen_slug).trim()) {
+    setSetting("kitchen_slug", String(kitchen_slug).trim());
+  }
+  if (kitchen_key != null && String(kitchen_key).trim()) {
+    setSetting("kitchen_key", String(kitchen_key).trim());
+  }
+  if (client_tipi != null && String(client_tipi).trim()) {
+    setSetting("client_tipi", String(client_tipi).trim());
+  }
+  if (client_id != null && String(client_id).trim()) {
+    setSetting("cloud_client_id", String(client_id).trim());
+  }
+  if (client_name != null && String(client_name).trim()) {
+    setSetting("cloud_client_name", String(client_name).trim());
   }
 }
 
@@ -10493,6 +10559,10 @@ function getVersionInfo() {
     isCloudOnlinePickupOrder,
     isGuestHotelServiceOrder,
     isCloudStaffWaiterOrder,
+    parseRoomNumberFromCloudOrder,
+    tryApplyCloudRoomMenuOrder,
+    isQrTableOrderSubjectToAcceptGate,
+    isCloudOrderAcceptedForImport,
     parseQrTableNumberFromCloudOrder,
     isPhysicalVenueTable,
     isTableInOnlinePickupZone,

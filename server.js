@@ -290,6 +290,22 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   const imported = [];
   for (const order of ordersBefore) {
+    if (typeof db.tryApplyCloudRoomMenuOrder === "function") {
+      try {
+        const roomResult = db.tryApplyCloudRoomMenuOrder(order);
+        if (roomResult?.ok && !roomResult.pending) {
+          imported.push({
+            ok: true,
+            cloud_id: order.id,
+            room_menu: true,
+            ...roomResult,
+          });
+          continue;
+        }
+      } catch {
+        /* dhomë e pavlefshme — vazhdo me import QR / takeaway */
+      }
+    }
     if (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(order)) {
       try {
         const applied = db.applyGuestHotelServiceOrder(order);
@@ -5483,22 +5499,11 @@ app.put("/api/settings", auth, adminOnly, (req, res) => {
 });
 
 app.get("/api/cloud/status", (_req, res) => {
-  /* Hotel: zero cloud — pill Offline. */
-  res.json({
-    ok: true,
-    connected: false,
-    operational: false,
-    offline: true,
-    mode: "offline",
-    reachable: false,
-    configured: false,
-    syncing: false,
-    catalog_ok: false,
-    server_url: "",
-    public_server: "",
-    active_server: "",
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-  });
+  try {
+    res.json(cloudAutoSync.getStatus(db));
+  } catch (e) {
+    res.status(500).json({ ok: false, connected: false, message: e.message });
+  }
 });
 
 app.get("/api/cloud/failures", auth, adminOnly, (req, res) => {
@@ -5513,58 +5518,64 @@ app.get("/api/cloud/failures", auth, adminOnly, (req, res) => {
 
 app.get("/api/cloud-sync", auth, adminOnly, async (_req, res) => {
   try {
-    const licenseMod = require("./license");
     const settings = db.getCloudSettings();
-    const links = resolveStaffLinksPayload(db);
+    const status = await cloudSync.checkConnection(db);
     res.json({
       ok: true,
-      server_url: links.server_url || getPublicCloudServerUrl(links.hotel_slug) || "https://revolution-pos.com",
-      celesi: String(settings.cloud_license_key || db.getSetting?.("cloud_license_key", "") || "").trim(),
-      kitchen_slug: links.hotel_slug || settings.kitchen_slug || "",
-      kitchen_key: settings.kitchen_key ? "••••" : "",
-      cloud_client_id: settings.cloud_client_id || links.hotel_slug || "",
-      cloud_client_name: settings.cloud_client_name || links.hotel_name || "",
-      device_id: licenseMod.getMachineId(),
-      connected: true,
-      offline: false,
-      links_ready: true,
-      local_mode: false,
-      ...links,
-      status_message: links.hotel_slug
-        ? `Meny: revolution-pos.com/menu/${links.hotel_slug}/1 — stafi: /waiter/${links.hotel_slug}?key=…`
-        : "Vendosni emrin e hotelit te Cilësimet.",
-      message: "Format si restoranti — /menu/emri-hotelit/1",
+      ...settings,
+      ...cloudSyncLinksPayload(settings, status),
     });
   } catch (e) {
     res.status(500).json({ gabim: e.message });
   }
 });
 
-app.put("/api/cloud-sync", auth, adminOnly, async (_req, res) => {
-  /* Hotel: mos ruaj / mos sync me cloud hotel. */
-  res.json({
-    ok: true,
-    connected: false,
-    offline: true,
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-  });
+app.put("/api/cloud-sync", auth, adminOnly, async (req, res) => {
+  try {
+    db.updateCloudSettings(req.body);
+    const settings = db.getCloudSettings();
+    const sync = await cloudSync.fullCloudSync(db);
+    const status = await cloudSync.checkConnection(db);
+    res.json({
+      ok: true,
+      ...settings,
+      ...cloudSyncLinksPayload(settings, status),
+      sync,
+    });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
 });
 
 app.post("/api/cloud-sync/test", auth, adminOnly, async (_req, res) => {
-  res.json({
-    connected: false,
-    offline: true,
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-  });
+  try {
+    const sync = await cloudSync.fullCloudSync(db);
+    const settings = db.getCloudSettings();
+    const status = await cloudSync.checkConnection(db);
+    res.json({
+      ...status,
+      ...cloudSyncLinksPayload(settings, status),
+      sync,
+    });
+  } catch (e) {
+    res.status(500).json({ gabim: e.message });
+  }
 });
 
 app.post("/api/cloud-sync/sync-all", auth, adminOnly, async (_req, res) => {
-  res.json({
-    ok: false,
-    connected: false,
-    offline: true,
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
-  });
+  try {
+    const sync = await cloudSync.fullCloudSync(db);
+    const settings = db.getCloudSettings();
+    const status = await cloudSync.checkConnection(db);
+    res.json({
+      ok: sync.connected || sync.catalog_ok,
+      ...status,
+      ...cloudSyncLinksPayload(settings, status),
+      sync,
+    });
+  } catch (e) {
+    res.status(500).json({ gabim: e.message });
+  }
 });
 
 app.get("/api/fiscal-settings", auth, adminOnly, (_req, res) => {

@@ -53,28 +53,36 @@ function hasCachedKitchenAccess(db) {
   }
 }
 
-function getStatus(_db) {
-  /* Hotel: gjithmonë offline — pa cloud hotel. */
-  const msg = "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.";
+function getStatus(db) {
+  const health = cloudHealth.getHealthStatus();
+  let server_url = getPublicUrl();
+  try {
+    server_url = cloudSync.getConfig(db || boundDb).publicServerUrl || server_url;
+  } catch {
+    /* ignore */
+  }
+  const configured = lastStatus.configured || cloudSync.isCloudConfigured(db || boundDb);
+  const cachedAccess = hasCachedKitchenAccess(db);
+  const operational = !!lastStatus.connected
+    || (!!health.online && configured && cachedAccess);
   return {
     ok: true,
-    server_url: "",
-    active_server: "",
-    public_server: "",
-    mode: "offline",
-    offline: true,
-    offline_since: lastStatus.offline_since || new Date().toISOString(),
-    backup_active: false,
-    reachable: false,
-    configured: false,
-    has_cached_access: false,
-    operational: false,
-    syncing: false,
-    catalog_ok: false,
-    connected: false,
-    owner_message: msg,
-    message: msg,
-    updated_at: new Date().toISOString(),
+    server_url,
+    active_server: health.active_server,
+    public_server: health.public_server,
+    mode: health.mode,
+    offline: !health.online,
+    offline_since: health.offline_since,
+    backup_active: health.backup_tried && health.server === health.active_server,
+    reachable: !!health.online,
+    configured,
+    has_cached_access: cachedAccess,
+    operational,
+    syncing: !!licenseCheckInFlight && !operational,
+    owner_message: lastStatus.message || health.message,
+    ...lastStatus,
+    connected: operational,
+    message: lastStatus.message || health.message,
   };
 }
 
@@ -212,23 +220,32 @@ async function runCatalogPush(db, { force = false } = {}) {
   }
 }
 
-/** Sync i plotë — FIKUR për hotel (pa cloud hotel). */
-async function runFullSync(_db) {
+/** Sync i plotë — butoni «Sinkronizo gjithçka». */
+async function runFullSync(db) {
+  if (!db) return { ok: false, message: "DB mungon." };
+  const status = await runLicenseCheck(db);
+  if (!status?.connected) return { ...lastStatus, message: lastStatus.message };
+
+  const full = await cloudSync.fullCloudSync(db);
   applyStatus({
-    configured: false,
-    connected: false,
-    catalog_ok: false,
-    reachable: false,
-    offline: true,
-    mode: "offline",
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
+    connected: !!full.connected,
+    catalog_ok: !!full.catalog_ok,
+    menu_items: Number(full.menu_items) || 0,
+    categories: Number(full.categories) || 0,
+    message: full.message || lastStatus.message,
+    kitchen_slug: full.kitchen_slug || "",
   });
-  return { ok: false, connected: false, ...lastStatus };
+  if (full.catalog_ok) lastCatalogAt = Date.now();
+  return full;
 }
 
-function scheduleCatalogPush(_db) {
-  /* Hotel: pa catalog push te cloud hotel. */
-  return;
+function scheduleCatalogPush(db) {
+  if (!db) return;
+  if (catalogDebounceTimer) clearTimeout(catalogDebounceTimer);
+  catalogDebounceTimer = setTimeout(() => {
+    catalogDebounceTimer = null;
+    runCatalogPush(db, { force: true }).catch(() => {});
+  }, CATALOG_DEBOUNCE_MS);
 }
 
 function pushCatalogDebounced(db) {
@@ -236,24 +253,42 @@ function pushCatalogDebounced(db) {
 }
 
 function startCloudAutoSync(db) {
-  /* Hotel: zero sync me cloud-in e hotelit. */
   if (!db || started) return;
   started = true;
   boundDb = db;
-  applyStatus({
-    configured: false,
-    connected: false,
-    catalog_ok: false,
-    reachable: false,
-    offline: true,
-    mode: "offline",
-    message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
+
+  cloudHealth.onReconnect(() => {
+    runLicenseCheck(db)
+      .then(() => runCatalogPush(db, { force: true }))
+      .catch(() => {});
+    try {
+      cloudSync.reconcileAllTablesWithCloud(db);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const reservationSync = require("./reservation-sync");
+      reservationSync.syncPendingReservations(db).catch(() => {});
+    } catch {
+      /* ignore */
+    }
   });
-  try {
-    cloudHealth.startHealthMonitor(db);
-  } catch {
-    /* ignore */
-  }
+
+  cloudHealth.startHealthMonitor(db);
+
+  setTimeout(() => {
+    runLicenseCheck(db)
+      .then(() => runCatalogPush(db, { force: true }))
+      .catch(() => {});
+  }, 4000);
+
+  licenseTimer = setInterval(() => {
+    runLicenseCheck(db).catch(() => {});
+  }, LICENSE_CHECK_MS);
+
+  catalogTimer = setInterval(() => {
+    runCatalogPush(db).catch(() => {});
+  }, CATALOG_AUTO_MS);
 }
 
 module.exports = {

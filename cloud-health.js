@@ -30,13 +30,13 @@ let lastHealth = {
   db_ok: false,
   servers_tried: [],
   backup_tried: false,
-  message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
+  message: "Duke kontrolluar lidhjen me Revolution HOTEL cloud…",
   offline_since: null,
   checked_at: null,
 };
 
-/** Hotel: sync i plotë cloud OFF — vetëm API licencë lejohet kur HOTEL_CLOUD_DISABLED. */
-const HOTEL_CLOUD_DISABLED = true;
+/** Cloud hotel — aktiv (revolution-pos.com/hotel → Railway + Supabase). */
+const HOTEL_CLOUD_DISABLED = false;
 
 function isLicenseApiPath(reqPath) {
   const p = String(reqPath || "");
@@ -195,7 +195,7 @@ async function runHealthCheck() {
       db_ok: false,
       servers_tried: [],
       backup_tried: false,
-      message: "Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.",
+      message: "Duke kontrolluar lidhjen me Revolution HOTEL cloud…",
       offline_since: lastHealth.offline_since || new Date().toISOString(),
       checked_at: new Date().toISOString(),
     };
