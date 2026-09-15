@@ -8,6 +8,7 @@ const cloudHealth = require("./cloud-health");
 const {
   PUBLIC_CLOUD_SERVER,
   getPublicCloudServerUrl,
+  hotelCloudApiPath,
 } = require("./cloud-server-url");
 
 const SERVER_URL = PUBLIC_CLOUD_SERVER;
@@ -60,7 +61,12 @@ function getConfig(db) {
 }
 
 function requestJson(method, _baseUrl, path, payload, options = {}) {
-  return cloudHealth.requestJsonWithFallback(method, path, payload, options);
+  return cloudHealth.requestJsonWithFallback(
+    method,
+    hotelCloudApiPath(path),
+    payload,
+    options,
+  );
 }
 
 function normalizeItems(raw) {

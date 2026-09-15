@@ -9,6 +9,15 @@ const PUBLIC_HOTEL_ORIGIN = "https://revolution-pos.com";
 /** Prefix publik — revolution-pos.com/hotel/* (proxy te revolution-hotel-server). */
 const HOTEL_WEB_PREFIX = "/hotel";
 
+/** Rrugë API/health në hub — https://revolution-pos.com/hotel/api/... */
+function hotelCloudApiPath(apiPath) {
+  const p = String(apiPath || "").trim();
+  if (!p) return HOTEL_WEB_PREFIX;
+  if (p === HOTEL_WEB_PREFIX || p.startsWith(`${HOTEL_WEB_PREFIX}/`)) return p;
+  const normalized = p.startsWith("/") ? p : `/${p}`;
+  return `${HOTEL_WEB_PREFIX}${normalized}`;
+}
+
 const PRIMARY_CLOUD_SERVER = PUBLIC_HOTEL_ORIGIN;
 const BACKUP_CLOUD_SERVERS = [];
 const PUBLIC_CLOUD_SERVER = PUBLIC_HOTEL_ORIGIN;
@@ -107,10 +116,11 @@ function buildHotelVenueSlug(name, deviceId) {
   return `${base}-${suffix}`;
 }
 
-/** Çelës LAN i qëndrueshëm kur nuk ka kitchen_key nga cloud. */
-function deriveLocalAccessKey(deviceId) {
-  const id = String(deviceId || "").trim() || "hotel";
-  return crypto.createHash("sha256").update(`hotel-lan-${id}`).digest("hex");
+/**
+ * @deprecated Çelësi vjen nga cloud (kitchen_key pas validimit), jo LAN.
+ */
+function deriveLocalAccessKey(_deviceId) {
+  return "";
 }
 
 const HOTEL_ACCESS_ROLES = new Set([
@@ -153,52 +163,14 @@ function buildStaffAccessLink(baseUrl, slug, key, role, extraQuery = "") {
   return url;
 }
 
-/** Legacy LAN /hotel/{roli}/{slug} — ridrejtim lokal. */
-function buildLocalAccessLink(baseUrl, slug, key, role, extraQuery = "") {
-  const s = normalizeSlug(slug);
-  const base = trimTrailingSlash(baseUrl);
-  if (!s || !base) return "";
-  const r = String(role || "").trim().toLowerCase();
-  if (!r) return "";
-
-  if (r === "kiosk" || r === "menu" || r === "public_menu") {
-    return buildPublicMenuUrl(base, s, 1);
-  }
-  if (STAFF_ACCESS_ROLES.has(r)) {
-    return buildStaffAccessLink(base, s, key, r, extraQuery);
-  }
-  if (r === "room-service") {
-    return `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html`;
-  }
-  if (r === "services") {
-    return `${base}${HOTEL_WEB_PREFIX}/guest/services.html`;
-  }
-  return buildStaffAccessLink(base, s, key, r, extraQuery);
+/** @deprecated Përdor buildAccessLink / buildCloudAccessLinks (vetëm revolution-pos.com/hotel). */
+function buildLocalAccessLink(_baseUrl, slug, key, role, extraQuery = "") {
+  return buildAccessLink(null, slug, key, role, extraQuery);
 }
 
-function buildLocalAccessLinks(baseUrl, slugOrOpts, key) {
-  const { slug: s, key: accessKey } = resolveCloudAccessCredentials(slugOrOpts, key);
-  if (!s) {
-    return {
-      waiter_url: "",
-      bar_url: "",
-      kitchen_url: "",
-      kiosk_url: "",
-      public_page_url: "",
-      housekeeping_url: "",
-      reception_url: "",
-    };
-  }
-  const menuUrl = buildPublicMenuUrl(baseUrl, s, 1);
-  return {
-    waiter_url: buildStaffAccessLink(baseUrl, s, accessKey, "waiter"),
-    bar_url: buildStaffAccessLink(baseUrl, s, accessKey, "bar"),
-    kitchen_url: buildStaffAccessLink(baseUrl, s, accessKey, "kitchen"),
-    kiosk_url: menuUrl,
-    public_page_url: menuUrl,
-    housekeeping_url: buildStaffAccessLink(baseUrl, s, accessKey, "housekeeping"),
-    reception_url: buildStaffAccessLink(baseUrl, s, accessKey, "reception"),
-  };
+/** @deprecated Përdor buildCloudAccessLinks. */
+function buildLocalAccessLinks(_baseUrl, slugOrOpts, key) {
+  return buildCloudAccessLinks(null, slugOrOpts, key);
 }
 
 function buildAccessLink(_baseUrl, slug, key, role, extraQuery = "") {
@@ -273,15 +245,9 @@ function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
   };
 }
 
-function buildLocalWaiterPersonalUrl(baseUrl, webToken, slug, key) {
-  const base = trimTrailingSlash(baseUrl);
-  const t = String(webToken || "").trim();
-  if (!base || !t) return "";
-  const s = normalizeSlug(slug);
-  if (s) {
-    return buildStaffAccessLink(base, s, key, "waiter", `w=${encodeURIComponent(t)}`);
-  }
-  return `${base}/login.html?w=${encodeURIComponent(t)}`;
+/** @deprecated Përdor buildWaiterPersonalUrl. */
+function buildLocalWaiterPersonalUrl(_baseUrl, webToken, slug, key) {
+  return buildWaiterPersonalUrl(slug, key, webToken);
 }
 
 function buildWaiterKdsUrl(slug, key, webToken) {
@@ -328,6 +294,7 @@ module.exports = {
   DEFAULT_CLOUD_SERVER,
   PUBLIC_HOTEL_ORIGIN,
   HOTEL_WEB_PREFIX,
+  hotelCloudApiPath,
   buildHotelGuestPublicUrl,
   isLocalOrPrivateServerUrl,
   normalizeCloudServerUrl,

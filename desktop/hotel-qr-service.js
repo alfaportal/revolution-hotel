@@ -1,9 +1,7 @@
 /**
- * QR për hotel — Room Service / Menyja / Shërbime.
- * Cloud (hotel_qr_base_url publik): /hotel/menu/{slug}?room=…
- * LAN / lokal: /guest/room-service.html?room=…
+ * QR për hotel — Room Service / Menyja / Shërbime (vetëm cloud).
+ * Publik: https://revolution-pos.com/hotel/menu/{slug}?room=…
  */
-const os = require("os");
 const QRCode = require("qrcode");
 const {
   isLocalOrPrivateServerUrl,
@@ -19,21 +17,11 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function detectLanBase(port) {
-  const p = Number(port) || Number(process.env.ACTUAL_PORT) || Number(process.env.PORT) || 3001;
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets || {})) {
-    for (const net of nets[name] || []) {
-      if (net.family === "IPv4" && !net.internal) {
-        return `http://${net.address}:${p}`;
-      }
-    }
-  }
-  return `http://127.0.0.1:${p}`;
-}
+const CLOUD_QR_SETUP_MESSAGE = "Vendos çelësin te Admin → Cloud";
 
 function resolveQrBaseUrl(db) {
   const slug = resolveHotelQrSlug(db);
+  if (!slug) return "";
   const cloudDefault = String(PUBLIC_HOTEL_ORIGIN || "https://revolution-pos.com").replace(/\/+$/, "");
   let custom = "";
   try {
@@ -41,14 +29,10 @@ function resolveQrBaseUrl(db) {
   } catch {
     custom = "";
   }
-  if (slug) {
-    if (!custom || isLocalOrPrivateServerUrl(custom)) {
-      return cloudDefault;
-    }
-    return custom.replace(/\/+$/, "");
+  if (!custom || isLocalOrPrivateServerUrl(custom)) {
+    return cloudDefault;
   }
-  if (custom) return custom.replace(/\/+$/, "");
-  return detectLanBase().replace(/\/+$/, "");
+  return custom.replace(/\/+$/, "");
 }
 
 function resolveHotelQrSlug(db) {
@@ -116,12 +100,43 @@ async function qrEntry(kind, label, url) {
 
 async function listHotelQrs(db) {
   const settings = db.getSettings();
-  const configuredBase = resolveQrBaseUrl(db);
   const slug = resolveHotelQrSlug(db);
+  const business_name =
+    (typeof db.getBusinessName === "function" ? db.getBusinessName() : "")
+    || settings.business_name
+    || settings.restaurant_name
+    || "Hotel";
+
+  if (!slug) {
+    return {
+      base_url: "",
+      configured_base_url: "",
+      qr_mode: "needs_cloud",
+      cloud_setup_message: CLOUD_QR_SETUP_MESSAGE,
+      hotel_slug: "",
+      business_name,
+      count: 0,
+      shared: { menu: null, services: null },
+      rooms: [],
+    };
+  }
+
+  const configuredBase = resolveQrBaseUrl(db);
   const useCloudQr = isCloudQrBase(configuredBase) && !!slug;
-  const qrBase = useCloudQr ? configuredBase : (
-    isCloudQrBase(configuredBase) ? detectLanBase() : configuredBase
-  );
+  const qrBase = useCloudQr ? configuredBase : "";
+  if (!qrBase) {
+    return {
+      base_url: "",
+      configured_base_url: configuredBase,
+      qr_mode: "needs_cloud",
+      cloud_setup_message: CLOUD_QR_SETUP_MESSAGE,
+      hotel_slug: slug,
+      business_name,
+      count: 0,
+      shared: { menu: null, services: null },
+      rooms: [],
+    };
+  }
   try {
     db.ensureDefaultRooms?.();
   } catch {
@@ -164,12 +179,9 @@ async function listHotelQrs(db) {
   return {
     base_url: qrBase,
     configured_base_url: configuredBase,
-    qr_mode: useCloudQr ? "cloud" : "local",
-    hotel_slug: slug || "",
-    business_name: (typeof db.getBusinessName === "function" ? db.getBusinessName() : "")
-      || settings.business_name
-      || settings.restaurant_name
-      || "Hotel",
+    qr_mode: "cloud",
+    hotel_slug: slug,
+    business_name,
     count: roomRows.length,
     shared: { menu: sharedMenu, services: sharedServices },
     rooms: roomRows,
@@ -240,6 +252,9 @@ function setHotelQrBaseUrl(db, url) {
   if (v && !/^https?:\/\//i.test(v)) {
     throw new Error("URL bazë duhet të fillojë me http:// ose https://");
   }
+  if (v && isLocalOrPrivateServerUrl(v)) {
+    throw new Error("QR cloud: përdor URL publike (revolution-pos.com), jo LAN ose localhost.");
+  }
   if (typeof db.setSetting === "function") {
     db.setSetting("hotel_qr_base_url", v);
   } else {
@@ -257,4 +272,5 @@ module.exports = {
   setHotelQrBaseUrl,
   buildHotelQrUrls,
   isCloudQrBase,
+  CLOUD_QR_SETUP_MESSAGE,
 };

@@ -117,11 +117,9 @@ const menuStockPhotos = require("./menu-stock-photos");
 const {
   getPublicCloudServerUrl,
   buildCloudAccessLinks,
-  buildLocalAccessLinks,
   buildPublicMenuUrl,
   buildWaiterPersonalUrl,
   buildHotelVenueSlug,
-  deriveLocalAccessKey,
   PUBLIC_HOTEL_ORIGIN,
   HOTEL_ACCESS_ROLES,
   STAFF_ACCESS_ROLES,
@@ -875,8 +873,7 @@ function resolveHotelVenueAccess(db) {
   );
   let slug = String(settings.kitchen_slug || settings.cloud_client_id || "").trim();
   if (!slug) slug = buildHotelVenueSlug(bizName, deviceId);
-  let key = String(settings.kitchen_key || "").trim();
-  if (!key) key = deriveLocalAccessKey(deviceId);
+  const key = String(settings.kitchen_key || "").trim();
   return { slug, key, deviceId, bizName: String(bizName || "").trim() };
 }
 
@@ -909,8 +906,9 @@ function resolveStaffLinksPayload(db) {
     cloud_waiter_url: links.waiter_url,
     cloud_kitchen_url: links.kitchen_url,
     cloud_bar_url: links.bar_url,
-    links_ready: !!venue.slug,
+    links_ready: !!(venue.slug && venue.key),
     local_mode: false,
+    staff_links_use_cloud_only: true,
   };
 }
 

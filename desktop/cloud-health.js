@@ -8,6 +8,7 @@ const {
   BACKUP_CLOUD_SERVERS,
   CLOUD_SERVER_URLS,
   PUBLIC_CLOUD_SERVER,
+  hotelCloudApiPath,
 } = require("./cloud-server-url");
 
 const HEALTH_CHECK_MS = 10000;
@@ -113,7 +114,13 @@ function logFailure(event, detail = {}) {
 async function probeServer(baseUrl) {
   const result = { url: baseUrl, health_ok: false, db_ok: false, error: "" };
   try {
-    const health = await requestJsonOnce("GET", baseUrl, "/health", null, REQUEST_TIMEOUT_MS);
+    const health = await requestJsonOnce(
+      "GET",
+      baseUrl,
+      hotelCloudApiPath("/health"),
+      null,
+      REQUEST_TIMEOUT_MS,
+    );
     result.health_ok = health.status > 0 && health.status < 500;
     if (!result.health_ok) {
       result.error = `HTTP ${health.status}`;
@@ -125,7 +132,13 @@ async function probeServer(baseUrl) {
   }
 
   try {
-    const db = await requestJsonOnce("GET", baseUrl, "/health/db", null, REQUEST_TIMEOUT_MS);
+    const db = await requestJsonOnce(
+      "GET",
+      baseUrl,
+      hotelCloudApiPath("/health/db"),
+      null,
+      REQUEST_TIMEOUT_MS,
+    );
     let parsed = {};
     try { parsed = JSON.parse(db.data || "{}"); } catch { /* */ }
     result.db_ok = db.status > 0 && db.status < 500 && !!parsed.ok;
@@ -152,7 +165,7 @@ async function reportOutageToCloud(event, message, serversTried) {
     await requestJsonOnce(
       "POST",
       PRIMARY_CLOUD_SERVER,
-      "/api/v1/system/outage-alert",
+      hotelCloudApiPath("/api/v1/system/outage-alert"),
       {
         celesi: cfg.celesi,
         device_id: cfg.deviceId,
@@ -167,7 +180,7 @@ async function reportOutageToCloud(event, message, serversTried) {
         return requestJsonOnce(
           "POST",
           url,
-          "/api/v1/system/outage-alert",
+          hotelCloudApiPath("/api/v1/system/outage-alert"),
           {
             celesi: cfg.celesi,
             device_id: cfg.deviceId,
