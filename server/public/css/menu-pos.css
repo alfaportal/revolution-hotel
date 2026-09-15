@@ -1,0 +1,762 @@
+/* Menu mobile — kamarier (/waiter) + QR tavolinë (/menu) */
+
+:root {
+  --menu-bg: #eef1f5;
+  --menu-card: #ffffff;
+  --menu-card-border: #e2e6ec;
+  --menu-text: #1a2332;
+  --menu-muted: #64748b;
+  --menu-accent: #1e3a5f;
+  --menu-accent-soft: rgba(30, 58, 95, 0.08);
+  --menu-teal: #0f766e;
+  --menu-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --menu-shadow-hover: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --menu-radius: 14px;
+}
+
+#screen-order .order-main {
+  background: var(--menu-bg);
+}
+
+#screen-order .waiter-header {
+  background: var(--menu-card);
+  border-bottom: 1px solid var(--menu-card-border);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+#screen-order .waiter-header h1,
+#screen-order .waiter-header .sub {
+  color: var(--menu-text);
+}
+
+#screen-order .waiter-header .sub {
+  color: var(--menu-muted);
+}
+
+.menu-pos-wrap {
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.menu-group-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0.15rem;
+  flex-shrink: 0;
+  margin: 0 0.75rem;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+}
+
+.menu-group-btn {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: #2d2d44;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.menu-group-btn .menu-tab-icon {
+  display: none !important;
+}
+
+.menu-group-btn .menu-tab-label {
+  letter-spacing: 0.01em;
+}
+
+.menu-group-btn:active {
+  transform: scale(0.98);
+}
+
+.menu-group-btn.active {
+  background: #ff6b35;
+  color: #fff;
+  box-shadow: none;
+}
+
+.menu-group-btn.active .menu-tab-icon {
+  display: none !important;
+}
+
+/* ── Kategori tab-at dinamike ── */
+#menu-cat-bar {
+  margin: 0 0.75rem;
+  flex-shrink: 0;
+}
+
+.menu-cat-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  padding: 0.4rem 0.15rem;
+}
+
+.menu-cat-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.menu-cat-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: #2d2d44;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease;
+  white-space: nowrap;
+}
+
+.menu-cat-tab .menu-tab-icon {
+  display: none !important;
+}
+
+.menu-cat-tab .menu-tab-label {
+  letter-spacing: 0.01em;
+}
+
+.menu-cat-tab:active {
+  transform: scale(0.98);
+}
+
+.menu-cat-tab.active {
+  background: #ff6b35;
+  color: #fff;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.menu-cat-tab.active .menu-tab-icon {
+  display: none !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menu-cat-tab:hover:not(.active) {
+    background: #3a3a55;
+    color: #fff;
+    border-color: transparent;
+  }
+}
+
+.menu-photo-grid {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 0.25rem 0.75rem 0.85rem;
+  scroll-behavior: smooth;
+}
+
+.menu-photo-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding-bottom: 0.35rem;
+}
+
+.menu-empty-msg {
+  text-align: center;
+  color: var(--menu-muted);
+  padding: 2.5rem 1rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.menu-item-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  font-family: inherit;
+  color: inherit;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menu-item-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0;
+  border-radius: 12px;
+  padding: 0;
+  min-height: 4.5rem;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  overflow: hidden;
+}
+
+.menu-item-photo-wrap {
+  display: block;
+  aspect-ratio: 1.1 / 1;
+  width: 100%;
+  height: auto;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.menu-item-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #fff;
+}
+
+.menu-item-emoji-ph,
+.menu-item-letter-ph {
+  display: none !important;
+}
+
+.menu-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  padding: 0.4rem 0.35rem 0.45rem;
+  min-height: 0;
+  width: 100%;
+  background: #fff;
+}
+
+.menu-item-btn .emri {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.28;
+  color: var(--menu-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: center;
+}
+
+.menu-item-btn .cmimi,
+.menu-item-btn .cmimi-badge {
+  align-self: center;
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--menu-teal);
+  box-shadow: none;
+}
+
+.menu-item-btn .cmimi-badge.is-gold {
+  color: #b45309;
+}
+
+.menu-item-btn:active .menu-item-card,
+.menu-item-btn.menu-item-flash .menu-item-card {
+  transform: scale(0.98);
+  border-color: rgba(30, 58, 95, 0.28);
+  box-shadow: 0 0 0 2px var(--menu-accent-soft), var(--menu-shadow);
+}
+
+.menu-item-btn.is-sold-out,
+.menu-item-btn.menu-item-sold-out-btn {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.menu-item-btn.is-sold-out .cmimi,
+.menu-item-btn.is-sold-out .cmimi-badge {
+  color: var(--menu-muted);
+}
+
+@media (min-width: 521px) {
+  .menu-photo-grid-inner {
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .menu-item-btn .emri {
+    font-size: 0.92rem;
+  }
+
+  .menu-item-emoji-ph,
+  .menu-item-letter-ph {
+    font-size: 2.5rem;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menu-group-btn:hover:not(.active) {
+    color: var(--menu-text);
+  }
+
+  .menu-item-btn:not(:disabled):hover .menu-item-card {
+    transform: translateY(-2px);
+    border-color: #cbd5e1;
+    box-shadow: var(--menu-shadow-hover);
+  }
+}
+
+#screen-order .cart-bar {
+  background: var(--menu-card);
+  border-top: 1px solid var(--menu-card-border);
+  box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.08);
+}
+
+#screen-order .cart-bar-title,
+#screen-order .cart-total {
+  color: var(--menu-text);
+}
+
+#screen-order .cart-count-label {
+  color: var(--menu-teal);
+  font-weight: 700;
+}
+
+#screen-order .cart-line {
+  border-bottom-color: #eef1f5;
+}
+
+#screen-order .cart-unit-price {
+  color: var(--menu-muted);
+}
+
+#screen-order .cart-line-total {
+  color: var(--menu-accent);
+}
+
+#screen-order .btn-send-order {
+  background: var(--menu-accent);
+  border-radius: 10px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.22);
+}
+
+#screen-order .btn-send-order:active {
+  background: #163049;
+}
+
+#screen-order .cart-table-bill {
+  color: #b45309;
+  border-top-color: var(--menu-card-border);
+}
+
+#screen-order .cart-pay-label {
+  color: var(--menu-muted);
+}
+
+#screen-order .btn-pay-cash {
+  background: #0f766e;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+#screen-order .btn-pay-card {
+  background: var(--menu-accent);
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+#screen-order .waiter-header .btn-ghost {
+  background: #f8fafc;
+  border: 1px solid var(--menu-card-border);
+  color: var(--menu-text);
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+#screen-order .cart-msg.ok {
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+#screen-order .cart-msg.err {
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-item-card,
+  .menu-group-btn,
+  .menu-item-photo-wrap {
+    transition: none;
+  }
+}
+
+/* Kamarier telefon — menu kompakt (jo kiosk) */
+@media (max-width: 520px) {
+  #screen-order:not(.kiosk-screen) .menu-pos-wrap {
+    gap: 0.35rem;
+    padding-top: 0;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-group-bar {
+    margin: 0 0.5rem;
+    padding: 0.28rem 0;
+    gap: 0.35rem;
+    overflow-x: scroll !important;
+    flex-wrap: nowrap !important;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-group-btn {
+    min-height: 36px;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.78rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-group-btn .menu-tab-icon {
+    display: none !important;
+  }
+
+  #screen-order:not(.kiosk-screen) #menu-cat-bar {
+    margin: 0 0.5rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-cat-tabs {
+    gap: 0.35rem;
+    padding: 0.25rem 0.1rem;
+    overflow-x: scroll !important;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-cat-tab {
+    min-height: 36px;
+    min-width: 0;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.75rem;
+    border-radius: 999px;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-cat-tab .menu-tab-icon {
+    display: none !important;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-photo-grid {
+    padding: 0.15rem 0.5rem 0.5rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-photo-grid-inner {
+    gap: 0.38rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-item-card {
+    padding: 0.5rem 0.4rem;
+    min-height: 3.5rem;
+    border-radius: 10px;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-item-meta {
+    min-height: 0;
+    gap: 0.2rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-item-btn .emri {
+    font-size: 0.82rem;
+    line-height: 1.22;
+    -webkit-line-clamp: 2;
+  }
+
+  #screen-order:not(.kiosk-screen) .menu-item-btn .cmimi,
+  #screen-order:not(.kiosk-screen) .menu-item-btn .cmimi-badge {
+    font-size: 0.76rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.2rem 0.45rem;
+    padding: 0.32rem 0.5rem calc(0.32rem + var(--safe-bottom));
+    max-height: none;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar-head {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+    padding-bottom: 0.1rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar-title {
+    font-size: 0.78rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-count-label {
+    font-size: 0.68rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-lines {
+    grid-column: 1 / -1;
+    max-height: 7.25rem;
+    min-height: 0;
+    margin-bottom: 0;
+    font-size: 0.76rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-lines:not(:empty) {
+    max-height: 7.75rem;
+    border-bottom: 1px solid #eef1f5;
+    padding-bottom: 0.15rem;
+    margin-bottom: 0.05rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-lines:empty {
+    display: none;
+  }
+
+  /* Pa artikuj në shportë — fshi kokën dhe totalin 0.00 */
+  #screen-order:not(.kiosk-screen) .cart-bar:has(.cart-lines:empty) .cart-bar-head,
+  #screen-order:not(.kiosk-screen) .cart-bar:has(.cart-lines:empty) .cart-total {
+    display: none;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-line {
+    padding: 0.08rem 0;
+    gap: 0.2rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-qty-btn {
+    min-width: 1.55rem;
+    min-height: 1.55rem;
+    padding: 0.15rem 0.3rem !important;
+    font-size: 0.8rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-line-total {
+    font-size: 0.72rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-total {
+    grid-column: 1;
+    font-size: 0.8rem;
+    margin-bottom: 0;
+    padding: 0.1rem 0;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-table-bill {
+    grid-column: 2;
+    padding: 0.1rem 0;
+    margin-top: 0;
+    font-size: 0.78rem;
+    border-top: none;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar:has(.cart-lines:empty) .cart-table-bill:not(.hidden) {
+    grid-column: 1 / -1;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar:has(.cart-lines:not(:empty)) .cart-table-bill.hidden {
+    display: none !important;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar:has(.cart-table-bill.hidden) .cart-total {
+    grid-column: 1 / -1;
+  }
+
+  /* Dërgo — rresht kompakt si Cash/Kartë, vetëm kur ka artikuj */
+  #screen-order:not(.kiosk-screen) .btn-send-order {
+    position: static;
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.8rem;
+    margin: 0;
+    z-index: auto;
+    box-shadow: none;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-bar:has(.cart-lines:empty) .btn-send-order {
+    display: none !important;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-msg {
+    grid-column: 1 / -1;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.74rem;
+    margin-bottom: 0;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-pay-row {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-pay-label {
+    display: none;
+  }
+
+  #screen-order:not(.kiosk-screen) .cart-pay-btns {
+    gap: 0.35rem;
+  }
+
+  #screen-order:not(.kiosk-screen) .btn-pay-cash,
+  #screen-order:not(.kiosk-screen) .btn-pay-card {
+    min-height: 36px;
+    font-size: 0.82rem;
+    border-radius: 9px;
+  }
+}
+
+/* ��� Product detail modal (description) ��� */
+.menu-item-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+.menu-item-detail-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+}
+.menu-item-detail-card {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  max-height: min(88vh, 640px);
+  overflow: auto;
+  background: #fff;
+  color: #111827;
+  border-radius: 16px;
+  padding: 1.15rem 1.15rem 1.25rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-card {
+  background: #1e1e2e;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.menu-item-detail-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  min-width: 36px;
+  min-height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  color: #111827;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-close {
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+}
+.menu-item-detail-close:hover {
+  background: #f3f4f6;
+  color: #000;
+}
+.menu-item-detail-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+  background: #f3f4f6;
+}
+.menu-item-detail-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.menu-item-detail-name {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.25;
+  padding-right: 2rem;
+}
+.menu-item-detail-price {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ff6b35;
+  margin-bottom: 0.75rem;
+}
+.menu-item-detail-desc {
+  margin: 0 0 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #4b5563;
+  white-space: pre-wrap;
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-desc {
+  color: rgba(248, 250, 252, 0.78);
+}
+.menu-item-detail-add {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: #ff6b35;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.menu-item-detail-add:hover {
+  background: #e85a28;
+}

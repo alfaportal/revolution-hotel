@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Revolution Invest POS — sistemi i plotë për restorante dhe kafene. POS, KDS, kamarier, kiosk, raporte dhe faqe publike.">
+  <meta name="theme-color" content="#0b1324">
+  <title>Revolution Invest POS — Sistemi POS për Restorantet dhe Kafenetë</title>
+  <style>
+    :root {
+      --navy: #0b1324;
+      --navy-2: #111d33;
+      --navy-3: #162544;
+      --card: #141f36;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #e63946;
+      --accent-dark: #c1121f;
+      --border: rgba(148, 163, 184, 0.18);
+      --radius: 16px;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      --max: 1120px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--navy);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    img { max-width: 100%; display: block; }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      width: min(100% - 2rem, var(--max));
+      margin-inline: auto;
+    }
+
+    /* Header */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11, 19, 36, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      min-height: 4rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      width: 2.2rem;
+      height: 2.2rem;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .brand-mark img {
+      width: 118%;
+      max-width: none;
+      margin: 6% 0 0 -9%;
+      display: block;
+    }
+
+    .brand-text { font-size: 0.98rem; }
+    .brand-text small {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .nav-desktop {
+      display: none;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .nav-desktop a {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.92rem;
+      transition: color 0.15s;
+    }
+
+    .nav-desktop a:hover { color: #fff; }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .lang-switch {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .lang-switch button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.45rem 0.65rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .lang-switch button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .lang-switch button:hover:not(.active) { color: #fff; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      border: none;
+      border-radius: 999px;
+      padding: 0.72rem 1.15rem;
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: transform 0.12s, background 0.15s, box-shadow 0.15s;
+    }
+
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 10px 30px rgba(230, 57, 70, 0.28);
+    }
+
+    .btn-primary:hover { background: var(--accent-dark); }
+
+    .btn-ghost {
+      background: transparent;
+      color: #fff;
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.35); }
+
+    .menu-toggle {
+      display: inline-flex;
+      width: 2.5rem;
+      height: 2.5rem;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: transparent;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .nav-mobile {
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding: 0 0 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .nav-mobile.open { display: flex; }
+
+    .nav-mobile a {
+      padding: 0.75rem 0.25rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .nav-mobile a:hover { color: #fff; }
+
+    /* Hero */
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 4.5rem 0 5rem;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(230, 57, 70, 0.18), transparent 60%),
+        linear-gradient(180deg, var(--navy-2) 0%, var(--navy) 100%);
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.5), transparent);
+      pointer-events: none;
+    }
+
+    .hero-grid {
+      position: relative;
+      display: grid;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(230, 57, 70, 0.12);
+      border: 1px solid rgba(230, 57, 70, 0.25);
+      color: #ffb4b4;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      margin: 1rem 0 0.85rem;
+      font-size: clamp(2rem, 6vw, 3.35rem);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      max-width: 12ch;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(1rem, 2.5vw, 1.15rem);
+      max-width: 36rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.75rem;
+    }
+
+    .hero-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.15);
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    .hero-stat {
+      background: rgba(0,0,0,0.18);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0.85rem;
+    }
+
+    .hero-stat strong {
+      display: block;
+      font-size: 1.15rem;
+      line-height: 1.1;
+    }
+
+    .hero-stat span {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .hero-preview {
+      margin-top: 1rem;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--navy-3);
+      padding: 0.85rem;
+    }
+
+    .preview-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.55rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+
+    .preview-row:last-child { border-bottom: none; }
+    .preview-price { color: #ffb4b4; font-weight: 800; }
+
+    /* Sections */
+    section { padding: 4.5rem 0; }
+    section:nth-child(even) { background: var(--navy-2); }
+
+    .section-head {
+      text-align: center;
+      max-width: 42rem;
+      margin: 0 auto 2.5rem;
+    }
+
+    .section-head h2 {
+      margin: 0 0 0.65rem;
+      font-size: clamp(1.65rem, 4vw, 2.25rem);
+      letter-spacing: -0.02em;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .features-grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(230, 57, 70, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(230, 57, 70, 0.12);
+      font-size: 1.25rem;
+      margin-bottom: 0.85rem;
+    }
+
+    .feature-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+    }
+
+    .feature-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .how-grid {
+      display: grid;
+      gap: 1.15rem;
+      grid-template-columns: 1fr;
+    }
+
+    .how-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .how-card:hover {
+      border-color: rgba(230, 57, 70, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .how-card-icon {
+      width: 3.25rem;
+      height: 3.25rem;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: rgba(230, 57, 70, 0.12);
+      font-size: 1.6rem;
+      margin-bottom: 1rem;
+    }
+
+    .how-card h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1.15rem;
+    }
+
+    .how-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .how-card-link {
+      display: inline-flex;
+      margin-top: 1rem;
+      color: #ffb4b4;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .how-card-link:hover { color: #fff; }
+
+    /* Highlight bands — accounting + 24/7 support */
+    .highlight-band {
+      padding: 3.5rem 0;
+    }
+
+    .highlight-band + .highlight-band {
+      padding-top: 0;
+    }
+
+    .highlight-panel {
+      display: grid;
+      gap: 1.5rem;
+      align-items: center;
+      background: linear-gradient(145deg, #162544 0%, #141f36 55%, rgba(255, 107, 53, 0.08) 100%);
+      border: 1px solid rgba(255, 107, 53, 0.28);
+      border-radius: 22px;
+      padding: 1.75rem 1.5rem;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+    }
+
+    @media (min-width: 768px) {
+      .highlight-panel {
+        grid-template-columns: auto 1fr;
+        padding: 2.25rem 2.5rem;
+        gap: 2rem;
+      }
+    }
+
+    .highlight-icon {
+      width: 4.5rem;
+      height: 4.5rem;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 107, 53, 0.14);
+      border: 1px solid rgba(255, 107, 53, 0.35);
+      color: #FF6B35;
+      flex-shrink: 0;
+    }
+
+    .highlight-icon svg {
+      width: 2.15rem;
+      height: 2.15rem;
+      display: block;
+    }
+
+    .highlight-copy h2 {
+      margin: 0 0 0.65rem;
+      font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    .highlight-copy h2 span {
+      color: #FF6B35;
+    }
+
+    .highlight-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.02rem;
+      max-width: 46rem;
+      line-height: 1.65;
+    }
+
+    .highlight-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 1.25rem;
+    }
+
+    .highlight-actions a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.7rem 1rem;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      border: 1px solid rgba(255, 107, 53, 0.4);
+      background: rgba(255, 107, 53, 0.12);
+      color: #fff;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    }
+
+    .highlight-actions a:hover {
+      background: rgba(255, 107, 53, 0.22);
+      border-color: #FF6B35;
+      transform: translateY(-1px);
+    }
+
+    .highlight-actions a.primary {
+      background: #FF6B35;
+      border-color: #FF6B35;
+      color: #fff;
+    }
+
+    .highlight-actions a.primary:hover {
+      background: #ff7f52;
+    }
+
+    .packages-grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+
+    .package-card {
+      position: relative;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2.35rem 1.35rem 1.35rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      min-height: 100%;
+    }
+
+    .package-card.featured {
+      border-color: rgba(255, 107, 53, 0.5);
+      box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.18), var(--shadow);
+    }
+
+    .package-badge {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: #FF6B35;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 0.28rem 0.55rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .package-name {
+      font-size: 1.15rem;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .package-price {
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .package-price small {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .package-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.45rem;
+      flex: 1;
+    }
+
+    .package-list li {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-start;
+      font-size: 0.9rem;
+      color: #dbe4f0;
+    }
+
+    .package-list li::before {
+      content: "✓";
+      color: var(--accent);
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+
+    .contact-grid {
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    .contact-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+
+    .contact-card h3 {
+      margin: 0 0 0.75rem;
+      font-size: 1.05rem;
+    }
+
+    .contact-links {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .contact-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.75rem 0.9rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+      font-weight: 600;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .contact-link:hover {
+      border-color: rgba(230, 57, 70, 0.35);
+      background: rgba(230, 57, 70, 0.08);
+    }
+
+    .contact-link.whatsapp {
+      background: rgba(37, 211, 102, 0.1);
+      border-color: rgba(37, 211, 102, 0.25);
+    }
+
+    .contact-form {
+      display: grid;
+      gap: 0.85rem;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+
+    .field input,
+    .field textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.18);
+      color: #fff;
+      padding: 0.75rem 0.85rem;
+      font: inherit;
+    }
+
+    .field textarea { min-height: 120px; resize: vertical; }
+
+    .field input:focus,
+    .field textarea:focus {
+      outline: none;
+      border-color: rgba(230, 57, 70, 0.55);
+      box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.15);
+    }
+
+    .form-msg {
+      min-height: 1.25rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .form-msg.ok { color: #86efac; }
+    .form-msg.err { color: #fca5a5; }
+
+    .custom-cta {
+      text-align: center;
+      margin-top: 2rem;
+    }
+
+    .site-footer {
+      padding: 2rem 0 2.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--navy);
+      color: var(--muted);
+      font-size: 0.88rem;
+      text-align: center;
+    }
+
+    @media (min-width: 720px) {
+      .nav-desktop { display: flex; }
+      .menu-toggle { display: none; }
+      .header-cta-desktop { display: inline-flex; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .how-grid { grid-template-columns: repeat(2, 1fr); }
+      .packages-grid { grid-template-columns: repeat(2, 1fr); }
+      .contact-grid { grid-template-columns: 0.95fr 1.05fr; align-items: start; }
+      .hero-grid { grid-template-columns: 1.05fr 0.95fr; }
+    }
+
+    @media (min-width: 1024px) {
+      .features-grid { grid-template-columns: repeat(3, 1fr); }
+      .how-grid { grid-template-columns: repeat(4, 1fr); }
+      .packages-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    @media (max-width: 719px) {
+      .header-cta-desktop { display: none; }
+    }
+  </style>
+</head>
+<body data-i18n-title="meta.title" data-i18n-meta-description="meta.description">
+  <header class="site-header">
+    <div class="container">
+      <div class="header-inner">
+        <a class="brand" href="#ballina" aria-label="Revolution Invest POS">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/logo-source.png" width="40" height="40" alt="" />
+          </span>
+          <span class="brand-text">
+            Revolution Invest POS
+            <small data-i18n="brand.subtitle">Restorant &amp; Kafene</small>
+          </span>
+        </a>
+
+        <nav class="nav-desktop" aria-label="Kryesore" data-i18n-attr="aria-label:nav.label">
+          <a href="#ballina" data-i18n="nav.home">Ballina</a>
+          <a href="#si-funksionon" data-i18n="nav.howItWorks">Si funksionon</a>
+          <a href="#pakot" data-i18n="nav.packages">Pakot</a>
+          <a href="/blog" data-i18n="nav.blog">Blog</a>
+          <a href="/website/manual.html" data-i18n="nav.manual">Manuali</a>
+          <a href="#kontakt" data-i18n="nav.contact">Kontakti</a>
+        </nav>
+
+        <div class="header-actions">
+          <div class="lang-switch" aria-label="Gjuha" data-i18n-attr="aria-label:nav.langLabel">
+            <button type="button" data-lang="sq" class="active">SQ</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+          <a class="btn btn-primary header-cta-desktop" href="#kontakt" data-i18n="cta.startFree">Fillo Falas</a>
+          <button class="menu-toggle" id="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-mobile" aria-label="Hap menunë" data-i18n-attr="aria-label:nav.openMenu">☰</button>
+        </div>
+      </div>
+
+      <nav class="nav-mobile" id="nav-mobile" aria-label="Mobile" data-i18n-attr="aria-label:nav.mobile">
+        <a href="#ballina" data-i18n="nav.home">Ballina</a>
+        <a href="#si-funksionon" data-i18n="nav.howItWorks">Si funksionon</a>
+        <a href="#pakot" data-i18n="nav.packages">Pakot</a>
+        <a href="/blog" data-i18n="nav.blog">Blog</a>
+        <a href="/website/manual.html" data-i18n="nav.manual">Manuali</a>
+        <a href="#kontakt" data-i18n="nav.contact">Kontakti</a>
+        <a class="btn btn-primary" href="#kontakt" style="margin-top:0.35rem;width:fit-content" data-i18n="cta.startFree">Fillo Falas</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="ballina">
+      <div class="container hero-grid">
+        <div>
+          <span class="eyebrow" data-i18n="hero.eyebrow">Cloud POS për biznesin tuaj</span>
+          <h1 data-i18n="hero.title">Sistemi POS për Restorantet dhe Kafenetë</h1>
+          <p data-i18n="hero.subtitle">Menaxho porositë, stafin dhe raportet nga çdo pajisje — kasë, kuzhinë, kamarier, kiosk dhe faqe publike në një platformë.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="/api/public/setup-download" data-i18n="cta.start3Months">Shkarko KAFENE</a>
+            <a class="btn btn-ghost" href="#pakot" data-i18n="cta.viewDemo">Shiko Demo</a>
+          </div>
+        </div>
+
+        <div class="hero-card" aria-hidden="true">
+          <div class="hero-card-head">
+            <span data-i18n="hero.panelLive">Paneli live</span>
+            <span class="status-dot"></span>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat"><strong>24</strong><span data-i18n="hero.ordersToday">Porosi sot</span></div>
+            <div class="hero-stat"><strong>€1.8k</strong><span data-i18n="hero.revenue">Qarkullim</span></div>
+            <div class="hero-stat"><strong>6</strong><span data-i18n="hero.activeModules">Module aktive</span></div>
+          </div>
+          <div class="hero-preview">
+            <div class="preview-row"><span>Kafe espresso</span><span class="preview-price">€1.00</span></div>
+            <div class="preview-row"><span>Burger classic</span><span class="preview-price">€5.50</span></div>
+            <div class="preview-row"><span>Tavolina T4 · KDS</span><span class="preview-price" data-i18n="hero.preview.ready">Gati</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="features.title">Gjithçka që ju duhet për operimin ditor</h2>
+          <p data-i18n="features.subtitle">Module të integruara që punojnë së bashku — nga porosia deri te raporti i ditës.</p>
+        </div>
+        <div class="features-grid">
+          <article class="feature-card">
+            <div class="feature-icon">🖥️</div>
+            <h3 data-i18n="features.pos.title">POS Kasa</h3>
+            <p data-i18n="features.pos.desc">Shitje të shpejta, tavolina, fatura dhe sinkronizim cloud në kohë reale.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🍳</div>
+            <h3 data-i18n="features.kds.title">KDS Kuzhina</h3>
+            <p data-i18n="features.kds.desc">Porositë shkojnë direkt në ekranin e kuzhinës — më pak gabime, shërbim më i shpejtë.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">📱</div>
+            <h3 data-i18n="features.waiter.title">Kamarieri</h3>
+            <p data-i18n="features.waiter.desc">Tablet për kamarierët me PIN, menu dhe porosi nga tavolina pa pritje.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">📲</div>
+            <h3 data-i18n="features.kiosk.title">Kiosk QR</h3>
+            <p data-i18n="features.kiosk.desc">Klientët skanojnë QR nga tavolina dhe porositin vetë — porosia shkon te banaku.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3 data-i18n="features.reports.title">Raportet</h3>
+            <p data-i18n="features.reports.desc">Shitje ditore, Z-Report, TVSH dhe statistika për vendime më të mira.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🌐</div>
+            <h3 data-i18n="features.public.title">Faqja Publike</h3>
+            <p data-i18n="features.public.desc">Menu online, logo, porosi delivery/takeaway dhe prezencë profesionale në web.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="si-funksionon">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="how.title">Si funksionon sistemi</h2>
+          <p data-i18n="how.subtitle">Çdo modul ka rolin e vet — së bashku mbulojnë operimin e plotë të restorantit, nga porosia deri te raporti.</p>
+        </div>
+        <div class="how-grid">
+          <article class="how-card">
+            <div class="how-card-icon" aria-hidden="true">🖥️</div>
+            <h3 data-i18n="how.pos.title">POS Kasa</h3>
+            <p data-i18n="how.pos.desc">Merr porosi, bëj fatura fiskale dhe menaxho tavolinat — qendra e operimit të restorantit tuaj.</p>
+            <a class="how-card-link" href="/website/manual.html#menuja" data-i18n="how.readManual">Lexo në manual →</a>
+          </article>
+          <article class="how-card">
+            <div class="how-card-icon" aria-hidden="true">📱</div>
+            <h3 data-i18n="how.waiter.title">Kamarieri</h3>
+            <p data-i18n="how.waiter.desc">Tablet ose telefon — merr porosi direkt nga tavolina dhe i dërgon automatikisht në kuzhinë.</p>
+            <a class="how-card-link" href="/website/manual.html#kamarieri" data-i18n="how.readManual">Lexo në manual →</a>
+          </article>
+          <article class="how-card">
+            <div class="how-card-icon" aria-hidden="true">🍳</div>
+            <h3 data-i18n="how.kds.title">KDS Kuzhina</h3>
+            <p data-i18n="how.kds.desc">Ekran dixhital — sheh porositë në kohë reale dhe konfirmon kur pjata është gati për servim.</p>
+            <a class="how-card-link" href="/website/manual.html#kuzhina" data-i18n="how.readManual">Lexo në manual →</a>
+          </article>
+          <article class="how-card">
+            <div class="how-card-icon" aria-hidden="true">👤</div>
+            <h3 data-i18n="how.owner.title">Pronari</h3>
+            <p data-i18n="how.owner.desc">Panel online — sheh raportet, menaxhon menunë dhe stafin nga kudo, edhe nga telefoni.</p>
+            <a class="how-card-link" href="/website/manual.html#hyrja" data-i18n="how.readManual">Lexo në manual →</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="pakot">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="packages.title">Pakot fleksibile për çdo madhësi biznesi</h2>
+          <p data-i18n="packages.subtitle">Zgjidhni modulin që ju nevojitet — upgrade kur rriteni. Të gjitha pakot fillojnë me 7 ditë falas.</p>
+        </div>
+        <div class="packages-grid">
+          <article class="package-card">
+            <span class="package-badge" data-i18n="packages.badge">7 ditë falas</span>
+            <h3 class="package-name" data-i18n="packages.p1.name">Pako 1 — Basic</h3>
+            <div class="package-price">15€<small data-i18n="packages.perWeek">/javë</small></div>
+            <ul class="package-list">
+              <li data-i18n="packages.p1.f1">Kasa POS e plotë</li>
+              <li data-i18n="packages.p1.f2">Paneli i pronarit</li>
+              <li data-i18n="packages.p1.f3">Printer thermal (kupon)</li>
+              <li data-i18n="packages.p1.f4">Menaxhim tavolinash — zona, numra, status</li>
+              <li data-i18n="packages.p1.f5">Regjistër / arkë</li>
+              <li data-i18n="packages.p1.f6">Raporte bazë</li>
+            </ul>
+            <a class="btn btn-ghost" href="#kontakt" data-i18n="cta.choosePackage">Zgjidh Pakon</a>
+          </article>
+
+          <article class="package-card">
+            <span class="package-badge" data-i18n="packages.badge">7 ditë falas</span>
+            <h3 class="package-name" data-i18n="packages.p2.name">Pako 2 — Standard</h3>
+            <div class="package-price">20€<small data-i18n="packages.perWeek">/javë</small></div>
+            <ul class="package-list">
+              <li data-i18n="packages.p2.f1">Përfshin gjithçka nga Pako 1</li>
+              <li data-i18n="packages.p2.f2">Linke kamarieri — stafi merr porosi nga telefoni</li>
+              <li data-i18n="packages.p2.f3">QR porosi — klienti skanon dhe porosit nga tavolina</li>
+            </ul>
+            <a class="btn btn-ghost" href="#kontakt" data-i18n="cta.choosePackage">Zgjidh Pakon</a>
+          </article>
+
+          <article class="package-card featured">
+            <span class="package-badge" data-i18n="packages.badge">7 ditë falas</span>
+            <h3 class="package-name" data-i18n="packages.p3.name">Pako 3 — Pro</h3>
+            <div class="package-price">25€<small data-i18n="packages.perWeek">/javë</small></div>
+            <ul class="package-list">
+              <li data-i18n="packages.p3.f1">Përfshin gjithçka nga Pako 2</li>
+              <li data-i18n="packages.p3.f2">Faqe publike e restorantit me porosi online</li>
+              <li data-i18n="packages.p3.f3">Stok / inventar — menaxhim i plotë</li>
+              <li data-i18n="packages.p3.f4">Raporte X/Z të avancuara</li>
+              <li data-i18n="packages.p3.f5">Promocione dhe zbritje</li>
+            </ul>
+            <a class="btn btn-primary" href="#kontakt" data-i18n="cta.choosePackage">Zgjidh Pakon</a>
+          </article>
+
+          <article class="package-card">
+            <span class="package-badge" data-i18n="packages.badge">7 ditë falas</span>
+            <h3 class="package-name" data-i18n="packages.p4.name">Pako 4 — Full</h3>
+            <div class="package-price">30€<small data-i18n="packages.perWeek">/javë</small></div>
+            <ul class="package-list">
+              <li data-i18n="packages.p4.f1">Përfshin gjithçka nga Pako 3</li>
+              <li data-i18n="packages.p4.f2">KDS — ekran kuzhine live</li>
+              <li data-i18n="packages.p4.f3">Kontabilisti — libra, shpenzime, audit trail</li>
+              <li data-i18n="packages.p4.f4">RFID — kartela punonjësish</li>
+              <li data-i18n="packages.p4.f5">Void me arsye</li>
+              <li data-i18n="packages.p4.f6">Raporte të plota fiskale</li>
+              <li data-i18n="packages.p4.f7">AI asistent (skanim menu, import artikujsh)</li>
+            </ul>
+            <a class="btn btn-ghost" href="#kontakt" data-i18n="cta.choosePackage">Zgjidh Pakon</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="librat-kontabilistit" class="highlight-band" aria-labelledby="accounting-title">
+      <div class="container">
+        <div class="highlight-panel">
+          <div class="highlight-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5V6.2c0-.7.5-1.2 1.2-1.2H14v14.5H5.2c-.7 0-1.2-.5-1.2-1.2Z"/>
+              <path d="M14 5h4.8c.7 0 1.2.5 1.2 1.2v13.3c0 .7-.5 1.2-1.2 1.2H14V5Z"/>
+              <path d="M7.5 9h4M7.5 12.5h4M7.5 16h2.5"/>
+            </svg>
+          </div>
+          <div class="highlight-copy">
+            <h2 id="accounting-title" data-i18n-html="accounting.title">Librat e <span>Kontabilistit</span></h2>
+            <p data-i18n="accounting.desc">Librat e kontabilistit — menaxho shpenzimet, të ardhurat, raportet fiskale, TVSh-në, dhe auditin e plotë direkt nga sistemi. Krejt të dhënat financiare në një vend.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="mbeshtetje-24-7" class="highlight-band" aria-labelledby="support247-title">
+      <div class="container">
+        <div class="highlight-panel">
+          <div class="highlight-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.5 11a7.5 7.5 0 0 1 15 0v2.2a2.3 2.3 0 0 1-2.3 2.3h-.7a1.5 1.5 0 0 1-1.5-1.5v-3a1.5 1.5 0 0 1 1.5-1.5h3"/>
+              <path d="M4.5 9.5h3A1.5 1.5 0 0 1 9 11v3a1.5 1.5 0 0 1-1.5 1.5h-.7A2.3 2.3 0 0 1 4.5 13.2V11"/>
+              <path d="M15.8 18.2a4.8 4.8 0 0 1-7.6 0"/>
+            </svg>
+          </div>
+          <div class="highlight-copy">
+            <h2 id="support247-title" data-i18n-html="support247.title">Mbështetje teknike <span>24/7</span></h2>
+            <p data-i18n="support247.desc">Jemi në dispozicion 24 orë, 7 ditë në javë. Çdo problem që keni, na kontaktoni dhe e rregullojmë menjëherë — pa pagesë shtesë. Mbështetje nga distanca me AnyDesk, përditësime automatike, dhe mirëmbajtje e vazhdueshme.</p>
+            <div class="highlight-actions">
+              <a class="primary" id="support247-tel" href="tel:+38348707880">
+                <span aria-hidden="true">📞</span>
+                <span id="support247-tel-label">+383 48707880</span>
+              </a>
+              <a id="support247-whatsapp" href="https://wa.me/38348707880" target="_blank" rel="noopener noreferrer">
+                <span aria-hidden="true">💬</span>
+                <span id="support247-whatsapp-label">WhatsApp</span>
+              </a>
+              <a href="mailto:revolutioninvest05@gmail.com">
+                <span aria-hidden="true">✉️</span>
+                <span>revolutioninvest05@gmail.com</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="personalizuar">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="custom.title">Keni nevoja specifike?</h2>
+          <p data-i18n="custom.subtitle">Ndërtojmë zgjidhje të personalizuara për biznesin tuaj</p>
+        </div>
+        <div class="features-grid">
+          <article class="feature-card">
+            <div class="feature-icon">🔗</div>
+            <h3 data-i18n="custom.integrations.title">Integrime të veçanta</h3>
+            <p data-i18n="custom.integrations.desc">Lidhje me sisteme ekzistuese, API custom, raporte të personalizuara</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🖥️</div>
+            <h3 data-i18n="custom.hardware.title">Hardware &amp; Instalim</h3>
+            <p data-i18n="custom.hardware.desc">Instalim profesional, konfigurim i plotë, trajnim i stafit</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🛡️</div>
+            <h3 data-i18n="custom.support.title">Mbështetje 24/7</h3>
+            <p data-i18n="custom.support.desc">Support teknik, update automatike, mirëmbajtje e vazhdueshme</p>
+          </article>
+        </div>
+        <div class="custom-cta">
+          <a class="btn btn-primary" id="custom-whatsapp" href="https://wa.me/38348707880?text=P%C3%ABrsh%C3«ndetje%2C%20d%C3«shiroj%20t%C3%AB%20diskutoj%20p%C3%ABr%20zgjidhje%20t%C3%AB%20personalizuara." target="_blank" rel="noopener noreferrer" data-i18n="cta.contactUs">Na Kontaktoni</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="kontakt">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="contact.title">Filloni sot — provë 7 ditë falas</h2>
+          <p data-i18n="contact.subtitle">Na kontaktoni për instalim, demo live dhe zgjedhjen e pakos së duhur për restorantin ose kafenen tuaj.</p>
+        </div>
+
+        <div class="contact-grid">
+          <div class="contact-card">
+            <h3 data-i18n="contact.direct">Kontakt i drejtpërdrejtë</h3>
+            <div class="contact-links">
+              <a class="contact-link whatsapp" id="contact-whatsapp" href="https://wa.me/38348707880?text=P%C3%ABrsh%C3«ndetje%2C%20d%C3«shiroj%20t%C3«%20provoj%20Revolution%20Invest%20POS." target="_blank" rel="noopener noreferrer">
+                <span aria-hidden="true">💬</span>
+                <span id="contact-whatsapp-label">WhatsApp — +383 48707880</span>
+              </a>
+              <a class="contact-link" id="contact-tel" href="tel:+38348707880">
+                <span aria-hidden="true">📞</span>
+                <span id="contact-tel-label">+383 48707880</span>
+              </a>
+              <a class="contact-link" href="mailto:revolutioninvest05@gmail.com">
+                <span aria-hidden="true">✉️</span>
+                <span>revolutioninvest05@gmail.com</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="contact-card">
+            <h3 data-i18n="contact.sendMessage">Dërgo mesazh</h3>
+            <form class="contact-form" id="contact-form">
+              <div class="field">
+                <label for="contact-name" data-i18n="form.name">Emri</label>
+                <input type="text" id="contact-name" name="name" required data-i18n-placeholder="form.namePlaceholder" placeholder="Emri i biznesit">
+              </div>
+              <div class="field">
+                <label for="contact-phone" data-i18n="form.phone">Telefoni</label>
+                <input type="tel" id="contact-phone" name="phone" required placeholder="+383 48707880">
+              </div>
+              <div class="field">
+                <label for="contact-message" data-i18n="form.message">Mesazhi</label>
+                <textarea id="contact-message" name="message" required data-i18n-placeholder="form.messagePlaceholder" placeholder="P.sh. Restorant me 15 tavolina në Prishtinë…"></textarea>
+              </div>
+              <button class="btn btn-primary" type="submit" data-i18n="cta.sendRequest">Dërgo kërkesën</button>
+              <p class="form-msg" id="form-msg" role="status"></p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>© <span id="year"></span> <span data-i18n="footer.rights">Revolution Invest. Të gjitha të drejtat e rezervuara.</span></p>
+    </div>
+  </footer>
+
+  <script src="/website/lang.js"></script>
+  <script src="/website/strings-index.js"></script>
+  <script>
+    (function () {
+      const toggle = document.getElementById("menu-toggle");
+      const nav = document.getElementById("nav-mobile");
+      const form = document.getElementById("contact-form");
+      const formMsg = document.getElementById("form-msg");
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+
+      let waDigits = "38348707880";
+      let supportPhone = "+383 48707880";
+
+      function t(key) {
+        return SiteLang.t(SiteLang.getLang(), key, window.SITE_STRINGS);
+      }
+
+      function updateWhatsAppLinks() {
+        const waLink = document.getElementById("contact-whatsapp");
+        const customWa = document.getElementById("custom-whatsapp");
+        if (waLink) {
+          waLink.href = `https://wa.me/${waDigits}?text=${encodeURIComponent(t("wa.trial"))}`;
+        }
+        if (customWa) {
+          customWa.href = `https://wa.me/${waDigits}?text=${encodeURIComponent(t("wa.custom"))}`;
+        }
+        const s247Wa = document.getElementById("support247-whatsapp");
+        if (s247Wa) {
+          s247Wa.href = `https://wa.me/${waDigits}?text=${encodeURIComponent(t("wa.support"))}`;
+        }
+      }
+
+      async function loadSiteConfig() {
+        try {
+          const res = await fetch("/api/public/config");
+          const data = await res.json();
+          if (!res.ok || !data.ok) return;
+          if (data.support_phone) supportPhone = data.support_phone;
+          if (data.support_phone_digits) waDigits = data.support_phone_digits;
+          const waLabel = document.getElementById("contact-whatsapp-label");
+          const telLabel = document.getElementById("contact-tel-label");
+          const telLink = document.getElementById("contact-tel");
+          const phoneInput = document.getElementById("contact-phone");
+          if (waLabel) waLabel.textContent = `WhatsApp — ${supportPhone}`;
+          if (telLabel) telLabel.textContent = supportPhone;
+          if (telLink) telLink.href = `tel:${supportPhone.replace(/\s/g, "")}`;
+          if (phoneInput) phoneInput.placeholder = supportPhone;
+          const s247Tel = document.getElementById("support247-tel");
+          const s247TelLabel = document.getElementById("support247-tel-label");
+          const s247Wa = document.getElementById("support247-whatsapp");
+          const s247WaLabel = document.getElementById("support247-whatsapp-label");
+          if (s247Tel) s247Tel.href = `tel:${supportPhone.replace(/\s/g, "")}`;
+          if (s247TelLabel) s247TelLabel.textContent = supportPhone;
+          if (s247Wa) s247Wa.href = `https://wa.me/${waDigits}?text=${encodeURIComponent(t("wa.support"))}`;
+          if (s247WaLabel) s247WaLabel.textContent = `WhatsApp — ${supportPhone}`;
+          updateWhatsAppLinks();
+        } catch { /* defaults */ }
+      }
+
+      SiteLang.initSiteI18n(window.SITE_STRINGS);
+      updateWhatsAppLinks();
+      loadSiteConfig();
+
+      document.addEventListener("site-lang-change", () => {
+        updateWhatsAppLinks();
+      });
+
+      toggle?.addEventListener("click", () => {
+        const open = nav.classList.toggle("open");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+
+      nav?.querySelectorAll("a").forEach(link => {
+        link.addEventListener("click", () => nav.classList.remove("open"));
+      });
+
+      form?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const name = document.getElementById("contact-name").value.trim();
+        const phone = document.getElementById("contact-phone").value.trim();
+        const message = document.getElementById("contact-message").value.trim();
+        if (!name || !phone || !message) {
+          formMsg.textContent = t("form.error");
+          formMsg.className = "form-msg err";
+          return;
+        }
+        const intro = t("wa.formIntro").replace("{name}", name).replace("{phone}", phone);
+        const text = encodeURIComponent(`${intro}\n\n${message}\n\n${t("wa.formSuffix")}`);
+        window.open(`https://wa.me/${waDigits}?text=${text}`, "_blank", "noopener,noreferrer");
+        formMsg.textContent = t("form.success");
+        formMsg.className = "form-msg ok";
+        form.reset();
+      });
+    })();
+  </script>
+</body>
+</html>

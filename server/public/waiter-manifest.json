@@ -1,0 +1,31 @@
+{
+  "name": "Revolution Invest POS — Kamarieri",
+  "short_name": "Kamarieri",
+  "description": "Paneli i kamarierit — Revolution Invest POS",
+  "start_url": "/waiter/",
+  "scope": "/waiter/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0f1b3d",
+  "background_color": "#0f1b3d",
+  "icons": [
+    {
+      "src": "/logo-source.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo-source.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

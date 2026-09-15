@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0f1b3d">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/png" href="/logo-source.png">
+  <title>Banak — Revolution Invest POS</title>
+  <link rel="stylesheet" href="/css/staff-brand.css">
+  <link rel="stylesheet" href="/css/bar.css?v=5">
+  <link rel="stylesheet" href="/css/pin-modal.css">
+</head>
+<body>
+  <div class="staff-app-bar">
+    <img src="/logo-source.png" width="28" height="28" alt="Revolution Invest POS">
+    <span>Revolution Invest POS</span>
+    <span class="staff-app-venue" id="bar-venue-name">Banak</span>
+  </div>
+  <header class="bar-header">
+    <h1 id="bar-title">Banak</h1>
+    <div class="sub" id="bar-sub">Gjendja e tavolinave — live</div>
+    <div class="bar-meta">
+      <span class="live-dot" id="live-label">Live</span>
+      <span id="last-sync">—</span>
+    </div>
+  </header>
+
+  <main class="bar-main">
+    <div id="error-box" class="error-state hidden"></div>
+
+    <section class="bar-tables-section" aria-label="Gjendja e tavolinave">
+      <div class="bar-tables-head">
+        <h2 class="bar-tables-title">Tavolinat live</h2>
+        <span id="bar-tables-updated" class="bar-tables-updated">—</span>
+      </div>
+      <p class="bar-tables-hint">QR / POS — rifreskohet automatikisht</p>
+      <div id="bar-tables-grid" class="bar-tables-grid"></div>
+    </section>
+  </main>
+
+  <script src="/js/bar.js?v=7"></script>
+</body>
+</html>

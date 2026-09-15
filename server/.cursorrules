@@ -1,0 +1,96 @@
+# RREGULLAT E SISTEMIT — REVOLUTION POS
+# Lexo KREJT këtë skedar PARA çdo ndryshimi. Nëse e shkel ndonjë rregull, prishet sistemi.
+
+## RREGULLI #1: NJË POROSI = NJË RRESHT NË DATABAZË
+- Çdo porosi krijon SAKTËSISHT 1 rresht në tabelën `sales_orders` në Supabase
+- ASNJËHERË mos krijo rresht të dytë për të njëjtën porosi
+- ASNJËHERË mos kopjo/importo/dupliko porosi nga një device_id në tjetrin
+- Nëse porosia ekziston me `WEB-WAITER`, POS nuk krijon rresht të ri me device_id të vet — vetëm e shfaq dhe e mbyll atë ekzistuesen
+
+## RREGULLI #2: DEVICE ID-TË
+- `202FBE12985D` (ose ID tjetër hardware) = POS desktop (KAFENE Electron app)
+- `WEB-WAITER` = telefoni i kamarierit
+- `WEB-KIOSK` = QR code nga klienti
+- `WEB-PUBLIC` = Takeaway/Delivery
+- Çdo device krijon rreshtin e vet — device-at tjerë e shfaqin dhe e mbyllin, NUK e kopjojnë
+
+## RREGULLI #3: MBYLLJA E POROSISË
+- Mbyllja duhet me funksionuar nga ÇFARËDO pike: telefon, panel desktop, POS
+- Mbyllja bën UPDATE `status = 'closed'` në rreshtin ekzistues — ASNJËHERË INSERT të ri
+- Pas mbylljes, porosia duhet me u regjistruar në llogari/arkë/statistika nga ÇFARËDO pike që e mbyll
+- Mbyllja nga telefoni DHE mbyllja nga paneli duhet me përdorur TË NJËJTIN endpoint/logjikë
+- Totali në faturë = totali në shportë, ASNJËHERË dyfishim
+
+## RREGULLI #4: SYNC CLOUD ↔ POS
+- Cloud (Supabase) ka porosinë → POS e lexon dhe e SHFAQ, NUK e kopjon
+- POS ka porosinë → Cloud e lexon dhe e SHFAQ, NUK e kopjon
+- MOS SHTO import automatik, sync automatik, ose kopjim automatik të porosive
+- MOS SHTO polling që krijon rreshta të rinj — polling vetëm LEXON
+- `pushSale`, `pushActiveOrderUpdate`, `reconcileAllTablesWithCloud` — NUK dërgojnë INSERT për porosi cloud (ato me cloud_order_id)
+
+## RREGULLI #5: KAMARIERI NGA TELEFONI
+- Kur kamarieri bën porosi nga telefoni → shkon DIREKT te banaku, PA modal PRANO/REFUZO
+- PRANO/REFUZO shfaqet VETËM për porosi nga jashtë (QR, Takeaway, POS)
+- Detektimi: `waiter_id` përputhet me kamarierin aktual, ose `device_id = WEB-WAITER` + i njëjti kamarier
+
+## RREGULLI #6: REFUZO — GRACE PERIOD 2 MINUTA
+- Pas REFUZO: statusi mbetet `ordered`, jo `cancelled`
+- Vendoset: `refused_at`, `order_expires_at = NOW() + 2 min`, `refused_by_waiter_ids`
+- Kamarieri që refuzoi nuk e sheh ma
+- Kamarierët tjerë e shohin për 2 minuta
+- Pas 2 min pa PRANO → server e anulon automatikisht
+- KAFENE desktop (cancelBarOrders) NUK anulon porosi në grace period
+
+## RREGULLI #7: DOUBLE SUBMIT
+- Butoni "Dërgo Porosinë" bllokohet menjëherë pas klikimit (disabled)
+- Ghost click pas touchend bllokohet (600ms)
+- Serveri kontrollon: a ekziston porosi me të njëjtin table + device_id + waiter_id brenda 60 sekondave?
+- Nëse po → kthen porosinë ekzistuese, NUK krijon të re
+
+## RREGULLI #8: KANALET E POROSIVE — TË GJITHA LLOGARITEN NJËSOJ
+- WEB-WAITER, WEB-KIOSK, WEB-PUBLIC, POS — të gjitha regjistrohen në llogari/arkë
+- `listClosedWebWaiterSalesForPos` përfshin TË GJITHA kanalet, jo vetëm WEB-WAITER
+- Çdo porosi e mbyllur (status=closed) shfaqet në statistika/shitje/pazar
+
+## RREGULLI #9: PARA ÇFARËDO NDRYSHIMI
+1. LEXO krejt funksionet e lidhura — jo vetëm atë që po rregullon
+2. TREGO planin me shkrim — çka do ndryshosh DHE çka mund të preket
+3. PRIT konfirmimin tim para se të shkruash kod
+4. MOS SHTO logjikë të re për sync/import/kopjim
+5. MOS SHTO endpoint të ri nëse ekziston njëri që bën të njëjtën punë
+6. Testo mendërisht: a krijon kjo duplikata? A prish mbylljen? A prish llogaritë?
+
+## RREGULLI #10: ARKITEKTURA E REPO-VE
+### restaurant-system (KAFENE)
+- Electron desktop app
+- SQLite lokale: `%APPDATA%\restaurant-system\restaurant.db`
+- cloud-sync.js: sync mes SQLite dhe Supabase
+- server.js: server lokal i KAFENE
+- KAFENE/public/waiter.html + waiter.js: paneli i kamarierit në webview
+
+### revolution-pos-server (Cloud)
+- Node.js backend në Railway
+- Supabase: databaza cloud (sales_orders, menu_items, etj.)
+- Endpoint-et: /api/kds/, /api/v1/license/, /bar/orders, /bar/tables/live
+- KDS, waiter phone, QR, Takeaway — krejt kalojnë këtu
+
+### revolution-pos-desktop (Paketat)
+- 4 paketa: Basic, Standard, Pro, Full
+- Instalues Electron
+
+## RREGULLI #11: ÇFARË NUK DUHET ME PREK PA LEJE
+- cloud-sync.js (sync logjika)
+- Mbyllja e tavolinës (close-and-print)
+- pushSale / pushActiveOrderUpdate
+- cancelBarOrders
+- sales_orders tabela (mos shto kolona pa leje)
+- KDS / Kitchen Display System
+- Thermal printer logjika
+
+## RREGULLI #12: TESTIMI
+Pas çdo ndryshimi, përshkruaj testin:
+1. Porosi nga telefoni → 1 rresht WEB-WAITER → mbyll nga paneli → 1 pagesë
+2. Porosi nga telefoni → mbyll nga telefoni → 1 pagesë
+3. Porosi nga QR → PRANO → mbyll → 1 pagesë
+4. REFUZO → shfaqet te kamarier tjetër → pas 2 min zhduket
+5. Arka llogarit saktë (pa duplikata)

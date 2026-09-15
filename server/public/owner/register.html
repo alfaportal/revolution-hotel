@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Regjistrohu — Revolution POS Pronar</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="stylesheet" href="/hotel/css/owner.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="owner-login-brand">
+        <div class="owner-login-icon">🏪</div>
+        <h1>Regjistro llogarinë e pronarit</h1>
+        <p class="owner-login-note">Kërkohet kodi i regjistrimit nga Revolution Invest. Kjo krijon kafenen/restorantin dhe liçencën automatikisht.</p>
+      </div>
+      <div id="register-error" class="alert alert-error hidden"></div>
+      <div id="register-info" class="alert alert-ok hidden"></div>
+      <div id="register-disabled" class="alert alert-error hidden">
+        Regjistrimi me kod nuk është aktiv. Kontaktoni Revolution Invest ose përdorni linkun e ftesës nga emaili.
+      </div>
+
+      <form id="form-register" class="owner-auth-form hidden">
+        <label for="registration_code">Kodi i regjistrimit *</label>
+        <input type="text" id="registration_code" required autocomplete="off" placeholder="Kodi nga Revolution Invest">
+
+        <label for="emri_biznesit">Emri i biznesit *</label>
+        <input type="text" id="emri_biznesit" required placeholder="p.sh. Kafene Drita / Restorant Drita">
+
+        <label for="tipi">Tipi *</label>
+        <select id="tipi">
+          <option value="kafene">Kafene</option>
+          <option value="restorant" selected>Restorant</option>
+          <option value="bar">Bar</option>
+          <option value="market">Market</option>
+          <option value="dyqan">Dyqan</option>
+          <option value="tjeter">Tjetër</option>
+        </select>
+
+        <label for="emri">Emri juaj (pronari) *</label>
+        <input type="text" id="emri" required placeholder="p.sh. Agron">
+
+        <label for="email">Email *</label>
+        <input type="email" id="email" required autocomplete="username" placeholder="pronari@email.com">
+
+        <label for="password">Fjalëkalimi *</label>
+        <input type="password" id="password" required minlength="6" autocomplete="new-password" placeholder="min. 6 karaktere">
+
+        <label for="password2">Përsërit fjalëkalimin *</label>
+        <input type="password" id="password2" required minlength="6" autocomplete="new-password" placeholder="••••••••">
+
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Krijo llogarinë</button>
+        <a href="/hotel/owner/login" class="btn btn-ghost owner-forgot-link" style="display:block;text-align:center;margin-top:0.5rem">← Kthehu te hyrja</a>
+      </form>
+    </div>
+  </div>
+  <script>
+    const errEl = document.getElementById("register-error");
+    const infoEl = document.getElementById("register-info");
+    const formEl = document.getElementById("form-register");
+    const disabledEl = document.getElementById("register-disabled");
+
+    function showErr(msg) {
+      errEl.textContent = msg;
+      errEl.classList.remove("hidden");
+      infoEl.classList.add("hidden");
+    }
+
+    (async () => {
+      try {
+        const res = await fetch("/hotel/api/auth/owner/register-config");
+        const data = await res.json();
+        if (data.registration_enabled) {
+          formEl.classList.remove("hidden");
+        } else {
+          disabledEl.classList.remove("hidden");
+        }
+      } catch {
+        disabledEl.classList.remove("hidden");
+      }
+    })();
+
+    document.getElementById("form-register").addEventListener("submit", async e => {
+      e.preventDefault();
+      errEl.classList.add("hidden");
+      const pw = document.getElementById("password").value;
+      const pw2 = document.getElementById("password2").value;
+      if (pw.length < 6) {
+        showErr("Fjalëkalimi min. 6 karaktere.");
+        return;
+      }
+      if (pw !== pw2) {
+        showErr("Fjalëkalimet nuk përputhen.");
+        return;
+      }
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        const res = await fetch("/hotel/api/auth/owner/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            registration_code: document.getElementById("registration_code").value.trim(),
+            emri_biznesit: document.getElementById("emri_biznesit").value.trim(),
+            tipi: document.getElementById("tipi").value,
+            emri: document.getElementById("emri").value.trim(),
+            email: document.getElementById("email").value.trim(),
+            password: pw,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.gabim || "Gabim");
+        localStorage.setItem("owner_token", data.token);
+        if (data.license_key) {
+          sessionStorage.setItem("owner_new_license_key", data.license_key);
+        }
+        location.href = "/hotel/owner/panel";
+      } catch (err) {
+        showErr(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

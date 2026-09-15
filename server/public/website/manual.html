@@ -1,0 +1,1422 @@
+﻿<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Manual përdorimi i Revolution POS — udhëzime hap pas hapi për pronarët, kamarierët dhe stafin.">
+  <meta name="theme-color" content="#0b1324">
+  <title>Manuali — Revolution POS</title>
+  <meta name="google-site-verification" content="2QVw_7A49TsO9VnCz49wUW3DzlcLDyP4fqPCmoVwjUY" />
+  <link rel="canonical" href="https://revolution-pos.com/website/manual.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Revolution POS">
+  <meta property="og:title" content="Manuali — Revolution POS">
+  <meta property="og:description" content="Manual përdorimi i Revolution POS — udhëzime hap pas hapi për pronarët, kamarierët dhe stafin.">
+  <meta property="og:url" content="https://revolution-pos.com/website/manual.html">
+  <meta property="og:image" content="https://revolution-pos.com/logo-source.png">
+  <style>
+    :root {
+      --navy: #0b1324;
+      --navy-2: #111d33;
+      --navy-3: #162544;
+      --card: #141f36;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #e63946;
+      --accent-dark: #c1121f;
+      --border: rgba(148, 163, 184, 0.18);
+      --radius: 16px;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      --max: 1120px;
+      --warn-bg: rgba(245, 158, 11, 0.12);
+      --warn-border: rgba(245, 158, 11, 0.45);
+      --warn-text: #fcd34d;
+      --tip-bg: rgba(56, 189, 248, 0.1);
+      --tip-border: rgba(56, 189, 248, 0.4);
+      --tip-text: #7dd3fc;
+      --toc-width: 17rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--navy);
+      color: var(--text);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    code {
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.88em;
+      background: rgba(255,255,255,0.06);
+      padding: 0.12rem 0.4rem;
+      border-radius: 6px;
+    }
+
+    .container {
+      width: min(100% - 2rem, var(--max));
+      margin-inline: auto;
+    }
+
+    /* Header */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11, 19, 36, 0.94);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      min-height: 4rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      width: 2.2rem;
+      height: 2.2rem;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .brand-mark img {
+      width: 118%;
+      max-width: none;
+      margin: 6% 0 0 -9%;
+      display: block;
+    }
+
+    .brand-text { font-size: 0.98rem; }
+    .brand-text small {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .lang-switch {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .lang-switch button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.45rem 0.65rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .lang-switch button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .lang-switch button:hover:not(.active) { color: #fff; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      border: none;
+      border-radius: 999px;
+      padding: 0.65rem 1rem;
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.12s;
+    }
+
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: var(--accent-dark); }
+
+    .btn-ghost {
+      background: transparent;
+      color: #fff;
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.35); }
+
+    .menu-toggle {
+      display: inline-flex;
+      width: 2.5rem;
+      height: 2.5rem;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: #fff;
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+
+    .nav-mobile {
+      display: none;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0 0 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .nav-mobile.open { display: flex; }
+
+    .nav-mobile a {
+      padding: 0.65rem 0.25rem;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.92rem;
+    }
+
+    .nav-mobile a:hover { color: #fff; }
+
+    /* Hero */
+    .manual-hero {
+      padding: 2.5rem 0 2rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--navy-2) 0%, var(--navy) 100%);
+    }
+
+    .manual-hero h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(1.65rem, 4vw, 2.35rem);
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+
+    .manual-hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 42rem;
+      font-size: 1.02rem;
+    }
+
+    .manual-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+    }
+
+    .meta-pill {
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(230, 57, 70, 0.15);
+      color: #fca5a5;
+      border: 1px solid rgba(230, 57, 70, 0.25);
+    }
+
+    /* Layout */
+    .manual-layout {
+      display: grid;
+      gap: 2rem;
+      padding: 2rem 0 4rem;
+    }
+
+    @media (min-width: 960px) {
+      .manual-layout {
+        grid-template-columns: var(--toc-width) 1fr;
+        align-items: start;
+      }
+    }
+
+    /* TOC */
+    .toc-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.15rem;
+    }
+
+    @media (min-width: 960px) {
+      .toc-card {
+        position: sticky;
+        top: 5.5rem;
+        max-height: calc(100vh - 6.5rem);
+        overflow-y: auto;
+      }
+    }
+
+    .toc-title {
+      margin: 0 0 0.85rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .toc-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .toc-list li { margin-bottom: 0.15rem; }
+
+    .toc-list a {
+      display: block;
+      padding: 0.45rem 0.55rem;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--muted);
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .toc-list a:hover,
+    .toc-list a.active {
+      background: rgba(230, 57, 70, 0.12);
+      color: #fff;
+    }
+
+    .toc-list .toc-sub a {
+      padding-left: 1.1rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+
+    /* Sections */
+    .manual-content { min-width: 0; }
+
+    .manual-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.35rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+
+    .section-num {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.35rem;
+    }
+
+    .manual-section h2 {
+      margin: 0 0 1rem;
+      font-size: 1.45rem;
+      letter-spacing: -0.02em;
+    }
+
+    .manual-section h3 {
+      margin: 1.75rem 0 0.75rem;
+      font-size: 1.08rem;
+      color: #e2e8f0;
+      padding-top: 0.25rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .manual-section h3:first-of-type {
+      margin-top: 0;
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .manual-section p {
+      margin: 0 0 0.85rem;
+      color: #cbd5e1;
+    }
+
+    /* Steps */
+    .steps {
+      list-style: none;
+      margin: 0 0 1rem;
+      padding: 0;
+      counter-reset: step;
+    }
+
+    .steps > li {
+      position: relative;
+      padding-left: 2.6rem;
+      margin-bottom: 0.85rem;
+      counter-increment: step;
+    }
+
+    .steps > li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0.05rem;
+      width: 1.85rem;
+      height: 1.85rem;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #ff6b6b);
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.82rem;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 14px rgba(230, 57, 70, 0.35);
+    }
+
+    .steps > li strong { color: #fff; }
+
+    /* Boxes */
+    .box {
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+    }
+
+    .box-title {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 800;
+      margin-bottom: 0.35rem;
+      font-size: 0.88rem;
+      letter-spacing: 0.02em;
+    }
+
+    .box-warning {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+    }
+
+    .box-tip {
+      background: var(--tip-bg);
+      border: 1px solid var(--tip-border);
+      color: var(--tip-text);
+    }
+
+    .box p:last-child { margin-bottom: 0; }
+
+    /* Photo placeholder */
+    .photo-placeholder {
+      margin: 1rem 0;
+      padding: 2.5rem 1rem;
+      border: 2px dashed rgba(148, 163, 184, 0.35);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.15);
+      text-align: center;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+    }
+
+    .photo-placeholder small {
+      display: block;
+      margin-top: 0.35rem;
+      font-weight: 500;
+      letter-spacing: normal;
+      font-size: 0.78rem;
+      opacity: 0.85;
+    }
+
+    /* Footer */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem 0 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .site-footer a {
+      color: #fca5a5;
+      font-weight: 600;
+    }
+
+    .site-footer a:hover { text-decoration: underline; }
+
+    @media (min-width: 720px) {
+      .nav-mobile { display: none !important; }
+      .menu-toggle { display: none; }
+    }
+
+    @media (max-width: 719px) {
+      .header-actions .hide-mobile { display: none; }
+      .manual-section { padding: 1.15rem 1rem; }
+    }
+
+    @media print {
+      .site-header, .toc-card, .site-footer, .menu-toggle, .man-ai-wrap { display: none !important; }
+      body { background: #fff; color: #111; }
+      .manual-section { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+      .photo-placeholder { border-color: #999; }
+    }
+
+    /* AI ndihmë — max 3 pyetje */
+    .man-ai-wrap {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 90;
+      width: min(22rem, calc(100vw - 2rem));
+      font-size: 0.9rem;
+    }
+    .man-ai-toggle {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      border: 0;
+      border-radius: 999px;
+      padding: 0.7rem 1.1rem;
+      background: linear-gradient(135deg, #e63946, #c1121f);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      float: right;
+    }
+    .man-ai-panel {
+      clear: both;
+      margin-top: 0.55rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .man-ai-panel[hidden] { display: none !important; }
+    .man-ai-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--navy-3);
+    }
+    .man-ai-head strong { font-size: 0.92rem; }
+    .man-ai-head span { color: var(--muted); font-size: 0.78rem; }
+    .man-ai-body { padding: 0.75rem 0.9rem; max-height: 14rem; overflow-y: auto; }
+    .man-ai-msg { margin: 0 0 0.65rem; line-height: 1.45; }
+    .man-ai-msg.user { color: #cbd5e1; }
+    .man-ai-msg.bot { color: var(--text); }
+    .man-ai-msg.err { color: #fca5a5; }
+    .man-ai-foot {
+      display: flex;
+      gap: 0.4rem;
+      padding: 0.65rem 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .man-ai-foot input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--navy-2);
+      color: var(--text);
+      padding: 0.55rem 0.7rem;
+      font: inherit;
+    }
+    .man-ai-foot button {
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      padding: 0.55rem 0.85rem;
+      cursor: pointer;
+    }
+    .man-ai-foot button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .man-ai-hint {
+      margin: 0;
+      padding: 0 0.9rem 0.7rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body data-i18n-title="meta.title" data-i18n-meta-description="meta.description">
+  <header class="site-header">
+    <div class="container">
+      <div class="header-inner">
+        <a class="brand" href="/" aria-label="Revolution Invest POS">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/logo-source.png" width="40" height="40" alt="" />
+          </span>
+          <span class="brand-text">
+            Revolution Invest POS
+            <small>Restorant &amp; Kafene</small>
+          </span>
+        </a>
+        <div class="header-actions">
+          <div class="lang-switch" aria-label="Gjuha" data-i18n-attr="aria-label:nav.langLabel">
+            <button type="button" data-lang="sq" class="active">SQ</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+          <a class="btn btn-ghost hide-mobile" href="/" data-i18n="nav.home">Ballina</a>
+          <button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="nav-mobile">☰</button>
+        </div>
+      </div>
+      <nav class="nav-mobile" id="nav-mobile" aria-label="Manuali" data-i18n-attr="aria-label:nav.manual">
+        <a href="#hyrja" data-i18n="toc.1">1. Hyrja</a>
+        <a href="#menuja" data-i18n="toc.2">2. Menuja</a>
+        <a href="#kamarieri" data-i18n="toc.3">3. Kamarieri</a>
+        <a href="#kiosk" data-i18n="toc.4">4. Kiosk / Tavolina</a>
+        <a href="#kuzhina" data-i18n="toc.5">5. Kuzhina KDS</a>
+        <a href="#raportet" data-i18n="toc.6">6. Raportet</a>
+        <a href="#faqja" data-i18n="toc.7">7. Faqja Publike</a>
+        <a href="#siguria" data-i18n="toc.8">8. Fjalëkalimet &amp; Siguria</a>
+        <a href="#stoku" data-i18n="toc.9">9. Stoku &amp; Blerjet</a>
+        <a href="#terminalet" data-i18n="toc.10">10. Terminalet</a>
+        <a href="/" data-i18n="nav.backHome">← Kthehu te Ballina</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="manual-hero">
+    <div class="container">
+      <h1 data-i18n="hero.title">Manual Përdorimi — Revolution Invest POS</h1>
+      <p data-i18n="hero.subtitle">Udhëzues i plotë hap pas hapi për pronarët, menaxherët, kamarierët dhe stafin. Ky manual mbulon panelin e pronarit, modulin e kamarierit, kiosk QR, ekranin e kuzhinës, raportet, stokun, terminalet dhe faqen publike.</p>
+      <div class="manual-meta">
+        <span class="meta-pill" data-i18n="hero.version">Versioni 1.0.232</span>
+        <span class="meta-pill" data-i18n="hero.language">Gjuha: Shqip</span>
+        <span class="meta-pill" data-i18n="hero.updated">Përditësuar: Korrik 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="container manual-layout">
+    <aside class="toc-card" aria-label="Përmbajtja" data-i18n-attr="aria-label:toc.title">
+      <p class="toc-title" data-i18n="toc.title">Përmbajtja</p>
+      <ol class="toc-list">
+        <li><a href="#hyrja" data-i18n="toc.1">1. Hyrja</a></li>
+        <li class="toc-sub"><a href="#hyrja-telefon" data-i18n="toc.1.phone">Nga telefoni</a></li>
+        <li class="toc-sub"><a href="#hyrja-pc" data-i18n="toc.1.pc">Nga kompjuteri</a></li>
+        <li class="toc-sub"><a href="#hyrja-harruar" data-i18n="toc.1.forgot">Fjalëkalimi i humbur</a></li>
+        <li><a href="#menuja" data-i18n="toc.2">2. Menuja</a></li>
+        <li><a href="#kamarieri" data-i18n="toc.3">3. Kamarieri</a></li>
+        <li><a href="#kiosk" data-i18n="toc.4">4. Kiosk / Tavolina</a></li>
+        <li><a href="#kuzhina" data-i18n="toc.5">5. Kuzhina KDS</a></li>
+        <li><a href="#raportet" data-i18n="toc.6">6. Raportet</a></li>
+        <li><a href="#faqja" data-i18n="toc.7">7. Faqja Publike</a></li>
+        <li><a href="#siguria" data-i18n="toc.8">8. Siguria</a></li>
+        <li><a href="#stoku" data-i18n="toc.9">9. Stoku &amp; Blerjet</a></li>
+        <li class="toc-sub"><a href="#stoku-aktivizo" data-i18n="toc.9.track">Aktivizo ndjekjen</a></li>
+        <li class="toc-sub"><a href="#stoku-blerje" data-i18n="toc.9.buy">Regjistro blerjen</a></li>
+        <li class="toc-sub"><a href="#stoku-sasia" data-i18n="toc.9.qty">Shitja &amp; stoku zero</a></li>
+        <li><a href="#terminalet" data-i18n="toc.10">10. Terminalet</a></li>
+        <li class="toc-sub"><a href="#terminalet-shiko" data-i18n="toc.10.view">Terminale aktive</a></li>
+        <li class="toc-sub"><a href="#terminalet-limit" data-i18n="toc.10.limit">Limiti &amp; kontakti</a></li>
+        <li><a href="#kontabilisti" data-i18n="toc.11">11. Librat e Kontabilistit</a></li>
+        <li class="toc-sub"><a href="#kontabilisti-hap" data-i18n="toc.11.open">Hap &amp; auto-mbushje</a></li>
+        <li class="toc-sub"><a href="#kontabilisti-shpenzim" data-i18n="toc.11.expense">Shpenzim / paga / qera</a></li>
+        <li class="toc-sub"><a href="#kontabilisti-eksport" data-i18n="toc.11.export">Excel &amp; PDF ATK</a></li>
+        <li><a href="#ndihma" data-i18n="toc.12">12. Ndihmë dhe Mbështetje</a></li>
+        <li class="toc-sub"><a href="#ndihma-kontakt" data-i18n="toc.12.contact">Si të na kontaktoni</a></li>
+        <li class="toc-sub"><a href="#ndihma-anydesk" data-i18n="toc.12.anydesk">AnyDesk</a></li>
+        <li class="toc-sub"><a href="#ndihma-update" data-i18n="toc.12.update">Përditësime</a></li>
+        <li class="toc-sub"><a href="#ndihma-bug" data-i18n="toc.12.bug">Raporto problem</a></li>
+      </ol>
+    </aside>
+
+    <main class="manual-content">
+
+      <!-- 1. HYRJA -->
+      <article class="manual-section" id="hyrja" data-i18n-section="hyrja">
+        <span class="section-num">Seksioni 1</span>
+        <h2>HYRJA (Getting Started)</h2>
+        <p>Revolution Invest POS përbëhet nga disa module: <strong>aplikacioni POS</strong> në kompjuter (kasa fiskale), <strong>paneli i pronarit</strong> në web (<code>/owner/login</code>), <strong>moduli i kamarierit</strong> në tablet, <strong>ekran i kuzhinës (KDS)</strong>, <strong>kiosk QR</strong> për tavolinat dhe <strong>faqja publike</strong> e restorantit.</p>
+
+        <h3 id="hyrja-telefon">Si të hyni në panel nga telefoni</h3>
+        <ol class="steps">
+          <li>Hapni shfletuesin (Chrome, Safari) dhe shkoni te adresa e panelit: <code>https://revolution-pos.com/owner/login</code> (ose linku që ju ka dhënë administratori).</li>
+          <li>Shkruani <strong>emailin e pronarit</strong> dhe <strong>fjalëkalimin</strong>.</li>
+          <li>Shtypni <strong>«Hyr në panel»</strong>. Pas hyrjes, shfaqet paneli me tavolinat live, menu, kamarierë, raporte etj.</li>
+          <li>Për akses më të shpejtë, shtoni faqen në ekranin kryesor:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>iPhone/iPad:</strong> Share (â–¡â†‘) → <em>Add to Home Screen</em></li>
+              <li><strong>Android:</strong> Menu (3 pika) → <em>Add to Home Screen</em></li>
+            </ul>
+          </li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Paneli i pronarit funksionon si aplikacion web (PWA). Pas instalimit në ekranin kryesor, hapet pa adresë të gjatë dhe me ikonën e Revolution Invest POS.</p>
+        </div>
+
+        <h3 id="hyrja-pc">Si të hyni nga kompjuteri / touchscreen</h3>
+        <ol class="steps">
+          <li><strong>Paneli i pronarit (web):</strong> Hapni shfletuesin dhe shkoni te <code>/owner/login</code>. Përdorni të njëjtin email dhe fjalëkalim si në telefon. Ideal për menaxhim menuje, raporte dhe faqe publike.</li>
+          <li><strong>Aplikacioni POS (kasa):</strong> Pas instalimit (nga webfaqja ose USB), hapni programin. Del automatikisht <strong>ID e pajisjes me 16 shenja</strong> (<code>XXXX-XXXX-XXXX-XXXX</code>) — dërgojani administratorit. Aktivizoni me çelësin që ju jep ai te <strong>Admin → Licenca</strong>.</li>
+          <li><strong>Moduli i kamarierit (tablet):</strong> Hapni linkun e kamarierit nga paneli (<em>Linqet e lokalit → Kamarierët</em>). Format: <code>/waiter/[slug]?key=...</code>. Vendoseni si faqe kryesore në tablet.</li>
+          <li><strong>Ekrani i kuzhinës:</strong> Hapni linkun KDS në ekranin e kuzhinës: <code>/kitchen/[slug]?key=...</code>. Lëreni hapur — porositë rifreskohen automatikisht.</li>
+          <li><strong>Kiosk tavolinë:</strong> Klientët skanojnë QR kodin e tavolinës (shiko seksionin 4). Linku: <code>/kiosk/[slug]?key=...&amp;table=N</code>.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Emaili i pronarit (<code>/owner/login</code>) <strong>nuk</strong> është i njëjti me hyrjen e Super Admin-it. Kamarierët <strong>nuk</strong> përdorin email — ata hyjnë vetëm me PIN 4-shifror në tablet.</p>
+        </div>
+
+        <h3 id="hyrja-harruar">Fjalëkalimi i humbur</h3>
+        <ol class="steps">
+          <li>Shkoni te <code>/owner/login</code>.</li>
+          <li>Shkruani emailin e pronarit në fushën e emailit.</li>
+          <li>Klikoni <strong>«Harrove fjalëkalimin?»</strong>.</li>
+          <li>Kontrolloni inbox-in (dhe spam) për email me <strong>kod rivendosjeje</strong> 6-shifror.</li>
+          <li>Shkruani kodin, vendosni <strong>fjalëkalimin e ri</strong> (min. 6 karaktere) dhe konfirmoni.</li>
+          <li>Shtypni <strong>«Ruaj dhe hyr»</strong> — do të identifikoheni automatikisht në panel.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Nëse nuk merrni email, kontrolloni që keni shkruar emailin e saktë të pronarit. Nëse problemi vazhdon, kontaktoni mbështetjen e Revolution Invest — administratori mund të dërgojë rivendosje fjalëkalimi nga paneli Super Admin.</p>
+        </div>
+      </article>
+
+      <!-- 2. MENUJA -->
+      <article class="manual-section" id="menuja" data-i18n-section="menuja">
+        <span class="section-num">Seksioni 2</span>
+        <h2>MENUJA (Menu Management)</h2>
+        <p>Menaxhimi i menusë bëhet nga paneli i pronarit, tabi <strong>«Menuja»</strong>. Ndryshimet sinkronizohen me tabletat e kamarierit, kiosk-un dhe faqen publike brenda ~15 sekondave.</p>
+
+        <h3>Si të shtoni artikuj të rinj</h3>
+        <ol class="steps">
+          <li>Hyni në panelin e pronarit dhe zgjidhni tabin <strong>Menuja</strong>.</li>
+          <li>Te karta <strong>«Shto artikull»</strong>, plotësoni:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>Emri</strong> — p.sh. «Cappuccino», «Pizza Margherita»</li>
+              <li><strong>Kategoria</strong> — p.sh. «Pije të nxehta», «Pizza». Mund të zgjidhni nga lista ekzistuese ose të shkruani të re.</li>
+              <li><strong>Çmimi (â‚¬)</strong> — me dy decimale, p.sh. 2.50</li>
+            </ul>
+          </li>
+          <li>Klikoni <strong>«Shto»</strong>. Artikulli shfaqet menjëherë në listë dhe bëhet i disponueshëm në POS/tablet.</li>
+        </ol>
+
+        <h3>Si të ndryshoni çmimet</h3>
+        <ol class="steps">
+          <li>Te tabi <strong>Menuja</strong>, gjeni artikullin në tabelën <strong>«Lista e menusë»</strong>.</li>
+          <li>Ndryshoni vlerën në kolonën <strong>Çmimi</strong> direkt në fushën e inputit.</li>
+          <li>Klikoni <strong>«Ruaj»</strong> në rreshtin e atij artikulli.</li>
+          <li>Prisni mesazhin e konfirmimit — çmimi i ri aplikohet në të gjitha modulet.</li>
+        </ol>
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Mos harroni të klikoni <strong>Ruaj</strong> pas çdo ndryshimi. Ndryshimet e paruajtura humbasen kur rifreskoni faqen.</p>
+        </div>
+
+        <h3>Si të shtoni foto për artikujt</h3>
+        <ol class="steps">
+          <li>Te lista e menusë, gjeni kolonën <strong>Foto</strong> për artikullin.</li>
+          <li>Klikoni <strong>«Ngarko»</strong> (ose ikonën e fotos) dhe zgjidhni një imazh <strong>PNG</strong> ose <strong>JPG</strong> (max <strong>500 KB</strong>).</li>
+          <li>Parapamja shfaqet menjëherë. Klikoni <strong>«Ruaj»</strong> për ta ruajtur.</li>
+          <li>Fotot shfaqen në <strong>faqe publike</strong> të restorantit (<code>/r/:slug</code>) kur klientët shfletojnë menunë online.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Përdorni foto katrore ose landscape me produktin qendër. Për të hequr foton, klikoni <strong>«Hiq»</strong> pastaj <strong>«Ruaj»</strong>.</p>
+        </div>
+
+        <h3>Si të fshihni / aktivizoni artikuj</h3>
+        <ol class="steps">
+          <li>Gjeni artikullin në listë. Kolona <strong>Statusi</strong> tregon «Aktiv» ose «Joaktiv».</li>
+          <li>Për ta fshehur nga tabletat dhe kiosk-u (p.sh. produkt i mbaruar): klikoni <strong>«Fshih»</strong>. Statusi bëhet «Joaktiv».</li>
+          <li>Për ta riaktivizuar: klikoni <strong>«Aktivizo»</strong>.</li>
+          <li>Për ta fshirë përgjithmonë: klikoni <strong>«Fshi»</strong> dhe konfirmoni. Ky veprim nuk mund të kthehet mbrapsht.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Artikujt e fshehur (<em>Joaktiv</em>) nuk shfaqen te kamarieri dhe kiosk-u, por mbeten në historikun e porosive të mëparshme. Fshirja e përgjithshme i heq plotësisht.</p>
+        </div>
+      </article>
+
+      <!-- 3. KAMARIERI -->
+      <article class="manual-section" id="kamarieri" data-i18n-section="kamarieri">
+        <span class="section-num">Seksioni 3</span>
+        <h2>KAMARIERI (Waiter Module)</h2>
+        <p>Moduli i kamarierit lejon stafin të marrë porosi nga tavolinat me tablet, pa pritje në kasë. Çdo kamarier identifikohet me <strong>PIN 4-shifror</strong>. Kërkon <strong>Pako 2</strong> ose më lart (moduli Kamarier).</p>
+
+        <h3>Si të shtoni kamarierë me PIN</h3>
+        <ol class="steps">
+          <li>Hyni në panelin e pronarit → tabi <strong>Kamarierët</strong>.</li>
+          <li>Te <strong>«Kamarierët me PIN»</strong>, plotësoni:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>Emri</strong> — p.sh. «Arben», «Elira»</li>
+              <li><strong>PIN (4 shifra)</strong> — p.sh. 1234 (mos përdorni PIN shumë të thjeshtë)</li>
+            </ul>
+          </li>
+          <li>Klikoni <strong>«Shto kamarier»</strong>.</li>
+          <li>Kamarieri shfaqet në listë me status «Aktiv». Mund të rivendosni PIN-in me butonin <strong>«Rivendos PIN»</strong> në çdo kohë.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Kopjoni linkun e kamarierit nga <em>Linqet e lokalit → Kamarierët (telefon)</em> dhe dërgojeni te tabletat. Linku përmban <code>?key=</code> — mos e ndani publikisht.</p>
+        </div>
+
+        <h3>Si kamarieri hyn me PIN</h3>
+        <ol class="steps">
+          <li>Hapni linkun e kamarierit në tablet: <code>/waiter/[slug]?key=...</code></li>
+          <li>Shfaqet ekrani i hyrjes me tastierë numerike.</li>
+          <li>Kamarieri shkruan <strong>PIN-in 4-shifror</strong>. Pas 4 shifrave, hyrja bëhet automatikisht.</li>
+          <li>Shfaqet lista e tavolinave (T1, T2, ⬦) sipas hapësirave që keni konfiguruar (Salla, Terasa, etj.).</li>
+          <li>Pas porosisë ose faturës, ekrani <strong>kyçet automatikisht pas 5 sekondave</strong> — kamarieri tjetër duhet të shkruajë PIN-in e vet.</li>
+        </ol>
+
+        <h3>Si bëhet porosia nga tableti</h3>
+        <ol class="steps">
+          <li>Pas hyrjes me PIN, kamarieri zgjedh <strong>tavolinën</strong> (p.sh. T3).</li>
+          <li>Shfaqet menuja me kategori (skeda sipër). Zgjidhni kategorinë e duhur.</li>
+          <li>Prekni artikujt për t’i shtuar në shportë. Sasia rritet me çdo prekje.</li>
+          <li>Kontrolloni shportën — totali llogaritet automatikisht.</li>
+          <li>Shtypni <strong>«Dërgo porosinë»</strong> (ose ekuivalentin). Porosia shkon te <strong>kuzhina (KDS)</strong> dhe/ose <strong>banaku</strong>.</li>
+          <li>Mund të shtoni artikuj të rinj në të njëjtën tavolinë pa e mbyllur — thjesht dërgoni porosi shtesë.</li>
+        </ol>
+
+        <h3>Si mbyllet tavolina dhe printohet fatura</h3>
+        <ol class="steps">
+          <li>Kur klienti kërkon faturën, kamarieri hap tavolinën e zënë nga lista.</li>
+          <li>Kontrolloni artikujt dhe totalin në shportë.</li>
+          <li>Shtypni <strong>«Mbyll tavolinën + Printo faturën»</strong>.</li>
+          <li>Konfirmoni dialogun: <em>«Mbyll tavolinën T[X] dhe printo faturën?»</em></li>
+          <li>Sistemi mbyll porosinë, gjeneron faturën dhe hap dialogun e printimit të shfletuesit.</li>
+          <li>Zgjidhni printerin (termik 58mm ose 80mm) dhe printoni. Tavolina bëhet <strong>e lirë</strong> për klientët e rinj.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Nëse arka fiskale ATK është e aktivizuar, fatura regjistrohet edhe fiskalisht. Sigurohuni që lidhja me arken (COM Port) funksionon para mbylljes së tavolinës.</p>
+        </div>
+
+        <div class="box box-tip">
+          <div class="box-title">Kujdes i rëndësishëm</div>
+          <p><strong>Porosia e kamarierit</strong> (nga telefoni me PIN) shkon <strong>direkt te banaku</strong> — pa buton Prano/Refuzo. Prano/Refuzo është vetëm për porosi nga QR, takeaway ose burime të jashtme. Mbyllja e tavolinës funksionon nga telefoni <strong>dhe</strong> nga POS — një porosi = një pagesë (pa dublim).</p>
+        </div>
+      </article>
+
+      <!-- 4. KIOSK -->
+      <article class="manual-section" id="kiosk" data-i18n-section="kiosk">
+        <span class="section-num">Seksioni 4</span>
+        <h2>KIOSK / TAVOLINA (Self-order)</h2>
+        <p>Me modulin Kiosk, klientët skanojnë një <strong>QR kod</strong> në tavolinë dhe porositin vetë nga telefoni. Porosia shkon te <strong>banaku</strong> për përgatitje — nuk gjenerohet faturë automatikisht nga kiosk-u.</p>
+
+        <h3>Si vendoset QR kodi në tavolinë</h3>
+        <ol class="steps">
+          <li>Hyni në panel → tabi <strong>Lokal &amp; Stafi</strong>.</li>
+          <li>Sigurohuni që keni konfiguruar <strong>hapësirat dhe tavolinat</strong> (p.sh. Salla me 10 tavolina).</li>
+          <li>Poshtë, te karta <strong>«QR Kodi i tavolinave (Kiosk)»</strong>, shfaqen QR kodet për çdo tavolinë (T1, T2, ⬦).</li>
+          <li>Klikoni <strong>«Printo QR Kodet»</strong> për të printuar të gjitha kodet në një faqe.</li>
+          <li>Prisni dhe vendosni çdo QR në tavolinën përkatëse (llastikë, mbajtës tavoline, stiker).</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Çdo QR lidhet me URL specifike: <code>/kiosk/[slug]?key=SECRET&amp;table=N</code>. Tavolina N duhet të përputhet me numrin fizik (T5 → table=5).</p>
+        </div>
+
+        <h3>Si porosit klienti vetë</h3>
+        <ol class="steps">
+          <li>Klienti skanon QR kodin me kamerën e telefonit.</li>
+          <li>Hapet faqja e kiosk-ut me emrin e restorantit dhe numrin e tavolinës (p.sh. <strong>T5</strong>).</li>
+          <li>Klienti zgjedh kategorinë, prek artikujt dhe i shton në shportë.</li>
+          <li>Kontrollon porosinë dhe shtyp <strong>«Dërgo porosinë»</strong>.</li>
+          <li>Porosia shkon te banaku/kuzhina. Stafi e sill porosinë në tavolinën e duhur.</li>
+          <li>Pagesa dhe fatura bëhen zakonisht në fund nga kamarieri ose në kasë — kiosk-u vetëm merr porosinë.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Kiosk-u kërkon internet. Nëse menuja është bosh, pronari duhet të shtojë artikuj te tabi Menuja ose të sinkronizojë menunë nga POS-i lokal.</p>
+        </div>
+      </article>
+
+      <!-- 5. KUZHINA -->
+      <article class="manual-section" id="kuzhina" data-i18n-section="kuzhina">
+        <span class="section-num">Seksioni 5</span>
+        <h2>KUZHINA KDS (Kitchen Display)</h2>
+        <p>Ekrani i kuzhinës (Kitchen Display System) tregon porositë e reja në kohë reale. Ideal për tablet ose monitor në mur të kuzhinës.</p>
+
+        <h3>Si funksionon ekrani i kuzhinës</h3>
+        <ol class="steps">
+          <li>Hapni linkun e kuzhinës: <code>/kitchen/[slug]?key=...</code> (kopjohet nga paneli → <em>Linqet → Kuzhina KDS</em>).</li>
+          <li>Lëreni faqen hapur në ekranin e kuzhinës — rifreskohet automatikisht.</li>
+          <li>Çdo porosi shfaqet si <strong>ticket</strong> me: numrin e tavolinës (T3), kohën, emrin e kamarierit dhe listën e artikujve.</li>
+          <li>Burimi tregohet me ikonë: 📱 Kamarier, 🪑 Tavolinë (kiosk), 🛵 Delivery, 🥡 Takeaway.</li>
+          <li>Porositë e reja theksohen vizualisht derisa t’i lexoni.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Vendosni tabletin në modalitet «mos fiket ekrani» dhe lidhjen me Wi‑Fi të qëndrueshme. Linku me <code>?key=</code> duhet mbajtur privat.</p>
+        </div>
+
+        <h3>Si shënohet porosia «Gati»</h3>
+        <ol class="steps">
+          <li>Kur kuzhina përfundon përgatitjen e një porosie, gjeni ticket-in përkatës.</li>
+          <li>Klikoni butonin <strong>«Gati âœ…»</strong> në fund të ticket-it.</li>
+          <li>Porosia hiqet nga lista e porosive aktive — kamarieri/stafi e di që mund ta sillë në tavolinë.</li>
+          <li>Përsëritni për çdo porosi të përfunduar.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Shënimi «Gati» heq porosinë nga ekrani i kuzhinës, por <strong>nuk</strong> mbyll tavolinën dhe <strong>nuk</strong> printon faturë. Mbyllja dhe pagesa bëhen nga moduli i kamarierit ose POS-i.</p>
+        </div>
+      </article>
+
+      <!-- 6. RAPORTET -->
+      <article class="manual-section" id="raportet" data-i18n-section="raportet">
+        <span class="section-num">Seksioni 6</span>
+        <h2>RAPORTET (Reports)</h2>
+        <p>Raportet ndihmojnë të monitoroni shitjet, TVSH-në dhe performancën e lokalit. Të gjitha gjenden në panelin e pronarit.</p>
+
+        <h3>Si shihen shitjet ditore</h3>
+        <ol class="steps">
+          <li>Hyni në panel → tabi <strong>Raportet</strong>.</li>
+          <li>Te <strong>«Të ardhurat»</strong>, zgjidhni datën <strong>Nga</strong> dhe <strong>Deri</strong> (për një ditë, vendosni të njëjtën datë).</li>
+          <li>Klikoni <strong>«Shfaq»</strong>.</li>
+          <li>Shfaqen: totali i të ardhurave, grafiku sipas ditëve dhe tabela me çdo transaksion (ora, tavolina, kamarieri, totali).</li>
+          <li>Për pamje të shpejtë ditore, shikoni edhe statistikat në krye të panelit (pas hyrjes).</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Tabi <strong>Tavolinat Live</strong> tregon gjendjen aktuale të tavolinave (e lirë / e zënë) dhe rifreskohet çdo 15 sekonda — i dobishëm gjatë turnit.</p>
+        </div>
+
+        <h3>Si bëhet Z-Report</h3>
+        <ol class="steps">
+          <li>Shkoni te tabi <strong>Raporti Ditor</strong> (Z-Report).</li>
+          <li>Zgjidhni datën nga kalendari (<code>zreport-date</code>) — default është dita e sotme.</li>
+          <li>Klikoni <strong>«Rifresko»</strong> për të ngarkuar të dhënat: kuponë fiskalë, qarkullim ditor, TVSH (A–E), gjendja e arkës, pagesa Cash/Kartë.</li>
+          <li>Në fund të ditës, klikoni <strong>«Mbyll ditën»</strong> për të finalizuar raportin ditor (Z-Report).</li>
+          <li>Shikoni <strong>Historiku ditor</strong> poshtë për raportet e ditëve të kaluara.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Z-Report lidhet me arkën fiskale ATK. Sigurohuni që cilësimet fiskale (tabi <strong>Fiskale</strong>) janë të sakta: Nr. Fisk, COM Port, operatori. Mbyllja e ditës duhet bërë një herë në ditë, zakonisht pas mbylljes së lokalit.</p>
+        </div>
+
+        <h3>Si eksportohet raporti</h3>
+        <ol class="steps">
+          <li>Te tabi <strong>Raporti Ditor</strong>, zgjidhni datën e dëshiruar.</li>
+          <li>Përdorni butonat e eksportit:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>Printo Z-Report</strong> — hap versionin për printim</li>
+              <li><strong>Export Excel (CSV)</strong> — shkarkon skedar <code>z-report-YYYY-MM-DD.csv</code> për Excel</li>
+              <li><strong>Export PDF (HTML)</strong> — shkarkon raportin si HTML (hapet në shfletues, mund të printohet si PDF)</li>
+            </ul>
+          </li>
+          <li>Ruajeni skedarin në kompjuter ose dërgojeni te kontabilisti.</li>
+        </ol>
+      </article>
+
+      <!-- 7. FAQJA PUBLIKE -->
+      <article class="manual-section" id="faqja" data-i18n-section="faqja">
+        <span class="section-num">Seksioni 7</span>
+        <h2>FAQJA PUBLIKE (Public Page)</h2>
+        <p>Çdo klient me pakën që përfshin faqen publike ka një faqe interneti në <code>/r/[slug]</code> — me menu, logo, orar dhe info. Porositë online (takeaway &amp; delivery) janë vetëm në <strong>Pako 3</strong>.</p>
+
+        <h3>Si ngarkohet logo</h3>
+        <ol class="steps">
+          <li>Hyni në panel → tabi <strong>Faqja publike</strong>.</li>
+          <li>Te seksioni i logos, klikoni <strong>«Ngarko logo»</strong>.</li>
+          <li>Zgjidhni imazh <strong>PNG</strong> ose <strong>JPG</strong> (max <strong>500 KB</strong>).</li>
+          <li>Parapamja shfaqet menjëherë. Klikoni <strong>«Ruaj faqen publike»</strong> poshtë formularit.</li>
+          <li>Logo shfaqet në faqen publike dhe si ikonë kur klientët e shtojnë faqen në telefon (PWA).</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Për të hequr logon, klikoni <strong>«Hiq logon»</strong> pastaj <strong>«Ruaj faqen publike»</strong>. Përdorni butonin <strong>«Shiko faqen»</strong> për të parë rezultatin live.</p>
+        </div>
+
+        <h3>Si ndryshohet orari</h3>
+        <ol class="steps">
+          <li>Te tabi <strong>Faqja publike</strong>, gjeni seksionin <strong>«Orari i punës»</strong>.</li>
+          <li>Për çdo ditë të javës (E Hënë – E Diel), vendosni orarin e hapjes dhe mbylljes, ose shënoni ditën si <strong>mbyllur</strong>.</li>
+          <li>Shtoni përshkrim të shkurtër dhe ngjyrën kryesore të temës nëse dëshironi.</li>
+          <li>Klikoni <strong>«Ruaj faqen publike»</strong>.</li>
+          <li>Orari shfaqet te faqja publike në seksionin <em>«Orari i punës»</em>.</li>
+        </ol>
+
+        <h3>Si aktivizohet delivery online</h3>
+        <ol class="steps">
+          <li>Sigurohuni që paketa juaj është <strong>Pako 3</strong> (porosi online takeaway &amp; delivery).</li>
+          <li>Te tabi <strong>Faqja publike</strong>, aktivizoni checkbox-in <strong>«Faqja publike është aktive»</strong>.</li>
+          <li>Plotësoni <strong>adresën</strong> dhe <strong>telefonin</strong> e biznesit (merren nga cilësimet e lokalit ose Super Admin).</li>
+          <li>Shtoni artikuj aktivë te tabi <strong>Menuja</strong> — menuja publike lexohet nga e njëjta listë.</li>
+          <li>Klikoni <strong>«Ruaj faqen publike»</strong>. Në faqen publike shfaqet butoni <strong>«Porosit tani»</strong> që çon te <code>/r/[slug]/order</code>.</li>
+          <li>Klientët zgjedhin <strong>Dërgesë (Delivery)</strong> ose <strong>Marrje (Takeaway)</strong>, plotësojnë emrin, telefonin dhe (për delivery) adresën.</li>
+          <li>Porosia shkon automatikisht te <strong>banaku</strong> dhe <strong>kuzhina</strong> me etiketën Delivery/Takeaway.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Porositë online nuk gjenerojnë pagesë automatike — stafi konfirmon dhe përpunon porosinë manualisht. Për delivery, adresa e klientit është e detyrueshme.</p>
+        </div>
+      </article>
+
+      <!-- 8. SIGURIA -->
+      <article class="manual-section" id="siguria" data-i18n-section="siguria">
+        <span class="section-num">Seksioni 8</span>
+        <h2>FJALËKALIMET &amp; SIGURIA</h2>
+        <p>Siguria e llogarive dhe aksesit emergjent është thelbësore për operimin e qetë të lokalit.</p>
+
+        <h3>Si ndryshohet fjalëkalimi i pronarit</h3>
+        <ol class="steps">
+          <li><strong>Metoda 1 — Vetë-rivendosje:</strong> Shkoni te <code>/owner/login</code> → <strong>«Harrove fjalëkalimin?»</strong> → merrni kodin me email → vendosni fjalëkalimin e ri (min. 6 karaktere).</li>
+          <li><strong>Metoda 2 — Me ndihmën e administratorit:</strong> Kontaktoni mbështetjen e Revolution Invest. Administratori dërgon email rivendosjeje nga paneli Super Admin (tabi Pronarët → Reset Password).</li>
+          <li>Pas ndryshimit, dilni dhe hyni përsëri me fjalëkalimin e ri në të gjitha pajisjet.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Përdorni fjalëkalim të fortë (min. 6 karaktere, me shkronja dhe numra). Mos e ndani emailin e pronarit me kamarierët — ata përdorin vetëm PIN.</p>
+        </div>
+
+        <h3>Kodi i emergjencës (POS offline)</h3>
+        <p>Kur aplikacioni POS nuk mund të verifikojë licencën online (pa internet ose problem serveri), mund të përdoret <strong>kodi ditor i emergjencës</strong> ose <strong>Master PIN</strong> për të vazhduar punën.</p>
+        <ol class="steps">
+          <li><strong>Administratori</strong> (Super Admin) hap panelin e administrimit dhe shikon <strong>«Kodi emergjence ditor (POS offline)»</strong> — kodi ndryshon çdo ditë.</li>
+          <li>Në kompjuterin POS, kur shfaqet kërkesa për zhbllokim emergjent, zgjidhni opsionin <strong>Emergjencë</strong>.</li>
+          <li>Shkruani <strong>Master PIN</strong> (nëse është konfiguruar në server) <strong>ose</strong> <strong>kodin ditor</strong> që ju ka dhënë administratori.</li>
+          <li>Pas verifikimit, POS vazhdon të funksionojë në modalitet emergjence derisa lidhja me serverin të rikthehet.</li>
+          <li>Riktheni internetin sa më shpejt dhe verifikoni licencën normalisht — modaliteti emergjence regjistrohet në logun e aktivitetit.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Kodi emergjence është <strong>i ndjeshëm</strong> — mos e shpërndani publikisht. Përdoreni vetëm kur POS-i nuk lidhet online. Master PIN konfigurohet nga administratori në variablën <code>MASTER_EMERGENCY_PIN</code> të serverit.</p>
+        </div>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Çdo kamarier ka PIN të vet — rivendoseni menjëherë nëse një punonjës largohet. Linket me <code>?key=</code> (kuzhinë, kamarier, kiosk) duhet të mbeten brenda lokalit.</p>
+        </div>
+      </article>
+
+      <!-- 9. STOKU -->
+      <article class="manual-section" id="stoku" data-i18n-section="stoku">
+        <span class="section-num">Seksioni 9</span>
+        <h2>STOKU &amp; BLERJET</h2>
+        <p>Stoku ndjek sasinë e produkteve. <strong>Shitja e zbrit</strong> stokun automatikisht. <strong>Blerja e rrit</strong> stokun automatikisht dhe e fut faturën te Kontabilisti — pronari nuk i mbush librat me dorë.</p>
+
+        <h3 id="stoku-aktivizo">Si aktivizohet ndjekja e stokut</h3>
+        <ol class="steps">
+          <li>Panel pronari → tabi <strong>Stoku</strong> (ose Admin POS → Menu / Stok).</li>
+          <li>Për produktin: aktivizoni <strong>Ndiq stokun</strong>, vendosni <strong>Sasinë</strong> dhe <strong>Pragun e alarmit</strong>.</li>
+          <li>Ruani. Kur sasia = 0, produkti fshihet nga menuja në POS, telefon dhe kiosk derisa ta rimbushni.</li>
+        </ol>
+
+        <h3 id="stoku-blerje">Si regjistrohet blerja (mënyra kryesore)</h3>
+        <p>Pronari shënon faturën e furnizuesit. Sistemi bën pjesën tjetër.</p>
+        <ol class="steps">
+          <li><strong>Në POS (Admin → Blerjet):</strong> «+ Faturë e re» → Furnizuesi, <strong>NUI</strong>, <strong>TVSH %</strong> (18/8/0), nr. fature, data, artikujt (kategori → produkt → sasi → çmim) → <strong>Ruaj</strong>.</li>
+          <li><strong>Ose me AI:</strong> «Skano faturë» → foto → AI lexon furnizuesin, NUI, TVSH, artikujt → kontrolloni → <strong>Regjistro në Stok</strong>.</li>
+          <li><strong>Ose nga telefoni:</strong> Panel pronari → <strong>Blerje</strong> → shënoni faturën → POS e tërheq automatikisht (~45 sekonda).</li>
+        </ol>
+        <div class="box box-tip">
+          <div class="box-title">Çfarë ndodh pas Ruaj</div>
+          <p>1) Stoku rritet. 2) Fatura shfaqet te Blerjet. 3) Libri i Blerjes TVSH / Deklarata / Excel / PDF ATK mbushen <strong>vetë</strong>. Nëse AI nuk lexon foton — mbusheni me dorë; mjafton. Nuk duhet të shtoni stokun dy herë me dorë.</p>
+        </div>
+
+        <h3 id="stoku-sasia">Shitja dhe stoku zero</h3>
+        <ol class="steps">
+          <li>Çdo shitje e mbyllur (POS, kamarier, kiosk) zbrit stokun për artikujt me ndjekje.</li>
+          <li>Në zero: status «Mbaruar» — produkti nuk shfaqet në menu derisa ta rimbushni (blerje ose «Rimbush Stokun»).</li>
+        </ol>
+        <div class="box box-warning">
+          <div class="box-title">Kujdes</div>
+          <p>Vendosni NUI dhe TVSH % në faturën e blerjes që kutizat ATK të jenë të sakta. Default është 18% nëse nuk zgjidhni ndryshe.</p>
+        </div>
+      </article>
+
+      <!-- 10. TERMINALET -->
+      <article class="manual-section" id="terminalet" data-i18n-section="terminalet">
+        <span class="section-num">Seksioni 10</span>
+        <h2>TERMINALET (Multi-terminal)</h2>
+        <p>Çdo licencë Revolution Invest POS mbështet një ose më shumë <strong>terminale</strong> — domethënë kompjuterë ose pajisje ku është instaluar dhe aktivizuar aplikacioni POS.</p>
+
+        <h3>Çfarë është një terminal?</h3>
+        <p><strong>1 terminal = 1 kompjuter / pajisje POS</strong> ku keni instaluar programin dhe aktivizuar çelësin e licencës. Për shembull:</p>
+        <ul style="margin:0 0 1rem;padding-left:1.25rem;color:#cbd5e1">
+          <li>Kasa kryesore në sallë = <strong>1 terminal</strong></li>
+          <li>Kasa e dytë në bar = <strong>1 terminal</strong></li>
+          <li>Kompjuteri rezervë me POS të instaluar = <strong>1 terminal</strong></li>
+        </ul>
+        <p>Tabletet e kamarierit, ekrani i kuzhinës dhe kiosk-u <strong>nuk</strong> numërohen si terminale — vetëm aplikacioni POS desktop.</p>
+
+        <h3 id="terminalet-shiko">Si shihen terminalet aktive</h3>
+        <ol class="steps">
+          <li>Hyni në panelin e pronarit → tabi <strong>Licenca</strong>.</li>
+          <li>Te seksioni i terminaleve shfaqet: <strong>«Terminalet aktive: X / Y të lejuara»</strong>.</li>
+          <li>Lista tregon çdo pajisje me:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>ID e pajisjes (për licencë)</strong> — 16 shenja (<code>XXXX-XXXX-XXXX-XXXX</code>), del automatikisht te POS pas instalimit (ekrani «Aktivizo» ose Admin → Licenca)</li>
+              <li><strong>Kompjuteri</strong> — emri i host-it (p.sh. KASA-1)</li>
+              <li><strong>Pamja e fundit</strong> — kur POS-i u lidh së fundi me serverin</li>
+            </ul>
+          </li>
+          <li>ID-ja e pajisjes (16 shenja) shfaqet te <strong>Aktivizo</strong> dhe te <strong>Admin → Licenca</strong> në POS — dërgojani administratorit për kod licence.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Nëse blini një kompjuter të ri POS, aktivizoni licencën atje — terminali i ri shfaqet automatikisht në listë pas lidhjes së parë me internet.</p>
+        </div>
+
+        <h3 id="terminalet-limit">Çfarë ndodh kur arrihet limiti i terminaleve</h3>
+        <ol class="steps">
+          <li>Çdo licencë ka një numër maksimal terminalesh (zakonisht <strong>1</strong>, por mund të jetë 2, 3, 4, 5+).</li>
+          <li>Kur provoni të aktivizoni POS në një pajisje <strong>mbi limitin</strong>:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>24 orë grace:</strong> POS-i vazhdon të funksionojë me mesazh paralajmërues</li>
+              <li><strong>Pas 24 orëve:</strong> aktivizimi bllokohet — shfaqet: <em>«Kontaktoni Revolution Invest për të shtuar terminale»</em></li>
+            </ul>
+          </li>
+          <li>Te paneli i pronarit shfaqet paralajmërimi: <strong>«Keni arritur limitin e terminaleve»</strong>.</li>
+          <li>POS-et ekzistuese (brenda limitit) vazhdojnë të punojnë normalisht — bllokohet vetëm terminali shtesë.</li>
+        </ol>
+
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Perioda e provës 24-orëshe fillon kur për herë të parë tejkaloni limitin. Mos e shtyjni — kontaktoni Revolution Invest sa më shpejt për të shtuar terminale dhe shmangur bllokimin.</p>
+        </div>
+
+        <h3>Si të shtoni terminale shtesë</h3>
+        <ol class="steps">
+          <li>Kontaktoni <strong>Revolution Invest</strong> për të rritur numrin e terminaleve në licencën tuaj.</li>
+          <li>Mund të na shkruani në:
+            <ul style="margin:0.5rem 0 0;padding-left:1.1rem;color:#cbd5e1">
+              <li><strong>Telefon / WhatsApp:</strong> <a href="tel:+38348707880" style="color:#7dd3fc;text-decoration:underline">+383 48707880</a> · <a href="https://wa.me/38348707880" target="_blank" rel="noopener noreferrer" style="color:#7dd3fc;text-decoration:underline">WhatsApp</a> · faqja <a href="/#kontakt" style="color:#7dd3fc;text-decoration:underline">revolution-pos.com/#kontakt</a></li>
+              <li><strong>Email:</strong> <a href="mailto:revolutioninvest05@gmail.com" style="color:#7dd3fc;text-decoration:underline">revolutioninvest05@gmail.com</a></li>
+            </ul>
+          </li>
+          <li>Tregoni emrin e lokalit dhe sa terminale shtesë ju nevojiten (p.sh. «Dua 2 terminale në vend të 1»).</li>
+          <li>Administratori përditëson licencën — pas rifreskimit, mund të aktivizoni POS në pajisjen e re pa bllokim.</li>
+        </ol>
+
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Çmimi i licencës = çmimi bazë + (terminale shtesë × çmimi për terminal). Detajet e pakos diskutohen me ekipin e Revolution Invest para aktivizimit.</p>
+        </div>
+      </article>
+
+      <!-- 11. LIBRAT E KONTABILISTIT -->
+      <article class="manual-section" id="kontabilisti" data-i18n-section="kontabilisti">
+        <span class="section-num">Seksioni 11</span>
+        <h2>LIBRAT E KONTABILISTIT (ATK)</h2>
+        <p>Në <strong>POS Admin → Kontabilisti</strong> gjeni hub-in ATK: bilanc, libra TVSH, deklaratë, paga, qera, tremujor, pasqyrë vjetore. <strong>Shitjet dhe blerjet mbushin librat vetë</strong> — ju eksportohet Excel / PDF ATK.</p>
+
+        <h3 id="kontabilisti-hap">Si hapet dhe çfarë mbushen automatikisht</h3>
+        <ol class="steps">
+          <li>Hapni POS → <strong>Admin</strong> → <strong>Kontabilisti</strong>.</li>
+          <li>Zgjidhni periudhën (Sot / Ky muaj / Nga–Deri).</li>
+          <li><strong>Automatikisht:</strong> Libri i Shitjes TVSH (nga shitjet e mbyllura), Libri i Blerjes TVSH (nga Blerjet + shpenzimet), Deklarata e TVSH, Bilanci.</li>
+          <li>Butonat <strong>Excel</strong> / <strong>PDF ATK</strong> shkarkojnë formularët zyrtarë të mbushur me të njëjtat të dhëna.</li>
+        </ol>
+        <div class="box box-tip">
+          <div class="box-title">Çfarë bën pronari?</div>
+          <p>Regjistron blerjet (me dorë ose AI) dhe shpenzimet. Shitjet vijnë nga mbyllja e tavolinave. Pastaj hap Kontabilistin dhe eksporton për kontabilistin — pa rishkrim manual të librave.</p>
+        </div>
+
+        <h3 id="kontabilisti-shpenzim">Shpenzime, paga, qera</h3>
+        <ol class="steps">
+          <li><strong>Shpenzim:</strong> Kontabilisti → Shpenzime → «+ Shpenzim» (firma, NUI, TVSH %, kategori, shuma).</li>
+          <li><strong>Paga:</strong> seksioni Paga — shtoni punonjësit me dorë për muajin (nuk merren nga shitja).</li>
+          <li><strong>Qera:</strong> seksioni Qera — pagesat e qerasë / TMB me dorë.</li>
+        </ol>
+
+        <h3 id="kontabilisti-eksport">Eksport për kontabilistin</h3>
+        <ol class="steps">
+          <li>Libri Shitjes / Blerjes → <strong>Excel ATK</strong> (template zyrtar).</li>
+          <li>Deklarata TVSH / Tatim në burim / Qera / Tremujor / Pasqyra CD → <strong>PDF ATK</strong> ose Excel.</li>
+          <li>Dërgojani skedarët kontabilistit (email / USB).</li>
+        </ol>
+        <div class="box box-warning">
+          <div class="box-title">Kujdes</div>
+          <p>Për TVSH të saktë, aktivizoni TVSH në cilësimet fiskale dhe plotësoni NUI + % te blerjet. Excel dhe PDF janë të sinkronizuara me të njëjtën databazë lokale.</p>
+        </div>
+      </article>
+
+      <!-- 12. NDIHMË DHE MBËSHTETJE -->
+      <article class="manual-section" id="ndihma" data-i18n-section="ndihma">
+        <span class="section-num">Seksioni 12</span>
+        <h2>NDIHMË DHE MBËSHTETJE</h2>
+        <p>Jemi në dispozicion <strong>24 orë, 7 ditë në javë</strong>. Çdo problem teknik, instalim, printer, sync ose licencë — na kontaktoni dhe e rregullojmë, pa pagesë shtesë për mbështetjen standarde.</p>
+
+        <h3 id="ndihma-kontakt">Si të na kontaktoni: telefon, WhatsApp, email</h3>
+        <ol class="steps">
+          <li><strong>Telefon:</strong> <a href="tel:+38348707880" style="color:#7dd3fc;text-decoration:underline">+383 48707880</a> — thirrni për ndihmë të menjëhershme.</li>
+          <li><strong>WhatsApp:</strong> <a href="https://wa.me/38348707880" target="_blank" rel="noopener noreferrer" style="color:#7dd3fc;text-decoration:underline">wa.me/38348707880</a> — dërgoni foto të ekranit të gabimit.</li>
+          <li><strong>Email:</strong> <a href="mailto:revolutioninvest05@gmail.com" style="color:#7dd3fc;text-decoration:underline">revolutioninvest05@gmail.com</a></li>
+          <li><strong>Faqja:</strong> <a href="/#kontakt" style="color:#7dd3fc;text-decoration:underline">revolution-pos.com/#kontakt</a> ose seksioni <strong>Mbështetje 24/7</strong> në ballina.</li>
+          <li>Paneli i pronarit: shkruani në shfletues <code>https://revolution-pos.com/owner/login</code></li>
+        </ol>
+
+        <h3 id="ndihma-anydesk">Mbështetje nga distanca me AnyDesk — si funksionon</h3>
+        <ol class="steps">
+          <li>Shkarkoni dhe hapni <strong>AnyDesk</strong> në kompjuterin e POS-it (nga <a href="https://anydesk.com" target="_blank" rel="noopener noreferrer" style="color:#7dd3fc;text-decoration:underline">anydesk.com</a>).</li>
+          <li>Na dërgoni numrin e AnyDesk (ID) në WhatsApp ose telefon.</li>
+          <li>Pranoni kërkesën e lidhjes kur shfaqet në ekran.</li>
+          <li>Tekniku ynë hyn nga distanca, rregullon problemin (printer, sync, cilësime) dhe ju tregon çfarë u bë.</li>
+        </ol>
+        <div class="box box-warning">
+          <div class="box-title">⚠️ Kujdes</div>
+          <p>Mos pranoni kërkesa AnyDesk nga persona të panjohur. Lidhuni vetëm me ekipin e Revolution Invest.</p>
+        </div>
+
+        <h3 id="ndihma-update">Përditësime automatike</h3>
+        <ol class="steps">
+          <li>Programi POS kontrollon për version të ri kur ka internet.</li>
+          <li>Kur ka përditësim, shfaqet njoftimi — shkarkoni dhe instaloni (zakonisht me disa klikime).</li>
+          <li>Pas instalimit, rihapni aplikacionin. Të dhënat lokale ruhen; nuk duhet të rifuteni menuja ose tavolinat.</li>
+          <li>Nëse përditësimi dështon, na kontaktoni — e instalojmë nga distanca me AnyDesk.</li>
+        </ol>
+
+        <h3 id="ndihma-bug">Si të raportoni një problem ose bug</h3>
+        <ol class="steps">
+          <li>Shkruani shkurt: <em>çfarë po bënit</em>, <em>çfarë pritej</em>, <em>çfarë ndodhi</em>.</li>
+          <li>Shtoni <strong>screenshot</strong> ose foto të ekranit (gabimi, fatura, paneli).</li>
+          <li>Tregoni: emrin e lokalit, versionin e POS-it (nëse e dini), dhe nëse ndodh në telefon, panel web, apo kasa.</li>
+          <li>Dërgoni në WhatsApp <a href="https://wa.me/38348707880" target="_blank" rel="noopener noreferrer" style="color:#7dd3fc;text-decoration:underline">+383 48707880</a> ose email <a href="mailto:revolutioninvest05@gmail.com" style="color:#7dd3fc;text-decoration:underline">revolutioninvest05@gmail.com</a>.</li>
+          <li>Ne konfirmojmë marrjen dhe ju njoftojmë kur rregullohet.</li>
+        </ol>
+        <div class="box box-tip">
+          <div class="box-title">💡 Këshillë</div>
+          <p>Sa më shumë detaje (hap pas hapi + foto), aq më shpejt e gjejmë dhe e rregullojmë problemin.</p>
+        </div>
+      </article>
+
+    </main>
+  </div>
+
+  <div class="man-ai-wrap" id="man-ai-wrap">
+    <button type="button" class="man-ai-toggle" id="man-ai-toggle" aria-expanded="false">
+      AI Ndihmë
+    </button>
+    <div class="man-ai-panel" id="man-ai-panel" hidden>
+      <div class="man-ai-head">
+        <strong>Pyet për manualin</strong>
+        <span id="man-ai-left">3/3</span>
+      </div>
+      <div class="man-ai-body" id="man-ai-body">
+        <p class="man-ai-msg bot">Pyet shkurt për kamarierin, kiosk, stok/blerje ose kontabilistin (seksionet 3, 4, 9, 11). Max 3 pyetje.</p>
+      </div>
+      <div class="man-ai-foot">
+        <input type="text" id="man-ai-input" maxlength="280" placeholder="p.sh. Si regjistroj blerjen?" autocomplete="off">
+        <button type="button" id="man-ai-send">Dërgo</button>
+      </div>
+      <p class="man-ai-hint">Përgjigje të shkurtra nga manuali. Për më shumë: seksionet e faqes ose WhatsApp +383 48707880.</p>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>© <span id="year"></span> <span data-i18n="footer.text">Revolution Invest POS — Manual përdorimi</span></p>
+      <p style="margin-top:0.5rem">
+        <a href="/" data-i18n="footer.home">Ballina</a> ·
+        <a href="/#kontakt" data-i18n="footer.contact">Kontakt &amp; mbështetje</a>
+      </p>
+    </div>
+  </footer>
+
+  <script src="/website/lang.js"></script>
+  <script src="/website/strings-manual-ui.js"></script>
+  <script src="/website/manual-en-sections.js"></script>
+  <script>
+    (function () {
+      document.getElementById("year").textContent = new Date().getFullYear();
+
+      document.querySelectorAll("[data-i18n-section]").forEach((el) => {
+        el.dataset.i18nSq = el.innerHTML;
+      });
+
+      function applyManualSections(lang) {
+        document.querySelectorAll("[data-i18n-section]").forEach((el) => {
+          const id = el.dataset.i18nSection;
+          if (lang === "en" && window.MANUAL_EN_SECTIONS?.[id]) {
+            el.innerHTML = window.MANUAL_EN_SECTIONS[id];
+          } else if (el.dataset.i18nSq) {
+            el.innerHTML = el.dataset.i18nSq;
+          }
+        });
+      }
+
+      const originalSetLang = SiteLang.setLang.bind(SiteLang);
+      SiteLang.setLang = function (nextLang) {
+        originalSetLang(nextLang);
+        applyManualSections(nextLang);
+      };
+
+      SiteLang.initSiteI18n(window.MANUAL_UI);
+      applyManualSections(SiteLang.getLang());
+
+      const toggle = document.getElementById("menu-toggle");
+      const nav = document.getElementById("nav-mobile");
+      toggle?.addEventListener("click", () => {
+        const open = nav.classList.toggle("open");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      nav?.querySelectorAll("a").forEach(link => {
+        link.addEventListener("click", () => nav.classList.remove("open"));
+      });
+
+      const tocLinks = document.querySelectorAll(".toc-list a");
+      const sections = [...document.querySelectorAll(".manual-section, .manual-section h3[id]")];
+
+      function updateTocActive() {
+        let current = "";
+        for (const sec of sections) {
+          const top = sec.getBoundingClientRect().top;
+          if (top <= 120) current = sec.id;
+        }
+        tocLinks.forEach(a => {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + current);
+        });
+      }
+
+      window.addEventListener("scroll", updateTocActive, { passive: true });
+      updateTocActive();
+
+      /* AI ndihmë — max 3 pyetje / sesion */
+      (function initManualAi() {
+        const KEY = "ri_manual_ai_sid";
+        let sid = localStorage.getItem(KEY);
+        if (!sid || sid.length < 8) {
+          sid = "m" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+          localStorage.setItem(KEY, sid);
+        }
+        const toggle = document.getElementById("man-ai-toggle");
+        const panel = document.getElementById("man-ai-panel");
+        const body = document.getElementById("man-ai-body");
+        const input = document.getElementById("man-ai-input");
+        const send = document.getElementById("man-ai-send");
+        const left = document.getElementById("man-ai-left");
+        if (!toggle || !panel || !body || !input || !send) return;
+
+        function setLeft(n, max) {
+          if (left) left.textContent = `${n}/${max || 3}`;
+          if (n <= 0) {
+            send.disabled = true;
+            input.disabled = true;
+          }
+        }
+
+        function addMsg(text, cls) {
+          const p = document.createElement("p");
+          p.className = "man-ai-msg " + cls;
+          p.textContent = text;
+          body.appendChild(p);
+          body.scrollTop = body.scrollHeight;
+        }
+
+        async function refreshStatus() {
+          try {
+            const r = await fetch("/api/public/manual-help/status?session=" + encodeURIComponent(sid));
+            const d = await r.json();
+            if (d.ok) setLeft(d.remaining, d.max);
+            if (d.enabled === false) {
+              addMsg("AI nuk është aktiv për momentin. Lexoni seksionet 3, 4, 9, 11.", "err");
+              send.disabled = true;
+            }
+          } catch (_) { /* ignore */ }
+        }
+
+        toggle.addEventListener("click", () => {
+          const open = panel.hasAttribute("hidden");
+          if (open) {
+            panel.removeAttribute("hidden");
+            toggle.setAttribute("aria-expanded", "true");
+            refreshStatus();
+            input.focus();
+          } else {
+            panel.setAttribute("hidden", "");
+            toggle.setAttribute("aria-expanded", "false");
+          }
+        });
+
+        async function ask() {
+          const q = (input.value || "").trim();
+          if (!q || send.disabled) return;
+          input.value = "";
+          addMsg(q, "user");
+          send.disabled = true;
+          try {
+            const r = await fetch("/api/public/manual-help", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ session: sid, message: q }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.ok) {
+              addMsg(d.gabim || "Nuk u përgjigj. Provo përsëri ose lexo manualin.", "err");
+              if (d.remaining != null) setLeft(d.remaining, d.max || 3);
+              else if (r.status !== 429) send.disabled = false;
+              return;
+            }
+            addMsg(d.reply, "bot");
+            setLeft(d.remaining, d.max);
+            if (d.remaining > 0) send.disabled = false;
+          } catch (_) {
+            addMsg("Gabim rrjeti. Lexoni seksionet e manualit.", "err");
+            send.disabled = false;
+          }
+        }
+
+        send.addEventListener("click", () => ask());
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            ask();
+          }
+        });
+      })();
+    })();
+  </script>
+</body>
+</html>

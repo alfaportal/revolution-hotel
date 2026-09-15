@@ -1,0 +1,305 @@
+/* Revolution Invest POS — shared staff / terminal branding */
+
+:root {
+  --staff-navy: #0f1b3d;
+  --staff-navy-2: #162654;
+  --staff-panel: #ffffff;
+  --staff-text: #111827;
+  --staff-muted: #6b7280;
+  --staff-border: #e5e7eb;
+  --staff-accent: #e63946;
+  --staff-radius: 20px;
+}
+
+.staff-app-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 1rem;
+  background: var(--staff-navy);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.staff-app-bar img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.staff-app-bar span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.01em;
+}
+
+.staff-app-bar .staff-app-venue {
+  margin-left: auto;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.72rem;
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.conn-status.is-online {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.conn-status.is-offline {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.staff-login-brand .conn-status {
+  margin-top: 0.35rem;
+}
+
+/* Split login shell (waiter PIN) */
+.staff-login-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #eef1f6;
+}
+
+.staff-login-shell {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  width: min(100%, 920px);
+  min-height: min(560px, calc(100dvh - 2rem));
+  border-radius: var(--staff-radius);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 27, 61, 0.18);
+  background: var(--staff-panel);
+}
+
+.staff-login-brand {
+  position: relative;
+  background: linear-gradient(145deg, var(--staff-navy) 0%, var(--staff-navy-2) 100%);
+  color: #fff;
+  padding: 2rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.85rem;
+  overflow: hidden;
+}
+
+.staff-login-brand::before,
+.staff-login-brand::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+}
+
+.staff-login-brand::before {
+  width: 220px;
+  height: 220px;
+  top: -70px;
+  right: -50px;
+}
+
+.staff-login-brand::after {
+  width: 160px;
+  height: 160px;
+  bottom: -40px;
+  left: -30px;
+}
+
+.staff-login-brand > * {
+  position: relative;
+  z-index: 1;
+}
+
+.staff-revolution-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.staff-brand-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.staff-venue-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  margin-top: 0.25rem;
+}
+
+.staff-venue-name {
+  margin: 0;
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.staff-venue-location {
+  margin: 0;
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.staff-powered {
+  margin: auto 0 0;
+  padding-top: 1.5rem;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.staff-login-panel {
+  padding: 2rem 2rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--staff-panel);
+}
+
+.staff-login-panel h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 1.85rem);
+  font-weight: 800;
+  color: var(--staff-text);
+  letter-spacing: -0.02em;
+}
+
+.staff-login-lead {
+  margin: 0.45rem 0 0;
+  color: var(--staff-muted);
+  font-size: 0.95rem;
+}
+
+.staff-login-panel .pin-box {
+  max-width: none;
+  margin: 1.35rem 0 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.staff-login-panel .pin-display {
+  color: var(--staff-text);
+  font-size: 1.75rem;
+  letter-spacing: 0.35em;
+  padding: 0.5rem 0 1rem;
+}
+
+.staff-login-panel .pin-key {
+  background: #f3f4f6;
+  border: 1px solid var(--staff-border);
+  color: var(--staff-text);
+  border-radius: 14px;
+}
+
+.staff-login-panel .pin-key:active {
+  background: #e5e7eb;
+}
+
+.staff-login-panel .pin-key-muted {
+  color: var(--staff-muted);
+  background: #f9fafb;
+}
+
+.staff-login-panel .btn-primary,
+.staff-login-panel .pin-submit {
+  background: var(--staff-navy);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+
+.staff-login-panel .btn-primary:active,
+.staff-login-panel .pin-submit:active {
+  background: #0a1430;
+}
+
+.staff-login-panel .err {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.88rem;
+  margin-bottom: 0.75rem;
+}
+
+.staff-login-panel .hint {
+  color: var(--staff-muted);
+  font-size: 0.82rem;
+  text-align: center;
+  margin: 0.75rem 0 0;
+}
+
+@media (max-width: 900px) {
+  .staff-login-screen {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    min-height: 100dvh;
+    height: 100dvh;
+    background: var(--staff-panel);
+  }
+
+  .staff-login-shell {
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    min-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .staff-login-brand {
+    padding: 1.5rem 1.25rem;
+    min-height: 180px;
+  }
+
+  .staff-powered {
+    display: none;
+  }
+
+  .staff-login-panel {
+    padding: 1.5rem 1.25rem 1.75rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

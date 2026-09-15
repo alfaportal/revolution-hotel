@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Aktivizo llogarinë — Revolution POS</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="stylesheet" href="/hotel/css/owner.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>Aktivizo llogarinë</h1>
+      <p id="setup-intro">Vendosni fjalëkalimin për panelin e pronarit.</p>
+      <div id="setup-error" class="alert alert-error hidden"></div>
+      <div id="setup-loading" class="alert" style="color:var(--muted)">Duke kontrolluar ftesën…</div>
+      <form id="form-setup" class="hidden">
+        <p id="setup-user" style="margin-bottom:1rem;color:var(--muted);font-size:0.9rem"></p>
+        <label for="password">Fjalëkalimi i ri *</label>
+        <input type="password" id="password" required minlength="6" autocomplete="new-password" placeholder="min. 6 karaktere">
+        <label for="password2">Përsërit fjalëkalimin *</label>
+        <input type="password" id="password2" required minlength="6" autocomplete="new-password" placeholder="••••••••">
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem">Aktivizo dhe vazhdo</button>
+      </form>
+      <p id="setup-done" class="hidden" style="margin-top:1rem">
+        <a href="/hotel/owner/login" class="btn btn-primary" style="width:100%;text-decoration:none;display:inline-flex">Shko te hyrja</a>
+      </p>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const token = params.get("token") || "";
+    const errEl = document.getElementById("setup-error");
+    const loadEl = document.getElementById("setup-loading");
+    const formEl = document.getElementById("form-setup");
+    const doneEl = document.getElementById("setup-done");
+
+    function showErr(msg) {
+      loadEl.classList.add("hidden");
+      formEl.classList.add("hidden");
+      errEl.textContent = msg;
+      errEl.classList.remove("hidden");
+    }
+
+    (async () => {
+      if (!token) {
+        showErr("Mungon linku i ftesës. Kontaktoni administratorin.");
+        return;
+      }
+      try {
+        const res = await fetch(`/hotel/api/auth/owner/invite/${encodeURIComponent(token)}`);
+        const data = await res.json();
+        if (!data.valid) {
+          showErr(data.message || data.gabim || "Ftesa nuk është e vlefshme.");
+          if (data.code === "ALREADY_ACTIVE") {
+            doneEl.classList.remove("hidden");
+          }
+          return;
+        }
+        loadEl.classList.add("hidden");
+        formEl.classList.remove("hidden");
+        document.getElementById("setup-user").textContent =
+          `${data.emri} — ${data.email}` + (data.client_name ? ` (${data.client_name})` : "");
+      } catch {
+        showErr("Nuk u lidh me serverin. Provoni përsëri.");
+      }
+    })();
+
+    document.getElementById("form-setup").addEventListener("submit", async e => {
+      e.preventDefault();
+      errEl.classList.add("hidden");
+      const pw = document.getElementById("password").value;
+      const pw2 = document.getElementById("password2").value;
+      if (pw !== pw2) {
+        errEl.textContent = "Fjalëkalimet nuk përputhen.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        const res = await fetch("/hotel/api/auth/owner/setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, password: pw }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.gabim || "Gabim");
+        formEl.classList.add("hidden");
+        document.getElementById("setup-intro").textContent = data.message || "Llogaria u aktivizua!";
+        doneEl.classList.remove("hidden");
+        const loginUrl = data.email
+          ? `/owner/login?email=${encodeURIComponent(data.email)}`
+          : "/hotel/owner/login";
+        setTimeout(() => { location.href = loginUrl; }, 2500);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove("hidden");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

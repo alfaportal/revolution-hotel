@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Porosit online</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/r.css?v=15">
+  <link rel="stylesheet" href="/css/r-truffle.css?v=1">
+  <link rel="stylesheet" href="/css/menu-pos.css?v=16">
+</head>
+<body class="order-page">
+  <div id="screen-loading" class="screen active">
+    <div class="loader"></div>
+    <p>Duke ngarkuar…</p>
+  </div>
+
+  <div id="screen-error" class="screen hidden">
+    <div class="error-card">
+      <h1>Nuk u ngarkua</h1>
+      <p id="error-msg">Restoranti nuk u gjet.</p>
+      <a class="order-back-link" id="error-back" href="#">← Kthehu te faqja</a>
+    </div>
+  </div>
+
+  <div id="screen-order" class="screen hidden">
+    <header class="order-header">
+      <a class="order-back-link" id="back-link" href="#">← Kthehu</a>
+      <h1 id="order-title">Porosit online</h1>
+      <p class="order-subtitle" id="order-subtitle"></p>
+    </header>
+
+    <main class="order-main">
+      <section class="order-panel">
+        <h2 class="order-panel-title">Të dhënat tuaja</h2>
+        <div class="order-type-toggle" role="group" aria-label="Lloji i porosisë">
+          <button type="button" class="order-type-btn active" data-type="takeaway">Marrje (Takeaway)</button>
+          <button type="button" class="order-type-btn" data-type="delivery">Dërgesë (Delivery)</button>
+        </div>
+        <label class="order-field">
+          <span>Emri *</span>
+          <input type="text" id="customer-name" autocomplete="name" placeholder="Emri juaj" required>
+        </label>
+        <label class="order-field">
+          <span>Telefoni *</span>
+          <input type="tel" id="customer-phone" autocomplete="tel" placeholder="+383 44 123 456" required>
+        </label>
+        <div class="order-field order-delivery-field hidden" id="delivery-address-field">
+          <span>Adresa e dërgesës *</span>
+          <div class="delivery-address-row">
+            <input type="text" id="delivery-address" autocomplete="street-address" placeholder="Rruga, numri, qyteti">
+            <button type="button" class="maps-open-btn" id="btn-delivery-maps">
+              <span aria-hidden="true">🗺️</span> Hap Google Maps
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="order-panel">
+        <h2 class="order-panel-title">Menuja</h2>
+        <div class="cat-nav-wrap order-cat-nav">
+          <nav class="cat-nav" id="order-cat-nav"></nav>
+        </div>
+        <div id="order-menu-grid" class="order-menu-grid"></div>
+      </section>
+    </main>
+
+    <div class="order-cart" id="order-cart">
+      <div class="order-cart-head">
+        <strong>Porosia juaj</strong>
+        <span id="cart-count">0 artikuj</span>
+      </div>
+      <ul class="order-cart-lines" id="cart-lines"></ul>
+      <div class="order-cart-total">
+        <span>Totali</span>
+        <strong id="cart-total">0.00 €</strong>
+      </div>
+      <p class="order-cart-hint">Porosia shkon te banaku/kuzhina — pagesa në dorëzim ose marrje.</p>
+      <button type="button" class="order-submit-btn" id="btn-submit" disabled>Dërgo Porosinë</button>
+      <p class="order-form-error hidden" id="form-error"></p>
+    </div>
+  </div>
+
+  <div id="screen-success" class="screen hidden">
+    <div class="success-card">
+      <div class="success-icon">✅</div>
+      <h1>Porosia u dërgua!</h1>
+      <p id="success-msg">Faleminderit. Restoranti do t'ju kontaktojë së shpejti.</p>
+      <a class="order-back-link" id="success-back" href="#">← Kthehu te faqja</a>
+    </div>
+  </div>
+
+  <script src="/js/menuCatalog.js"></script>
+  <script src="/js/menu-pos.js?v=17"></script>
+  <script src="/js/r-order.js?v=7"></script>
+</body>
+</html>

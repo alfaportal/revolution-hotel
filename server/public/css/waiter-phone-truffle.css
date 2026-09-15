@@ -1,0 +1,512 @@
+/* Phone waiter dark theme — match desktop POS (#1a1a2e / #FF6B35). CSS only. */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+
+:root {
+  --bg: #1a1a2e;
+  --card: #1e1e2e;
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #ff6b35;
+  --accent-dark: #e85a28;
+  --ok: #2d8a4e;
+  --warn: #ff6b35;
+  --danger: #e11d48;
+  --radius: 12px;
+  --menu-bg: #1a1a2e;
+  --menu-card: #ffffff;
+  --menu-card-border: rgba(0, 0, 0, 0.06);
+  --menu-text: #111827;
+  --menu-muted: #6b7280;
+  --menu-accent: #ff6b35;
+  --menu-accent-soft: rgba(255, 107, 53, 0.14);
+  --menu-teal: #ff6b35;
+  --menu-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  --menu-shadow-hover: 0 8px 22px rgba(0, 0, 0, 0.28);
+  --menu-radius: 12px;
+}
+
+html, body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: #1a1a2e;
+  color: #f8fafc;
+}
+
+/* Hide scrollbars — scroll still works */
+html, body,
+.waiter-main,
+.menu-photo-grid,
+.menu-cat-tabs,
+.cart-lines,
+.tables-grid {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.waiter-main::-webkit-scrollbar,
+.menu-photo-grid::-webkit-scrollbar,
+.menu-cat-tabs::-webkit-scrollbar,
+.cart-lines::-webkit-scrollbar,
+.tables-grid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.waiter-splash {
+  background: #1a1a2e;
+}
+
+/* ─── Header / app bar ─── */
+.staff-app-bar {
+  background: #12121f !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.waiter-header {
+  background: #1e1e2e !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.waiter-header h1,
+#tables-title,
+#order-title {
+  color: #fff !important;
+  font-weight: 800;
+}
+
+.waiter-header .sub,
+#tables-waiter,
+#tables-sub {
+  color: #94a3b8 !important;
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+}
+
+.btn-primary {
+  background: #ff6b35 !important;
+  border-radius: 14px !important;
+  font-weight: 700;
+}
+
+.btn-primary:active {
+  background: #e85a28 !important;
+}
+
+/* ─── Tables ─── */
+.waiter-main {
+  background: #1a1a2e;
+}
+
+.waiter-area-title {
+  color: #ff6b35 !important;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.tables-grid-area {
+  gap: 0.65rem;
+}
+
+.table-card {
+  border: none !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  color: #fff !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.table-card:active {
+  transform: scale(0.97);
+}
+
+.table-card.free {
+  background: #2d8a4e !important;
+  border-color: transparent !important;
+}
+
+.table-card.occupied {
+  background: #ff6b35 !important;
+  border-color: transparent !important;
+}
+
+.table-card.occupied.source-warn {
+  background: #e85a28 !important;
+  border-color: transparent !important;
+}
+
+.table-card.reserved.free {
+  background: #1e6b3c !important;
+  box-shadow: 0 4px 14px rgba(45, 138, 78, 0.35), inset 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.table-card .num {
+  color: #fff !important;
+  font-weight: 800;
+}
+
+.table-card .meta {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-weight: 500;
+}
+
+.table-status-pill.free {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+}
+
+.table-status-pill.occupied {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.online-slot-card.pending-online,
+.table-card.pending-cloud.pending-online {
+  background: #2563eb !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.waiter-online-zone {
+  border-top-color: rgba(255, 107, 53, 0.25);
+}
+
+.tables-live-bar {
+  color: #94a3b8;
+}
+
+.tables-live-bar .live-dot {
+  background: #22c55e;
+}
+
+/* ─── Order screen header overrides (was light in menu-pos) ─── */
+#screen-order .order-main {
+  background: #1a1a2e !important;
+}
+
+#screen-order .waiter-header {
+  background: #ff6b35 !important;
+  border-bottom: none !important;
+  box-shadow: 0 4px 16px rgba(255, 107, 53, 0.3);
+}
+
+#screen-order .waiter-header h1,
+#screen-order .waiter-header .sub {
+  color: #fff !important;
+}
+
+#screen-order .waiter-header .btn-ghost {
+  background: rgba(0, 0, 0, 0.18) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+}
+
+#screen-order .staff-app-bar {
+  background: #12121f !important;
+}
+
+/* ─── Category pills — one horizontal row ─── */
+.menu-group-bar,
+#menu-cat-bar {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: scroll !important;
+  overflow-y: hidden !important;
+  gap: 0.4rem;
+  margin: 0.55rem 0.65rem 0 !important;
+  padding: 0.35rem 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  grid-template-columns: none !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin !important;
+}
+
+.menu-group-bar::-webkit-scrollbar,
+#menu-cat-bar::-webkit-scrollbar,
+.menu-cat-tabs::-webkit-scrollbar {
+  height: 4px !important;
+  display: block !important;
+}
+
+.menu-cat-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0.4rem;
+  overflow-x: scroll !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  padding: 0.2rem 0;
+}
+
+.menu-group-btn,
+.menu-cat-tab {
+  flex: 0 0 auto !important;
+  min-height: 36px !important;
+  padding: 0.4rem 0.9rem !important;
+  border-radius: 999px !important;
+  border: none !important;
+  outline: none !important;
+  background: #2d2d44 !important;
+  color: #fff !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  white-space: nowrap;
+  box-shadow: none !important;
+}
+
+.menu-group-btn:hover,
+.menu-cat-tab:hover:not(.active) {
+  background: #3a3a55 !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+
+.menu-group-btn.active,
+.menu-cat-tab.active {
+  background: #ff6b35 !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.menu-tab-icon {
+  display: none !important;
+}
+
+/* ─── Product cards ─── */
+.menu-photo-grid {
+  background: transparent;
+  padding: 0.45rem 0.65rem 0.85rem;
+}
+
+.menu-photo-grid-inner {
+  gap: 0.5rem !important;
+}
+
+.menu-item-card {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16) !important;
+  overflow: hidden;
+  padding: 0 !important;
+  min-height: 4.5rem;
+  gap: 0 !important;
+}
+
+.menu-item-photo-wrap {
+  display: block !important;
+  width: 100%;
+  aspect-ratio: 1.1 / 1;
+  overflow: hidden;
+  border-radius: 12px 12px 0 0;
+  background: #fff;
+}
+
+.menu-item-photo {
+  display: block !important;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.menu-item-emoji-ph,
+.menu-item-letter-ph {
+  display: none !important;
+}
+
+.menu-item-meta {
+  padding: 0.4rem 0.35rem 0.45rem !important;
+  background: #fff;
+  gap: 0.15rem !important;
+}
+
+.menu-item-btn .emri {
+  color: #111827 !important;
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+}
+
+.menu-item-btn .cmimi,
+.menu-item-btn .cmimi-badge,
+.menu-item-btn .cmimi-badge.is-gold {
+  color: #ff6b35 !important;
+  background: transparent !important;
+  font-weight: 800 !important;
+  font-size: 0.76rem !important;
+}
+
+.menu-item-btn:active .menu-item-card,
+.menu-item-btn.menu-item-flash .menu-item-card {
+  transform: translateY(-2px) scale(0.98);
+  border-color: rgba(255, 107, 53, 0.35) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22) !important;
+}
+
+.menu-empty-msg {
+  color: #94a3b8 !important;
+}
+
+/* Force order screen dark (overrides menu-pos light --menu-bg) */
+#screen-order,
+#screen-order .order-main,
+#screen-order .waiter-main,
+#screen-order .menu-pos-wrap,
+#screen-order .menu-photo-grid {
+  background: #1a1a2e !important;
+}
+
+#screen-order .waiter-header {
+  background: #1e1e2e !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+}
+
+#screen-order .waiter-header h1,
+#screen-order .waiter-header .sub,
+#screen-order .kiosk-hint {
+  color: #fff !important;
+}
+
+.menu-item-btn .cmimi,
+.menu-item-btn .cmimi-badge,
+.menu-item-btn .cmimi-badge.is-gold {
+  color: #ff6b35 !important;
+}
+
+/* Kiosk / QR send button */
+#screen-order .btn-primary,
+#screen-order #btn-send,
+.cart-bar .btn-primary {
+  background: #ff6b35 !important;
+  border: none !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.35);
+}
+
+#screen-order .btn-primary:active,
+#screen-order #btn-send:active {
+  background: #e85a28 !important;
+}
+
+.cart-total,
+#cart-total {
+  color: #fff !important;
+}
+
+#cart-total {
+  color: #ff6b35 !important;
+}
+
+/* ─── Cart bar / Dërgo ─── */
+.cart-bar {
+  background: #1e1e2e !important;
+  border-top: 2px solid #ff6b35 !important;
+  color: #fff;
+}
+
+.cart-bar-title,
+.cart-count-label {
+  color: #fff !important;
+}
+
+.cart-count-label {
+  color: #ff6b35 !important;
+}
+
+.cart-line {
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.cart-unit-price {
+  color: #94a3b8 !important;
+}
+
+.cart-line-total {
+  color: #ff6b35 !important;
+}
+
+.btn-send-order {
+  background: #ff6b35 !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.35);
+}
+
+.btn-send-order:active {
+  background: #e85a28 !important;
+}
+
+.btn-send-order:disabled {
+  opacity: 0.55;
+}
+
+/* Confirmation / success actions stay green */
+.btn-confirm,
+.btn-accept,
+.waiter-online-accept-btn,
+.btn-ok {
+  background: #2d8a4e !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+}
+
+#screen-order .cart-msg.ok {
+  color: #bbf7d0;
+  background: rgba(45, 138, 78, 0.2);
+  border: 1px solid rgba(45, 138, 78, 0.4);
+}
+
+#screen-order .cart-msg.err {
+  color: #fecaca;
+  background: rgba(225, 29, 72, 0.15);
+  border: 1px solid rgba(225, 29, 72, 0.35);
+}
+
+/* Narrow phones 360–414 */
+@media (max-width: 414px) {
+  .table-card {
+    min-height: 68px;
+  }
+
+  .table-card .num {
+    font-size: 1.45rem;
+  }
+
+  .menu-photo-grid-inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .menu-item-btn .emri {
+    font-size: 0.72rem !important;
+  }
+
+  .cart-bar {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}

@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Paneli i pronarit — Revolution POS</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RI POS">
+  <link rel="manifest" href="/hotel/owner/manifest.json">
+  <link rel="apple-touch-icon" href="/hotel/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/hotel/icons/icon-192.png">
+  <link rel="stylesheet" href="/hotel/css/owner.css?v=2">
+</head>
+<body class="owner-panel">
+  <div id="pwa-install-banner" class="pwa-install-banner hidden" role="region" aria-label="Instalo aplikacionin">
+    <button type="button" class="pwa-install-close" id="pwa-install-close" aria-label="Mbyll">×</button>
+    <div class="pwa-install-title">📲 Shto Revolution Invest POS në ekranin kryesor</div>
+    <p class="pwa-install-hint" id="pwa-install-hint"></p>
+  </div>
+
+  <header class="header owner-header">
+    <div>
+      <h1 id="biz-name">Paneli i pronarit</h1>
+      <div class="sub" id="biz-sub">Duke ngarkuar…</div>
+    </div>
+    <div class="owner-header-actions">
+      <div id="owner-location-switcher" class="owner-location-switcher hidden">
+        <label class="owner-location-label" for="owner-location-select">Lokali</label>
+        <select id="owner-location-select" class="owner-location-select" aria-label="Zgjidh lokalin"></select>
+      </div>
+      <span id="conn-status-owner" class="conn-status is-online" aria-live="polite">Online</span>
+      <button class="btn btn-ghost btn-sm" id="btn-logout">Dil</button>
+    </div>
+  </header>
+
+  <div id="panel-boot-error" class="alert alert-error hidden" role="alert" style="margin:0.75rem 1rem 0"></div>
+  <div id="panel-boot-info" class="alert alert-ok hidden" role="status" style="margin:0.75rem 1rem 0"></div>
+
+  <div class="container">
+    <div class="tabs nav-grid owner-tabs owner-nav-cards">
+      <button type="button" class="tab nav-tile active" data-tab="tavolinat">
+        <span class="nav-icon" aria-hidden="true">🪑</span>
+        <span class="nav-label">Tavolinat Live</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="faqja">
+        <span class="nav-icon" aria-hidden="true">🌐</span>
+        <span class="nav-label">Faqja publike</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="zreport">
+        <span class="nav-icon" aria-hidden="true">📊</span>
+        <span class="nav-label">Raportet X/Z</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="fiskale">
+        <span class="nav-icon" aria-hidden="true">🧾</span>
+        <span class="nav-label">Arka</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="llogaria">
+        <span class="nav-icon" aria-hidden="true">🔑</span>
+        <span class="nav-label">Llogaria</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="licenca">
+        <span class="nav-icon" aria-hidden="true">🔐</span>
+        <span class="nav-label">Licenca</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="porosite">
+        <span class="nav-icon" aria-hidden="true">📦</span>
+        <span class="nav-label">Porositë</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="stoku">
+        <span class="nav-icon" aria-hidden="true">📋</span>
+        <span class="nav-label">Stoku</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="blerje" id="tab-blerje">
+        <span class="nav-icon" aria-hidden="true">🛒</span>
+        <span class="nav-label">Blerje</span>
+      </button>
+      <button type="button" class="tab nav-tile ai-feature-tab hidden" data-tab="ai" id="tab-ai-hub" hidden>
+        <span class="nav-icon" aria-hidden="true">✨</span>
+        <span class="nav-label">AI</span>
+      </button>
+      <button type="button" class="tab nav-tile ai-feature-tab hidden" data-tab="ai-raporte" id="tab-ai-reports" hidden>
+        <span class="nav-icon" aria-hidden="true">📈</span>
+        <span class="nav-label">Raporte AI</span>
+      </button>
+      <button type="button" class="tab nav-tile ai-feature-tab hidden" data-tab="ai-asistent" id="tab-ai-assistant" hidden>
+        <span class="nav-icon" aria-hidden="true">💬</span>
+        <span class="nav-label">Asistent AI</span>
+      </button>
+      <button type="button" class="tab nav-tile ai-feature-tab hidden" data-tab="njoftimet" id="tab-notifications" hidden>
+        <span class="nav-icon" aria-hidden="true">🔔</span>
+        <span class="nav-label">Njoftimet</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="raportet">
+        <span class="nav-icon" aria-hidden="true">📑</span>
+        <span class="nav-label">Raportet</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="linqet" id="tab-linqet">
+        <span class="nav-icon" aria-hidden="true">🔗</span>
+        <span class="nav-label">Linqet e lokalit</span>
+      </button>
+    </div>
+
+    <div id="panel-tavolinat" class="panel-section">
+      <div class="card">
+        <div class="live-tables-head">
+          <div class="card-title" style="margin:0">Gjendja e tavolinave</div>
+          <span id="live-tables-updated" class="live-updated-label"></span>
+        </div>
+        <p class="links-hint">Rifreskohet live — QR, web dhe POS. Tavolina me QR shfaqet e zënë menjëherë.</p>
+        <div id="live-tables-grid" class="live-tables-grid"></div>
+        <section class="owner-online-zone hidden" id="owner-online-zone" aria-label="Porosi online">
+          <h2 class="owner-online-title" id="owner-online-title">POROSI ONLINE</h2>
+          <div id="live-online-slots-grid" class="live-online-slots-grid"></div>
+        </section>
+      </div>
+    </div>
+
+    <div id="panel-porosite" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Porositë e fundit</div>
+        <div class="filter-row">
+          <div>
+            <label for="filter-waiter">Kamarieri</label>
+            <select id="filter-waiter">
+              <option value="">Të gjithë</option>
+            </select>
+          </div>
+          <div>
+            <label for="filter-table">Tavolina</label>
+            <select id="filter-table">
+              <option value="">Të gjitha</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-filter-orders">Filtro</button>
+        </div>
+        <div id="orders-list"></div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Porosi të Refuzuara</div>
+        <p class="links-hint" style="margin-top:0">Kush refuzoi, kur, çka — dhe arsyeja. Përdoret edhe nga AI për vlerësimin e kamarierëve.</p>
+        <div class="filter-row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+          <div>
+            <label for="refuse-from">Nga</label>
+            <input type="date" id="refuse-from">
+          </div>
+          <div>
+            <label for="refuse-to">Deri</label>
+            <input type="date" id="refuse-to">
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-refuse-filter">Filtro</button>
+        </div>
+        <div id="refuse-stats" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;font-size:.85rem"></div>
+        <div id="refuse-list"></div>
+      </div>
+    </div>
+
+    <div id="panel-menuja" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title-row">
+          <div class="card-title" style="margin:0">Shto artikull</div>
+          <button type="button" class="btn btn-ghost btn-sm ai-feature-hidden" id="btn-menu-scan-ai" hidden>Skano Meny me AI</button>
+        </div>
+        <div class="filter-row menu-add-row">
+          <div>
+            <label for="menu-add-barcode">Barcode</label>
+            <input type="text" id="menu-add-barcode" inputmode="numeric" autocomplete="off" placeholder="Skano ose shkruaj barkodin" title="USB scanner dërgon numrin + Enter">
+            <small id="menu-add-barcode-status" style="display:block;margin-top:0.25rem;color:var(--muted);font-size:0.8rem"></small>
+          </div>
+          <div>
+            <label for="menu-add-name">Emri</label>
+            <input type="text" id="menu-add-name" placeholder="Emri i artikullit">
+          </div>
+          <div>
+            <label for="menu-add-category">Kategoria</label>
+            <input type="text" id="menu-add-category" list="menu-category-list" placeholder="p.sh. Pije të ftohta">
+            <datalist id="menu-category-list"></datalist>
+          </div>
+          <div>
+            <label for="menu-add-price">Çmimi (€)</label>
+            <input type="number" id="menu-add-price" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div>
+            <label for="menu-add-vat">TVSH</label>
+            <select id="menu-add-vat">
+              <option value="A">A — 18%</option>
+              <option value="B">B — 8%</option>
+              <option value="C">C — 0%</option>
+              <option value="D">D — Përjashtuar</option>
+              <option value="E">E — Tjetër</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-menu-add">Shto</button>
+        </div>
+        <div id="menu-msg" class="owner-license-msg"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Lista e menusë</div>
+        <p class="links-hint">Shtoni artikuj manualisht këtu, ose përdorni skedën <strong>Katalogu</strong> për artikuj të gatshëm me foto. Fotot e katalogut janë të paracaktuara — klikoni <strong>Ndrysho foto</strong> te çdo artikull për të ngarkuar foto tuaj (tavolinë, kamarier, banak, faqe publike). Ndryshoni emrin, kategorinë ose çmimin dhe klikoni <strong>Ruaj</strong>.</p>
+        <p id="menu-sync-hint" class="links-hint" style="margin-top:0"></p>
+        <div class="overflow-x">
+          <table class="menu-owner-table">
+            <thead>
+              <tr>
+                <th>Foto</th><th>Barcode</th><th>Emri</th><th>Kategoria</th><th>Çmimi</th><th>TVSH</th><th>Statusi</th><th class="col-actions">Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="menu-items-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-stoku" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span>Përbërësit (inventari)</span>
+          <div class="card-title-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-ingredient-add">Shto përbërës</button>
+          </div>
+        </div>
+        <p class="links-hint">
+          Menaxhoni përbërësit e kuzhinës (miell, vaj, pije…). Kur konfirmohet porosi, stoku zbritet automatikisht
+          sipas recetës (<code>menu_ingredients</code>). Rreshtat e kuq = nën minimum.
+          Për faturë furnizuesi → skeda <strong>Blerje</strong>.
+        </p>
+        <div id="inventory-alerts" class="inventory-alerts hidden"></div>
+        <div id="inventory-msg" class="owner-license-msg"></div>
+        <div class="overflow-x">
+          <table class="menu-owner-table inventory-owner-table">
+            <thead>
+              <tr>
+                <th>Përbërësi</th>
+                <th>Njësia</th>
+                <th>Sasia</th>
+                <th>Minimum</th>
+                <th>Kosto/njësi</th>
+                <th>Statusi</th>
+                <th class="col-actions">Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="ingredients-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="supply-suggestions-section" class="card ai-feature-hidden" style="margin-top:1rem" hidden>
+        <div class="card-title card-title-row">
+          <span>Sugjerime Furnizimi</span>
+          <div class="card-title-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-supply-generate">Gjenero sot</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-supply-refresh">Rifresko</button>
+          </div>
+        </div>
+        <p class="links-hint">
+          AI analizon përbërësit ku sasia ≤ minimumi dhe propozon listën e furnizimit.
+          Gjenerohet automatikisht çdo ditë në <strong>08:00</strong> (vetëm Pako 5).
+        </p>
+        <div id="supply-suggestions-summary" class="ai-report-summary"></div>
+        <div id="supply-suggestions-meta" class="links-hint" style="margin-top:0"></div>
+        <div id="supply-suggestions-msg" class="owner-license-msg"></div>
+        <div class="overflow-x">
+          <table class="menu-owner-table">
+            <thead>
+              <tr>
+                <th>Përbërësi</th>
+                <th>Stoku</th>
+                <th>Minimum</th>
+                <th>Porosit</th>
+                <th>Furnizuesi i fundit</th>
+                <th class="col-actions">Email</th>
+              </tr>
+            </thead>
+            <tbody id="supply-suggestions-body">
+              <tr><td colspan="6" style="color:var(--muted)">Duke ngarkuar…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Stoku i artikujve të menusë</div>
+        <p class="links-hint">
+          Aktivizoni ndjekjen e stokut për artikujt që dëshironi të kontrolloni.
+          Artikujt me stok 0 fshihen automatikisht nga menuja e kamarierit/kioskut.
+          POS-i shfaq etiketën <strong>Mbaroi</strong>.
+        </p>
+        <p id="stock-sync-hint" class="links-hint" style="margin-top:0"></p>
+        <div id="stock-summary" class="stock-summary"></div>
+        <div id="stock-msg" class="owner-license-msg"></div>
+        <div class="overflow-x">
+          <table class="menu-owner-table stock-owner-table">
+            <thead>
+              <tr>
+                <th>Artikulli</th>
+                <th>Kategoria</th>
+                <th>Ndjek stokun</th>
+                <th>Sasia</th>
+                <th>Pragu</th>
+                <th>Statusi</th>
+                <th class="col-actions">Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="stock-items-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-blerje" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Blerje — shëno faturën</div>
+        <p class="links-hint">
+          1) Zgjidh <strong>kategorinë</strong> → 2) produktin → 3) sasinë/çmimin → <strong>Ruaj</strong>.
+          POS rrit stokun dhe e fut te Kontabilisti.
+        </p>
+        <div class="filter-row menu-add-row" style="flex-wrap:wrap;gap:0.5rem">
+          <div>
+            <label for="blerje-supplier">Furnizuesi</label>
+            <input type="text" id="blerje-supplier" placeholder="p.sh. DISKONT DESAR" autocomplete="organization">
+          </div>
+          <div>
+            <label for="blerje-supplier-nui">NUI / Nr. fiskal</label>
+            <input type="text" id="blerje-supplier-nui" placeholder="opsionale" inputmode="numeric">
+          </div>
+          <div>
+            <label for="blerje-invoice-no">Nr. faturës</label>
+            <input type="text" id="blerje-invoice-no" placeholder="p.sh. 2024-400">
+          </div>
+          <div>
+            <label for="blerje-invoice-date">Data</label>
+            <input type="date" id="blerje-invoice-date">
+          </div>
+          <div>
+            <label for="blerje-vat-rate">TVSH %</label>
+            <select id="blerje-vat-rate">
+              <option value="18" selected>18%</option>
+              <option value="8">8%</option>
+              <option value="0">0%</option>
+            </select>
+          </div>
+          <div>
+            <label for="blerje-kind">Lloji</label>
+            <select id="blerje-kind">
+              <option value="goods" selected>Mallra / stok</option>
+              <option value="invest">Investime</option>
+            </select>
+          </div>
+        </div>
+        <div id="blerje-cat-filter" class="product-cat-filter" role="tablist" aria-label="Filtro sipas kategorisë" style="display:flex;flex-wrap:nowrap;gap:0.4rem;overflow-x:auto;margin:0.75rem 0 0.5rem;padding:0.15rem 0"></div>
+        <div class="overflow-x" style="margin-top:0.35rem">
+          <table class="menu-owner-table">
+            <thead>
+              <tr>
+                <th>Kategoria</th>
+                <th>Produkti</th>
+                <th>Sasia</th>
+                <th>Çmimi/copë</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="blerje-lines-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-blerje-add-line">+ Rresht</button>
+          <button type="button" class="btn btn-primary" id="btn-blerje-save">Ruaj blerjen → Stok + Kontabilist</button>
+        </div>
+        <div id="blerje-msg" class="owner-license-msg"></div>
+      </div>
+      <div class="card ai-feature-hidden" id="blerje-scan-card" style="margin-top:1rem" hidden>
+        <div class="card-title card-title-row">
+          <span>Opsionale — skanim foto (AI)</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-invoice-scan-ai" hidden>📷 Skano</button>
+        </div>
+        <p class="links-hint" style="margin:0">Vetëm ndihmë për të lexuar foton. Blerjen kryesore shënoje manualisht më lart.</p>
+        <button type="button" class="btn btn-ghost" id="btn-blerje-scan-open" hidden style="width:100%;margin-top:0.5rem">
+          📷 Hap skanim fature
+        </button>
+      </div>
+    </div>
+
+    <div id="panel-katalogu" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Katalogu i artikujve</div>
+        <p class="links-hint">
+          Zgjidhni artikujt me checkbox, vendosni çmimin dhe klikoni <strong>Shto në Meny</strong>.
+          Çdo artikull vjen me foto të gatshme. Për artikuj të personalizuar, përdorni skedën <strong>Menuja</strong>.
+        </p>
+        <div id="catalog-msg" class="owner-license-msg"></div>
+        <div class="catalog-toolbar">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-catalog-select-all">Zgjidh të gjitha</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-catalog-clear">Pastro zgjedhjen</button>
+          <span id="catalog-selected-count" class="catalog-selected-label">0 të zgjedhura</span>
+          <button type="button" class="btn btn-primary" id="btn-catalog-add">Shto në Meny</button>
+        </div>
+        <div id="catalog-categories" class="catalog-categories">
+          <p class="links-hint">Duke ngarkuar katalogun…</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-rezervime" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span>Rezervime tavolinash</span>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-reservation-add">Shto rezervim</button>
+        </div>
+        <p class="links-hint">Menaxhoni rezervimet — kamarieri sheh tavolinat e rezervuara me 🔒 dhe merr njoftim 15 min para orës.</p>
+        <div class="reservation-filter-row">
+          <button type="button" class="btn btn-ghost btn-sm reservation-filter active" data-res-filter="today">Sot</button>
+          <button type="button" class="btn btn-ghost btn-sm reservation-filter" data-res-filter="tomorrow">Nesër</button>
+          <button type="button" class="btn btn-ghost btn-sm reservation-filter" data-res-filter="week">Java</button>
+        </div>
+        <div id="reservations-msg" class="owner-license-msg"></div>
+        <div id="reservations-list" class="reservations-list"></div>
+      </div>
+    </div>
+
+    <div id="panel-lokal" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Hapësirat dhe tavolinat</div>
+        <p class="links-hint">Shtoni zona si <strong>Salla</strong>, <strong>Terasa</strong>, <strong>Oborr</strong>. Tavolinat numërohen automatikisht (T1, T2, …) dhe shfaqen te kamarieri brenda ~15 sekondave.</p>
+        <div class="filter-row menu-add-row">
+          <div>
+            <label for="area-add-name">Emri i hapësirës</label>
+            <input type="text" id="area-add-name" placeholder="p.sh. Terasa">
+          </div>
+          <div>
+            <label for="area-add-count">Nr. tavolinave</label>
+            <input type="number" id="area-add-count" min="1" max="30" value="4">
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-area-add">Shto hapësirë</button>
+        </div>
+        <div id="venue-msg" class="owner-license-msg"></div>
+        <p id="venue-sync-hint" class="links-hint" style="margin-top:0"></p>
+        <div class="table-wrap">
+          <table class="menu-owner-table venue-owner-table">
+            <thead>
+              <tr><th>Hapësira</th><th>Tavolina</th><th>Statusi</th><th>Veprimet</th></tr>
+            </thead>
+            <tbody id="venue-areas-body"></tbody>
+          </table>
+        </div>
+        <p class="links-hint">Nëse nuk shtoni hapësira, përdoret numri i tavolinave nga POS ose vlera e vjetër (<span id="venue-fallback-count">—</span> tavolina). Për QR kodet, shkoni te skeda <strong>Tavolinat &amp; QR Kodet</strong>.</p>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Stafi — kamarierë dhe kuzhinierë</div>
+        <p class="links-hint">Secili punonjës (kamarier, recepsionist, housekeeping) merr linkun personal për tablet. Kopjoni dhe dërgojeni te punëtori.</p>
+        <div class="filter-row menu-add-row">
+          <div>
+            <label for="staff-add-name">Emri</label>
+            <input type="text" id="staff-add-name" placeholder="p.sh. Agron">
+          </div>
+          <div>
+            <label for="staff-add-role">Roli</label>
+            <select id="staff-add-role">
+              <option value="waiter">Kamarier</option>
+              <option value="receptionist">Recepsionist</option>
+              <option value="housekeeping">Housekeeping</option>
+              <option value="kitchen">Kuzhinier</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-staff-add">Shto staf</button>
+        </div>
+        <div class="table-wrap">
+          <table class="menu-owner-table venue-owner-table">
+            <thead>
+              <tr><th>Emri</th><th>Roli</th><th>Linku personal</th><th>Statusi</th><th>Veprimet</th></tr>
+            </thead>
+            <tbody id="venue-staff-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-faqja" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span>Faqja publike e restorantit</span>
+          <a class="btn btn-ghost btn-sm" id="btn-public-preview" href="#" target="_blank" rel="noopener">Shiko faqen</a>
+        </div>
+        <p class="links-hint">
+          Faqja publike shfaqet në <code>/r/:slug</code> (restorant/kafene) ose <code>/s/:slug</code> (dyqan) — emri, logo, produktet nga POS. Porositë online kërkojnë <strong>Pako 3</strong>.
+          Adresa dhe telefoni merren nga cilësimet e biznesit (POS / Super Admin).
+        </p>
+        <div id="public-page-upgrade" class="owner-license-msg err hidden"></div>
+        <label class="hub-check" style="margin:0.75rem 0">
+          <input type="checkbox" id="public-enabled" checked>
+          <span>Faqja publike është aktive</span>
+        </label>
+        <div class="public-page-form">
+          <div class="public-logo-row">
+            <div class="public-logo-preview-wrap">
+              <img id="public-logo-preview" class="public-logo-preview hidden" alt="Logo">
+              <div id="public-logo-placeholder" class="public-logo-placeholder">Logo</div>
+            </div>
+            <div class="public-logo-actions">
+              <label class="btn btn-primary btn-sm" for="public-logo-input">Ngarko logo</label>
+              <input type="file" id="public-logo-input" accept="image/png,image/jpeg,image/jpg" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-logo-remove">Hiq logon</button>
+              <p class="public-logo-hint">PNG ose JPG, max 500 KB. Shfaqet në faqen publike dhe si ikonë PWA.</p>
+            </div>
+          </div>
+          <div class="public-cover-row">
+            <div class="public-cover-preview-wrap">
+              <img id="public-cover-preview" class="public-cover-preview hidden" alt="Cover">
+              <div id="public-cover-placeholder" class="public-cover-placeholder">Cover</div>
+            </div>
+            <div class="public-logo-actions">
+              <label class="btn btn-primary btn-sm" for="public-cover-input">Ngarko foto cover</label>
+              <input type="file" id="public-cover-input" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-cover-remove">Hiq cover-in</button>
+              <p class="public-logo-hint">Foto e madhe në krye të faqes. PNG/JPG, max 800 KB.</p>
+            </div>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="public-daily-offer">Oferta e ditës</label>
+            <input type="text" id="public-daily-offer" maxlength="500" placeholder='p.sh. Sot special: Burger + Kafe = €4'>
+            <p class="public-logo-hint">Shfaqet si banner i verdhë në faqen publike.</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label>Galeri foto (max 5)</label>
+            <div id="public-gallery-grid" class="public-gallery-grid"></div>
+            <div class="public-gallery-actions">
+              <label class="btn btn-ghost btn-sm" for="public-gallery-input">+ Shto foto</label>
+              <input type="file" id="public-gallery-input" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
+            </div>
+          </div>
+          <div class="hub-fiscal-field">
+            <label>Vlerësimet e klientëve (max 5)</label>
+            <div id="public-reviews-list" class="public-reviews-list"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-public-review-add">+ Shto vlerësim</button>
+          </div>
+          <div class="public-social-grid">
+            <div class="hub-fiscal-field">
+              <label for="public-social-instagram">Instagram</label>
+              <input type="url" id="public-social-instagram" placeholder="https://instagram.com/...">
+            </div>
+            <div class="hub-fiscal-field">
+              <label for="public-social-facebook">Facebook</label>
+              <input type="url" id="public-social-facebook" placeholder="https://facebook.com/...">
+            </div>
+            <div class="hub-fiscal-field">
+              <label for="public-social-tiktok">TikTok</label>
+              <input type="url" id="public-social-tiktok" placeholder="https://tiktok.com/@...">
+            </div>
+            <div class="hub-fiscal-field">
+              <label for="public-whatsapp">WhatsApp (Na kontakto)</label>
+              <input type="tel" id="public-whatsapp" placeholder="+383 44 123 456">
+            </div>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="public-description">Përshkrim i shkurtër</label>
+            <textarea id="public-description" rows="3" maxlength="2000" placeholder="p.sh. Restorant tradicional me specialitete të kuzhinës shqiptare…"></textarea>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="public-theme">Ngjyra kryesore</label>
+            <input type="color" id="public-theme" value="#c2410c">
+          </div>
+          <div class="card-title" style="margin-top:1rem;font-size:0.95rem">Orari i punës</div>
+          <div id="public-hours-grid" class="public-hours-grid"></div>
+
+          <div class="public-page-slug-block" style="margin-top:1rem">
+            <label for="public-page-slug">Slug i faqes publike</label>
+            <p class="links-hint" id="public-slug-url-hint">URL: <code>revolution-pos.com<span id="public-slug-path">/r/</span><span id="public-slug-preview">slug</span></code> — vetëm a-z, 0-9 dhe vizë (-).</p>
+            <div class="link-actions public-slug-actions">
+              <span class="public-slug-prefix mono-input" id="public-slug-prefix">/r/</span>
+              <input type="text" id="public-page-slug" class="mono-input" maxlength="48" autocomplete="off" spellcheck="false" placeholder="babylon-ferizaj">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-public-save-slug">Ruaj slug</button>
+            </div>
+          </div>
+
+          <div class="link-row" style="margin-top:0.75rem">
+            <label>URL publike</label>
+            <div class="link-actions">
+              <input type="text" id="public-page-url" readonly class="mono-input">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-copy-url">Kopjo</button>
+            </div>
+          </div>
+
+          <div class="public-page-qr-block">
+            <div class="card-title" style="font-size:0.95rem;margin-top:0.5rem">QR kodi i faqes publike</div>
+            <p class="links-hint">Klienti skanon → sheh produktet, kontaktin dhe ofertat. Në fund: Powered by Revolution POS.</p>
+            <div class="public-page-qr-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-public-generate-qr">Gjenero QR Kod</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-download-qr" disabled>Shkarko QR</button>
+            </div>
+            <div id="public-page-qr-preview" class="public-page-qr-preview hidden">
+              <div id="public-page-qr-canvas" class="public-page-qr-canvas" aria-hidden="true"></div>
+              <p class="links-hint" id="public-page-qr-url"></p>
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-primary" id="btn-public-save" style="margin-top:1rem">Ruaj faqen publike</button>
+          <div id="public-page-msg" class="owner-license-msg"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-zreport" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span id="zreport-title">Raporti Ditor (Z-Report)</span>
+          <div style="display:flex;gap:0.35rem;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-report-view-x">Raporti X</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-report-view-z">Raporti Z</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-report-view-periodic">Raport Periodik</button>
+            <span id="zreport-daily-dates" style="display:inline-flex;gap:0.35rem;align-items:center">
+              <input type="date" id="zreport-date" style="max-width:10rem">
+            </span>
+            <span id="zreport-periodic-dates" class="hidden" style="display:none;gap:0.35rem;align-items:center;flex-wrap:wrap">
+              <label style="font-size:0.85rem;color:var(--muted)">Nga</label>
+              <input type="date" id="periodic-from" style="max-width:10rem">
+              <label style="font-size:0.85rem;color:var(--muted)">Deri</label>
+              <input type="date" id="periodic-to" style="max-width:10rem">
+            </span>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-zreport-refresh">Rifresko</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-zreport-close">Mbyll ditën</button>
+          </div>
+        </div>
+        <p class="links-hint" id="zreport-hint">Raporti X — gjendja e tashme e ditës, i printueshëm në çdo kohë, PA mbyllur asgjë. Raporti Z — mbyllja përfundimtare e ditës, me barazimin e arkës. Raport Periodik — mes dy datave, pa mbyllje.</p>
+        <div id="zreport-summary" class="zreport-summary"></div>
+        <div id="zreport-vat" class="zreport-vat"></div>
+        <div class="zreport-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-zreport-print">Printo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-zreport-csv">Export Excel (CSV)</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-zreport-html">Export PDF (HTML)</button>
+        </div>
+
+        <div id="zreport-cash-section">
+        <div class="card-title" style="margin-top:1.25rem">Barazimi i arkës</div>
+        <div class="filter-row">
+          <div>
+            <label for="zreport-opening-float">Paraja e nisjes (€)</label>
+            <input type="number" id="zreport-opening-float" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-zreport-opening-save">Ruaj paranë e nisjes</button>
+        </div>
+        <div id="zreport-cash-summary" class="zreport-summary"></div>
+        <div class="filter-row">
+          <div>
+            <label for="zreport-closing-actual">Paraja e numëruar në mbyllje (€)</label>
+            <input type="number" id="zreport-closing-actual" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div style="flex:2">
+            <label for="zreport-diff-reason">Arsyeja e diferencës (nëse ka)</label>
+            <input type="text" id="zreport-diff-reason" placeholder="p.sh. kusur i gabuar, shpenzim i paregjistruar...">
+          </div>
+        </div>
+        <p class="links-hint">Plotësoni paranë e numëruar dhe arsyen (nëse ka diferencë) PARA se të klikoni "Mbyll ditën" më sipër.</p>
+        </div>
+
+        <div class="card-title" style="margin-top:1.25rem">Shitjet sipas kategorisë</div>
+        <div class="overflow-x">
+          <table><thead><tr><th>Kategoria</th><th>Totali</th></tr></thead><tbody id="zreport-by-category"></tbody></table>
+        </div>
+
+        <div class="card-title" style="margin-top:1.25rem">Shitjet sipas kamarierit</div>
+        <div class="overflow-x">
+          <table><thead><tr><th>Kamarieri</th><th>Porosi</th><th>Totali</th></tr></thead><tbody id="zreport-by-waiter"></tbody></table>
+        </div>
+
+        <div class="card-title" style="margin-top:1.25rem">Shitjet e ditës</div>
+        <div class="overflow-x">
+          <table>
+            <thead>
+              <tr><th>Koha</th><th>Tav.</th><th>Kamarieri</th><th>Totali</th><th>Pagesa</th><th>Kupon fiskal</th><th>Statusi</th></tr>
+            </thead>
+            <tbody id="zreport-sales"></tbody>
+          </table>
+        </div>
+        <div class="card-title" style="margin-top:1.25rem">Historiku ditor</div>
+        <div id="zreport-history-wrap">
+        <div id="zreport-history" class="zreport-history"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-fiskale" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Arka fiskale ATK</div>
+        <p class="owner-fiscal-intro">
+          Këto të dhëna lidhen me arkën tuaj ATK. COM Port gjendet në Device Manager të Windows.
+        </p>
+
+        <div class="fiscal-diagnostics">
+          <div class="fiscal-status-row">
+            <span class="fiscal-status-label">Statusi i lidhjes</span>
+            <span id="fiscal-conn-status" class="fiscal-conn-badge unknown">Duke kontrolluar…</span>
+          </div>
+          <div class="fiscal-diag-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-fiscal-test">Testo lidhjen</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-fiscal-autofind">Gjej automatikisht</button>
+          </div>
+          <div id="fiscal-diag-msg" class="fiscal-diag-msg hidden"></div>
+          <ul id="fiscal-diag-suggestions" class="fiscal-diag-suggestions hidden"></ul>
+        </div>
+
+        <div class="hub-fiscal-form">
+          <div class="hub-fiscal-field">
+            <label for="fiscal-nr">Numri fiskal (Nr.Fisk)</label>
+            <input type="text" id="fiscal-nr" placeholder="p.sh. 123456789" autocomplete="off">
+            <p class="hub-field-note">Numri i regjistrimit fiskal nga ATK — shfaqet në faturat e printuara dhe raportet Z.</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="fiscal-com">Porti COM</label>
+            <input type="text" id="fiscal-com" class="mono" placeholder="p.sh. COM3" autocomplete="off" autocapitalize="characters">
+            <p class="hub-field-note">Porti serial (USB) ku lidhet POS me arkën fiskale. Gjeni në Menaxherin e Pajisjeve të Windows (p.sh. COM3, COM4).</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="fiscal-operator">Operatori / përgjegjësi</label>
+            <input type="text" id="fiscal-operator" placeholder="p.sh. Agron Berisha" autocomplete="off">
+            <p class="hub-field-note">Emri i operatorit që regjistrohet në arkë dhe shfaqet në faturat fiskale.</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="fiscal-model">Modeli i arkës fiskale</label>
+            <input type="text" id="fiscal-model" placeholder="p.sh. Fiscal Albania FA-500" autocomplete="off">
+            <p class="hub-field-note">Marka dhe modeli i arkës (opsionale) — për referencë teknike.</p>
+          </div>
+          <div class="hub-fiscal-field">
+            <label for="fiscal-pef-serial">Numri serial i PEF</label>
+            <input type="text" id="fiscal-pef-serial" class="mono" placeholder="p.sh. PEF-00012345" autocomplete="off">
+            <p class="hub-field-note">Numri serial i Pajisjes Elektronike Fiskale (PEF) — shfaqet në Raportin X dhe Z.</p>
+          </div>
+        </div>
+        <label class="hub-check hub-fiscal-check">
+          <input type="checkbox" id="fiscal-enabled" checked>
+          <span>Aktivizo arkën fiskale — çaktivizoni vetëm nëse nuk përdorni ATK për momentin</span>
+        </label>
+        <div class="hub-fiscal-actions">
+          <button type="button" class="btn btn-primary" id="btn-fiscal-save">Ruaj settings fiskale</button>
+        </div>
+        <div id="fiscal-msg" class="owner-license-msg"></div>
+      </div>
+
+    </div>
+
+    <div id="panel-ai" class="panel-section hidden">
+      <div class="card ai-hub-card">
+        <div class="card-title">AI</div>
+        <p class="links-hint" style="margin-top:0">Kamarierët, stoku, tokenët. Skanimi i faturës është te skeda <strong>Blerje</strong>.</p>
+        <div id="owner-ai-usage" class="links-hint" style="margin:0.5rem 0 0.75rem">Duke ngarkuar tokenët…</div>
+        <button type="button" class="btn btn-primary" id="btn-ai-hub-scan-invoice" style="width:100%">
+          🛒 Hap Blerje — Skano faturë
+        </button>
+        <p class="links-hint" style="margin-top:0.75rem;margin-bottom:0">
+          Hap skedën Blerje për të skanuar faturën e furnizuesit dhe për ta regjistruar në stok.
+        </p>
+      </div>
+      <div id="owner-ai-modules"></div>
+    </div>
+
+    <div id="panel-ai-raporte" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span>Raporti AI i sotëm</span>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-ai-report-generate">Gjenero sot</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-ai-report-refresh">Rifresko</button>
+        </div>
+        <p class="links-hint">
+          Çdo ditë në <strong>23:59</strong> AI analizon shitjet, artikujt më të shitur, stokun e ulët dhe fitimin.
+          Përmbledhja dërgohet me email te adresa e pronarit (nëse Resend është aktiv).
+        </p>
+        <div id="ai-report-today-meta" class="links-hint" style="margin-top:0"></div>
+        <div id="ai-report-today-summary" class="ai-report-summary"></div>
+        <div id="ai-report-today-details" class="ai-report-details"></div>
+        <div id="ai-report-msg" class="owner-license-msg"></div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title card-title-row">
+          <span>Parashikim Fitimi</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-profit-forecast-refresh">Rifresko parashikimin</button>
+        </div>
+        <p class="links-hint">
+          AI analizon <strong>30 ditët e fundit</strong> të shitjeve, krahason këtë javë/muaj me periudhën e kaluar
+          dhe parashikon fitimin e javës dhe muajit të ardhshëm.
+        </p>
+        <div id="profit-forecast-summary" class="ai-report-summary"></div>
+        <div id="profit-forecast-chart" class="profit-forecast-chart" aria-label="Grafiku fitimit 30 ditë"></div>
+        <div id="profit-forecast-compare" class="profit-forecast-compare"></div>
+        <div id="profit-forecast-forecast" class="profit-forecast-forecast"></div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Historiku i raporteve</div>
+        <div class="overflow-x">
+          <table class="menu-owner-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Shitje</th>
+                <th>Porosi</th>
+                <th>Fitim</th>
+                <th class="col-actions">Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="ai-reports-history-body">
+              <tr><td colspan="5" style="color:var(--muted)">Duke ngarkuar…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-ai-asistent" class="panel-section hidden">
+      <div class="card ai-assistant-card">
+        <div class="card-title card-title-row">
+          <span>Asistent AI</span>
+          <div class="card-title-actions">
+            <label class="ai-assistant-toggle">
+              <input type="checkbox" id="ai-assistant-tts" checked>
+              <span>Lexo me zë</span>
+            </label>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-ai-assistant-clear">Pastro bisedën</button>
+          </div>
+        </div>
+        <p class="links-hint">
+          Bisedoni me AI në shqip — shitjet, stoku, kamarierët. Zgjidhni kategori për kontekst më të saktë.
+          Vetëm <strong>Pako 4 (AI)</strong>.
+        </p>
+        <div class="filter-row" id="ai-assistant-categories" style="margin-bottom:0.5rem;gap:0.35rem;flex-wrap:wrap">
+          <button type="button" class="btn btn-primary btn-sm ai-cat-chip active" data-ai-cat="general">Të gjitha</button>
+          <button type="button" class="btn btn-ghost btn-sm ai-cat-chip" data-ai-cat="shitjet">Shitjet</button>
+          <button type="button" class="btn btn-ghost btn-sm ai-cat-chip" data-ai-cat="stoku">Stoku</button>
+          <button type="button" class="btn btn-ghost btn-sm ai-cat-chip" data-ai-cat="kamarieret">Kamarierët</button>
+        </div>
+        <div id="ai-assistant-messages" class="ai-assistant-messages">
+          <div class="ai-chat-bubble ai-chat-bubble-assistant">
+            Përshëndetje! Jam asistenti juaj — pyetni për shitjet, stokun ose raportet e sotme.
+          </div>
+        </div>
+        <div id="ai-assistant-loading" class="ai-chat-loading hidden" aria-live="polite">
+          <span class="ai-chat-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+          Duke menduar…
+        </div>
+        <div id="ai-assistant-msg" class="owner-license-msg"></div>
+        <form id="ai-assistant-form" class="ai-assistant-form">
+          <button type="button" class="btn btn-ghost btn-sm ai-assistant-mic" id="btn-ai-assistant-mic" title="Mikrofon — flisni pyetjen" aria-label="Mikrofon">🎤</button>
+          <input type="text" id="ai-assistant-input" placeholder="Shkruani ose flisni pyetjen…" autocomplete="off" maxlength="4000">
+          <button type="submit" class="btn btn-primary btn-sm" id="btn-ai-assistant-send">Dërgo</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="panel-njoftimet" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span>Njoftimet</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-notify-test">Dërgo test</button>
+        </div>
+        <p class="links-hint">
+          Telegram dhe/ose SMS kur stoku bie nën minimum, plus raport ditor në <strong>08:00</strong>
+          për ditën e kaluar. Vetëm <strong>Pako 5</strong>.
+        </p>
+        <div id="notify-capabilities" class="links-hint" style="margin-top:0"></div>
+        <div id="notify-msg" class="owner-license-msg"></div>
+        <div class="hub-form-grid" style="margin-top:0.75rem">
+          <label>
+            Telegram Chat ID
+            <input type="text" id="notify-telegram-id" placeholder="123456789" autocomplete="off">
+          </label>
+          <label>
+            Numri SMS (Vonage)
+            <input type="text" id="notify-sms-number" placeholder="+38344123456" autocomplete="off">
+          </label>
+        </div>
+        <div class="hub-fiscal-actions" style="margin-top:0.75rem">
+          <label class="hub-check hub-fiscal-check">
+            <input type="checkbox" id="notify-low-stock" checked>
+            <span>Njofto kur stoku i përbërësit bie nën minimumin</span>
+          </label>
+          <label class="hub-check hub-fiscal-check">
+            <input type="checkbox" id="notify-daily-report" checked>
+            <span>Raport ditor në mëngjes (08:00)</span>
+          </label>
+        </div>
+        <div class="hub-fiscal-actions">
+          <button type="button" class="btn btn-primary" id="btn-notify-save">Ruaj njoftimet</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-raportet" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Të ardhurat</div>
+        <div class="filter-row">
+          <div>
+            <label>Nga</label>
+            <input type="date" id="raport-nga">
+          </div>
+          <div>
+            <label>Deri</label>
+            <input type="date" id="raport-deri">
+          </div>
+          <button class="btn btn-primary btn-sm" id="btn-raport">Shfaq</button>
+        </div>
+        <div id="report-summary" style="margin-bottom:1rem;font-size:1.1rem;font-weight:700"></div>
+        <div id="report-bars"></div>
+        <div class="overflow-x" style="margin-top:1rem">
+          <table>
+            <thead>
+              <tr><th>Ora</th><th>Tav.</th><th>Kamarieri</th><th>Totali</th></tr>
+            </thead>
+            <tbody id="report-table"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Shpenzimet e vogla ditore</div>
+        <p class="links-hint">Pastrim, shërbime, shpenzime të papritura — jashtë blerjeve të stokut.</p>
+        <div class="filter-row menu-add-row">
+          <div>
+            <label for="expense-category">Kategoria</label>
+            <select id="expense-category">
+              <option value="pastrim">Pastrim</option>
+              <option value="sherbime">Shërbime</option>
+              <option value="papritur">Shpenzim i papritur</option>
+              <option value="tjeter" selected>Tjetër</option>
+            </select>
+          </div>
+          <div>
+            <label for="expense-amount">Shuma (€)</label>
+            <input type="number" id="expense-amount" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div>
+            <label for="expense-date">Data</label>
+            <input type="date" id="expense-date">
+          </div>
+        </div>
+        <div class="hub-fiscal-field">
+          <label for="expense-vendor">Emri i firmës *</label>
+          <input type="text" id="expense-vendor" maxlength="200" required placeholder="p.sh. Firma Pastrimi SH.P.K.">
+        </div>
+        <div class="hub-fiscal-field">
+          <label for="expense-description">Përshkrimi</label>
+          <input type="text" id="expense-description" maxlength="500" placeholder="p.sh. blerje materiale pastrimi">
+        </div>
+        <div id="expenses-msg" class="owner-license-msg"></div>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-expense-add">Shto shpenzimin</button>
+        <div class="overflow-x" style="margin-top:1rem">
+          <table>
+            <thead>
+              <tr><th>Data</th><th>Kategoria</th><th>Firma</th><th>Shuma</th><th>Përshkrimi</th><th>Kush</th><th></th></tr>
+            </thead>
+            <tbody id="expenses-list-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title card-title-row">
+          <span>Regjistri i veprimeve (Audit log)</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-audit-log-refresh">Rifresko</button>
+        </div>
+        <p class="links-hint">Çmimet e ndryshuara, faturat e anuluara dhe shpenzimet regjistrohen automatikisht këtu — kush, kur dhe detajet.</p>
+        <div class="overflow-x">
+          <table>
+            <thead>
+              <tr><th>Koha</th><th>Veprimi</th><th>Artikulli</th><th>Detajet</th><th>Kush</th></tr>
+            </thead>
+            <tbody id="audit-log-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-llogaria" class="panel-section hidden">
+      <div class="card" id="owner-password-card">
+        <div class="card-title">Fjalëkalimi i pronarit</div>
+        <p class="links-hint">
+          I njëjti fjalëkalim vlen për <strong>telefon</strong> dhe <strong>panel web</strong>. Nëse e ndryshon këtu, hyni me të ri edhe në app.
+        </p>
+        <div class="link-row">
+          <label for="owner-pw-current">Fjalëkalimi aktual</label>
+          <input type="password" id="owner-pw-current" autocomplete="current-password" minlength="6" placeholder="••••••••">
+        </div>
+        <div class="link-row">
+          <label for="owner-pw-new">Fjalëkalimi i ri</label>
+          <input type="password" id="owner-pw-new" autocomplete="new-password" minlength="6" placeholder="min. 6 karaktere">
+        </div>
+        <div class="link-row">
+          <label for="owner-pw-new2">Përsërit fjalëkalimin e ri</label>
+          <input type="password" id="owner-pw-new2" autocomplete="new-password" minlength="6" placeholder="••••••••">
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-owner-password-save">Ndrysho fjalëkalimin</button>
+        <div id="owner-password-msg" class="owner-license-msg" role="status"></div>
+      </div>
+    </div>
+
+    <div id="panel-licenca" class="panel-section hidden">
+      <div class="card">
+        <div class="card-title">Licenca e aplikacionit POS</div>
+        <p class="links-hint">
+          ID-ja është e kompjuterit ku punon POS-i (jo e telefonit). Pas aktivizimit në POS, shfaqet këtu automatikisht.
+        </p>
+        <div id="owner-license-status" class="owner-license-status pending">
+          <strong id="owner-license-icon">⏳</strong>
+          <span id="owner-license-text">Duke kontrolluar licencën…</span>
+        </div>
+        <div id="owner-terminal-summary" class="owner-terminal-summary hidden">
+          <p class="owner-terminal-count"><strong>Terminalet aktive:</strong> <span id="owner-terminals-count">—</span></p>
+          <div id="owner-terminal-warning" class="owner-terminal-warning hidden" role="alert">
+            Keni arritur limitin e terminaleve
+          </div>
+          <div id="owner-terminals-list" class="owner-terminals-list"></div>
+        </div>
+        <div class="link-row">
+          <label>ID e pajisjes (POS)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-license-device-id" readonly class="mono-input">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-device-id">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row">
+          <label for="owner-license-key">Çelësi i licencës</label>
+          <input
+            type="text"
+            id="owner-license-key"
+            class="mono-input license-key-field"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+            autocomplete="off"
+            maxlength="19"
+          >
+        </div>
+        <button type="button" class="btn btn-primary owner-license-save" id="btn-owner-license-save">Ruaj / verifiko</button>
+        <p class="owner-license-note" id="owner-license-note">
+          Aktivizimi i plotë bëhet në kompjuterin POS: <strong>Admin → Licenca</strong> (i njëjti Wi‑Fi).
+        </p>
+        <div id="owner-license-msg" class="owner-license-msg"></div>
+      </div>
+    </div>
+
+    <div id="panel-linqet" class="panel-section hidden">
+      <div class="card links-card" id="owner-links-card">
+        <div class="card-title">Linqet e lokalit tuaj</div>
+        <p class="links-hint">Linku <strong>Banak</strong> hapet te <code>/bar/…</code> (porositë e tavolinës, online, POS). Linku <strong>Kuzhina</strong> hapet te <code>/kitchen/…</code> (ushqim).</p>
+        <p id="owner-links-empty" class="links-hint hidden">Paketa juaj nuk përfshin module web (KDS/Kiosk/Kamarier). Kontaktoni administratorin për upgrade.</p>
+        <div class="link-row" id="owner-link-bar-row">
+          <label>Banak — porosi (QR, kamarier, online, POS)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-bar-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-bar">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-waiter-row">
+          <label>Kamarierët — link i përbashkët (menaxho punonjësit nga KAFENE desktop)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-waiter-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-waiter">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-kitchen-row">
+          <label>Kuzhina (KDS) — vetëm ushqim</label>
+          <div class="link-actions">
+            <input type="text" id="owner-kitchen-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-kitchen">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-kiosk-row">
+          <label>Tavolinë (QR menu)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-kiosk-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-kiosk">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-public-row">
+          <label>Faqja publike</label>
+          <div class="link-actions">
+            <input type="text" id="owner-public-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-public">Kopjo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ingredient-modal" class="owner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ingredient-modal-title">
+    <div class="owner-modal-backdrop" id="ingredient-modal-backdrop"></div>
+    <div class="owner-modal-card">
+      <div class="owner-modal-head">
+        <h2 id="ingredient-modal-title">Shto përbërës</h2>
+        <button type="button" class="owner-modal-close" id="ingredient-modal-close" aria-label="Mbyll">×</button>
+      </div>
+      <div class="hub-fiscal-field">
+        <label for="ingredient-name">Emri</label>
+        <input type="text" id="ingredient-name" maxlength="120" placeholder="p.sh. Miell">
+      </div>
+      <div class="filter-row menu-add-row">
+        <div>
+          <label for="ingredient-unit">Njësia</label>
+          <select id="ingredient-unit">
+            <option value="kg">kg</option>
+            <option value="l">l</option>
+            <option value="copë">copë</option>
+          </select>
+        </div>
+        <div>
+          <label for="ingredient-guests">Sasia fillestare</label>
+          <input type="number" id="ingredient-quantity" min="0" step="0.001" value="0">
+        </div>
+      </div>
+      <div class="filter-row menu-add-row">
+        <div>
+          <label for="ingredient-min">Minimum (alarm)</label>
+          <input type="number" id="ingredient-min" min="0" step="0.001" value="5">
+        </div>
+        <div>
+          <label for="ingredient-cost">Kosto / njësi (€)</label>
+          <input type="number" id="ingredient-cost" min="0" step="0.01" value="0">
+        </div>
+      </div>
+      <div id="ingredient-modal-msg" class="owner-license-msg"></div>
+      <button type="button" class="btn btn-primary" id="btn-ingredient-save">Ruaj përbërësin</button>
+    </div>
+  </div>
+
+  <div id="reservation-modal" class="owner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="reservation-modal-title">
+    <div class="owner-modal-backdrop" id="reservation-modal-backdrop"></div>
+    <div class="owner-modal-card">
+      <div class="owner-modal-head">
+        <h2 id="reservation-modal-title">Shto rezervim</h2>
+        <button type="button" class="owner-modal-close" id="reservation-modal-close" aria-label="Mbyll">×</button>
+      </div>
+      <div class="hub-fiscal-field">
+        <label for="reservation-customer-name">Emri i klientit</label>
+        <input type="text" id="reservation-customer-name" maxlength="120" placeholder="p.sh. Arben Krasniqi">
+      </div>
+      <div class="hub-fiscal-field">
+        <label for="reservation-customer-phone">Telefoni</label>
+        <input type="tel" id="reservation-customer-phone" maxlength="40" placeholder="+383 44 123 456">
+      </div>
+      <div class="filter-row menu-add-row">
+        <div>
+          <label for="reservation-table">Tavolina</label>
+          <select id="reservation-table"></select>
+        </div>
+        <div>
+          <label for="reservation-guests">Persona</label>
+          <input type="number" id="reservation-guests" min="1" max="50" value="2">
+        </div>
+      </div>
+      <div class="filter-row menu-add-row">
+        <div>
+          <label for="reservation-date">Data</label>
+          <input type="date" id="reservation-date">
+        </div>
+        <div>
+          <label for="reservation-time">Ora</label>
+          <input type="time" id="reservation-time" value="19:00">
+        </div>
+      </div>
+      <div class="hub-fiscal-field">
+        <label for="reservation-notes">Shënime</label>
+        <textarea id="reservation-notes" rows="2" maxlength="500" placeholder="p.sh. ditëlindje, allergji…"></textarea>
+      </div>
+      <div id="reservation-modal-msg" class="owner-license-msg"></div>
+      <button type="button" class="btn btn-primary" id="btn-reservation-save">Ruaj rezervimin</button>
+    </div>
+  </div>
+
+  <div id="void-order-modal" class="owner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="void-order-title">
+    <div class="owner-modal-backdrop" id="void-order-backdrop"></div>
+    <div class="owner-modal-card">
+      <div class="owner-modal-head">
+        <h2 id="void-order-title">Anulo faturën</h2>
+        <button type="button" class="owner-modal-close" id="void-order-close" aria-label="Mbyll">×</button>
+      </div>
+      <p class="links-hint" id="void-order-summary"></p>
+      <div class="hub-fiscal-field">
+        <label for="void-order-reason">Arsyeja e anulimit</label>
+        <select id="void-order-reason">
+          <option value="customer_returned">Klienti e ktheu porosinë</option>
+          <option value="wrong_order">Porosi e gabuar</option>
+          <option value="staff_error">Gabim i stafit</option>
+          <option value="other">Tjetër</option>
+        </select>
+      </div>
+      <div class="hub-fiscal-field">
+        <label for="void-order-note">Shënim shtesë (opsional)</label>
+        <textarea id="void-order-note" rows="2" maxlength="300" placeholder="p.sh. detaje shtesë..."></textarea>
+      </div>
+      <div id="void-order-modal-msg" class="owner-license-msg"></div>
+      <button type="button" class="btn btn-primary" id="btn-void-order-save">Konfirmo anulimin</button>
+    </div>
+  </div>
+
+  <div id="menu-scan-modal" class="owner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="menu-scan-title">
+    <div class="owner-modal-backdrop" id="menu-scan-backdrop"></div>
+    <div class="owner-modal-card">
+      <div class="owner-modal-head">
+        <h2 id="menu-scan-title">Skano menynë me AI</h2>
+        <button type="button" class="owner-modal-close" id="menu-scan-close" aria-label="Mbyll">×</button>
+      </div>
+      <p class="links-hint">Ngarkoni foto të menusë (printuar ose ekran). AI nxjerr emrat dhe çmimet automatikisht.</p>
+      <div class="menu-scan-upload">
+        <label class="btn btn-ghost btn-sm" for="menu-scan-file">Zgjidh foto</label>
+        <input type="file" id="menu-scan-file" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-menu-scan-run" disabled>Skano</button>
+      </div>
+      <div id="menu-scan-preview-wrap" class="menu-scan-preview-wrap hidden">
+        <img id="menu-scan-preview" alt="Parapamje menusë">
+      </div>
+      <div id="menu-scan-status" class="owner-license-msg"></div>
+      <div id="menu-scan-loading" class="menu-scan-loading hidden">Duke skanuar menynë…</div>
+      <div id="menu-scan-results" class="menu-scan-results hidden">
+        <div class="filter-row menu-add-row" style="margin-top:0.75rem">
+          <div>
+            <label for="menu-scan-category">Kategoria për import</label>
+            <input type="text" id="menu-scan-category" list="menu-category-list" value="Menu" placeholder="p.sh. Menu">
+          </div>
+        </div>
+        <div class="overflow-x">
+          <table class="menu-owner-table">
+            <thead>
+              <tr><th>Emri</th><th>Çmimi (€)</th></tr>
+            </thead>
+            <tbody id="menu-scan-items-body"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-menu-scan-import" style="margin-top:0.75rem">Shto të gjithë në meny</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="invoice-scan-modal" class="owner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="invoice-scan-title">
+    <div class="owner-modal-backdrop" id="invoice-scan-backdrop"></div>
+    <div class="owner-modal-card">
+      <div class="owner-modal-head">
+        <h2 id="invoice-scan-title">Skano faturën e furnizuesit</h2>
+        <button type="button" class="owner-modal-close" id="invoice-scan-close" aria-label="Mbyll">×</button>
+      </div>
+      <p class="links-hint">Blerjet: kamera/galeri → AI lexon → ti kontrollon → Regjistro në Stok. Shpenzimet e tjera: te Kontabilisti (i ndarë).</p>
+      <div class="menu-scan-upload">
+        <label class="btn btn-ghost btn-sm" for="invoice-scan-file-camera">📷 Kamera</label>
+        <input type="file" id="invoice-scan-file-camera" accept="image/*" capture="environment" hidden>
+        <label class="btn btn-ghost btn-sm" for="invoice-scan-file-gallery">📁 Galeri / Album</label>
+        <input type="file" id="invoice-scan-file-gallery" accept="image/*" hidden>
+        <input type="file" id="invoice-scan-file" accept="image/*" hidden>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-invoice-scan-run" disabled>Skano</button>
+      </div>
+      <div id="invoice-scan-preview-wrap" class="menu-scan-preview-wrap hidden">
+        <img id="invoice-scan-preview" alt="Parapamje fature">
+      </div>
+      <div id="invoice-scan-status" class="owner-license-msg"></div>
+      <div id="invoice-scan-loading" class="menu-scan-loading hidden">Duke skanuar faturën…</div>
+      <div id="invoice-scan-results" class="menu-scan-results hidden">
+        <div class="filter-row menu-add-row" style="margin-top:0.75rem;flex-wrap:wrap;gap:0.5rem">
+          <div>
+            <label for="invoice-scan-supplier">Furnizuesi</label>
+            <input type="text" id="invoice-scan-supplier" placeholder="p.sh. Metro, Lidl…">
+          </div>
+          <div>
+            <label for="invoice-scan-nui">NUI / Nr. fiskal</label>
+            <input type="text" id="invoice-scan-nui" placeholder="lexohet nga AI" inputmode="numeric">
+          </div>
+          <div>
+            <label for="invoice-scan-vat-id">Nr. TVSH</label>
+            <input type="text" id="invoice-scan-vat-id" placeholder="opsionale">
+          </div>
+          <div>
+            <label for="invoice-scan-number">Nr. faturës</label>
+            <input type="text" id="invoice-scan-number" placeholder="p.sh. BL-2026-001">
+          </div>
+          <div>
+            <label for="invoice-scan-vat-rate">TVSH %</label>
+            <select id="invoice-scan-vat-rate">
+              <option value="18" selected>18%</option>
+              <option value="8">8%</option>
+              <option value="0">0%</option>
+            </select>
+          </div>
+        </div>
+        <div class="overflow-x">
+          <table class="menu-owner-table">
+            <thead>
+              <tr>
+                <th>Emri</th>
+                <th>Pako</th>
+                <th>Njësia</th>
+                <th>Copa/pako</th>
+                <th>Çmimi/njësi (€)</th>
+                <th>Përbërësi ekzistues</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-scan-items-body"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-invoice-scan-apply" style="margin-top:0.75rem">Regjistro në Stok</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-chat-root" class="ai-chat-root hidden">
+    <div id="ai-chat-panel" class="ai-chat-panel hidden" role="dialog" aria-label="AI Asistent" hidden>
+      <div class="ai-chat-header">
+        <div>
+          <strong>AI Asistent</strong>
+          <div class="ai-chat-sub">Pyetje për menu, porosi dhe panelin</div>
+        </div>
+        <button type="button" class="ai-chat-close" id="ai-chat-close" aria-label="Mbyll">×</button>
+      </div>
+      <div id="ai-chat-messages" class="ai-chat-messages">
+        <div class="ai-chat-bubble ai-chat-bubble-assistant">Përshëndetje! Si mund t'ju ndihmoj me menynë ose sistemin POS?</div>
+      </div>
+      <div id="ai-chat-loading" class="ai-chat-loading hidden" aria-live="polite">
+        <span class="ai-chat-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        Duke menduar…
+      </div>
+      <form id="ai-chat-form" class="ai-chat-form">
+        <input type="text" id="ai-chat-input" placeholder="Shkruani pyetjen…" autocomplete="off" maxlength="4000">
+        <button type="submit" class="btn btn-primary btn-sm" id="ai-chat-send">Dërgo</button>
+      </form>
+    </div>
+    <button type="button" id="ai-chat-fab" class="ai-chat-fab" aria-label="AI Asistent" aria-expanded="false">
+      <span class="ai-chat-fab-icon" aria-hidden="true">💬</span>
+      <span>AI Asistent</span>
+    </button>
+  </div>
+
+  <script src="/hotel/js/fiscalDiagnostics.js?v=1"></script>
+  <script src="/hotel/js/offlineQueue.js?v=1"></script>
+  <script src="/hotel/js/qrcode.js?v=1"></script>
+  <script src="/hotel/js/owner.js?v=37"></script>
+  <script src="/hotel/js/owner-locations.js?v=1"></script>
+  <script src="/hotel/js/owner-catalog.js?v=1"></script>
+  <script src="/hotel/js/owner-stock.js?v=2"></script>
+  <script src="/hotel/js/owner-inventory.js?v=2"></script>
+  <script src="/hotel/js/owner-invoice-scan.js?v=4"></script>
+  <script src="/hotel/js/owner-purchase.js?v=3"></script>
+  <script src="/hotel/js/owner-ai-reports.js?v=1"></script>
+  <script src="/hotel/js/owner-supply-suggestions.js?v=1"></script>
+  <script src="/hotel/js/owner-ai-assistant.js?v=2"></script>
+  <script src="/hotel/js/owner-ai-modules.js?v=1"></script>
+  <script src="/hotel/js/owner-notifications.js?v=1"></script>
+</body>
+</html>

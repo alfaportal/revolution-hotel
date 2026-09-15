@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function () {
+      var p = new URLSearchParams(location.search);
+      if (!p.get("w")) return;
+      var parts = location.pathname.split("/").filter(Boolean);
+      if (parts[0] !== "kitchen" || !parts[1]) return;
+      var q = p.toString();
+      location.replace("/waiter/" + encodeURIComponent(parts[1]) + (q ? "?" + q : ""));
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0f1b3d">
+  <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <link rel="icon" type="image/png" href="/logo-source.png">
+  <title>Kuzhina — Revolution Invest POS</title>
+  <link rel="stylesheet" href="/css/staff-brand.css">
+  <link rel="stylesheet" href="/css/kitchen.css">
+  <link rel="stylesheet" href="/css/pin-modal.css">
+</head>
+<body>
+  <div class="staff-app-bar">
+    <img src="/logo-source.png" width="28" height="28" alt="Revolution Invest POS">
+    <span>Revolution Invest POS</span>
+    <span class="staff-app-venue" id="kitchen-venue-name">Kuzhina</span>
+  </div>
+  <header class="kitchen-header">
+    <h1 id="kitchen-title">Kuzhina</h1>
+    <div class="sub" id="kitchen-sub">Porositë aktive — rifreskohet automatikisht</div>
+    <div class="kitchen-meta">
+      <span class="live-dot" id="live-label">Live</span>
+      <span id="order-count">0 porosi</span>
+      <span id="last-sync">—</span>
+    </div>
+  </header>
+
+  <main class="kitchen-main">
+    <div id="error-box" class="error-state hidden"></div>
+    <div id="orders-grid" class="orders-grid"></div>
+    <div id="empty-state" class="empty-state hidden">
+      <div class="icon">🍽️</div>
+      <p>Nuk ka porosi të reja.<br>Pritni porosinë nga POS.</p>
+    </div>
+  </main>
+
+  <div id="order-toast" class="order-toast hidden" role="status" aria-live="polite"></div>
+
+  <div id="pin-modal-overlay" class="pin-modal-overlay hidden" hidden>
+    <div class="pin-modal-backdrop"></div>
+    <div class="pin-modal-box" role="dialog" aria-labelledby="pin-modal-title">
+      <h2 id="pin-modal-title">PIN kamarieri</h2>
+      <p class="pin-modal-hint" id="pin-modal-hint">Shkruani PIN-in 4-shifror të kamarierit që e pranon porosinë</p>
+      <div id="pin-modal-display" class="pin-modal-display" aria-live="polite">○ ○ ○ ○</div>
+      <div id="pin-modal-error" class="pin-modal-error" hidden></div>
+      <div class="pin-modal-keypad" id="pin-modal-keypad">
+        <button type="button" class="pin-modal-key" data-pin-digit="1">1</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="2">2</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="3">3</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="4">4</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="5">5</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="6">6</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="7">7</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="8">8</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="9">9</button>
+        <button type="button" class="pin-modal-key pin-modal-key-muted" data-pin-action="clear">C</button>
+        <button type="button" class="pin-modal-key" data-pin-digit="0">0</button>
+        <button type="button" class="pin-modal-key pin-modal-key-muted" data-pin-action="back">⌫</button>
+      </div>
+      <div class="pin-modal-actions">
+        <button type="button" class="pin-modal-btn pin-modal-btn-cancel" id="pin-modal-cancel">Anulo</button>
+        <button type="button" class="pin-modal-btn pin-modal-btn-confirm" id="pin-modal-confirm">Prano</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="accept-modal" class="accept-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="accept-modal-title">
+    <div class="accept-modal-backdrop"></div>
+    <div class="accept-modal-card">
+      <h2 id="accept-modal-title">Porosi e re</h2>
+      <div class="accept-modal-source" id="accept-modal-source"></div>
+      <div class="accept-modal-table-row">Tavolina: <strong id="accept-modal-table">—</strong></div>
+      <ul class="accept-modal-items" id="accept-modal-items"></ul>
+      <div class="accept-modal-total">Totali: <strong id="accept-modal-total">0.00 €</strong></div>
+      <div class="accept-modal-actions">
+        <button type="button" id="accept-modal-accept" class="accept-btn-yes">PRANO ✅</button>
+        <button type="button" id="accept-modal-refuse" class="accept-btn-no">REFUZO ✖</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/pin-modal.js"></script>
+  <script src="/js/kitchen.js?v=9"></script>
+</body>
+</html>
