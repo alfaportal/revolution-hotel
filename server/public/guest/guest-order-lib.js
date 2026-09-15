@@ -4,6 +4,30 @@
   const room = String(params.get("room") || "").trim();
   const table = String(params.get("table") || params.get("t") || "").trim();
 
+  function apiBase() {
+    const path = String(global.location.pathname || "");
+    if (path.includes("/hotel/")) return "/hotel";
+    return "";
+  }
+
+  function guestApi(path) {
+    const p = String(path || "").trim();
+    const normalized = p.startsWith("/") ? p : `/${p}`;
+    return `${apiBase()}${normalized}`;
+  }
+
+  function guestSlug() {
+    return String(params.get("slug") || params.get("kitchen_slug") || "").trim();
+  }
+
+  function withSlugQuery(apiPath) {
+    const url = guestApi(apiPath);
+    const slug = guestSlug();
+    if (!slug) return url;
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}slug=${encodeURIComponent(slug)}`;
+  }
+
   function fmt(n) {
     return Number(n || 0).toFixed(2) + " €";
   }
@@ -78,8 +102,7 @@
       customer_name: extra?.name || "",
       customer_phone: extra?.phone || "",
     };
-    if (room) return postJson("/api/guest/menu-order", body);
-    return postJson("/api/guest/menu-order", body);
+    return postJson(guestApi("/api/guest/menu-order"), body);
   }
 
   async function submitServiceCart(cart, extra) {
@@ -90,7 +113,7 @@
       amount: i.price_mode === "variable" ? i.price : undefined,
       notes: extra?.notes || "",
     }));
-    return postJson("/api/guest/service-order", {
+    return postJson(guestApi("/api/guest/service-order"), {
       room_number: room,
       services,
     });
@@ -99,6 +122,10 @@
   global.GuestOrder = {
     room,
     table,
+    apiBase,
+    guestApi,
+    guestSlug,
+    withSlugQuery,
     fmt,
     esc,
     createCart,

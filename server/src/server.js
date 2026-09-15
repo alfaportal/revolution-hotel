@@ -443,6 +443,7 @@ app.use("/api/kds", kdsRoutes);
 app.use("/api/waiter", waiterRoutes);
 app.use("/api/kiosk", kioskRoutes);
 app.use("/api/menu", tableMenuRoutes);
+app.use("/api/guest", require("./routes/guest"));
 app.use("/api/ai", aiRoutes);
 app.use("/api/r", publicApiRouter);
 app.use("/api/s", shopApiRouter);

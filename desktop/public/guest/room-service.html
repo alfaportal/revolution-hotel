@@ -94,7 +94,10 @@
 
         const a = document.getElementById("link-room-services");
 
-        if (a) a.href = `/guest/services.html?room=${encodeURIComponent(G.room)}`;
+        if (a) {
+          const sq = G.guestSlug() ? `&slug=${encodeURIComponent(G.guestSlug())}` : "";
+          a.href = `services.html?room=${encodeURIComponent(G.room)}${sq}`;
+        }
 
       } else {
 
@@ -130,7 +133,7 @@
 
       try {
 
-        const r = await fetch("/api/guest/menu");
+        const r = await fetch(G.withSlugQuery("/api/guest/menu"));
 
         const d = await r.json();
 

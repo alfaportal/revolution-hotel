@@ -268,19 +268,21 @@ function buildWaiterPersonalUrl(slug, key, webToken) {
 }
 
 /** Mysafir — shërbime / room service (cloud; hotel-server duhet t’i servojë statiket). */
-function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "") {
+function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "", slug = "") {
   const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
   const room = encodeURIComponent(String(roomNumber || "").trim());
+  const s = encodeURIComponent(String(slug || "").trim());
+  const slugQ = s ? `&slug=${s}` : "";
   const p = String(page || "").trim().toLowerCase();
   if (p === "services") {
     return room
-      ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}`
-      : `${base}${HOTEL_WEB_PREFIX}/guest/services.html`;
+      ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`
+      : `${base}${HOTEL_WEB_PREFIX}/guest/services.html${s ? `?slug=${s}` : ""}`;
   }
   if (p === "room-service" || p === "room_service") {
     return room
-      ? `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html?room=${room}`
-      : `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html`;
+      ? `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html?room=${room}${slugQ}`
+      : `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html${s ? `?slug=${s}` : ""}`;
   }
   return "";
 }

@@ -65,11 +65,12 @@ function buildHotelQrUrls(base, roomNumber, slug = "") {
   if (isCloudQrBase(b) && venueSlug) {
     const tableSeg = roomRaw ? Math.max(1, Number(roomRaw.replace(/\D/g, "")) || 1) : 1;
     const menuUrl = buildPublicMenuUrl(b, venueSlug, tableSeg);
-    const menuWithRoom = roomRaw ? `${menuUrl}?room=${roomEnc}` : menuUrl;
+    const slugPart = venueSlug ? `&slug=${encodeURIComponent(venueSlug)}` : "";
+    const menuWithRoom = roomRaw ? `${menuUrl}?room=${roomEnc}${slugPart}` : menuUrl;
     return {
       room_service: menuWithRoom,
       menu: menuWithRoom,
-      services: buildHotelGuestPublicUrl(b, "services", roomRaw),
+      services: buildHotelGuestPublicUrl(b, "services", roomRaw, venueSlug),
     };
   }
 
