@@ -1,8 +1,8 @@
 /**
  * Kopjon app-in në .protected-build, obfuskon JS, pastaj (opsionale) electron-builder.
  * Përdorimi:
- *   node scripts/obfuscate-build.mjs HOTEL
- *   node scripts/obfuscate-build.mjs HOTEL --prepare-only
+ *   node scripts/obfuscate-build.mjs
+ *   node scripts/obfuscate-build.mjs --prepare-only
  */
 import fs from "fs";
 import path from "path";
@@ -18,11 +18,13 @@ const { cleanDistBeforeBuild, finalizeDistDelivery } = require(
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
-const appName = process.argv[2] || "HOTEL";
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const appName = positional[0] || ".";
 const prepareOnly = process.argv.includes("--prepare-only");
 /** Vetëm staging i brendshëm — NUK shkon në Desktop / USB klienti. */
 const portableInternal = process.argv.includes("--portable-internal");
 function resolveAppDir(rootDir, name) {
+  if (!name || name === "." || name === "desktop") return rootDir;
   const nested = path.join(rootDir, name);
   if (
     fs.existsSync(nested) &&

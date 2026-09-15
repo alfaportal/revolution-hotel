@@ -1,0 +1,26 @@
+node_modules/
+restaurant.db
+restaurant.db-wal
+restaurant.db-shm
+hotel.db
+hotel.db-wal
+hotel.db-shm
+node_setup.msi
+node-v*.msi
+*.msi
+
+# Enkriptim / secrets
+.db-master.dpapi
+.db-master.scrypt
+.db-install-salt
+
+# Build output
+dist/
+dist-build-*/
+.protected-build/
+.portable-internal/
+usb-package/
+
+# Logs / local
+slow-ops.jsonl
+migration-backups/

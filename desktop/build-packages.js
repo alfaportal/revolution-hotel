@@ -1,5 +1,5 @@
 /**
- * Ndërton instalues Revolution HOTEL në dist/:
+ * Ndërton instalues Revolution HOTEL në dist/ (ekzekuto nga desktop/ ose npm run build në rrënjë):
  *   Një Setup (Pako 4 / Full+AI). Pako 3 ndryshohet nga telefoni (cloud license), jo Setup i dytë.
  *
  * Përdorimi:
@@ -128,7 +128,7 @@ function rimraf(dir) {
 
 function prepareObfuscatedBuild() {
   console.log("\n=== Obfuskim (prepare-only) ===");
-  execFileSync(process.execPath, [OBFUSCATE_SCRIPT, "HOTEL", "--prepare-only"], {
+  execFileSync(process.execPath, [OBFUSCATE_SCRIPT, "--prepare-only"], {
     cwd: ROOT,
     stdio: "inherit",
   });

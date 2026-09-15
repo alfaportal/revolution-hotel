@@ -27,7 +27,7 @@ if (result.error) {
 if (result.status !== 0) {
   console.error("");
   console.error("[pre-build] ✗ Testet e funksioneve të mbrojtura DËSHTUAN — build u ndal.");
-  console.error("[pre-build] Lexo HOTEL/PROTECTED-FUNCTIONS.md para se të prekësh kodin e mbrojtur.");
+  console.error("[pre-build] Lexo desktop/PROTECTED-FUNCTIONS.md para se të prekësh kodin e mbrojtur.");
   process.exit(result.status || 1);
 }
 
