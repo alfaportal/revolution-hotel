@@ -1,0 +1,230 @@
+/* Menyë/shërbime mysafir — i njëjti koncept si POS restorant (taba + grid). */
+:root {
+  --guest-acc: #ff6b35;
+  --guest-bg: #0f172a;
+  --guest-panel: #f8fafc;
+  --guest-muted: #64748b;
+}
+
+.guest-menu-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0 -0.25rem;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #334155;
+  background: var(--guest-panel);
+}
+
+.guest-menu-shell .menu-group-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  padding: 0.65rem 0.75rem;
+  background: #111827;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid #334155;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+}
+
+.guest-menu-shell .menu-group-bar.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.guest-menu-shell .menu-group-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.55rem 1rem;
+  border: 2px solid #334155;
+  border-radius: 999px;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+.guest-menu-shell .menu-group-btn.active {
+  background: var(--guest-acc);
+  color: #fff;
+  border-color: var(--guest-acc);
+}
+
+.guest-menu-shell .menu-photo-grid {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.75rem;
+  min-height: 220px;
+  max-height: min(68vh, 720px);
+  background: var(--guest-panel);
+}
+
+.guest-menu-shell .menu-photo-grid-inner,
+.guest-menu-shell .menu-text-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 0.75rem;
+}
+
+.guest-menu-shell .menu-item-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+.guest-menu-shell .menu-item-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  height: 100%;
+}
+
+.guest-menu-shell .menu-item-photo-wrap {
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.guest-menu-shell .menu-item-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.guest-menu-shell .menu-item-letter-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 2.4rem;
+  background: linear-gradient(145deg, #fff7ed, #ffedd5);
+}
+
+.guest-menu-shell .menu-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0 0.1rem 0.25rem;
+}
+
+.guest-menu-shell .menu-item-meta .emri {
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #0f172a;
+}
+
+.guest-menu-shell .menu-item-meta .cmimi {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--guest-acc);
+}
+
+.guest-menu-shell .menu-item-meta .cmimi-badge {
+  display: inline-block;
+}
+
+.guest-menu-shell .menu-item-vat-flag {
+  font-size: 0.68rem;
+  color: var(--guest-muted);
+  align-self: flex-start;
+}
+
+.guest-menu-shell .menu-empty-msg {
+  text-align: center;
+  color: var(--guest-muted);
+  padding: 2rem 1rem;
+  font-size: 0.95rem;
+}
+
+.guest-menu-shell .menu-item-btn.menu-item-flash .menu-item-photo-wrap {
+  box-shadow: 0 0 0 3px var(--guest-acc);
+  transform: scale(0.98);
+}
+
+.guest-svc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.65rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  min-height: 100%;
+}
+
+.guest-svc-card .guest-svc-photo {
+  aspect-ratio: 4/3;
+  width: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.guest-svc-card .guest-svc-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+}
+
+.guest-svc-card .guest-svc-price {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--guest-acc);
+}
+
+.guest-svc-card .guest-svc-photo-ph {
+  aspect-ratio: 4/3;
+  width: 100%;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  background: linear-gradient(145deg, #fff7ed, #ffedd5);
+}
+
+.guest-svc-card .guest-svc-add {
+  margin-top: auto;
+  background: var(--guest-acc);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.55rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+@media (max-width: 480px) {
+  .guest-menu-shell .menu-photo-grid-inner,
+  .guest-menu-shell .menu-text-grid-inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

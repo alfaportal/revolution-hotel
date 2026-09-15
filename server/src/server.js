@@ -527,6 +527,16 @@ app.get("/waiter-manifest.json", (_req, res) => {
 
 app.use(express.static(PUBLIC_DIR));
 
+/** Mysafir — QR spa/bazen, room service, menu (edhe përmes /hotel/guest/… pas strip prefix). */
+const GUEST_PUBLIC_DIR = path.join(PUBLIC_DIR, "guest");
+const GUEST_HTML_PAGES = ["services.html", "room-service.html", "menu.html"];
+for (const guestPage of GUEST_HTML_PAGES) {
+  app.get(`/guest/${guestPage}`, (_req, res) => {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.sendFile(path.join(GUEST_PUBLIC_DIR, guestPage));
+  });
+}
+
 /**
  * Master Admin i unifikuar: /admin (+ /admin/dashboard).
  * Rruga e vjetër sekrete (ADMIN_PANEL_PATH, p.sh. /ri-super) ridrejtohet këtu —
