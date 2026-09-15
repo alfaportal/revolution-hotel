@@ -1,10 +1,14 @@
 const QRCode = require("qrcode");
-const { normalizeCloudServerUrl, getPublicCloudServerUrl } = require("./cloud-server-url");
+const {
+  normalizeCloudServerUrl,
+  getPublicCloudServerUrl,
+  buildPublicMenuUrl,
+  hotelCloudApiPath,
+  PUBLIC_HOTEL_ORIGIN,
+} = require("./cloud-server-url");
 
 function buildTableMenuUrl(baseUrl, slug, tableNumber) {
-  const base = normalizeCloudServerUrl(baseUrl).replace(/\/+$/, "");
-  const table = Math.max(1, Number(tableNumber) || 1);
-  return `${base}/menu/${encodeURIComponent(String(slug || "").trim())}/${table}`;
+  return buildPublicMenuUrl(normalizeCloudServerUrl(baseUrl), slug, tableNumber);
 }
 
 function escHtml(s) {
@@ -72,8 +76,10 @@ async function buildTableQrEntry(baseUrl, slug, table) {
 }
 
 async function verifyVenueSlugOnCloud(slug) {
-  const base = getPublicCloudServerUrl();
-  const path = `/api/menu/${encodeURIComponent(String(slug || "").trim())}/menu`;
+  const base = getPublicCloudServerUrl(slug) || PUBLIC_HOTEL_ORIGIN;
+  const path = hotelCloudApiPath(
+    `/api/menu/${encodeURIComponent(String(slug || "").trim())}/menu`,
+  );
   const cloudHealth = require("./cloud-health");
   try {
     const res = await cloudHealth.requestJsonOnce("GET", base, path, null, 12000);
