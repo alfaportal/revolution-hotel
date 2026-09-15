@@ -1115,6 +1115,42 @@ html, body.staff-login-screen {
   color: #15803d;
 }
 
+.login-rfid-section-admin {
+  position: relative;
+  border-color: #94a3b8;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.login-rfid-section-admin .login-rfid-text {
+  color: #0f172a;
+}
+
+.login-admin-card-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  left: 0;
+  top: 0;
+}
+
+.login-rfid-section-admin:focus-within .login-admin-card-input {
+  pointer-events: auto;
+}
+
+.btn-login-rfid-focus {
+  margin-top: 0.25rem;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 @media (max-width: 720px) {
   .staff-login-shell {
     flex-direction: column;

@@ -3365,6 +3365,16 @@
             <label for="cil-fjalekalimi">Fjalëkalimi i ri i adminit</label>
             <input type="password" id="cil-fjalekalimi" placeholder="Lëreni bosh për të mos ndryshuar">
           </div>
+          <div class="settings-field">
+            <label for="cil-admin-card-input">Kartela RFID e pronarit (fjalëkalim ose kartelë — si te kamarierët)</label>
+            <input type="text" id="cil-admin-card-input" class="staff-rfid-input" placeholder="Skanoni kartelën…" autocomplete="off" spellcheck="false">
+            <p class="settings-field-hint" id="cil-admin-card-status">Nuk është regjistruar kartelë.</p>
+            <div class="staff-rfid-actions" style="margin-top:0.35rem">
+              <button type="button" class="btn btn-ghost btn-sm" id="cil-admin-card-scan-btn">Skano kartelën</button>
+              <button type="button" class="btn btn-primary btn-sm" id="cil-admin-card-save-btn">Ruaj RFID</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="cil-admin-card-del-btn" hidden>Hiq kartelën</button>
+            </div>
+          </div>
           <div class="settings-form-actions">
             <button type="submit" class="btn btn-primary">Ruaj ndryshimet</button>
           </div>
@@ -5895,6 +5905,14 @@
       );
       applyAppVersionBadge(s, "hdr-app-version");
       document.getElementById("cil-emri").value = s.business_name || s.restaurant_name || "";
+      const adminCardStatus = document.getElementById("cil-admin-card-status");
+      const adminCardDel = document.getElementById("cil-admin-card-del-btn");
+      if (adminCardStatus) {
+        adminCardStatus.textContent = s.admin_has_card
+          ? `Kartela aktive (fund: ${s.admin_card_hint || "****"})`
+          : "Nuk është regjistruar kartelë — skanoni dhe ruajeni.";
+      }
+      if (adminCardDel) adminCardDel.hidden = !s.admin_has_card;
       const sot = sotISO();
       document.getElementById("raport-nga").value = sot;
       document.getElementById("raport-deri").value = sot;
@@ -14192,6 +14210,64 @@
       } catch (err) {
         msg.textContent = err.message;
         msg.style.color = "var(--ngjyr-danger)";
+      }
+    });
+
+    document.getElementById("cil-admin-card-input")?.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        document.getElementById("cil-admin-card-save-btn")?.click();
+      }
+    });
+
+    document.getElementById("cil-admin-card-scan-btn")?.addEventListener("click", () => {
+      const input = document.getElementById("cil-admin-card-input");
+      if (!input) return;
+      input.value = "";
+      input.focus();
+      input.placeholder = "Afroni kartelën te lexuesi…";
+    });
+
+    document.getElementById("cil-admin-card-save-btn")?.addEventListener("click", async () => {
+      const uid = document.getElementById("cil-admin-card-input")?.value?.trim();
+      if (!uid || uid.length < 4) {
+        alert("Skanoni kartelën RFID (të paktën 4 karaktere).");
+        return;
+      }
+      try {
+        const res = await api("/api/settings/admin-card", {
+          method: "PUT",
+          body: JSON.stringify({ card_uid: uid }),
+        });
+        document.getElementById("cil-admin-card-input").value = "";
+        const adminCardStatus = document.getElementById("cil-admin-card-status");
+        if (adminCardStatus) {
+          adminCardStatus.textContent = res.admin_has_card
+            ? `Kartela aktive (fund: ${res.admin_card_hint || "****"})`
+            : "Nuk është regjistruar kartelë.";
+        }
+        document.getElementById("cil-admin-card-del-btn").hidden = !res.admin_has_card;
+        alert("Kartela e pronarit u ruajt!");
+      } catch (err) {
+        alert(err.message || "Nuk u ruajt kartela.");
+      }
+    });
+
+    document.getElementById("cil-admin-card-del-btn")?.addEventListener("click", async () => {
+      if (!confirm("Hiq kartelën RFID të pronarit? Do të mbetet vetëm fjalëkalimi.")) return;
+      try {
+        await api("/api/settings/admin-card", {
+          method: "PUT",
+          body: JSON.stringify({ clear: true }),
+        });
+        document.getElementById("cil-admin-card-input").value = "";
+        const adminCardStatus = document.getElementById("cil-admin-card-status");
+        if (adminCardStatus) adminCardStatus.textContent = "Nuk është regjistruar kartelë.";
+        document.getElementById("cil-admin-card-del-btn").hidden = true;
+        alert("Kartela u hoq.");
+      } catch (err) {
+        alert(err.message || "Gabim.");
       }
     });
 

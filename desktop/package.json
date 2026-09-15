@@ -87,6 +87,7 @@
     },
     "files": [
       "main.js",
+      "protection/**/*",
       "preload.js",
       "server.js",
       "database.js",

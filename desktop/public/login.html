@@ -30,7 +30,7 @@
       <div id="panel-kryesor" class="staff-panel">
         <div class="staff-main-head">
           <h1>Hyrje në sistem</h1>
-          <p>Zgjidhni rolin: pronari (fjalëkalim) ose kamarier (PIN 4 shifra).</p>
+          <p>Zgjidhni rolin: pronari (fjalëkalim ose kartelë RFID) ose kamarier (PIN / RFID).</p>
         </div>
 
         <div class="login-split">
@@ -39,6 +39,20 @@
             <label for="fjalekalimi">Fjalëkalimi</label>
             <input type="password" id="fjalekalimi" placeholder="Shkruani fjalëkalimin…" autocomplete="current-password">
             <button type="button" class="btn-staff-primary" id="hyr-admin">Hyr si Pronari</button>
+            <div class="login-rfid-section login-rfid-section-admin" id="login-admin-rfid-section">
+              <input type="text" id="admin-card-input" class="login-admin-card-input" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Skanim kartele pronari" tabindex="-1">
+              <div class="login-rfid-icon" aria-hidden="true">
+                <svg viewBox="0 0 64 40" width="52" height="33" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="1" width="62" height="38" rx="6" fill="#0f172a"/>
+                  <rect x="6" y="10" width="14" height="10" rx="2" fill="#fbbf24"/>
+                  <path d="M38 13a11 11 0 0 1 0 14" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                  <path d="M44.5 9a17.5 17.5 0 0 1 0 22" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                  <path d="M51 5a23.5 23.5 0 0 1 0 30" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <p class="login-rfid-text">Skanoni kartën RFID — ose përdorni fjalëkalimin</p>
+              <button type="button" class="btn-login-rfid-focus" id="btn-admin-card-focus">Gati për skanim</button>
+            </div>
             <button type="button" class="login-feature-tile login-feature-emergency" id="btn-emergency">
               <span class="login-feature-icon" aria-hidden="true">🔑</span>
               <span class="login-feature-label">Kod emergjence</span>
@@ -567,12 +581,69 @@
       kbdBuffer = "";
     }
 
-    function isAdminInputFocused() {
+    function isAdminPasswordFocused() {
       if (isEmergencyModalOpen()) return true;
-      const el = document.activeElement;
-      if (!el) return false;
-      if (el.id === "fjalekalimi") return true;
-      return !!el.closest?.(".login-col-admin");
+      return document.activeElement?.id === "fjalekalimi";
+    }
+
+    function isAdminCardInputFocused() {
+      return document.activeElement?.id === "admin-card-input";
+    }
+
+    let adminScanActive = false;
+    let adminCardBusy = false;
+    let adminKbdBuffer = "";
+    let adminKbdIdleTimer = null;
+
+    function pastroAdminKbdBuffer() {
+      clearTimeout(adminKbdIdleTimer);
+      adminKbdIdleTimer = null;
+      adminKbdBuffer = "";
+    }
+
+    function fokusAdminCardInput() {
+      const input = document.getElementById("admin-card-input");
+      if (!input) return;
+      adminScanActive = true;
+      input.value = "";
+      input.focus({ preventScroll: true });
+    }
+
+    function hyrSiAdmin(data) {
+      ruajSesionin({
+        emri: data.emri,
+        roli: data.roli,
+        token: data.token,
+        login_time: data.login_time,
+      });
+      window.location.href = "/admin.html";
+    }
+
+    async function provoAdminKarteLogin(cardUid) {
+      if (adminCardBusy || pinBusy) return;
+      adminCardBusy = true;
+      shfaqGabim(gabimEl, "");
+      try {
+        const res = await fetch("/api/login/card", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ card_uid: cardUid }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.token) {
+          throw new Error(data.gabim || "Kartela nuk njihet për pronarin!");
+        }
+        if (data.roli !== "admin") {
+          throw new Error("Kjo kartelë është e kamarierit — përdorni kolonën e djathtë.");
+        }
+        hyrSiAdmin(data);
+      } catch (err) {
+        shfaqGabim(gabimEl, err.message || "Kartela nuk njihet!");
+      } finally {
+        adminCardBusy = false;
+        const input = document.getElementById("admin-card-input");
+        if (input) input.value = "";
+      }
     }
 
     function resetPin() {
@@ -654,6 +725,10 @@
         if (!res.ok || !data.token) {
           throw new Error(data.gabim || "Kartela nuk njihet!");
         }
+        if (data.roli === "admin") {
+          hyrSiAdmin(data);
+          return;
+        }
         await hyrSiKamarier(data);
       } catch (err) {
         shakePinPanel(err.message || "Kartela nuk njihet!");
@@ -680,8 +755,49 @@
     // shkruajnë kodin si tastierë, shumë shpejt, e pasuar nga Enter). Të dyja rrugët
     // kalojnë nga ky handler, prandaj grumbullojmë çdo shtypje në kbdBuffer dhe vendosim
     // në Enter (ose pas një pauze të shkurtër) nëse është PIN 4-shifror apo kod kartele.
+    function handleAdminRfidKeydown(e) {
+      if (isEmergencyModalOpen() || isAdminPasswordFocused()) return false;
+      if (adminCardBusy || pinBusy) return false;
+      if (!adminScanActive && !isAdminCardInputFocused()) return false;
+
+      if (/^[0-9a-zA-Z]$/.test(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        adminKbdBuffer += e.key;
+        const input = document.getElementById("admin-card-input");
+        if (input && document.activeElement === input) {
+          input.value = adminKbdBuffer;
+        }
+        clearTimeout(adminKbdIdleTimer);
+        adminKbdIdleTimer = setTimeout(() => {
+          const buf = adminKbdBuffer;
+          pastroAdminKbdBuffer();
+          if (buf.length > 4) provoAdminKarteLogin(buf);
+        }, 200);
+        return true;
+      }
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        clearTimeout(adminKbdIdleTimer);
+        adminKbdBuffer = adminKbdBuffer.slice(0, -1);
+        const input = document.getElementById("admin-card-input");
+        if (input && document.activeElement === input) input.value = adminKbdBuffer;
+        return true;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        clearTimeout(adminKbdIdleTimer);
+        const buf = adminKbdBuffer || String(document.getElementById("admin-card-input")?.value || "").trim();
+        pastroAdminKbdBuffer();
+        if (buf.length >= 4) provoAdminKarteLogin(buf);
+        return true;
+      }
+      return false;
+    }
+
     document.addEventListener("keydown", e => {
-      if (isEmergencyModalOpen() || isAdminInputFocused()) return;
+      if (handleAdminRfidKeydown(e)) return;
+      if (isEmergencyModalOpen() || isAdminPasswordFocused() || isAdminCardInputFocused()) return;
       if (pinBusy) return;
       if (/^[0-9a-zA-Z]$/.test(e.key)) {
         e.preventDefault();
@@ -764,6 +880,37 @@
 
     document.getElementById("fjalekalimi").addEventListener("keydown", e => {
       if (e.key === "Enter") document.getElementById("hyr-admin").click();
+    });
+
+    document.getElementById("btn-admin-card-focus")?.addEventListener("click", fokusAdminCardInput);
+    document.getElementById("login-admin-rfid-section")?.addEventListener("click", e => {
+      if (e.target.closest("#btn-admin-card-focus")) return;
+      fokusAdminCardInput();
+    });
+
+    document.getElementById("fjalekalimi")?.addEventListener("focus", () => {
+      adminScanActive = false;
+      pastroAdminKbdBuffer();
+    });
+
+    document.querySelector(".login-col-admin")?.addEventListener("mousedown", e => {
+      if (e.target.closest("#fjalekalimi, #hyr-admin, #btn-emergency")) return;
+      adminScanActive = true;
+    });
+
+    document.querySelector(".login-col-waiters")?.addEventListener("mousedown", () => {
+      adminScanActive = false;
+      pastroAdminKbdBuffer();
+    });
+
+    const adminCardInput = document.getElementById("admin-card-input");
+    adminCardInput?.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const uid = String(adminCardInput.value || adminKbdBuffer || "").trim();
+        pastroAdminKbdBuffer();
+        if (uid.length >= 4) provoAdminKarteLogin(uid);
+      }
     });
 
     (async function bootstrapPersonalWaiterLink() {

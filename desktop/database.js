@@ -587,6 +587,7 @@ function getSettings() {
   const restaurant_name = getSetting("restaurant_name", "");
   const business_name = getBusinessName();
   const typeInfo = getBusinessSubtypeInfo(business_subtype);
+  const adminCard = getAdminCardUid();
   return {
     restaurant_name,
     business_name,
@@ -600,6 +601,8 @@ function getSettings() {
     version:         getSetting("version", VERSION.versionLabel),
     setup_done:      isSetupDone(),
     biz_phone:       getSetting("biz_phone", ""),
+    admin_has_card:  !!adminCard,
+    admin_card_hint: adminCard ? `…${adminCard.slice(-4)}` : "",
   };
 }
 
@@ -7225,8 +7228,40 @@ function validateCardUid(uid) {
   return u;
 }
 
+function getAdminCardUid() {
+  const u = normalizeCardUid(getSetting("admin_card_uid", ""));
+  return u || null;
+}
+
+function adminCardUidInUse(cardUid) {
+  const u = normalizeCardUid(cardUid);
+  const admin = getAdminCardUid();
+  return !!(admin && admin === u);
+}
+
+function updateAdminCard(cardUid) {
+  const u = validateCardUid(cardUid);
+  const current = getAdminCardUid();
+  if (current !== u && cardUidInUse(u)) {
+    throw new Error("Kjo kartelë përdoret tashmë (kamarier ose pronar)");
+  }
+  setSetting("admin_card_uid", u);
+}
+
+function clearAdminCard() {
+  setSetting("admin_card_uid", "");
+}
+
+function findAdminSessionByCard(cardUid) {
+  const u = validateCardUid(cardUid);
+  const stored = getAdminCardUid();
+  if (!stored || stored !== u) return null;
+  return { role: "admin", emri: "Admin" };
+}
+
 function cardUidInUse(cardUid, excludeId = null) {
   const u = normalizeCardUid(cardUid);
+  if (adminCardUidInUse(u)) return true;
   const row = excludeId != null
     ? sqlite.prepare("SELECT id FROM staff WHERE card_uid = ? AND id != ?").get(u, excludeId)
     : sqlite.prepare("SELECT id FROM staff WHERE card_uid = ?").get(u);
@@ -7271,6 +7306,8 @@ function updateSettings({
   business_subtype,
   business_type,
   biz_name,
+  admin_card_uid,
+  clear_admin_card,
 } = {}) {
   const nameRaw =
     restaurant_name != null ? restaurant_name : biz_name != null ? biz_name : null;
@@ -7285,7 +7322,13 @@ function updateSettings({
     setSetting("business_subtype", type);
     setSetting("business_type", type);
   }
-  if (admin_password) setSetting("admin_password", hashPassword(admin_password));
+  if (admin_password != null && String(admin_password).trim()) {
+    setSetting("admin_password", hashPassword(String(admin_password).trim()));
+  }
+  if (clear_admin_card === true || clear_admin_card === "1") clearAdminCard();
+  else if (admin_card_uid != null && String(admin_card_uid).trim()) {
+    updateAdminCard(admin_card_uid);
+  }
   setSetting("table_count", getTableCount());
 }
 
@@ -10608,6 +10651,9 @@ function getVersionInfo() {
     findStaffByWebToken,
     regenerateStaffWebToken,
     findStaffByPin,
+    updateAdminCard,
+    clearAdminCard,
+    findAdminSessionByCard,
     updateStaffCard,
     clearStaffCard,
     findStaffByCard,

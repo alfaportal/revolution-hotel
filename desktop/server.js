@@ -1559,6 +1559,18 @@ app.post("/api/login/card", async (req, res) => {
   const card_uid = req.body.card_uid ?? req.body.card ?? req.body.uid ?? "";
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
   try {
+    const adminHit = db.findAdminSessionByCard(card_uid);
+    if (adminHit) {
+      const sess = createSession("admin", adminHit.emri);
+      auditActivity(adminHit.emri, "admin", "Hyrje kartelë RFID", "RFID pronari");
+      logFiscalLoginAudit(req, adminHit.emri, "ADMIN");
+      return res.json({
+        ok: true,
+        roli: "admin",
+        emri: adminHit.emri,
+        ...sess,
+      });
+    }
     const staff = db.findStaffByCard(card_uid);
     if (!staff) {
       return res.status(401).json({ gabim: "Kartela nuk njihet!" });
@@ -4570,6 +4582,23 @@ app.post("/api/staff/:id/regenerate-link", auth, adminOnly, (req, res) => {
       ok: true,
       waiter_url: resolveStaffWaiterUrl(null, full),
     });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.put("/api/settings/admin-card", auth, adminOnly, (req, res) => {
+  try {
+    if (req.body?.clear === true || req.body?.clear_admin_card === true) {
+      db.clearAdminCard();
+      auditReq(req, "Hequr kartela RFID pronari", "Lokal & llogaria");
+      return res.json({ ok: true, ...db.getSettings() });
+    }
+    const { card_uid } = req.body;
+    if (!card_uid?.trim()) return res.status(400).json({ gabim: "Skanoni kartelën RFID" });
+    db.updateAdminCard(card_uid);
+    auditReq(req, "Regjistruar kartela RFID pronari", "Lokal & llogaria");
+    res.json({ ok: true, ...db.getSettings() });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
