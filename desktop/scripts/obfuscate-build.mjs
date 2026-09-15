@@ -139,6 +139,7 @@ const NEVER_OBFUSCATE = new Set([
   "hotel-backup.js",
   "disk-monitor.js",
   "main.js",
+  "license-boot.js",
 ]);
 
 const OBFUSCATE_OPTIONS = {
@@ -225,6 +226,7 @@ const OBFUSCATE_OPTIONS = {
     "logFiscalAction",
     "runFiscalSelfTest",
     "runFiscalSelfTestBattery",
+    "promptHardwareActivation",
     "sent_to_atk",
     "sent_at",
     "atk_response_json",

@@ -1029,6 +1029,7 @@ module.exports = {
   writeStoredLicenseKey,
   readStoredLicenseRecord,
   ensureHardwareLicense,
+  promptHardwareActivation,
   getGraceStatus,
   getGraceBannerInfo,
   logHwLicenseAudit,
