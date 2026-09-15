@@ -1,5 +1,6 @@
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
+const { getSupabase } = require("../db");
 const { getPgPool } = require("./pgPool");
 
 let ensurePromise = null;
@@ -8,6 +9,10 @@ async function ensureInventorySchema() {
   if (ensurePromise) return ensurePromise;
 
   ensurePromise = (async () => {
+    const db = getSupabase();
+    const { error: probeErr } = await db.from("ingredients").select("id").limit(1);
+    if (!probeErr) return true;
+
     const pool = getPgPool();
     if (!pool) {
       return false;

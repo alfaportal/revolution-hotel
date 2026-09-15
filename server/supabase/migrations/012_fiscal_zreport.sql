@@ -1,4 +1,5 @@
 -- Arkë fiskale (ATK Kosovo) + Raporti Ditor (Z-Report) për çdo biznes
+-- Kolonat payment_status / paid_at: shiko 011b_sales_payment_status.sql
 
 ALTER TABLE pos_settings
   ADD COLUMN IF NOT EXISTS fiscal_nr TEXT DEFAULT '',
@@ -6,22 +7,6 @@ ALTER TABLE pos_settings
   ADD COLUMN IF NOT EXISTS fiscal_enabled BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS fiscal_operator_name TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS fiscal_device_model TEXT DEFAULT '';
-
-ALTER TABLE sales_orders
-  ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending',
-  ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS fiscal_receipt_id UUID;
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'sales_orders_payment_status_check'
-  ) THEN
-    ALTER TABLE sales_orders
-      ADD CONSTRAINT sales_orders_payment_status_check
-      CHECK (payment_status IN ('pending', 'paid', 'manual', 'failed', 'refunded'));
-  END IF;
-END $$;
 
 CREATE TABLE IF NOT EXISTS fiscal_receipts (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -76,12 +61,18 @@ CREATE TABLE IF NOT EXISTS daily_z_reports (
 CREATE INDEX IF NOT EXISTS idx_daily_z_reports_client
   ON daily_z_reports (client_id, report_date DESC);
 
--- Shitjet e mbyllura para migrimit = të paguara (legacy)
-UPDATE sales_orders
-SET payment_status = 'paid', paid_at = COALESCE(closed_at, created_at)
-WHERE status = 'closed' AND payment_status = 'pending';
-
--- Default fiscal_nr nga TVSH/NUI ku ekziston
-UPDATE pos_settings ps
-SET fiscal_nr = COALESCE(NULLIF(ps.fiscal_nr, ''), NULLIF(ps.tvsh_nr, ''), NULLIF(ps.nui, ''))
-WHERE fiscal_nr IS NULL OR fiscal_nr = '';
+-- Default fiscal_nr nga TVSH/NUI vetëm kur kolonat ekzistojnë (011_receipt_business_profile)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'pos_settings' AND column_name = 'tvsh_nr'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'pos_settings' AND column_name = 'fiscal_nr'
+  ) THEN
+    UPDATE pos_settings ps
+    SET fiscal_nr = COALESCE(NULLIF(ps.fiscal_nr, ''), NULLIF(ps.tvsh_nr, ''), NULLIF(ps.nui, ''))
+    WHERE fiscal_nr IS NULL OR fiscal_nr = '';
+  END IF;
+END $$;
