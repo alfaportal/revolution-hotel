@@ -76,6 +76,30 @@ function cleanDistBeforeBuild(distDir, projectPrefix) {
   }
 }
 
+/** Kopje me version në emër — rollback; nuk heq Setup.exe kryesor. */
+function archiveVersionedInstaller(distDir, setupBaseName, version) {
+  if (!version || !setupBaseName) return;
+  const mainExe = `${setupBaseName}.exe`;
+  const mainPath = path.join(distDir, mainExe);
+  if (!fs.existsSync(mainPath)) return;
+  const versionedExe = `${setupBaseName} ${version}.exe`;
+  const versionedPath = path.join(distDir, versionedExe);
+  if (fs.existsSync(versionedPath)) {
+    console.log(`  → rollback: dist/${versionedExe} (ekziston — mos fshi)`);
+    return;
+  }
+  fs.copyFileSync(mainPath, versionedPath);
+  console.log(`  → rollback: dist/${versionedExe}`);
+  const mainBm = `${mainExe}.blockmap`;
+  const bmPath = path.join(distDir, mainBm);
+  if (fs.existsSync(bmPath)) {
+    const vBm = `${setupBaseName} ${version}.exe.blockmap`;
+    if (!fs.existsSync(path.join(distDir, vBm))) {
+      fs.copyFileSync(bmPath, path.join(distDir, vBm));
+    }
+  }
+}
+
 function copyToDesktop(srcPath, fileName) {
   const dest = path.join(DESKTOP, fileName);
   try {
@@ -145,4 +169,9 @@ function finalizeDistDelivery({ distDir, projectId, projectPrefix, desktopPrimar
   return copied;
 }
 
-module.exports = { cleanDistBeforeBuild, finalizeDistDelivery, DESKTOP };
+module.exports = {
+  cleanDistBeforeBuild,
+  finalizeDistDelivery,
+  archiveVersionedInstaller,
+  DESKTOP,
+};

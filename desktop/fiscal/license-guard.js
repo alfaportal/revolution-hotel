@@ -762,6 +762,15 @@ function promptHardwareActivation(app, opts = {}) {
 
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
+    try {
+      const licenseMod = require(path.join(__dirname, "..", "license"));
+      if (licenseMod && typeof licenseMod.reportHardwareIdToCloud === "function") {
+        licenseMod.reportHardwareIdToCloud(app).catch(() => {});
+      }
+    } catch {
+      /* ignore */
+    }
+
     ipcMain.handle("hw-lic-poll-cloud", async () => {
       try {
         const license = require(path.join(__dirname, "..", "license"));

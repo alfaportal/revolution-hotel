@@ -44,6 +44,14 @@ function isLicenseApiPath(reqPath) {
   return /^\/api\/v1\/license\//.test(p);
 }
 
+/** Licenca HOTEL — gjithmonë përmes /hotel/api/... te revolution-hotel-server. */
+function resolveCloudRequestPath(reqPath) {
+  const p = String(reqPath || "").trim();
+  if (!p) return p;
+  if (isLicenseApiPath(p)) return hotelCloudApiPath(p);
+  return p;
+}
+
 
 function bindCloudHealthDb(db) {
   boundDb = db;
@@ -297,6 +305,7 @@ function startHealthMonitor(db) {
 }
 
 async function requestJsonWithFallback(method, path, payload, options = {}) {
+  const apiPath = resolveCloudRequestPath(path);
   const licenseOnly = isLicenseApiPath(path);
   if (
     !licenseOnly &&
@@ -319,7 +328,7 @@ async function requestJsonWithFallback(method, path, payload, options = {}) {
 
   for (const baseUrl of order) {
     try {
-      const res = await requestJsonOnce(method, baseUrl, path, payload, timeoutMs, extraHeaders);
+      const res = await requestJsonOnce(method, baseUrl, apiPath, payload, timeoutMs, extraHeaders);
       if (res.status < 500 || method === "GET") {
         activeServerUrl = baseUrl;
         if (!lastHealth.online) {

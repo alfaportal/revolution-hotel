@@ -17,6 +17,7 @@ const OBFUSCATE_SCRIPT = path.join(ROOT, "scripts", "obfuscate-build.mjs");
 const {
   cleanDistBeforeBuild,
   finalizeDistDelivery,
+  archiveVersionedInstaller,
 } = require(path.join(ROOT, "scripts", "build-deliver.cjs"));
 
 const BUILD_MAC =
@@ -393,6 +394,18 @@ function main() {
   }
 
   try {
+    const pkgPath = path.join(ROOT, "package.json");
+    const pkgRoot = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    const prevVer = String(pkgRoot.version || "").trim();
+    archiveVersionedInstaller(DIST_DIR, "Revolution HOTEL Setup", prevVer);
+    const bump = String(process.env.HOTEL_BUILD_NO_BUMP || "") !== "1";
+    if (bump && /^\d+\.\d+\.\d+$/.test(prevVer)) {
+      const parts = prevVer.split(".").map((n) => parseInt(n, 10) || 0);
+      parts[2] += 1;
+      pkgRoot.version = parts.join(".");
+      fs.writeFileSync(pkgPath, `${JSON.stringify(pkgRoot, null, 2)}\n`, "utf8");
+      console.log(`\n=== Version: ${prevVer} → ${pkgRoot.version} ===`);
+    }
     cleanDistBeforeBuild(DIST_DIR, "Revolution HOTEL");
     writeTierFile(ROOT, {
       tier: selected[0].tier,

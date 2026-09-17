@@ -1,6 +1,6 @@
 {
   "name": "revolution-hotel",
-  "version": "1.0.614",
+  "version": "1.0.615",
   "description": "Revolution HOTEL — sistem lokal (një Setup, pako 3/4 nga telefoni)",
   "main": "main.js",
   "scripts": {
@@ -37,7 +37,9 @@
     "appId": "com.revolution.hotel",
     "productName": "Revolution HOTEL",
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.ico",
       "requestedExecutionLevel": "asInvoker",
       "executableName": "Revolution HOTEL"
