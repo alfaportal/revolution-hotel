@@ -1580,6 +1580,9 @@
     body.admin-app .settings-subnav-btn.active {
       background: #FF6B35 !important; border-color: #FF6B35 !important; color: #fff !important;
     }
+    body.admin-app .product-cat-tab-draggable { cursor: grab; }
+    body.admin-app .product-cat-tab-dragging { opacity: 0.55; cursor: grabbing; }
+    body.admin-app .product-cat-tab-drop-target { box-shadow: 0 0 0 2px #FF6B35 inset; }
     body.admin-app .product-card-edit-fields .menu-vat-row {
       display: flex;
       align-items: center;
@@ -2132,11 +2135,48 @@
         </div>
       </div>
       <div class="card settings-card">
-        <div id="stoku-kontabilist-warning" class="fiscal-save-msg" role="status" style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-warning,#b45309);background:rgba(180,83,9,0.08);color:var(--ngjyr-text,#e8e8ef)">
-          ⚠️ Shtesa manuale (+ Shto stok) regjistrohet për verifikimin e stokut, por <strong>jo</strong> te Kontabilisti — për blerje zyrtare përdorni skedën Blerjet.
+        <div class="card-title">Shto artikull me barcode (stok + blerje)</div>
+        <form id="forma-stoku-barcode" class="form-row" style="margin-bottom:0.75rem">
+          <div>
+            <label for="stoku-barcode">Barcode</label>
+            <input type="text" id="stoku-barcode" inputmode="numeric" autocomplete="off" placeholder="Skano ose shkruaj!">
+            <small id="stoku-barcode-status" style="display:block;margin-top:0.25rem;color:var(--ngjyr-muted);font-size:0.8rem"></small>
+          </div>
+          <div>
+            <label for="stoku-emri">Emri</label>
+            <input type="text" id="stoku-emri" placeholder="Emri i artikullit" required>
+          </div>
+          <div>
+            <label for="stoku-kat">Kategoria</label>
+            <select id="stoku-kat" required></select>
+          </div>
+          <div>
+            <label for="stoku-sasia">SASIA (copa)</label>
+            <input type="number" id="stoku-sasia" min="1" step="1" value="1" required>
+          </div>
+          <div>
+            <label for="stoku-cmim">Çmimi (€)</label>
+            <input type="number" id="stoku-cmim" step="0.01" min="0" value="0.00" required>
+          </div>
+          <div>
+            <label for="stoku-tvsh">TVSH</label>
+            <select id="stoku-tvsh">
+              <option value="18" selected>18%</option>
+              <option value="8">8%</option>
+              <option value="0">0%</option>
+            </select>
+          </div>
+          <div style="flex:0">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn btn-primary">Shto</button>
+          </div>
+        </form>
+        <div id="stoku-kontabilist-warning" class="fiscal-save-msg" role="status" style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-success,#059669);background:rgba(5,150,105,0.08);color:var(--ngjyr-text,#e8e8ef)">
+          <strong>+ Shto stok</strong> dhe <strong>barcode</strong> krijojnë faturë blerjeje → <strong>Blerjet</strong> dhe <strong>Kontabilisti</strong>.
         </div>
         <div id="stoku-reconcile-panel" class="fiscal-save-msg" hidden style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-primary,#6366f1);background:rgba(99,102,241,0.08)"></div>
         <div id="stoku-summary" class="fiscal-save-msg" style="margin-bottom:0.65rem"></div>
+        <p class="field-hint stoku-cat-drag-hint" style="margin:0 0 0.35rem;font-size:0.82rem;color:var(--ngjyr-muted,#94a3b8)">Zvarrit kategoritë majtas/djathtas për renditje (si te produktet / Cilësimet).</p>
         <div id="stoku-cat-filter" class="product-cat-filter stoku-cat-filter" role="tablist" aria-label="Filtro stokun sipas kategorisë"></div>
         <div id="stoku-grid" class="product-grid"></div>
       </div>
@@ -5930,6 +5970,71 @@
       }
     }
 
+    async function saveStokuCategoryOrderFromDom(bar) {
+      if (catReorderSaving || !bar) return;
+      const names = [...bar.querySelectorAll(".product-cat-tab[data-stoku-cat]")]
+        .map((btn) => {
+          const raw = btn.dataset.stokuCat;
+          if (raw === "__all__") return null;
+          return decodeURIComponent(raw || "");
+        })
+        .filter(Boolean);
+      if (!names.length) return;
+      catReorderSaving = true;
+      try {
+        await api("/api/categories/reorder", {
+          method: "PUT",
+          body: JSON.stringify({ names }),
+        });
+        await ngarkoKategoriteUI();
+        renderStokuCatTabs();
+        renderStokuGrid();
+      } catch (err) {
+        alert(err.message || "Renditja e kategorive nuk u ruajt");
+        await ngarkoKategoriteUI();
+      } finally {
+        catReorderSaving = false;
+      }
+    }
+
+    function bindStokuCatDragReorder(bar) {
+      if (!bar) return;
+      bar.querySelectorAll(".product-cat-tab[draggable]").forEach((tab) => {
+        tab.addEventListener("dragstart", (e) => {
+          catDragEl = tab;
+          tab.classList.add("product-cat-tab-dragging");
+          try {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", tab.dataset.stokuCat || "");
+          } catch { /* ignore */ }
+        });
+        tab.addEventListener("dragend", async () => {
+          tab.classList.remove("product-cat-tab-dragging");
+          bar.querySelectorAll(".product-cat-tab-drop-target").forEach((el) =>
+            el.classList.remove("product-cat-tab-drop-target"),
+          );
+          const moved = catDragEl;
+          catDragEl = null;
+          if (moved) await saveStokuCategoryOrderFromDom(bar);
+        });
+        tab.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          if (!catDragEl || catDragEl === tab) return;
+          if (tab.dataset.stokuCat === "__all__") return;
+          tab.classList.add("product-cat-tab-drop-target");
+          const rect = tab.getBoundingClientRect();
+          const before = e.clientX < rect.left + rect.width / 2;
+          if (before) bar.insertBefore(catDragEl, tab);
+          else bar.insertBefore(catDragEl, tab.nextSibling);
+        });
+        tab.addEventListener("dragleave", () => tab.classList.remove("product-cat-tab-drop-target"));
+        tab.addEventListener("drop", (e) => {
+          e.preventDefault();
+          tab.classList.remove("product-cat-tab-drop-target");
+        });
+      });
+    }
+
     async function ngarkoSettings() {
       const s = await api("/api/settings");
       applyPackageTier(s.packageTier, s.packageFeatures);
@@ -6506,7 +6611,10 @@
         .map((t) => {
           const active = stokuCatFilter === t.key;
           const val = t.key === null ? "__all__" : encodeURIComponent(t.key);
-          return `<button type="button" class="product-cat-tab${active ? " active" : ""}" data-stoku-cat="${val}" role="tab" aria-selected="${active ? "true" : "false"}">${esc(t.label)}</button>`;
+          const isAll = t.key === null;
+          const dragCls = isAll ? "" : " product-cat-tab-draggable";
+          const dragAttr = isAll ? "" : ' draggable="true" title="Zvarrit majtas/djathtas për renditje"';
+          return `<button type="button" class="product-cat-tab${active ? " active" : ""}${dragCls}" data-stoku-cat="${val}" role="tab" aria-selected="${active ? "true" : "false"}"${dragAttr}>${esc(t.label)}</button>`;
         })
         .join("");
       bar.querySelectorAll("[data-stoku-cat]").forEach((btn) => {
@@ -6517,6 +6625,7 @@
           renderStokuGrid();
         });
       });
+      bindStokuCatDragReorder(bar);
     }
 
     async function verifikoStokun() {
@@ -6585,10 +6694,24 @@
       verifikoStokun().catch((err) => alert(err.message || "Gabim reconciliacioni"));
     });
 
+    function fillStokuBarcodeCategories() {
+      const sel = document.getElementById("stoku-kat");
+      if (!sel) return;
+      const cats = KATEGORITE || stokuCategoryList();
+      if (typeof mbushSelectKategorive === "function") {
+        mbushSelectKategorive(sel, cats);
+        return;
+      }
+      sel.innerHTML = (cats || [])
+        .map((c) => `<option value="${escMenuAttr(c)}">${escMenuAttr(c)}</option>`)
+        .join("");
+    }
+
     function renderStokuGrid() {
       const grid = document.getElementById("stoku-grid");
       const summary = document.getElementById("stoku-summary");
       if (!grid) return;
+      fillStokuBarcodeCategories();
       renderStokuCatTabs();
       grid.innerHTML = "";
       if (!menuItemsCache.length) {
@@ -9834,6 +9957,107 @@
         if (typeof ngarkoSherbimet === "function") await ngarkoSherbimet();
       } catch (err) {
         alert(err.message || "Dështoi aplikimi i TVSH smart");
+      }
+    });
+
+    bindBarcodeScannerField(
+      document.getElementById("stoku-barcode"),
+      document.getElementById("stoku-emri"),
+      document.getElementById("stoku-barcode-status"),
+    );
+    document.getElementById("stoku-emri")?.addEventListener("input", () => {
+      const el = document.getElementById("stoku-emri");
+      if (el?.dataset.barcodeFilled === "1") el.dataset.barcodeFilled = "0";
+    });
+
+    document.getElementById("forma-stoku-barcode")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const barcode = String(document.getElementById("stoku-barcode")?.value || "").trim();
+      const name = String(document.getElementById("stoku-emri")?.value || "").trim();
+      const category = String(document.getElementById("stoku-kat")?.value || "").trim();
+      const price = Number(document.getElementById("stoku-cmim")?.value);
+      const sasia = Math.round(Number(document.getElementById("stoku-sasia")?.value));
+      const vat_rate = Number(document.getElementById("stoku-tvsh")?.value || 18);
+      if (!name || !category) {
+        alert("Emri dhe kategoria janë të detyrueshme.");
+        return;
+      }
+      if (!Number.isFinite(price) || price < 0) {
+        alert("Çmim i pavlefshëm.");
+        return;
+      }
+      if (!Number.isFinite(sasia) || sasia < 1) {
+        alert("SASIA (copa) duhet të jetë së paku 1.");
+        return;
+      }
+      const btn = e.target.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
+      try {
+        if (!menuItemsCache.length) await ngarkoMenu();
+        let item =
+          (barcode &&
+            (menuItemsCache || []).find((m) => String(m.barcode || "").trim() === barcode)) ||
+          (menuItemsCache || []).find(
+            (m) =>
+              String(m.name || "").trim().toLowerCase() === name.toLowerCase() &&
+              String(m.category || "").trim() === category,
+          );
+        if (!item) {
+          const created = await api("/api/menu", {
+            method: "POST",
+            body: JSON.stringify({
+              name,
+              category,
+              price,
+              vat_category: String(vat_rate),
+              auto_vat: false,
+              barcode: barcode || undefined,
+              stock_qty: 0,
+            }),
+          });
+          await ngarkoMenu();
+          item = (menuItemsCache || []).find((m) => String(m.id) === String(created.id));
+          if (!item && created?.id) item = { id: created.id, name };
+        } else if (barcode && !String(item.barcode || "").trim()) {
+          await api(`/api/menu/${item.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ barcode }),
+          });
+        }
+        const data = await api("/api/purchases", {
+          method: "POST",
+          body: JSON.stringify({
+            supplier: "Blerje barcode",
+            invoice_date: new Date().toISOString().slice(0, 10),
+            vat_rate,
+            purchase_kind: "goods",
+            items: [{ menu_item_id: Number(item.id), quantity: sasia, unit_price: price, vat_rate }],
+          }),
+        });
+        e.target.reset();
+        document.getElementById("stoku-sasia").value = "1";
+        document.getElementById("stoku-cmim").value = "0.00";
+        const stStatus = document.getElementById("stoku-barcode-status");
+        if (stStatus) stStatus.textContent = "";
+        const stEmri = document.getElementById("stoku-emri");
+        if (stEmri) stEmri.dataset.barcodeFilled = "0";
+        fillStokuBarcodeCategories();
+        await ngarkoMenu();
+        renderStokuGrid();
+        ngarkoPasqyra().catch(() => {});
+        if (typeof ngarkoBlerjet === "function") ngarkoBlerjet().catch(() => {});
+        if (typeof refreshAfterPurchaseSave === "function") refreshAfterPurchaseSave().catch(() => {});
+        const inv = data.invoice || {};
+        alert(
+          `${name}: +${sasia} copë\n` +
+            `Fatura: ${inv.invoice_number || "—"}\n` +
+            `Totali: ${formatEuro(inv.total)}\n` +
+            "Stoku u rrit · Kontabilisti e sheh te blerjet.",
+        );
+      } catch (err) {
+        alert(err.message || "Gabim gjatë shtimit");
+      } finally {
+        if (btn) btn.disabled = false;
       }
     });
 
