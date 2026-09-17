@@ -210,6 +210,64 @@ async function findLicenseByDeviceId(deviceId) {
   return found.row;
 }
 
+async function findLicenseByHardwareIdOnDb(db, hw) {
+  const normalized = normalizeHardwareIdStored(hw);
+  if (!normalized) return null;
+  try {
+    const { data, error } = await db
+      .from("licenses")
+      .select(LICENSE_WITH_CLIENT_SELECT)
+      .eq("hardware_id", normalized)
+      .order("last_activated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error && !/hardware_id|schema cache/i.test(String(error.message || ""))) throw error;
+    if (data) return data;
+  } catch (e) {
+    if (!/hardware_id|schema cache/i.test(String(e.message || ""))) throw e;
+  }
+  const metaExact = encodeHwMeta(normalized);
+  if (metaExact) {
+    const { data: metaHit, error: metaErr } = await db
+      .from("licenses")
+      .select(LICENSE_WITH_CLIENT_SELECT)
+      .eq("last_validation_error", metaExact)
+      .maybeSingle();
+    if (metaErr && !/last_validation_error|schema cache/i.test(String(metaErr.message || ""))) {
+      throw metaErr;
+    }
+    if (metaHit) return metaHit;
+  }
+  const { data: rows, error: allErr } = await db
+    .from("licenses")
+    .select(LICENSE_WITH_CLIENT_SELECT)
+    .eq("statusi", "aktive")
+    .order("last_activated_at", { ascending: false })
+    .limit(80);
+  if (allErr) throw allErr;
+  return (rows || []).find((row) => resolveLicenseHardwareId(row) === normalized) || null;
+}
+
+async function findLicenseByHardwareId(hardwareId) {
+  const hw = normalizeHardwareIdStored(hardwareId);
+  if (!hw) return null;
+  const found = await findLicenseOnProductDbs((db) => findLicenseByHardwareIdOnDb(db, hw));
+  return found.row;
+}
+
+/** Licencë aktive pa Hardware ID — vetëm kur ka saktësisht një (auto-lidhje PC ↔ klient i ri). */
+async function findSingleActiveLicenseWithoutHardwareOnDb(db) {
+  const { data, error } = await db
+    .from("licenses")
+    .select(LICENSE_WITH_CLIENT_SELECT)
+    .eq("statusi", "aktive")
+    .order("data_fillimit", { ascending: false })
+    .limit(40);
+  if (error) throw error;
+  const unbound = (data || []).filter((lic) => !resolveLicenseHardwareId(lic));
+  return unbound.length === 1 ? unbound[0] : null;
+}
+
 async function findLicenseByKeyOnDb(db, normalized) {
   const { data, error } = await db
     .from("licenses")
@@ -397,6 +455,15 @@ async function reportHardwareId({ device_id, hardware_id, celesi, contact_email,
     license = await findLicenseByDeviceId(device_id);
   }
   if (!license) {
+    license = await findLicenseByHardwareId(hw);
+  }
+  if (!license) {
+    const pending = await findLicenseOnProductDbs((db) =>
+      findSingleActiveLicenseWithoutHardwareOnDb(db),
+    );
+    if (pending.row) license = pending.row;
+  }
+  if (!license) {
     return { ok: false, code: "NOT_FOUND", message: "Licenca nuk u gjet për këtë pajisje." };
   }
   try {
@@ -411,6 +478,63 @@ async function reportHardwareId({ device_id, hardware_id, celesi, contact_email,
   }
   await saveActivationEmail(license, contact_email || activation_email);
   return { ok: true, license_id: license.id, hardware_id: hw, stored: true };
+}
+
+/**
+ * Poll nga desktop — pas regjistrimit admin / lidhjes HW, kthen çelësin për këtë Hardware ID.
+ */
+async function checkLicenseByHardware({
+  hardware_id,
+  app_type,
+  device_id,
+  hostname,
+  client_ip,
+}) {
+  const hw = normalizeHardwareIdStored(hardware_id);
+  if (!hw) {
+    return { valid: false, code: "MISSING_HARDWARE", message: "Hardware ID i pavlefshëm." };
+  }
+  let license = await findLicenseByHardwareId(hw);
+  if (!license) {
+    return {
+      valid: false,
+      code: "NOT_FOUND",
+      message: "Nuk ka licencë për këtë Hardware ID. Ngjite ID te admini dhe Ruaj.",
+    };
+  }
+  const usable = isLicenseUsable(license);
+  if (!usable.ok) {
+    return { valid: false, code: usable.code, message: usable.message };
+  }
+  if (license.statusi === "revokuar" || license.statusi === "pezulluar") {
+    return {
+      valid: false,
+      code: "REVOKED",
+      message: "Licenca nuk është aktive.",
+    };
+  }
+  const validated = await validateLicense({
+    celesi: license.celesi,
+    device_id,
+    app_type,
+    hostname,
+    client_ip,
+    hardware_id: hw,
+  });
+  if (!validated.valid) {
+    return validated;
+  }
+  const client = license.clients || {};
+  return {
+    valid: true,
+    code: "OK",
+    message: "Licenca u gjet nga Hardware ID.",
+    celesi: license.celesi,
+    license_key: license.celesi,
+    client_id: license.client_id || client.id || "",
+    client_name: client.emri || "",
+    package_tier: client.package_tier || "",
+  };
 }
 
 async function validateLicense({
@@ -1674,6 +1798,8 @@ module.exports = {
   generateDeviceId,
   provisionLicenseDevice,
   validateLicense,
+  checkLicenseByHardware,
+  findLicenseByHardwareId,
   reportHardwareId,
   normalizeHardwareIdStored,
   resolveLicenseHardwareId,

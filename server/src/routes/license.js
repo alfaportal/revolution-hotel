@@ -1,6 +1,11 @@
 const express = require("express");
 const { licenseApiKeyOptional } = require("../middleware/auth");
-const { validateLicense, getLicenseAccessLinks, reportHardwareId } = require("../services/licenseService");
+const {
+  validateLicense,
+  checkLicenseByHardware,
+  getLicenseAccessLinks,
+  reportHardwareId,
+} = require("../services/licenseService");
 const { verifyMasterPin, verifyDailyEmergencyCode, isMasterPinConfigured } = require("../lib/emergencyPin");
 const { logAdminActivity } = require("../services/activityLogService");
 const { verifyWaiterPin, listWaitersForOwner } = require("../services/waiterPinService");
@@ -91,6 +96,30 @@ router.post("/validate", licenseApiKeyOptional, async (req, res) => {
     });
 
     const status = result.valid ? 200 : 403;
+    res.status(status).json(result);
+  } catch (e) {
+    res.status(500).json({ valid: false, gabim: e.message });
+  }
+});
+
+/**
+ * POST /api/v1/license/check
+ * Desktop poll — kthen çelësin kur Hardware ID përputhet me licencën aktive.
+ */
+router.post("/check", licenseApiKeyOptional, async (req, res) => {
+  try {
+    const { hardware_id, device_id, app_type, hostname } = req.body || {};
+    const result = await checkLicenseByHardware({
+      hardware_id,
+      device_id,
+      app_type,
+      hostname,
+      client_ip: clientIp(req),
+    });
+    if (result.valid) {
+      return res.json(result);
+    }
+    const status = result.code === "NOT_FOUND" ? 404 : 403;
     res.status(status).json(result);
   } catch (e) {
     res.status(500).json({ valid: false, gabim: e.message });
