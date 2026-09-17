@@ -7,6 +7,12 @@
 const aiCloud = require("../ai-cloud");
 const packMath = require("../purchase-pack-math");
 
+function normalizeReceiptVatCategory(v) {
+  const n = Number(v);
+  if (n === 0 || n === 8 || n === 18) return String(n);
+  return "18";
+}
+
 /** Fjalë të përgjithshme — nuk mjafton vetëm këto për matching. */
 const STOP_TOKENS = new Set([
   "mineral", "minerale", "natyral", "natyrale", "natural", "uje", "water",
@@ -122,15 +128,42 @@ function findByAliasTarget(items, targetAlias) {
 
 /**
  * Gjen produktin ekzistues:
- * 1) ujë: mineral → Ujë mineral; natyral (pije uji) → Ujë natyral
- * 2) lëngje: dredhez/molle/… → Lëng …
- * 3) emër i njëjtë (pas alias Ice/Iced)
- * 4) tokene dalluese (ice+tea)
+ * 1) emër i njëjtë (pas alias Ice/Iced)
+ * 2) tokene dalluese (golden+eagle, coca+cola, …)
+ * 3) ujë/lëng generic — vetëm nëse s'ka match më sipër
  */
 function findMenuItemIdByName(db, name) {
   const target = aliasNormalize(name);
   if (!target) return null;
   const items = typeof db.getMenuItems === "function" ? db.getMenuItems(false) : [];
+
+  for (const it of items) {
+    if (aliasNormalize(it.name) === target) return it.id;
+  }
+
+  const invTokens = distinctiveTokens(name);
+  const brandTokens = invTokens.filter((t) => t.length >= 4);
+
+  if (invTokens.length) {
+    let best = null;
+    let bestScore = 0;
+    for (const it of items) {
+      const n = aliasNormalize(it.name);
+      if (!n) continue;
+      if (brandTokens.length && !brandTokens.every((b) => n.includes(b))) continue;
+      const allFound = invTokens.every(
+        (t) => n.includes(t) || n.split(" ").some((m) => m === t || (t.length >= 3 && levDist(m, t) <= 1)),
+      );
+      if (!allFound) continue;
+      if (!invTokens.some((t) => t.length >= 4) && invTokens.length < 2) continue;
+      const score = invTokens.join("").length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = it.id;
+      }
+    }
+    if (best) return best;
+  }
 
   const waterTarget = waterMenuTarget(name);
   if (waterTarget) {
@@ -144,34 +177,7 @@ function findMenuItemIdByName(db, name) {
     if (jid) return jid;
   }
 
-  const invTokens = distinctiveTokens(name);
-  const brandTokens = invTokens.filter((t) => t.length >= 6);
-
-  for (const it of items) {
-    if (aliasNormalize(it.name) === target) return it.id;
-  }
-
-  if (!invTokens.length) return null;
-
-  let best = null;
-  let bestScore = 0;
-  for (const it of items) {
-    const n = aliasNormalize(it.name);
-    if (!n) continue;
-    // Brand i faturës (Golden…) duhet të jetë edhe te produkti — ujë trajtohet më lart
-    if (brandTokens.length && !brandTokens.every((b) => n.includes(b))) continue;
-    const allFound = invTokens.every(
-      (t) => n.includes(t) || n.split(" ").some((m) => m === t || (t.length >= 3 && levDist(m, t) <= 1)),
-    );
-    if (!allFound) continue;
-    if (!invTokens.some((t) => t.length >= 4) && invTokens.length < 2) continue;
-    const score = invTokens.join("").length;
-    if (score > bestScore) {
-      bestScore = score;
-      best = it.id;
-    }
-  }
-  return best;
+  return null;
 }
 
 function ensureStockCategory(db) {
@@ -191,8 +197,171 @@ function ensureStockCategory(db) {
   throw new Error("Nuk ka kategori menuje. Shtoni një kategori para se të regjistroni stokun.");
 }
 
+/** DD/MM/YYYY, DD.MM.YYYY, ose vit nga numri faturës (p.sh. 2026-988 + 01/09). */
+function normalizeInvoiceDateFromScan(rawDate, invoiceNumber) {
+  let s = String(rawDate || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const dmY = s.match(/(\d{1,2})[./\s-](\d{1,2})[./\s-](20\d{2})/);
+  if (dmY) {
+    return `${dmY[3]}-${dmY[2].padStart(2, "0")}-${dmY[1].padStart(2, "0")}`;
+  }
+  const ymd = s.match(/(20\d{2})[./\s-](\d{1,2})[./\s-](\d{1,2})/);
+  if (ymd) {
+    return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+  }
+  const numYear = String(invoiceNumber || "").match(/\b(20\d{2})\b/);
+  const dmOnly = s.match(/(\d{1,2})[./\s-](\d{1,2})/);
+  if (numYear && dmOnly) {
+    return `${numYear[1]}-${dmOnly[2].padStart(2, "0")}-${dmOnly[1].padStart(2, "0")}`;
+  }
+  return "";
+}
+
+function normalizeScannedInvoicePayload(data) {
+  if (!data || typeof data !== "object") return data;
+  const invoice_number = String(data.invoice_number || "").trim() || data.invoice_number;
+  const normalized = normalizeInvoiceDateFromScan(data.invoice_date, invoice_number);
+  const invoice_date =
+    normalized || (String(data.invoice_date || "").trim().slice(0, 10).match(/^\d{4}-\d{2}-\d{2}$/)
+      ? String(data.invoice_date).slice(0, 10)
+      : data.invoice_date);
+  return { ...data, invoice_number, invoice_date };
+}
+
 async function scanReceipt(db, { photo }) {
-  return aiCloud.scanInvoiceFromCloud(db, { photo });
+  const raw = await aiCloud.scanInvoiceFromCloud(db, { photo });
+  return normalizeScannedInvoicePayload(raw);
+}
+
+/**
+ * Validim para regjistrimit — pa kaluar këtu NUK lejohet faturë «e pranuar».
+ */
+function validateReceiptScanApply(
+  {
+    supplier,
+    invoice_number,
+    invoice_date,
+    items,
+    scan_warnings,
+    totals_check,
+    allow_duplicate,
+    allow_owner_override,
+  } = {},
+  db,
+) {
+  const errors = [];
+  const sup = String(supplier || "").trim();
+  if (!sup) errors.push("Mungon furnizuesi — plotëso ose skano përsëri faturën.");
+
+  const invNum = String(invoice_number || "").trim();
+  if (!invNum) errors.push("Mungon numri i faturës.");
+
+  let duplicate_of = null;
+  if (db && typeof db.findPurchaseInvoiceDuplicate === "function" && sup && invNum) {
+    duplicate_of = db.findPurchaseInvoiceDuplicate(sup, invNum);
+    if (duplicate_of && !allow_duplicate) {
+      const tot = Number(duplicate_of.total) || 0;
+      errors.push(
+        `Fatura «${invNum}» për «${sup}» është regjistruar më parë ` +
+          `(data ${duplicate_of.invoice_date || "—"}, shuma ${tot.toFixed(2)} €, ID ${duplicate_of.id}). ` +
+          "E njëjta faturë nuk regjistrohet dy herë — kontrollo te Blerjet ose fshi faturën e vjetër.",
+      );
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  let invDate = String(invoice_date || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(invDate)) {
+    const fixed = normalizeInvoiceDateFromScan(invoice_date, invNum);
+    if (fixed) invDate = fixed;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(invDate)) {
+    errors.push(
+      "Data e faturës është e pavlefshme ose bosh. Kontrollo skanimin (formati: VVVV-MM-DD).",
+    );
+  } else {
+    if (invDate > today) {
+      errors.push(
+        `Data ${invDate} është në të ardhmen. Ndrysho datën sipas faturës fizike para regjistrimit.`,
+      );
+    }
+    const yearInNum = invNum.match(/\b(20\d{2})\b/);
+    if (yearInNum && yearInNum[1] !== invDate.slice(0, 4)) {
+      errors.push(
+        `Numri i faturës përmend vitin ${yearInNum[1]}, por data është ${invDate.slice(0, 4)}. ` +
+          "Rregullo datën ose numrin — skanimi duket i gabuar.",
+      );
+    }
+  }
+
+  const lines = Array.isArray(items) ? items : [];
+  if (!lines.length) errors.push("Nuk ka artikuj me sasi > 0 për regjistrim.");
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i];
+    const label = String(raw.name || raw.emri || `Rreshti ${i + 1}`).trim() || `Rreshti ${i + 1}`;
+    const converted = packMath.convertPackToPieces(raw);
+    if (!converted.ok) {
+      errors.push(`«${label}»: ${converted.reason || "rresht i pavlefshëm"}.`);
+      continue;
+    }
+    const unit = packMath.normalizeUnit(raw.unit || raw.njesia);
+    if (unit === "pako") {
+      const explicit = Number(raw.pieces_per_pack ?? raw.copa_ne_pako ?? raw.copa_per_pako);
+      const fromName = packMath.piecesFromName(raw.name || raw.emri);
+      const ppp = converted.pieces_per_pack;
+      if (ppp <= 1 && !(explicit > 1) && !fromName) {
+        errors.push(
+          `«${label}»: njësia është PAko — shkruani sa copë ka 1 pako (p.sh. 24 për Coca Cola, 12 për birra), ` +
+            "ose ndrysho në copë nëse çdo rresht është 1 copë.",
+        );
+      }
+    }
+    const aiLine = packMath.parseEuroNumber(
+      raw.line_total ?? raw.vlera ?? raw.total ?? raw.vlera_me_tvsh,
+    );
+    if (Number.isFinite(aiLine) && aiLine > 0) {
+      const diff = Math.abs(converted.line_total - aiLine);
+      if (diff > 0.06) {
+        errors.push(
+          `«${label}»: sasia × çmimi (${converted.line_total.toFixed(2)} €) ≠ vlera në faturë (${aiLine.toFixed(2)} €). ` +
+            "Korrigjo sasinë, njesinë, copa/pako ose çmimin.",
+        );
+      }
+    }
+  }
+
+  const warnList = Array.isArray(scan_warnings) ? scan_warnings.filter(Boolean) : [];
+  for (const w of warnList) {
+    errors.push(typeof w === "string" ? w : String(w.message || w));
+  }
+
+  const tc = totals_check && typeof totals_check === "object" ? totals_check : null;
+  if (tc && tc.ok === false) {
+    const msg = String(tc.message || tc.gabim || "").trim();
+    errors.push(
+      msg ||
+        "Totali i faturës nuk përputhet me rreshtat — skanimi duket i pasaktë.",
+    );
+  }
+
+  if (allow_owner_override) {
+    const critical = [];
+    if (!sup) critical.push("Mungon furnizuesi — plotëso ose skano përsëri faturën.");
+    const lineCount = Array.isArray(items) ? items.filter((raw) => {
+      const converted = packMath.convertPackToPieces(raw);
+      return converted.ok && converted.quantity > 0;
+    }).length : 0;
+    if (!lineCount) critical.push("Nuk ka artikuj me sasi > 0 për regjistrim.");
+    return {
+      ok: critical.length === 0,
+      errors: critical,
+      duplicate_of,
+      validation_skipped: errors,
+    };
+  }
+
+  return { ok: errors.length === 0, errors, duplicate_of };
 }
 
 function applyReceiptToStock(db, {
@@ -205,7 +374,31 @@ function applyReceiptToStock(db, {
   supplier_vat,
   vat_rate,
   purchase_kind,
+  scan_warnings,
+  totals_check,
+  allow_duplicate,
+  allow_owner_override,
 }) {
+  const validation = validateReceiptScanApply(
+    {
+      supplier,
+      invoice_number,
+      invoice_date,
+      items,
+      scan_warnings,
+      totals_check,
+      allow_duplicate,
+      allow_owner_override,
+    },
+    db,
+  );
+  if (!validation.ok) {
+    throw new Error(
+      "Fatura NUK u regjistrua — rregulloni gabimet dhe provoni përsëri:\n\n" +
+        validation.errors.join("\n"),
+    );
+  }
+
   const lines = Array.isArray(items) ? items : [];
   if (!lines.length) throw new Error("Nuk ka artikuj për regjistrim.");
 
@@ -231,7 +424,10 @@ function applyReceiptToStock(db, {
           name: converted.name,
           category,
           price: sellPrice > 0 ? sellPrice : 0,
-          vat_category: "18",
+          vat_category:
+            raw.vat_rate != null && raw.vat_rate !== ""
+              ? normalizeReceiptVatCategory(raw.vat_rate)
+              : "18",
         });
         created += 1;
       } catch (err) {
@@ -246,6 +442,7 @@ function applyReceiptToStock(db, {
       menu_item_id: menuItemId,
       quantity: converted.quantity,
       unit_price: converted.unit_price >= 0 ? converted.unit_price : 0,
+      vat_rate: raw.vat_rate != null && raw.vat_rate !== "" ? raw.vat_rate : undefined,
     });
     conversions.push({
       name: converted.name,
@@ -273,8 +470,20 @@ function applyReceiptToStock(db, {
     typeof db.getLatestPurchaseInvoiceDate === "function" ? db.getLatestPurchaseInvoiceDate() : null;
   const mustAdjust = latest && invDate < latest;
 
-  let invNum = String(invoice_number || "").trim() || `AI-${Date.now()}`;
+  const invNumOriginal = String(invoice_number || "").trim() || `AI-${Date.now()}`;
+  let invNum = invNumOriginal;
   const sup = String(supplier || "Furnizues AI").trim() || "Furnizues AI";
+
+  const dupExisting =
+    typeof db.findPurchaseInvoiceDuplicate === "function"
+      ? db.findPurchaseInvoiceDuplicate(sup, invNumOriginal)
+      : null;
+  if (dupExisting && !allow_duplicate) {
+    const tot = Number(dupExisting.total) || 0;
+    throw new Error(
+      `Fatura «${invNumOriginal}» për «${sup}» ekziston (ID ${dupExisting.id}, ${dupExisting.invoice_date}, ${tot.toFixed(2)} €). Nuk dublikohet.`,
+    );
+  }
 
   function createInv(numberStored, notes) {
     return db.createPurchaseInvoice({
@@ -292,7 +501,7 @@ function applyReceiptToStock(db, {
     });
   }
 
-  const baseNotes = mustAdjust
+  let baseNotes = mustAdjust
     ? from_cloud_queue
       ? "Telefon/AI — rregullim (datë para faturës së fundit)"
       : "AI — rregullim (datë para faturës së fundit)"
@@ -300,18 +509,26 @@ function applyReceiptToStock(db, {
       ? "Telefon/AI"
       : "";
 
-  let invoice;
-  try {
-    invoice = createInv(invNum, baseNotes);
-  } catch (err) {
-    const msg = String(err.message || err);
-    if (/ekziston tashmë|dublikohet/i.test(msg)) {
-      invNum = `${invNum}-R${Date.now().toString(36).slice(-4)}`;
-      invoice = createInv(invNum, "AI — riblerje (nr. fature i ri për të shmangur dublimin)");
-    } else {
-      throw err;
-    }
+  if (dupExisting && allow_duplicate) {
+    invNum = `${invNumOriginal}-KOPIE-${Date.now().toString(36).slice(-4)}`;
+    baseNotes =
+      `${baseNotes ? baseNotes + " · " : ""}Regjistrim i dytë me leje pronari — nr. origjinal «${invNumOriginal}», ID ekzistues ${dupExisting.id}.`;
   }
+
+  const skippedChecks = Array.isArray(validation.validation_skipped)
+    ? validation.validation_skipped.filter(Boolean)
+    : [];
+  if (allow_owner_override && skippedChecks.length) {
+    const brief = skippedChecks.slice(0, 6).join("; ");
+    const extra = skippedChecks.length > 6 ? ` (+${skippedChecks.length - 6} të tjera)` : "";
+    baseNotes =
+      `${baseNotes ? baseNotes + " · " : ""}` +
+      "Leje pronari — kontrolli AI nuk kaloi: stoku/kontabilist mund të mos jenë saktë. " +
+      brief +
+      extra;
+  }
+
+  const invoice = createInv(invNum, baseNotes);
 
   if (!invoice || !invoice.items?.length) {
     throw new Error("Ruajtja e faturës dështoi — stoku NUK u ndryshua. Provoni sërish.");
@@ -326,12 +543,17 @@ function applyReceiptToStock(db, {
     skipped,
     conversions,
     as_adjustment: !!mustAdjust,
+    invoice_number_stored: invNum,
+    duplicate_copy: !!(dupExisting && allow_duplicate),
   };
 }
 
 module.exports = {
   scanReceipt,
+  validateReceiptScanApply,
   applyReceiptToStock,
+  normalizeInvoiceDateFromScan,
+  normalizeScannedInvoicePayload,
   findMenuItemIdByName,
   parseEuroNumber: packMath.parseEuroNumber,
   convertPackToPieces: packMath.convertPackToPieces,

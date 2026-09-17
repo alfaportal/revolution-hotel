@@ -7544,6 +7544,22 @@ function increaseMenuItemStock(menuItemId, qty) {
   return { id, name: row.name, stock_qty: stockAfter, stockBefore };
 }
 
+/** Faturë blerjeje me të njëjtin furnizues + numër (pa dublim të heshtur). */
+function findPurchaseInvoiceDuplicate(supplier, invoiceNumber) {
+  const sup = String(supplier || "").trim();
+  const invNum = String(invoiceNumber || "").trim();
+  if (!sup || !invNum) return null;
+  const row = sqlite
+    .prepare(
+      `SELECT id, supplier, invoice_number, invoice_date, total, status
+       FROM purchase_invoices
+       WHERE lower(trim(supplier)) = lower(?) AND trim(invoice_number) = ?
+       LIMIT 1`,
+    )
+    .get(sup, invNum);
+  return row || null;
+}
+
 /** Data e faturës së fundit (blerje + rregullime) — për rend kronologjik. */
 function getLatestPurchaseInvoiceDate() {
   const row = sqlite
@@ -8056,6 +8072,7 @@ function createPurchaseInvoice({
   supplier_vat,
   vat_rate,
   purchase_kind,
+  allow_duplicate,
 } = {}) {
   const sup = String(supplier || "").trim();
   if (!sup) throw new Error("Shkruani emrin e furnizuesit");
@@ -8103,7 +8120,7 @@ function createPurchaseInvoice({
     throw new Error("Data e faturës është e pavlefshme");
   }
   const invNum = String(invoice_number || "").trim();
-  const noteTxt = String(notes || "").trim();
+  let noteTxt = String(notes || "").trim();
 
   if (!isAdjustment) {
     const latest = getLatestPurchaseInvoiceDate();
@@ -8115,26 +8132,30 @@ function createPurchaseInvoice({
     }
   }
 
+  let numberStored =
+    invNum ||
+    (isAdjustment ? `RRG-${Date.now()}` : `BL-${Date.now()}`);
+
   if (invNum) {
-    const dup = sqlite
-      .prepare(
-        `SELECT id FROM purchase_invoices
-         WHERE lower(trim(supplier)) = lower(?) AND trim(invoice_number) = ?
-         LIMIT 1`,
-      )
-      .get(sup, invNum);
-    if (dup) {
+    const dupExisting = findPurchaseInvoiceDuplicate(sup, invNum);
+    if (dupExisting && !allow_duplicate) {
+      const tot = Number(dupExisting.total) || 0;
       throw new Error(
-        `Fatura «${invNum}» për «${sup}» ekziston tashmë (ID ${dup.id}). Nuk dublikohet.`,
+        `Fatura «${invNum}» për «${sup}» është regjistruar më parë ` +
+          `(data ${dupExisting.invoice_date || "—"}, shuma ${tot.toFixed(2)} €, ID ${dupExisting.id}). ` +
+          "E njëjta faturë nuk regjistrohet dy herë — kontrollo te Blerjet ose fshi faturën e vjetër.",
       );
+    }
+    if (dupExisting && allow_duplicate) {
+      numberStored = `${invNum}-KOPIE-${Date.now().toString(36).slice(-4)}`;
+      if (isAdjustment && noteTxt) {
+        noteTxt = `${noteTxt} · Regjistrim i dytë me leje pronari — nr. origjinal «${invNum}», ID ${dupExisting.id}.`;
+      }
     }
   }
 
   const total = normalized.reduce((s, it) => s + it.line_total, 0);
   const supplierStored = noteTxt && isAdjustment ? `${sup}` : sup;
-  const numberStored =
-    invNum ||
-    (isAdjustment ? `RRG-${Date.now()}` : `BL-${Date.now()}`);
 
   return sqlite.transaction(() => {
     const r = sqlite
@@ -10706,6 +10727,7 @@ function getVersionInfo() {
     getPurchaseStats30Days,
     listPurchases,
     getPurchaseInvoice,
+    findPurchaseInvoiceDuplicate,
     getLatestPurchaseInvoiceDate,
     createPurchaseInvoice,
     createPurchaseAdjustment,

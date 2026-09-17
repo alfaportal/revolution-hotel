@@ -4053,20 +4053,59 @@ app.put("/api/menu/reorder", auth, adminOnly, (req, res) => {
   }
 });
 
-/** Shton stok me dorë (pa faturë blerjeje) — SQLite + sync katalogu. */
+/** Shtesë stoku nga paneli — faturë blerjeje (goods) + stok përmes applyPurchaseStockDelta. */
 app.post("/api/stock/add", auth, adminOnly, (req, res) => {
   try {
     const menuItemId = Number(req.body?.menu_item_id ?? req.body?.product_id ?? req.body?.id);
     const qty = Number(req.body?.quantity ?? req.body?.qty ?? req.body?.sasia);
-    const result = db.adjustMenuItemStockByDelta(
-      menuItemId,
-      qty,
-      "Shtesë manuale nga Stoku",
-      req.session?.emri || "Admin",
-    );
+    if (!menuItemId || !Number.isFinite(qty) || !(qty > 0)) {
+      return res.status(400).json({ gabim: "Produkt ose sasi e pavlefshme për stok." });
+    }
+    const menuRow = db.getMenuItemById(menuItemId);
+    if (!menuRow) return res.status(400).json({ gabim: "Produkti nuk u gjet" });
+    const fromBodyCost = Number(req.body?.unit_price ?? req.body?.cost_price);
+    let unitPrice = Number(menuRow.cost_price) || 0;
+    if (Number.isFinite(fromBodyCost) && fromBodyCost >= 0) {
+      unitPrice = fromBodyCost;
+      db.updateMenuItem(menuItemId, { cost_price: unitPrice });
+    } else if (unitPrice > 0) {
+      unitPrice = Math.max(0, unitPrice);
+    } else {
+      unitPrice = Math.max(0, Number(menuRow.price) || 0);
+    }
+    const sellFromBody = Number(req.body?.sell_price ?? req.body?.price);
+    if (Number.isFinite(sellFromBody) && sellFromBody >= 0) {
+      db.updateMenuPrice(menuItemId, sellFromBody);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const invoice = db.createPurchaseInvoice({
+      supplier: "Shtesë manuale (Stoku)",
+      invoice_number: `STK-${Date.now()}-${menuItemId}`,
+      invoice_date: today,
+      purchase_kind: "goods",
+      items: [
+        {
+          menu_item_id: menuItemId,
+          quantity: qty,
+          unit_price: unitPrice,
+        },
+      ],
+    });
     syncCatalogToCloud();
-    auditReq(req, "Stok +", `${result.name} +${qty} → ${result.stock_qty}`);
-    res.json({ ok: true, ...result });
+    const after = db.getMenuItemById(menuItemId);
+    auditReq(
+      req,
+      "Stok + / blerje",
+      `${after?.name || menuRow.name} +${qty} → ${after?.stock_qty ?? "?"}`,
+    );
+    res.json({
+      ok: true,
+      id: menuItemId,
+      name: after?.name || menuRow.name,
+      stock_qty: after?.stock_qty ?? menuRow.stock_qty,
+      invoice_id: invoice?.id ?? null,
+      purchase_registered: true,
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -5151,6 +5190,14 @@ app.get("/api/purchases/meta/latest-date", auth, adminOnly, (_req, res) => {
   res.json({ ok: true, latest_purchase_date: db.getLatestPurchaseInvoiceDate() });
 });
 
+app.post("/api/purchases/check-duplicate", auth, adminOnly, (req, res) => {
+  const duplicate_of = db.findPurchaseInvoiceDuplicate(
+    req.body?.supplier,
+    req.body?.invoice_number,
+  );
+  res.json({ ok: true, duplicate_of: duplicate_of || null });
+});
+
 app.get("/api/purchases/:id/print", auth, adminOnly, (req, res) => {
   const inv = db.getPurchaseInvoice(Number(req.params.id));
   if (!inv) return res.status(404).json({ gabim: "Fatura nuk u gjet" });
@@ -5191,13 +5238,19 @@ app.post("/api/purchases", auth, adminOnly, (req, res) => {
     auditReq(
       req,
       isAdj ? "Rregullim fature blerjeje" : "Blerje stoku — faturë e re",
-      `${invoice.supplier} · ${Number(invoice.total).toFixed(2)} €`,
+      `${invoice.supplier} · ${Number(invoice.total).toFixed(2)} € · ${invoice.invoice_number || ""}`,
     );
+    const origNum = String(body.invoice_number || "").trim();
+    const duplicate_copy =
+      body.allow_duplicate === true &&
+      origNum &&
+      String(invoice.invoice_number || "").includes("-KOPIE-");
     res.json({
       ok: true,
       invoice,
       kontabilisti: true,
       latest_purchase_date: db.getLatestPurchaseInvoiceDate(),
+      duplicate_copy,
     });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -6595,46 +6648,136 @@ app.put("/api/license", auth, adminOnly, async (req, res) => {
 });
 
 app.get("/api/ai/status", auth, adminOnly, async (_req, res) => {
-  res.json({
-    ok: true,
-    enabled: false,
-    paused: true,
-    configured: false,
-    package_ai: false,
-    gabim: "AI do të aktivizohet kur hoteli të lidhet me cloud",
-  });
+  try {
+    if (!aiCloud.AI_ENABLED) {
+      return res.json({
+        ok: true,
+        enabled: false,
+        paused: true,
+        configured: false,
+        package_ai: false,
+        gabim: aiCloud.AI_DISABLED_MSG || "AI është i çaktivizuar.",
+      });
+    }
+    const status = await aiCloud.fetchAiStatus(db);
+    res.json(status);
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
 });
 
-app.post("/api/ai/scan-menu", auth, adminOnly, async (_req, res) => {
-  return res.status(503).json({
-    ok: false,
-    gabim: "AI do të aktivizohet kur hoteli të lidhet me cloud",
-  });
+app.post("/api/ai/scan-menu", auth, adminOnly, async (req, res) => {
+  try {
+    if (!aiCloud.AI_ENABLED) {
+      return res.status(503).json({ ok: false, gabim: aiCloud.AI_DISABLED_MSG });
+    }
+    const photo = req.body?.photo || req.body?.image || "";
+    const result = await aiCloud.scanMenuFromCloud(db, { photo });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.status === 403 ? 403 : e.status === 503 ? 503 : 400;
+    res.status(status).json({ ok: false, gabim: e.message, code: e.code || null });
+  }
 });
 
 const AI_HOTEL_OFF = {
   ok: false,
   enabled: false,
-  gabim: "AI do të aktivizohet kur hoteli të lidhet me cloud",
+  gabim: aiCloud.AI_DISABLED_MSG || "AI nuk është i disponueshëm.",
 };
 
-app.post("/api/ai/scan-invoice", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.post("/api/ai/scan-invoice", auth, adminOnly, async (req, res) => {
+  try {
+    if (!aiCloud.AI_ENABLED) {
+      return res.status(503).json({ ok: false, gabim: AI_HOTEL_OFF.gabim });
+    }
+    const photo = req.body?.photo || req.body?.image || "";
+    const receiptScan = require("./ai/ai-receipt-scan");
+    const result = await receiptScan.scanReceipt(db, { photo });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.status === 403 ? 403 : e.status === 503 ? 503 : 400;
+    res.status(status).json({ ok: false, gabim: e.message, code: e.code || null });
+  }
 });
 
-app.post("/api/ai/apply-invoice-scan", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.post("/api/ai/validate-invoice-scan", auth, adminOnly, (req, res) => {
+  try {
+    const receiptScan = require("./ai/ai-receipt-scan");
+    const validation = receiptScan.validateReceiptScanApply(
+      {
+        supplier: req.body?.supplier,
+        invoice_number: req.body?.invoice_number,
+        invoice_date: req.body?.invoice_date,
+        items: req.body?.items || [],
+        scan_warnings: req.body?.scan_warnings,
+        totals_check: req.body?.totals_check,
+        allow_duplicate: req.body?.allow_duplicate === true,
+        allow_owner_override: req.body?.allow_owner_override === true,
+      },
+      db,
+    );
+    res.json({
+      ok: validation.ok,
+      errors: validation.errors,
+      duplicate_of: validation.duplicate_of || null,
+      validation_skipped: validation.validation_skipped || null,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, errors: [e.message] });
+  }
 });
 
-app.get("/api/ai/usage", auth, adminOnly, async (_req, res) => {
-  res.json({
-    ok: true,
-    enabled: false,
-    calls: 0,
-    tokens_total: 0,
-    cost_eur_total: 0,
-    gabim: AI_HOTEL_OFF.gabim,
-  });
+app.post("/api/ai/apply-invoice-scan", auth, adminOnly, async (req, res) => {
+  try {
+    if (!aiCloud.AI_ENABLED) {
+      return res.status(503).json({ ok: false, gabim: AI_HOTEL_OFF.gabim });
+    }
+    const receiptScan = require("./ai/ai-receipt-scan");
+    const result = receiptScan.applyReceiptToStock(db, {
+      supplier: req.body?.supplier,
+      invoice_number: req.body?.invoice_number,
+      invoice_date: req.body?.invoice_date,
+      items: req.body?.items || [],
+      supplier_nui: req.body?.supplier_nui,
+      supplier_vat: req.body?.supplier_vat,
+      vat_rate: req.body?.vat_rate,
+      purchase_kind: req.body?.purchase_kind || "goods",
+      scan_warnings: req.body?.scan_warnings,
+      totals_check: req.body?.totals_check,
+      allow_duplicate: req.body?.allow_duplicate === true,
+      allow_owner_override: req.body?.allow_owner_override === true,
+    });
+    syncCatalogToCloud();
+    auditReq(
+      req,
+      "AI skanim fature → stok",
+      `${result.applied_count} artikuj · ${result.created_count} të rinj`,
+    );
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/ai/usage", auth, adminOnly, async (req, res) => {
+  try {
+    if (!aiCloud.AI_ENABLED) {
+      return res.json({
+        ok: true,
+        enabled: false,
+        calls: 0,
+        tokens_total: 0,
+        cost_eur_total: 0,
+        gabim: AI_HOTEL_OFF.gabim,
+      });
+    }
+    const tokenBilling = require("./ai/ai-token-billing");
+    const summary = await tokenBilling.getUsageSummary(db, { month: req.query.month });
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
 });
 
 app.get("/api/ai/waiter-rating", auth, adminOnly, async (_req, res) => {

@@ -2125,7 +2125,7 @@
       <div class="purchases-panel-header">
         <div>
           <h2 class="purchases-panel-title">Stoku</h2>
-          <p class="purchases-panel-sub">Shitja zbret stokun · blerja e rrit · stoku 0 → alarm. Blerjet / fatura: te skeda Blerjet.</p>
+          <p class="purchases-panel-sub">Shitja zbret stokun · «+ Shto stok» rrit stokun dhe regjistron blerje (Blerjet + Kontabilisti) · stoku 0 → alarm.</p>
         </div>
         <div class="tables-panel-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="btn-stoku-reconcile">Verifiko stokun</button>
@@ -4235,6 +4235,38 @@
     </div>
   </div>
 
+  <div id="modal-stock-add" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="stock-add-backdrop"></div>
+    <div class="table-modal-content purchase-modal-content">
+      <h2 id="stock-add-title">Shto stok</h2>
+      <p class="table-modal-sub" id="stock-add-sub">
+        Rrit stokun për këtë produkt dhe krijon faturë blerjeje «Shtesë manuale (Stoku)» — shfaqet te Blerjet dhe Kontabilisti.
+      </p>
+      <div class="purchase-form-grid">
+        <div class="purchase-form-field">
+          <label for="stock-add-qty">Sa copë shtohen në stok?</label>
+          <input type="number" id="stock-add-qty" min="0.001" step="0.001" value="1">
+        </div>
+        <div class="purchase-form-field" id="stock-add-cost-field">
+          <label for="stock-add-cost">Sa e ble copën? — kosto / blerje (€)</label>
+          <input type="number" id="stock-add-cost" min="0" step="0.01" placeholder="p.sh. 0.35">
+        </div>
+        <div class="purchase-form-field">
+          <label for="stock-add-sell">Sa e shet copën? — çmimi në menu (€)</label>
+          <input type="number" id="stock-add-sell" min="0" step="0.01" placeholder="p.sh. 1.50">
+        </div>
+      </div>
+      <p class="fiscal-save-msg" id="stock-add-cost-hint">
+        Kosto shkon te fatura e blerjes dhe Kontabilisti; çmimi i shitjes përditësohet në menu/kamarier.
+      </p>
+      <div class="fiscal-save-msg" id="stock-add-msg"></div>
+      <div class="purchase-modal-actions">
+        <button type="button" class="btn btn-ghost" id="stock-add-cancel">Anulo</button>
+        <button type="button" class="btn btn-primary" id="stock-add-save">Regjistro stok + blerje</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-reservation" class="table-modal" hidden>
     <div class="table-modal-backdrop" id="reservation-modal-backdrop"></div>
     <div class="table-modal-content purchase-modal-content">
@@ -4748,17 +4780,28 @@
     <div class="table-modal-backdrop" id="receipt-scan-backdrop"></div>
     <div class="table-modal-content purchase-modal-content menu-scan-modal-content">
       <h2 id="receipt-scan-title">Skanoj Faturë</h2>
-      <p class="table-modal-sub">Blerjet: kamera/galeri → AI lexon faturën → ti kontrollon → «Regjistro në Stok». Shpenzimet e tjera shkojnë te Kontabilisti (modul i ndarë).</p>
+      <p class="table-modal-sub">Blerjet: kamera/galeri → AI lexon faturën → ti kontrollon (datë, copë/pako, çmime) → «Regjistro në Stok». Programi bllokon regjistrimin nëse skanimi ka gabime ose pako pa «copa/pako». Shpenzimet e tjera → Kontabilisti (modul i ndarë).</p>
       <div class="menu-scan-upload">
-        <label class="btn btn-ghost btn-sm" for="receipt-scan-file-camera">📷 Kamera</label>
+        <span style="font-size:0.8rem;color:var(--ngjyr-muted);width:100%">Foto 1 — pjesa e sipërme (furnizues, data, fillimi i artikujve)</span>
+        <label class="btn btn-ghost btn-sm" for="receipt-scan-file-camera">📷 Kamera 1</label>
         <input type="file" id="receipt-scan-file-camera" accept="image/*" capture="environment" hidden>
-        <label class="btn btn-ghost btn-sm" for="receipt-scan-file-gallery">📁 Galeri / Album</label>
+        <label class="btn btn-ghost btn-sm" for="receipt-scan-file-gallery">📁 Galeri 1</label>
         <input type="file" id="receipt-scan-file-gallery" accept="image/*" hidden>
         <input type="file" id="receipt-scan-file" accept="image/*" hidden>
-        <button type="button" class="btn btn-primary btn-sm" id="btn-receipt-scan-run" disabled>Skano</button>
       </div>
       <div id="receipt-scan-preview-wrap" class="menu-scan-preview-wrap" hidden>
-        <img id="receipt-scan-preview" alt="Parapamje fature">
+        <img id="receipt-scan-preview" alt="Foto 1 fature">
+      </div>
+      <div class="menu-scan-upload" style="margin-top:0.5rem">
+        <span style="font-size:0.8rem;color:var(--ngjyr-muted);width:100%">Foto 2 (opsionale) — pjesa e poshtme / vazhdimi i artikujve</span>
+        <label class="btn btn-ghost btn-sm" for="receipt-scan-file2-camera">📷 Kamera 2</label>
+        <input type="file" id="receipt-scan-file2-camera" accept="image/*" capture="environment" hidden>
+        <label class="btn btn-ghost btn-sm" for="receipt-scan-file2-gallery">📁 Galeri 2</label>
+        <input type="file" id="receipt-scan-file2-gallery" accept="image/*" hidden>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-receipt-scan-run" disabled>Skano faturën</button>
+      </div>
+      <div id="receipt-scan-preview-wrap-2" class="menu-scan-preview-wrap" hidden>
+        <img id="receipt-scan-preview-2" alt="Foto 2 fature">
       </div>
       <div id="receipt-scan-status" class="fiscal-save-msg"></div>
       <div id="receipt-scan-loading" class="menu-scan-loading" hidden>Duke skanuar faturën…</div>
@@ -4785,7 +4828,7 @@
             <input type="date" id="receipt-scan-date">
           </div>
           <div class="purchase-form-field">
-            <label for="receipt-scan-vat-rate">TVSH %</label>
+            <label for="receipt-scan-vat-rate">TVSH % (default rresht)</label>
             <select id="receipt-scan-vat-rate">
               <option value="18" selected>18%</option>
               <option value="8">8%</option>
@@ -4802,6 +4845,7 @@
                 <th>Njësia</th>
                 <th>Copa/pako</th>
                 <th>Çmimi</th>
+                <th title="Norma TVSH për këtë rresht">TVSH</th>
                 <th>Copa (stok)</th>
                 <th>Çmim/copë</th>
               </tr>
@@ -4812,6 +4856,7 @@
         <p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">
           Nëse fatura thotë <strong>copë</strong> (DISKONT etj.): Sasia shkon drejt në stok (copa/pako=1).
           Vetëm nëse thotë <strong>pako</strong>: Sasia × Copa/pako = stoku.
+          <strong>TVSH:</strong> ndaj 8% (ushqim) dhe 18% (pije/të tjera) për rresht — Kontabilisti llogarit [45]/[K2] automatikisht.
         </p>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
           <button type="button" class="btn btn-ghost" id="btn-receipt-scan-calc-packs">Llogarit pako → copa</button>
@@ -5957,6 +6002,114 @@
     let menuProductCatFilter = undefined;
     /** null = Krejt; string = kategori. Default = kategoria e parë (si te Menyja). */
     let stokuCatFilter = undefined;
+    let stockAddPendingMenuId = null;
+
+    function closeStockAddModal() {
+      stockAddPendingMenuId = null;
+      const modal = document.getElementById("modal-stock-add");
+      if (modal) modal.hidden = true;
+      const msg = document.getElementById("stock-add-msg");
+      if (msg) msg.textContent = "";
+    }
+
+    function openStockAddModal(menuItemId) {
+      const item = menuItemsCache.find((m) => Number(m.id) === Number(menuItemId));
+      if (!item) {
+        alert("Produkti nuk u gjet — rifresko menunë.");
+        return;
+      }
+      stockAddPendingMenuId = Number(menuItemId);
+      const title = document.getElementById("stock-add-title");
+      if (title) title.textContent = `Shto stok — ${item.name || "Produkt"}`;
+      const qtyEl = document.getElementById("stock-add-qty");
+      if (qtyEl) qtyEl.value = "1";
+      const storedCost = Number(item.cost_price) || 0;
+      const sellPrice = Number(item.price) || 0;
+      const costEl = document.getElementById("stock-add-cost");
+      const sellEl = document.getElementById("stock-add-sell");
+      if (costEl) costEl.value = storedCost > 0 ? storedCost.toFixed(2) : "";
+      if (sellEl) sellEl.value = sellPrice > 0 ? sellPrice.toFixed(2) : "";
+      const msg = document.getElementById("stock-add-msg");
+      if (msg) msg.textContent = "";
+      const modal = document.getElementById("modal-stock-add");
+      if (modal) modal.hidden = false;
+      qtyEl?.focus();
+    }
+
+    async function submitStockAddFromModal() {
+      const id = stockAddPendingMenuId;
+      if (!id) return;
+      const msg = document.getElementById("stock-add-msg");
+      const saveBtn = document.getElementById("stock-add-save");
+      const qtyEl = document.getElementById("stock-add-qty");
+      const costEl = document.getElementById("stock-add-cost");
+      const sellEl = document.getElementById("stock-add-sell");
+      const quantity = Number(qtyEl?.value);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        if (msg) {
+          msg.textContent = "Sasia duhet të jetë më e madhe se 0.";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+        return;
+      }
+      const item = menuItemsCache.find((m) => Number(m.id) === id);
+      const costRaw = String(costEl?.value ?? "").trim().replace(",", ".");
+      if (!costRaw) {
+        if (msg) {
+          msg.textContent = "Shkruani sa e ble copën (kosto €).";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+        costEl?.focus();
+        return;
+      }
+      const unit_price = Number(costRaw);
+      if (!Number.isFinite(unit_price) || unit_price < 0) {
+        if (msg) {
+          msg.textContent = "Kostoja e blerjes duhet të jetë 0 ose më shumë.";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+        return;
+      }
+      const sellRaw = String(sellEl?.value ?? "").trim().replace(",", ".");
+      let sell_price;
+      if (sellRaw) {
+        sell_price = Number(sellRaw);
+        if (!Number.isFinite(sell_price) || sell_price < 0) {
+          if (msg) {
+            msg.textContent = "Çmimi i shitjes duhet të jetë 0 ose më shumë.";
+            msg.style.color = "var(--ngjyr-danger)";
+          }
+          return;
+        }
+      }
+      if (saveBtn) saveBtn.disabled = true;
+      if (msg) msg.textContent = "Duke regjistruar…";
+      try {
+        const payload = { menu_item_id: id, quantity, unit_price };
+        if (sell_price != null && Number.isFinite(sell_price)) payload.sell_price = sell_price;
+        const r = await api("/api/stock/add", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        closeStockAddModal();
+        await ngarkoMenu();
+        renderStokuGrid();
+        ngarkoPasqyra().catch(() => {});
+        ngarkoBlerjet().catch(() => {});
+        if (typeof ngarkoBilancin === "function") ngarkoBilancin().catch(() => {});
+        alert(
+          `${r.name || item?.name || "Produkti"}: +${quantity} → stoku ${r.stock_qty}\n` +
+            "Blerja u regjistrua (Blerjet / Kontabilisti).",
+        );
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Gabim gjatë shtimit të stokut";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    }
 
     function escMenuAttr(s) {
       return String(s ?? "")
@@ -6366,10 +6519,6 @@
       });
     }
 
-    /** Paralajmërim: /api/stock/add — kontabilisti kërkon faturë blerjeje; reconciliacioni e njeh shtesën manuale. */
-    const SHTES_MANUALE_STOKU_KONTABILIST_MSG =
-      "⚠️ Shtesa manuale (+ Shto stok) regjistrohet për verifikimin e stokut, por jo te Kontabilisti — për blerje zyrtare përdorni Blerjet.";
-
     async function verifikoStokun() {
       const panel = document.getElementById("stoku-reconcile-panel");
       const btn = document.getElementById("btn-stoku-reconcile");
@@ -6491,6 +6640,9 @@
             ${productCardHeader(it, false)}
             <div class="product-card-body">
               <div class="product-card-meta"><span class="product-card-stock">Stoku: ${stockLabel}${stockBadge}</span></div>
+              <div class="product-card-meta" style="font-size:0.78rem;color:var(--ngjyr-muted)">
+                Blerje: ${formatEuro(Number(it.cost_price) || 0)} · Shitje: ${formatEuro(it.price)}
+              </div>
               <div class="product-card-price">${formatEuro(it.price)}</div>
             </div>
             <div class="product-card-actions">
@@ -6512,39 +6664,8 @@
         grid.appendChild(more);
       }
       grid.querySelectorAll("[data-stock-add]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          const id = Number(btn.dataset.stockAdd);
-          if (
-            !confirm(
-              `${SHTES_MANUALE_STOKU_KONTABILIST_MSG}\n\nVazhdo me shtimin manual të stokut?`,
-            )
-          ) {
-            return;
-          }
-          const raw = prompt("Sa copë të shtohen në stok?", "1");
-          if (raw == null) return;
-          const quantity = Number(raw);
-          if (!Number.isFinite(quantity) || quantity <= 0) {
-            alert("Sasia duhet të jetë > 0.");
-            return;
-          }
-          btn.disabled = true;
-          try {
-            const r = await api("/api/stock/add", {
-              method: "POST",
-              body: JSON.stringify({ menu_item_id: id, quantity }),
-            });
-            await ngarkoMenu();
-            renderStokuGrid();
-            ngarkoPasqyra().catch(() => {});
-            alert(
-              `${r.name || "Produkti"}: +${quantity} → stoku ${r.stock_qty}\n\n${SHTES_MANUALE_STOKU_KONTABILIST_MSG}`,
-            );
-          } catch (err) {
-            alert(err.message || "Gabim gjatë shtimit të stokut");
-          } finally {
-            btn.disabled = false;
-          }
+        btn.addEventListener("click", () => {
+          openStockAddModal(Number(btn.dataset.stockAdd));
         });
       });
     }
@@ -7007,6 +7128,22 @@
       document.getElementById("purchase-supplier").focus();
     }
 
+    function confirmDuplicatePurchaseInvoiceUse(invoice_number, supplier, duplicate_of) {
+      if (!duplicate_of) return false;
+      const tot = Number(duplicate_of.total) || 0;
+      const invDisp = invoice_number || "—";
+      const supDisp = supplier || "—";
+      return confirm(
+        "KJO FATURË ËSHTË REGJISTRUAR MË PARË\n\n" +
+          `Numri: «${invDisp}» · Furnizues: «${supDisp}»\n` +
+          `Regjistrimi i vjetër: data ${duplicate_of.invoice_date || "—"}, shuma ${tot.toFixed(2)} € (ID ${duplicate_of.id}).\n\n` +
+          "A jeni i sigurt që doni ta përdorni të njëjtën faturë EDHE HERË?\n\n" +
+          "⚠ Stoku mund të dyfishohet dhe në Kontabilist / librat ATK regjistrimi mund të mos jetë si duhet.\n" +
+          "Nëse e keni regjistruar gabimisht të njëjtën faturë, shtyp Anulo dhe kontrollo te Blerjet.\n\n" +
+          "Vazhdo vetëm nëse është faturë tjetër fizike me të njëjtin numër (rrallë) ose rregullim i qëllimshëm.",
+      );
+    }
+
     async function ruajFaturenBlerje() {
       if (purchaseSaving) return;
       const msg = document.getElementById("msg-purchase");
@@ -7057,6 +7194,29 @@
         msg.style.color = "var(--ngjyr-danger)";
         return;
       }
+      const editingId = purchaseEditingId;
+      let allowDuplicatePurchase = false;
+      if (!editingId && invoice_number) {
+        try {
+          const dupCheck = await api("/api/purchases/check-duplicate", {
+            method: "POST",
+            body: JSON.stringify({ supplier, invoice_number }),
+          });
+          if (dupCheck.duplicate_of) {
+            if (!confirmDuplicatePurchaseInvoiceUse(invoice_number, supplier, dupCheck.duplicate_of)) {
+              msg.textContent = "Ruajtja u anulua — fatura me këtë numër është regjistruar më parë.";
+              msg.style.color = "var(--ngjyr-danger)";
+              return;
+            }
+            allowDuplicatePurchase = true;
+          }
+        } catch (err) {
+          msg.textContent = err.message || "Gabim kontrolli dublikatës";
+          msg.style.color = "var(--ngjyr-danger)";
+          return;
+        }
+      }
+
       purchaseSaving = true;
       document.getElementById("purchase-modal-save").disabled = true;
       try {
@@ -7075,6 +7235,7 @@
           payload.allow_backdate = true;
           payload.notes = notes;
         }
+        if (allowDuplicatePurchase) payload.allow_duplicate = true;
         const data = await api("/api/purchases", {
           method: "POST",
           body: JSON.stringify(payload),
@@ -8028,6 +8189,17 @@
 
     document.getElementById("btn-reservation-add")?.addEventListener("click", hapModalRezervim);
     document.getElementById("reservation-modal-backdrop")?.addEventListener("click", mbyllModalRezervim);
+    document.getElementById("stock-add-cancel")?.addEventListener("click", closeStockAddModal);
+    document.getElementById("stock-add-backdrop")?.addEventListener("click", closeStockAddModal);
+    document.getElementById("stock-add-save")?.addEventListener("click", () => {
+      submitStockAddFromModal().catch((err) => {
+        const msg = document.getElementById("stock-add-msg");
+        if (msg) {
+          msg.textContent = err.message || "Gabim";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+      });
+    });
     document.getElementById("reservation-modal-cancel")?.addEventListener("click", mbyllModalRezervim);
     document.getElementById("btn-reservation-save")?.addEventListener("click", ruajRezervimin);
     document.querySelectorAll(".reservation-filter").forEach(btn => {
@@ -8557,9 +8729,63 @@
       }
     }
 
+
+    function findMenuItemByNameFuzzy(name) {
+      const target = String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      if (!target) return null;
+      for (const it of menuItemsCache || []) {
+        if (String(it.name || "").trim().toLowerCase().replace(/\s+/g, " ") === target) return it;
+      }
+      const tokens = target.split(/\s+/).filter(Boolean);
+      let best = null;
+      let bestScore = 0;
+      for (const it of menuItemsCache || []) {
+        const n = String(it.name || "").trim().toLowerCase();
+        if (!tokens.every((t) => n.includes(t))) continue;
+        const score = tokens.join("").length;
+        if (score > bestScore) {
+          bestScore = score;
+          best = it;
+        }
+      }
+      return best;
+    }
+
+    async function suggestVatCategoryFromName(name, fallback) {
+      const fb = String(fallback || "18");
+      if (!window.VatSmartMapping) return fb;
+      try {
+        const vat = await VatSmartMapping.resolveVatFromName(name);
+        if (vat && !vat.disputed && vat.rate != null) {
+          return VatSmartMapping.letterToVatCategory(vat.letter, vat.rate);
+        }
+      } catch {
+        /* ignore */
+      }
+      return fb;
+    }
     let receiptScanItems = [];
     let receiptScanPreviewUrl = null;
     let receiptScanFile = null;
+    let receiptScanPreviewUrl2 = null;
+    let receiptScanFile2 = null;
+    /** Paralajmërimet e skanimit AI — pastrohen kur pronari ndryshon fushat manualisht. */
+    let receiptScanMeta = { warnings: [], totals_check: null };
+
+    function clearReceiptScanAiFlags() {
+      receiptScanMeta = { warnings: [], totals_check: null };
+    }
+
+    function receiptScanPayloadExtras() {
+      const w = Array.isArray(receiptScanMeta.warnings)
+        ? receiptScanMeta.warnings.filter(Boolean)
+        : [];
+      const tc = receiptScanMeta.totals_check;
+      return {
+        scan_warnings: w.length ? w : undefined,
+        totals_check: tc && typeof tc === "object" ? tc : undefined,
+      };
+    }
 
     function setReceiptScanStatus(text, ok) {
       const el = document.getElementById("receipt-scan-status");
@@ -8576,12 +8802,7 @@
       const name = String(item.name || "");
       const m = name.match(/(\d+)\s*cop/i);
       if (m) return Number(m[1]);
-      if (/qumesht|qumësht|milk|barista/i.test(name)) return 12;
-      if (/(\d+[.,]?\d*)\s*l\b/i.test(name)) {
-        const vol = Number(String(name.match(/(\d+[.,]?\d*)\s*l\b/i)[1]).replace(",", "."));
-        if (vol >= 0.45 && vol <= 0.6 && /mineral|natyr|uje|ujë|aria|pellister/i.test(name)) return 12;
-      }
-      return 24;
+      return 1;
     }
 
     function receiptPackPreview(item) {
@@ -8594,12 +8815,41 @@
       return { packs, ppp, packPrice, pieces, perPiece, unit };
     }
 
+    function receiptScanLineVatSelectHtml(idx, selected) {
+      const v = normalizePurchaseLineVat(selected);
+      const opts = [18, 8, 0]
+        .map((r) => `<option value="${r}"${v === r ? " selected" : ""}>${r}%</option>`)
+        .join("");
+      return `<select class="receipt-scan-vat" data-idx="${idx}" title="TVSH për këtë rresht" aria-label="TVSH">${opts}</select>`;
+    }
+
+    async function applyReceiptScanItemVatRates() {
+      const headerDefault = Number(document.getElementById("receipt-scan-vat-rate")?.value ?? 18);
+      try {
+        if (!menuItemsCache.length) await ngarkoMenu();
+      } catch {
+        /* dropdown bosh */
+      }
+      for (const item of receiptScanItems) {
+        const matched = findMenuItemByNameFuzzy(item.name);
+        if (matched?.vat_category != null && matched.vat_category !== "") {
+          item.vat_rate = normalizePurchaseLineVat(matched.vat_category);
+          continue;
+        }
+        const suggested = await suggestVatCategoryFromName(item.name, String(headerDefault));
+        item.vat_rate = normalizePurchaseLineVat(suggested);
+      }
+    }
+
     function renderReceiptScanItems() {
       const body = document.getElementById("receipt-scan-items-body");
       const results = document.getElementById("receipt-scan-results");
       if (!body || !results) return;
       body.innerHTML = receiptScanItems.map((item, idx) => {
         const p = receiptPackPreview(item);
+        const vat = normalizePurchaseLineVat(
+          item.vat_rate ?? document.getElementById("receipt-scan-vat-rate")?.value ?? 18,
+        );
         return `<tr>
         <td><input type="text" class="receipt-scan-name" data-idx="${idx}" value="${escAttr(item.name)}"></td>
         <td><input type="number" class="receipt-scan-qty" data-idx="${idx}" min="0" step="0.001" value="${p.packs}"></td>
@@ -8611,6 +8861,7 @@
         </td>
         <td><input type="number" class="receipt-scan-ppp" data-idx="${idx}" min="1" step="1" value="${p.ppp}" ${p.unit !== "pako" ? "disabled" : ""}></td>
         <td><input type="number" class="receipt-scan-price" data-idx="${idx}" min="0" step="0.01" value="${p.packPrice.toFixed(2)}"></td>
+        <td>${receiptScanLineVatSelectHtml(idx, vat)}</td>
         <td class="receipt-scan-pieces" data-idx="${idx}">${p.pieces}</td>
         <td class="receipt-scan-unitprice" data-idx="${idx}">${p.perPiece.toFixed(4)} €</td>
       </tr>`;
@@ -8622,11 +8873,13 @@
           const unit = document.querySelector(`.receipt-scan-unit[data-idx="${idx}"]`)?.value || "copë";
           const pieces_per_pack = Number(document.querySelector(`.receipt-scan-ppp[data-idx="${idx}"]`)?.value);
           const unit_price = Number(document.querySelector(`.receipt-scan-price[data-idx="${idx}"]`)?.value);
+          const vatSel = document.querySelector(`.receipt-scan-vat[data-idx="${idx}"]`);
           item.name = name || item.name;
           item.quantity = quantity;
           item.unit = unit;
           item.pieces_per_pack = unit === "pako" ? pieces_per_pack : 1;
           item.unit_price = unit_price;
+          if (vatSel) item.vat_rate = normalizePurchaseLineVat(vatSel.value);
           const pppEl = document.querySelector(`.receipt-scan-ppp[data-idx="${idx}"]`);
           if (pppEl) {
             pppEl.disabled = unit !== "pako";
@@ -8639,8 +8892,18 @@
           if (up) up.textContent = `${p.perPiece.toFixed(4)} €`;
         });
       };
-      body.querySelectorAll("input, select").forEach((inp) => inp.addEventListener("input", refreshPreview));
-      body.querySelectorAll("select").forEach((inp) => inp.addEventListener("change", refreshPreview));
+      body.querySelectorAll("input, select").forEach((inp) => {
+        inp.addEventListener("input", () => {
+          clearReceiptScanAiFlags();
+          refreshPreview();
+        });
+      });
+      body.querySelectorAll("select").forEach((inp) => {
+        inp.addEventListener("change", () => {
+          clearReceiptScanAiFlags();
+          refreshPreview();
+        });
+      });
       results.hidden = false;
     }
 
@@ -8656,7 +8919,9 @@
           ? Number(String(pppRaw ?? "").replace(",", "."))
           : 1;
         const unit_price = Number(String(priceRaw ?? "").replace(",", "."));
-        return {
+        const vatRaw = document.querySelector(`.receipt-scan-vat[data-idx="${idx}"]`)?.value;
+        const headerVat = Number(document.getElementById("receipt-scan-vat-rate")?.value ?? 18);
+        const out = {
           name: name || item.name,
           quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : Number(item.quantity) || 0,
           unit: unit === "pako" ? "pako" : "copë",
@@ -8664,13 +8929,140 @@
             ? pieces_per_pack
             : 1,
           unit_price: Number.isFinite(unit_price) && unit_price >= 0 ? unit_price : Number(item.unit_price) || 0,
+          vat_rate: normalizePurchaseLineVat(vatRaw ?? item.vat_rate ?? headerVat),
         };
+        if (item.line_total != null && item.line_total !== "") {
+          out.line_total = Number(item.line_total);
+        }
+        return out;
       }).filter(item => item.name && item.quantity > 0);
+    }
+
+    function receiptScanMetaScore(o) {
+      const num = String(o?.invoice_number || "");
+      const date = String(o?.invoice_date || "").slice(0, 10);
+      let s = 0;
+      if (/\b20\d{2}[-/]\d+/.test(num)) s += 4;
+      else if (num.length > 2) s += 1;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        s += 3;
+        const y = num.match(/\b(20\d{2})\b/);
+        if (y && y[1] === date.slice(0, 4)) s += 4;
+      }
+      return s;
+    }
+
+    function dedupeReceiptScanItems(items) {
+      const seen = new Set();
+      const out = [];
+      for (const it of items) {
+        const name = String(it.name || it.emri || "").trim().toLowerCase();
+        const qty = Number(it.quantity ?? it.sasia ?? 0);
+        const lt = Number(it.line_total ?? it.vlera_me_tvsh ?? it.vlera ?? 0);
+        const key = `${name}|${qty.toFixed(3)}|${lt.toFixed(2)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(it);
+      }
+      return out;
+    }
+
+    function mergeReceiptScanResults(primary, secondary) {
+      if (!secondary) return primary;
+      const a = primary || {};
+      const b = secondary || {};
+      const rawItems = [...(Array.isArray(a.items) ? a.items : [])];
+      for (const it of Array.isArray(b.items) ? b.items : []) {
+        rawItems.push({ ...it });
+      }
+      const items = dedupeReceiptScanItems(rawItems);
+      const scoreA = receiptScanMetaScore(a);
+      const scoreB = receiptScanMetaScore(b);
+      const header = scoreB >= scoreA ? b : a;
+      const other = header === b ? a : b;
+      return {
+        supplier: header.supplier || other.supplier || "",
+        supplier_nui: header.supplier_nui || other.supplier_nui || "",
+        supplier_vat: header.supplier_vat || other.supplier_vat || "",
+        invoice_number: header.invoice_number || other.invoice_number || "",
+        invoice_date: header.invoice_date || other.invoice_date || "",
+        vat_rate: header.vat_rate != null ? header.vat_rate : other.vat_rate,
+        items,
+        warnings: [
+          ...(Array.isArray(a.warnings) ? a.warnings : []),
+          ...(Array.isArray(b.warnings) ? b.warnings : []),
+          items.length < rawItems.length
+            ? "U hoqën rreshta të dyfishtë pas bashkimit të dy fotove."
+            : null,
+          rawItems.length > (a.items?.length || 0)
+            ? "U bashkuan artikujt nga foto 1 dhe foto 2 — kontrollo dublikatet."
+            : null,
+        ].filter(Boolean),
+        totals_check: header.totals_check || other.totals_check || null,
+      };
+    }
+
+    function confirmOwnerForceReceiptScan(errors, duplicate_of, payload) {
+      const list = Array.isArray(errors) ? errors.filter(Boolean) : [];
+      const preview = list.slice(0, 10).join("\n• ");
+      const more = list.length > 10 ? `\n… (+${list.length - 10} gabime të tjera)` : "";
+      const step1 = confirm(
+        "Fatura NUK kaloi kontrollin automatik:\n\n• " +
+          preview.replace(/\n/g, "\n• ") +
+          more +
+          "\n\nDoni ta vazhdoni megjithë gabimet?\n(Shtyp Anulo për të rregulluar datën, numrin, copë/pako dhe çmimet.)",
+      );
+      if (!step1) return false;
+      if (duplicate_of) {
+        if (
+          !confirmDuplicatePurchaseInvoiceUse(
+            payload?.invoice_number,
+            payload?.supplier,
+            duplicate_of,
+          )
+        ) {
+          return false;
+        }
+      }
+      return confirm(
+        "KONFIRMIM I DYTË\n\n" +
+          "⚠ Stoku dhe Kontabilisti / librat ATK NUK regjistrohen si duhet " +
+          "kur vazhdoni pa rregulluar gabimet (sasi, çmime, TVSH, datë, totali).\n\n" +
+          "A vazhdon regjistrimi me përgjegjësi të pronarit?",
+      );
+    }
+
+    async function scanReceiptPhotoFile(file) {
+      const photo = await compressImageToDataUrl(file);
+      return api("/api/ai/scan-invoice", {
+        method: "POST",
+        body: JSON.stringify({ photo }),
+      });
+    }
+
+    function onReceiptFile2Chosen(file) {
+      const previewWrap = document.getElementById("receipt-scan-preview-wrap-2");
+      const preview = document.getElementById("receipt-scan-preview-2");
+      const runBtn = document.getElementById("btn-receipt-scan-run");
+      if (!file) {
+        receiptScanFile2 = null;
+        if (previewWrap) previewWrap.hidden = true;
+        if (runBtn) runBtn.disabled = !receiptScanFile;
+        return;
+      }
+      receiptScanFile2 = file;
+      if (receiptScanPreviewUrl2) URL.revokeObjectURL(receiptScanPreviewUrl2);
+      receiptScanPreviewUrl2 = URL.createObjectURL(file);
+      if (preview) preview.src = receiptScanPreviewUrl2;
+      if (previewWrap) previewWrap.hidden = false;
+      if (runBtn) runBtn.disabled = !receiptScanFile;
     }
 
     function openReceiptScanModal() {
       receiptScanItems = [];
       receiptScanFile = null;
+      receiptScanFile2 = null;
+      clearReceiptScanAiFlags();
       setReceiptScanStatus("", true);
       document.getElementById("receipt-scan-results").hidden = true;
       document.getElementById("receipt-scan-loading").hidden = true;
@@ -8693,7 +9085,17 @@
         URL.revokeObjectURL(receiptScanPreviewUrl);
         receiptScanPreviewUrl = null;
       }
+      if (receiptScanPreviewUrl2) {
+        URL.revokeObjectURL(receiptScanPreviewUrl2);
+        receiptScanPreviewUrl2 = null;
+      }
       document.getElementById("receipt-scan-preview-wrap").hidden = true;
+      const pw2 = document.getElementById("receipt-scan-preview-wrap-2");
+      if (pw2) pw2.hidden = true;
+      ["receipt-scan-file2-camera", "receipt-scan-file2-gallery"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
       document.getElementById("modal-receipt-scan").hidden = false;
     }
 
@@ -8740,16 +9142,21 @@
       const loading = document.getElementById("receipt-scan-loading");
       if (runBtn) runBtn.disabled = true;
       if (loading) loading.hidden = false;
-      setReceiptScanStatus("Duke kompresuar foton…", true);
+      setReceiptScanStatus("Duke kompresuar foto 1…", true);
       document.getElementById("receipt-scan-results").hidden = true;
       try {
-        const photo = await compressImageToDataUrl(file);
-        setReceiptScanStatus("Duke lexuar faturën me AI…", true);
-        const data = await api("/api/ai/scan-invoice", {
-          method: "POST",
-          body: JSON.stringify({ photo }),
-        });
-        receiptScanItems = Array.isArray(data.items) ? data.items : [];
+        setReceiptScanStatus("Duke lexuar faturën (foto 1)…", true);
+        let data = await scanReceiptPhotoFile(file);
+        if (receiptScanFile2) {
+          setReceiptScanStatus("Duke lexuar faturën (foto 2)…", true);
+          const data2 = await scanReceiptPhotoFile(receiptScanFile2);
+          data = mergeReceiptScanResults(data, data2);
+        }
+        receiptScanItems = (Array.isArray(data.items) ? data.items : []).map((it) => ({ ...it }));
+        receiptScanMeta = {
+          warnings: Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [],
+          totals_check: data.totals_check && typeof data.totals_check === "object" ? data.totals_check : null,
+        };
         document.getElementById("receipt-scan-supplier").value = data.supplier || "";
         document.getElementById("receipt-scan-number").value = data.invoice_number || "";
         const nuiEl = document.getElementById("receipt-scan-nui");
@@ -8765,12 +9172,17 @@
         if (dateEl && data.invoice_date && /^\d{4}-\d{2}-\d{2}$/.test(String(data.invoice_date).slice(0, 10))) {
           dateEl.value = String(data.invoice_date).slice(0, 10);
         }
+        await applyReceiptScanItemVatRates();
         renderReceiptScanItems();
-        const warnList = Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [];
-        const warnText = warnList.length ? ` ⚠ ${warnList[0]}` : "";
+        const warnList = receiptScanMeta.warnings || [];
+        const warnText = warnList.length ? `\n⚠ ${warnList.join(" ")}` : "";
+        const hasBlockers = warnList.length > 0 || receiptScanMeta.totals_check?.ok === false;
         setReceiptScanStatus(
-          `${receiptScanItems.length} artikuj (blerje stoku). Kontrollo sasitë pastaj «Regjistro në Stok».${warnText}`,
-          warnList.length ? false : true,
+          `${receiptScanItems.length} artikuj. Kontrollo datën, TVSH, copë/pako dhe çmimet.` +
+            (hasBlockers
+              ? `${warnText}\n\nRregullo fushat ose «Regjistro në Stok» — do të pyesim nëse doni ta vazhdoni (stoku/kontabilist mund të mos jenë saktë).`
+              : " Pastaj «Regjistro në Stok»."),
+          true,
         );
       } catch (err) {
         const msg = String(err.message || err || "");
@@ -8793,20 +9205,80 @@
       }
       const applyBtn = document.getElementById("btn-receipt-scan-apply");
       if (applyBtn) applyBtn.disabled = true;
-      setReceiptScanStatus("Duke regjistruar në stok…", true);
+      const payload = {
+        supplier: document.getElementById("receipt-scan-supplier")?.value || "",
+        supplier_nui: document.getElementById("receipt-scan-nui")?.value || "",
+        supplier_vat: document.getElementById("receipt-scan-vat-id")?.value || "",
+        vat_rate: Number(document.getElementById("receipt-scan-vat-rate")?.value ?? 18),
+        purchase_kind: "goods",
+        invoice_number: document.getElementById("receipt-scan-number")?.value || "",
+        invoice_date: document.getElementById("receipt-scan-date")?.value || "",
+        items,
+        ...receiptScanPayloadExtras(),
+      };
+      setReceiptScanStatus("Duke kontrolluar faturën…", true);
+      const dupOnlyMarker = "E njëjta faturë nuk regjistrohet dy herë";
       try {
+        let check = await api("/api/ai/validate-invoice-scan", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        if (!check.ok) {
+          const dupOnly =
+            check.duplicate_of &&
+            !(check.errors || []).some((e) => !String(e).includes(dupOnlyMarker));
+          if (dupOnly) {
+            if (
+              !confirmDuplicatePurchaseInvoiceUse(
+                payload.invoice_number,
+                payload.supplier,
+                check.duplicate_of,
+              )
+            ) {
+              setReceiptScanStatus("Regjistrimi u anulua — fatura ekziston tashmë.", false);
+              return;
+            }
+            payload.allow_duplicate = true;
+            check = await api("/api/ai/validate-invoice-scan", {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+          } else if (
+            !confirmOwnerForceReceiptScan(check.errors, check.duplicate_of, payload)
+          ) {
+            setReceiptScanStatus("Regjistrimi u anulua — rregullo skanimin ose provo përsëri.", false);
+            return;
+          } else {
+            payload.allow_owner_override = true;
+            if (check.duplicate_of) payload.allow_duplicate = true;
+            check = await api("/api/ai/validate-invoice-scan", {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+          }
+        }
+        if (!check.ok) {
+          const msg = (check.errors || []).join("\n");
+          setReceiptScanStatus(msg.split("\n")[0] || "Gabime në faturë.", false);
+          alert(
+            "Fatura NUK u regjistrua.\n\n" +
+              msg +
+              "\n\nMungon furnizuesi ose artikujt — plotëso fushat bazë.",
+          );
+          return;
+        }
+        if (
+          !confirm(
+            "A konfirmoni që e keni kontrolluar faturën (datë, furnizues, copë/pako, çmime) dhe doni ta regjistroni në stok + Blerjet + Kontabilist?",
+          )
+        ) {
+          setReceiptScanStatus("Regjistrimi u anulua.", false);
+          return;
+        }
+        setReceiptScanStatus("Duke regjistruar në stok…", true);
         const data = await api("/api/ai/apply-invoice-scan", {
           method: "POST",
-          body: JSON.stringify({
-            supplier: document.getElementById("receipt-scan-supplier")?.value || "",
-            supplier_nui: document.getElementById("receipt-scan-nui")?.value || "",
-            supplier_vat: document.getElementById("receipt-scan-vat-id")?.value || "",
-            vat_rate: Number(document.getElementById("receipt-scan-vat-rate")?.value ?? 18),
-            purchase_kind: "goods",
-            invoice_number: document.getElementById("receipt-scan-number")?.value || "",
-            invoice_date: document.getElementById("receipt-scan-date")?.value || "",
-            items,
-          }),
+          body: JSON.stringify(payload),
         });
         closeReceiptScanModal();
         refreshAiUsageLine().catch(() => {});
@@ -8821,12 +9293,20 @@
           data.skipped_count > 0
             ? `\n${data.skipped_count} rreshta u anashkaluan (sasi/emër i pavlefshëm).`
             : "";
+        const dupNote = data.duplicate_copy
+          ? `\n\n⚠ Kopje me leje pronari — në sistem u ruajt si «${data.invoice_number_stored || "—"}» (numri origjinal mbetet i regjistruar më parë). Kontrollo Kontabilistin.`
+          : "";
+        const overrideNote = payload.allow_owner_override
+          ? "\n\n⚠ Regjistruar me leje pronari — kontrollo stokun dhe Kontabilistin (mund të mos jenë saktë)."
+          : "";
         alert(
           `${data.applied_count} artikuj u regjistruan në stok ` +
-          `(${data.created_count} të rinj, ${data.updated_count} u përditësuan)` +
-          (data.as_adjustment ? " — si RREGULLIM (datë para faturës së fundit)." : ".") +
-          skipNote +
-          "\nKontabilisti / Bilanci / Blerjet u përditësuan.",
+            `(${data.created_count} të rinj, ${data.updated_count} u përditësuan)` +
+            (data.as_adjustment ? " — si RREGULLIM (datë para faturës së fundit)." : ".") +
+            skipNote +
+            dupNote +
+            overrideNote +
+            "\nKontabilisti / Bilanci / Blerjet u përditësuan.",
         );
       } catch (err) {
         setReceiptScanStatus(err.message, false);
@@ -8836,6 +9316,43 @@
     }
 
     document.getElementById("btn-menu-scan-ai")?.addEventListener("click", openMenuScanModal);
+    document.getElementById("btn-ai-cat-menu")?.addEventListener("click", openMenuScanModal);
+    document.getElementById("btn-receipt-scan-ai")?.addEventListener("click", () => {
+      if (typeof switchAdminPanel === "function") switchAdminPanel("blerjet");
+      else document.querySelector('.admin-tab-btn[data-panel="blerjet"]')?.click();
+      openReceiptScanModal();
+    });
+    document.getElementById("btn-purchase-receipt-ai")?.addEventListener("click", openReceiptScanModal);
+    document.getElementById("receipt-scan-close")?.addEventListener("click", closeReceiptScanModal);
+    document.getElementById("receipt-scan-backdrop")?.addEventListener("click", closeReceiptScanModal);
+    document.getElementById("btn-receipt-scan-run")?.addEventListener("click", () => {
+      runReceiptScan().catch(err => setReceiptScanStatus(err.message, false));
+    });
+    document.getElementById("btn-receipt-scan-apply")?.addEventListener("click", () => {
+      applyReceiptScanToStock().catch(err => setReceiptScanStatus(err.message, false));
+    });
+    document.getElementById("btn-receipt-scan-calc-packs")?.addEventListener("click", () => {
+      renderReceiptScanItems();
+      setReceiptScanStatus("Llogaritja u rifreskua — kontrollo kolonat Copa (stok) dhe Çmim/copë, pastaj Regjistro.", true);
+    });
+    function bindReceiptFileInput(id) {
+      document.getElementById(id)?.addEventListener("change", e => {
+        onReceiptFileChosen(e.target.files?.[0] || null);
+      });
+    }
+    bindReceiptFileInput("receipt-scan-file");
+    bindReceiptFileInput("receipt-scan-file-camera");
+    bindReceiptFileInput("receipt-scan-file-gallery");
+    function bindReceiptFile2Input(id) {
+      document.getElementById(id)?.addEventListener("change", (e) => {
+        onReceiptFile2Chosen(e.target.files?.[0] || null);
+      });
+    }
+    bindReceiptFile2Input("receipt-scan-file2-camera");
+    bindReceiptFile2Input("receipt-scan-file2-gallery");
+
+
+        document.getElementById("btn-menu-scan-ai")?.addEventListener("click", openMenuScanModal);
     document.getElementById("btn-ai-cat-menu")?.addEventListener("click", openMenuScanModal);
     document.getElementById("btn-receipt-scan-ai")?.addEventListener("click", () => {
       if (typeof switchAdminPanel === "function") switchAdminPanel("blerjet");

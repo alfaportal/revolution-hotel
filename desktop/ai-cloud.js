@@ -4,11 +4,10 @@
 const cloudHealth = require("./cloud-health");
 
 /**
- * Master switch për AI në HOTEL.
- * Cloud hotel — FIKUR. AI aktivizohet kur hoteli lidhet me cloud-in e vet.
+ * Master switch për AI në HOTEL (si Kafene — gate real: paketa + çelësi licencë).
  */
-const AI_ENABLED = false;
-const AI_DISABLED_MSG = "AI do të aktivizohet kur hoteli të lidhet me cloud";
+const AI_ENABLED = true;
+const AI_DISABLED_MSG = "AI kërkon internet dhe çelës licencë (Pako AI).";
 
 function normalizeKey(k) {
   return String(k || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -22,9 +21,13 @@ function electronApp() {
   }
 }
 
-function getAiCloudConfig(_db) {
-  /* Hotel: pa cloud AI / pa çelës hotel. */
-  return { serverUrl: "", celesi: "" };
+function getAiCloudConfig(db) {
+  const license = require("./license");
+  const eapp = electronApp();
+  const settingsKey = db.getSetting("cloud_license_key", "");
+  const fileKey = eapp ? license.readStoredLicense(eapp) : "";
+  const celesi = normalizeKey(settingsKey || fileKey);
+  return { serverUrl: cloudHealth.getActiveServerUrl(), celesi };
 }
 
 async function requestJson(method, _baseUrl, path, payload, headers = {}) {
