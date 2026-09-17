@@ -13,11 +13,46 @@ const { getKitchenMenuItemPhoto } = require("../services/menuService");
 const { verifyKasaSessionToken } = require("../lib/kasaSession");
 const { getWaiterById } = require("../services/waiterPinService");
 const { sendShiftCloseEmailForClient } = require("../services/shiftCloseEmailService");
+const {
+  prefillFromSale,
+  allocateNumberForClient,
+} = require("../services/waiterSalesInvoiceService");
+const { renderInvoicePdf } = require("../services/salesInvoicePdfService");
+const { deliverEmail, isEmailConfigured } = require("../services/emailService");
 
 const router = express.Router();
 
 function extractWaiterToken(req) {
   return String(req.query.w || req.body?.web_token || "").trim().toLowerCase();
+}
+
+async function resolveWaiterStaff(req) {
+  const clientId = req.kitchenClient.id;
+  const token = extractWaiterToken(req);
+  if (token) {
+    const { getWaiterByWebToken } = require("../services/waiterPinService");
+    const fromToken = await getWaiterByWebToken(clientId, token);
+    if (fromToken?.id) return fromToken;
+  }
+  const waiterId = String(req.body?.waiter_id || req.query?.waiter_id || "").trim();
+  if (waiterId) {
+    const waiter = await getWaiterById(clientId, waiterId);
+    if (waiter?.id) return waiter;
+  }
+  return null;
+}
+
+async function requireWaiterStaff(req, res, next) {
+  try {
+    const waiter = await resolveWaiterStaff(req);
+    if (!waiter?.id) {
+      return res.status(401).json({ ok: false, gabim: "Sesioni ka skaduar. Shkruani PIN-in." });
+    }
+    req.waiterStaff = waiter;
+    return next();
+  } catch (e) {
+    return res.status(400).json({ ok: false, gabim: e.message });
+  }
 }
 
 router.get("/:slug/menu/:itemId/photo", resolveKitchenClient, requirePackageFeature("waiter"), async (req, res) => {
@@ -160,6 +195,84 @@ router.post("/:slug/orders/close", resolveKitchenClient, requirePackageFeature("
     res.status(400).json({ ok: false, gabim: e.message });
   }
 });
+
+/** Faturë A4 — prefill nga shitja e mbyllur (sesion kamarier/recepsion). */
+router.post(
+  "/:slug/sales-invoices/prefill",
+  resolveKitchenClient,
+  requirePackageFeature("waiter"),
+  requireWaiterStaff,
+  async (req, res) => {
+    try {
+      const data = await prefillFromSale(req.kitchenClient.id, req.body || {});
+      res.json({ ok: true, ...data });
+    } catch (e) {
+      res.status(400).json({ ok: false, gabim: e.message || "Prefill dështoi." });
+    }
+  },
+);
+
+router.post(
+  "/:slug/sales-invoices/next-number",
+  resolveKitchenClient,
+  requirePackageFeature("waiter"),
+  requireWaiterStaff,
+  async (req, res) => {
+    try {
+      const number = await allocateNumberForClient(req.kitchenClient.id);
+      res.json({ ok: true, number });
+    } catch (e) {
+      console.error("[waiter/sales-invoices/next-number]", e.message || e);
+      res.status(503).json({ ok: false, gabim: e.message || "Numri nuk u alokua." });
+    }
+  },
+);
+
+router.post(
+  "/:slug/sales-invoices/send-email",
+  resolveKitchenClient,
+  requirePackageFeature("waiter"),
+  requireWaiterStaff,
+  async (req, res) => {
+    try {
+      const to = String(
+        req.body?.to || req.body?.guestEmail || req.body?.buyerEmail || "",
+      ).trim().toLowerCase();
+      const invoice = req.body?.invoice;
+      if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+        return res.status(400).json({ ok: false, gabim: "Email i mysafirit/klientit është i pavlefshëm." });
+      }
+      if (!invoice || !invoice.number) {
+        return res.status(400).json({ ok: false, gabim: "Mungon fatura." });
+      }
+      if (!isEmailConfigured()) {
+        return res.status(503).json({
+          ok: false,
+          gabim: "RESEND_API_KEY mungon te serveri.",
+        });
+      }
+      const pdfBuffer = await renderInvoicePdf(invoice);
+      const filename = `Fature-${String(invoice.number).replace(/[^\w-]/g, "_")}.pdf`;
+      const sellerName = invoice.sellerSnapshot?.companyName || "Hotel";
+      const subject = `Faturë ${invoice.number} — ${sellerName}`;
+      const text = `Faturë shitje nr. ${invoice.number} nga ${sellerName}.`;
+      const data = await deliverEmail({
+        to,
+        subject,
+        text,
+        html: `<p>${text}</p>`,
+        attachments: [{
+          filename,
+          content: pdfBuffer.toString("base64"),
+        }],
+      });
+      res.json({ ok: true, to, resendId: data?.id || null });
+    } catch (e) {
+      console.error("[waiter/sales-invoices/send-email]", e.message || e);
+      res.status(503).json({ ok: false, gabim: e.message || "Email nuk u dërgua." });
+    }
+  },
+);
 
 /** Raport ditor te pronari pas mbylljes së ndërrimit (thirret nga KAFENE, fire-and-forget). */
 router.post("/:slug/shift-close-email", resolveKitchenClient, requirePackageFeature("waiter"), async (req, res) => {

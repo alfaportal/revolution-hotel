@@ -1,5 +1,4 @@
 const { getSupabase } = require("../db");
-const { getPgPool } = require("./pgPool");
 
 let ensured = false;
 
@@ -16,11 +15,14 @@ async function ensureOrderRefusalSchema() {
     /* fall through */
   }
 
-  const pool = getPgPool();
-  if (!pool) return false;
+  const databaseUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+  if (!databaseUrl) return false;
 
   try {
-    await pool.query(`
+    const { Client } = require("pg");
+    const client = new Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    await client.query(`
       ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS refuse_reason TEXT;
       CREATE TABLE IF NOT EXISTS order_refusal_events (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -38,6 +40,7 @@ async function ensureOrderRefusalSchema() {
       CREATE INDEX IF NOT EXISTS idx_order_refusal_events_client_created
         ON order_refusal_events (client_id, created_at DESC);
     `);
+    await client.end();
     ensured = true;
     return true;
   } catch (err) {

@@ -151,9 +151,9 @@ app.use("/api", (_req, res, next) => {
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    service: "revolution-pos-server",
+    service: "revolution-hotel-server",
     version: pkg.version || "1.0.0",
-    site_version: "2026-06-28-spotlight-v13",
+    site_version: "2026-09-17-hotel-v1.0.1",
     git_commit: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT || null,
     git_branch: process.env.RAILWAY_GIT_BRANCH || null,
     time: new Date().toISOString(),
@@ -443,7 +443,6 @@ app.use("/api/kds", kdsRoutes);
 app.use("/api/waiter", waiterRoutes);
 app.use("/api/kiosk", kioskRoutes);
 app.use("/api/menu", tableMenuRoutes);
-app.use("/api/guest", require("./routes/guest"));
 app.use("/api/ai", aiRoutes);
 app.use("/api/r", publicApiRouter);
 app.use("/api/s", shopApiRouter);
@@ -527,16 +526,6 @@ app.get("/waiter-manifest.json", (_req, res) => {
 });
 
 app.use(express.static(PUBLIC_DIR));
-
-/** Mysafir — QR spa/bazen, room service, menu (edhe përmes /hotel/guest/… pas strip prefix). */
-const GUEST_PUBLIC_DIR = path.join(PUBLIC_DIR, "guest");
-const GUEST_HTML_PAGES = ["services.html", "room-service.html", "menu.html"];
-for (const guestPage of GUEST_HTML_PAGES) {
-  app.get(`/guest/${guestPage}`, (_req, res) => {
-    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.sendFile(path.join(GUEST_PUBLIC_DIR, guestPage));
-  });
-}
 
 /**
  * Master Admin i unifikuar: /admin (+ /admin/dashboard).

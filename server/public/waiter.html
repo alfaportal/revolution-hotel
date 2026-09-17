@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="/logo-source.png">
   <title>Kamarieri — Revolution Invest POS</title>
   <link rel="stylesheet" href="/css/staff-brand.css">
-  <link rel="stylesheet" href="/css/waiter.css?v=8">
+  <link rel="stylesheet" href="/css/waiter.css?v=9">
   <link rel="stylesheet" href="/css/menu-pos.css?v=16">
   <link rel="stylesheet" href="/css/waiter-phone-truffle.css?v=3">
 </head>
@@ -167,7 +167,36 @@
     <div class="receipt-sheet" id="receipt-print"></div>
     <div class="receipt-actions no-print">
       <button type="button" class="btn btn-primary" id="btn-print">Printo</button>
+      <button type="button" class="btn btn-ghost" id="btn-invoice-a4">Faturë A4</button>
       <button type="button" class="btn btn-ghost" id="btn-receipt-done">Mbyll</button>
+    </div>
+  </div>
+
+  <div id="invoice-a4-modal" class="invoice-a4-modal hidden" role="dialog" aria-modal="true" aria-labelledby="invoice-a4-title">
+    <div class="invoice-a4-backdrop" id="invoice-a4-backdrop"></div>
+    <div class="invoice-a4-card">
+      <div class="invoice-a4-head">
+        <h2 id="invoice-a4-title">Faturë A4</h2>
+        <button type="button" class="invoice-a4-close" id="invoice-a4-close" aria-label="Mbyll">×</button>
+      </div>
+      <p id="invoice-a4-err" class="invoice-a4-err hidden" role="alert"></p>
+      <div id="invoice-a4-step-guest">
+        <p id="invoice-a4-lines-summary" class="invoice-a4-hint">—</p>
+        <p class="invoice-a4-hint">Mysafiri / Klienti — plotësoni të dhënat për faturën. Artikujt vijnë nga shitja.</p>
+        <div id="invoice-a4-guest-fields"></div>
+        <button type="button" class="btn btn-primary invoice-a4-action" id="invoice-a4-go-preview">Vazhdo te preview</button>
+      </div>
+      <div id="invoice-a4-step-preview" class="hidden">
+        <p id="invoice-a4-email-hint" class="invoice-a4-hint">—</p>
+        <div class="invoice-a4-preview-wrap">
+          <iframe title="Preview faturë A4" id="invoice-a4-preview-frame" class="invoice-a4-preview-frame" sandbox="allow-same-origin"></iframe>
+        </div>
+        <div class="invoice-a4-actions-row">
+          <button type="button" class="btn btn-ghost" id="invoice-a4-back-guest">← Mysafir/klient</button>
+          <button type="button" class="btn btn-ghost" id="invoice-a4-print">Printo</button>
+          <button type="button" class="btn btn-primary" id="invoice-a4-email">Dërgo me Email</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -239,6 +268,8 @@
   <script src="/js/menuCatalog.js?v=1"></script>
   <script src="/js/menu-pos.js?v=17"></script>
   <script src="/js/waiter-calculator.js?v=1"></script>
-  <script src="/js/waiter.js?v=59"></script>
+  <script src="/js/owner-sales-invoice-html.js?v=2"></script>
+  <script src="/js/waiter-sales-invoice.js?v=1"></script>
+  <script src="/js/waiter.js?v=60"></script>
 </body>
 </html>

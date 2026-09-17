@@ -133,6 +133,7 @@ const {
   getUserRow,
 } = require("../services/ownerGroupService");
 const { issueOwnerSession } = require("../lib/ownerSession");
+const salesInvoicesRouter = require("./salesInvoices");
 
 const router = express.Router();
 
@@ -158,6 +159,8 @@ router.get("/tables/events", (req, res) => {
 });
 
 router.use(authOwner, ownerOnly);
+
+router.use("/sales-invoices", salesInvoicesRouter);
 
 router.get("/locations", async (req, res) => {
   try {

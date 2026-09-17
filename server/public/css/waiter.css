@@ -1177,9 +1177,142 @@ html, body {
 
 .receipt-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
-  width: min(320px, 100%);
+  width: min(360px, 100%);
+}
+
+.receipt-actions .btn {
+  flex: 1 1 auto;
+  min-width: 6.5rem;
+}
+
+.invoice-a4-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  padding-bottom: calc(1rem + var(--safe-bottom));
+}
+
+.invoice-a4-modal.hidden {
+  display: none;
+}
+
+.invoice-a4-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.invoice-a4-card {
+  position: relative;
+  z-index: 1;
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  width: min(520px, 100%);
+  max-height: min(92vh, 720px);
+  overflow: auto;
+  border-radius: 12px;
+  padding: 1rem 1.1rem 1.25rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.invoice-a4-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.invoice-a4-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.invoice-a4-close {
+  border: 0;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.45rem;
+}
+
+.invoice-a4-hint {
+  font-size: 0.88rem;
+  color: var(--muted, #64748b);
+  margin: 0 0 0.65rem;
+  line-height: 1.4;
+}
+
+.invoice-a4-err {
+  color: #b91c1c;
+  font-size: 0.9rem;
+  margin: 0 0 0.65rem;
+}
+
+.invoice-a4-err.hidden {
+  display: none;
+}
+
+.invoice-a4-kind-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.invoice-a4-field {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.88rem;
+}
+
+.invoice-a4-field input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.invoice-a4-action {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.invoice-a4-preview-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+  margin-bottom: 0.75rem;
+}
+
+.invoice-a4-preview-frame {
+  width: 100%;
+  height: min(50vh, 420px);
+  border: 0;
+  background: #fff;
+}
+
+.invoice-a4-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.invoice-a4-actions-row .btn {
+  flex: 1 1 auto;
 }
 
 .receipt-actions:has(#btn-print.hidden) {

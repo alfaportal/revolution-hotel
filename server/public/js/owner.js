@@ -2542,6 +2542,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     if (tab.dataset.tab === "zreport") loadZReport();
     if (tab.dataset.tab === "fiskale") loadFiscalSettings();
     if (tab.dataset.tab === "licenca") loadLicense();
+    if (tab.dataset.tab === "faturat") window.initOwnerSalesInvoices?.();
   });
 });
 

@@ -1,11 +1,12 @@
 {
   "name": "revolution-hotel-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Revolution HOTEL — cloud license server dhe Super Admin (Supabase i ndarë)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "build:version": "node scripts/build-hotel-version.js"
   },
   "engines": {
     "node": ">=20"
@@ -20,6 +21,7 @@
     "http-proxy-middleware": "^4.2.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "pdfkit": "^0.17.2",
     "pg": "^8.16.0",
     "qrcode": "^1.5.4",
     "stripe": "^17.7.0",

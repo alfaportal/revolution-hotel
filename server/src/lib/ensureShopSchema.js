@@ -1,6 +1,5 @@
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
-const { getSupabase } = require("../db");
 const { getPgPool } = require("./pgPool");
 
 let ensurePromise = null;
@@ -9,10 +8,6 @@ async function ensureShopSchema() {
   if (ensurePromise) return ensurePromise;
 
   ensurePromise = (async () => {
-    const db = getSupabase();
-    const { error: probeErr } = await db.from("pos_menu_items").select("description").limit(1);
-    if (!probeErr) return true;
-
     const pool = getPgPool();
     if (!pool) {
       return false;

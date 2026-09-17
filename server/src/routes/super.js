@@ -368,9 +368,7 @@ router.patch(
         if (lp.data_skadimit != null && String(lp.data_skadimit).trim()) {
           patch.data_skadimit = lp.data_skadimit;
         }
-        if (lp.max_terminals != null) {
-          patch.max_terminals = Math.min(4, Math.max(1, Number(lp.max_terminals) || 1));
-        }
+        if (lp.max_terminals != null) patch.max_terminals = lp.max_terminals;
         if (!Object.keys(patch).length) continue;
         const license = await updateLicense(lp.id, patch);
         licenses.push(license);
@@ -533,7 +531,7 @@ router.post(
         try {
           const issued = await issueSecurityLicense({
             client_id: data.client?.id,
-            max_terminals: Math.min(4, Math.max(1, Number(req.body?.max_terminals) || 1)),
+            max_terminals: req.body?.max_terminals || 1,
             expires_at: expiresAt || dataSkadimit || null,
             license_key: celesi || undefined,
             celesi: celesi || undefined,
@@ -588,7 +586,7 @@ router.post(
           product_line: product === "hotel" || product === "market" ? product : "kafene",
           license_type: licenseType,
           muaj: licenseType === "trial" ? 1 : req.body?.muaj || 12,
-          max_terminals: Math.min(4, Math.max(1, Number(req.body?.max_terminals) || 1)),
+          max_terminals: req.body?.max_terminals || 1,
           celesi: celesi || undefined,
           hardware_id: hwHex.length === 16 ? hardwareId : undefined,
           data_skadimit: dataSkadimit || undefined,

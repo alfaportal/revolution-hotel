@@ -2252,3 +2252,36 @@
   border-color: rgba(234, 179, 8, 0.5);
   background: rgba(234, 179, 8, 0.08);
 }
+
+/* ——— Faturat A4 shitje (panel pronari) ——— */
+.inv-logo-settings-preview {
+  max-height: 48px;
+  max-width: 100px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+.inv-lines-table input {
+  width: 100%;
+  min-width: 4rem;
+}
+.inv-preview-paper {
+  background: #2a2a3e;
+  padding: 0.75rem;
+  border-radius: 12px;
+  margin-top: 0.5rem;
+}
+.inv-preview-frame {
+  width: 100%;
+  min-height: 70vh;
+  border: none;
+  background: #fff;
+  border-radius: 8px;
+}
+@media print {
+  .inv-preview-toolbar,
+  .owner-tabs,
+  .owner-header {
+    display: none !important;
+  }
+}

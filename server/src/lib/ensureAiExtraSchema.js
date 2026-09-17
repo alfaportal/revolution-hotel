@@ -1,5 +1,4 @@
 const { getSupabase } = require("../db");
-const { getPgPool } = require("./pgPool");
 
 let ensured = false;
 
@@ -17,11 +16,14 @@ async function ensureAiExtraSchema() {
     /* fall through */
   }
 
-  const pool = getPgPool();
-  if (!pool) return false;
+  const databaseUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+  if (!databaseUrl) return false;
 
   try {
-    await pool.query(`
+    const { Client } = require("pg");
+    const client = new Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    await client.query(`
       CREATE TABLE IF NOT EXISTS ai_weekly_reports (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         restaurant_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
@@ -46,6 +48,7 @@ async function ensureAiExtraSchema() {
         UNIQUE (restaurant_id, period_start, period_end)
       );
     `);
+    await client.end();
     ensured = true;
     return true;
   } catch (err) {

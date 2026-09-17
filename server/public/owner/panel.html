@@ -98,6 +98,10 @@
         <span class="nav-icon" aria-hidden="true">📑</span>
         <span class="nav-label">Raportet</span>
       </button>
+      <button type="button" class="tab nav-tile" data-tab="faturat">
+        <span class="nav-icon" aria-hidden="true">🧾</span>
+        <span class="nav-label">Faturat</span>
+      </button>
       <button type="button" class="tab nav-tile" data-tab="linqet" id="tab-linqet">
         <span class="nav-icon" aria-hidden="true">🔗</span>
         <span class="nav-label">Linqet e lokalit</span>
@@ -1291,6 +1295,12 @@
         <button type="button" class="btn btn-primary" id="btn-invoice-scan-apply" style="margin-top:0.75rem">Regjistro në Stok</button>
       </div>
     </div>
+
+    <div id="panel-faturat" class="panel-section hidden">
+      <div id="owner-sales-invoices-root">
+        <p class="links-hint">Duke ngarkuar faturat…</p>
+      </div>
+    </div>
   </div>
 
   <div id="ai-chat-root" class="ai-chat-root hidden">
@@ -1335,5 +1345,7 @@
   <script src="/hotel/js/owner-ai-assistant.js?v=2"></script>
   <script src="/hotel/js/owner-ai-modules.js?v=1"></script>
   <script src="/hotel/js/owner-notifications.js?v=1"></script>
+  <script src="/hotel/js/owner-sales-invoice-html.js?v=1"></script>
+  <script src="/hotel/js/owner-sales-invoices.js?v=1"></script>
 </body>
 </html>

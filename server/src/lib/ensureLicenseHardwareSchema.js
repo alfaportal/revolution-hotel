@@ -1,5 +1,4 @@
 const { getSupabase } = require("../db");
-const { getPgPool } = require("./pgPool");
 
 let ensured = false;
 
@@ -19,16 +18,20 @@ async function ensureLicenseHardwareSchema() {
     /* fall through */
   }
 
-  const pool = getPgPool();
-  if (!pool) return false;
+  const databaseUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+  if (!databaseUrl) return false;
 
   try {
-    await pool.query(`
+    const { Client } = require("pg");
+    const client = new Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    await client.query(`
       ALTER TABLE licenses
         ADD COLUMN IF NOT EXISTS hardware_id TEXT NOT NULL DEFAULT '';
       COMMENT ON COLUMN licenses.hardware_id IS
         'HARDWARE_ID 16 hex (XXXX-XXXX-XXXX-XXXX) nga POS Aktivizo — për gjenerim LICENSE_KEY. Jo device_id 12.';
     `);
+    await client.end();
     ensured = true;
     return true;
   } catch (err) {

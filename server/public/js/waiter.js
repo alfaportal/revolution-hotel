@@ -89,6 +89,9 @@
   let suppressOrderAlertOnce = false; // Anashkalon njoftimin për veprimin lokal të kamarierit
   let orderSubmitting = false;
   let tableClosing = false;
+  /** Shitja e fundit e mbyllur — për faturë A4. */
+  let lastClosedSale = null;
+  let lastClosedItems = null;
   let audioCtx = null;
 
   const $ = id => document.getElementById(id);
@@ -1401,6 +1404,8 @@
           items: closeItems,
         }),
       });
+      lastClosedSale = data.order || null;
+      lastClosedItems = closeItems;
       closeOnlineCloseModal();
       const payLabel = paymentMethod === "karte" ? "Kartë" : "Cash";
       showSuccessToast(`✅ ${orderTableLabel(order)} u mbyll — ${payLabel}`);
@@ -1825,6 +1830,11 @@
     sheet.style.maxWidth = `${mm}mm`;
     const printBtn = $("btn-print");
     if (printBtn) printBtn.classList.add("hidden");
+    const a4Btn = $("btn-invoice-a4");
+    if (a4Btn) {
+      if (lastClosedSale?.id) a4Btn.classList.remove("hidden");
+      else a4Btn.classList.add("hidden");
+    }
     $("receipt-modal").classList.remove("hidden");
   }
 
@@ -1942,6 +1952,8 @@
 
   $("btn-receipt-done")?.addEventListener("click", async () => {
     hideReceipt();
+    lastClosedSale = null;
+    lastClosedItems = null;
     cart = [];
     renderCart();
     tableNumber = 0;
@@ -2019,6 +2031,8 @@
           items: closeItems,
         }),
       });
+      lastClosedSale = data.order || null;
+      lastClosedItems = closeItems;
       cart = [];
       renderCart();
       const payLabel = paymentMethod === "karte" ? "Kartë" : "Cash";
@@ -2175,6 +2189,17 @@
   setupDesktopReturn();
   setupDesktopCalculatorBar();
   if (typeof window.initWaiterCalculator === "function") window.initWaiterCalculator();
+  if (window.WaiterSalesInvoice && slug) {
+    window.WaiterSalesInvoice.init({
+      slug,
+      api,
+      apiQuery,
+      waiterPayload,
+      $,
+      getLastClosedSale: () => lastClosedSale,
+      getLastClosedItems: () => lastClosedItems,
+    });
+  }
   setupConnectionStatus();
   registerServiceWorker();
   setupReservationReminders();

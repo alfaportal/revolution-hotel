@@ -136,7 +136,7 @@ router.post(
         product_line: HOTEL_PRODUCT,
         license_type: licenseType,
         muaj: licenseType === "trial" ? 1 : body.muaj || 12,
-        max_terminals: Math.min(4, Math.max(1, Number(body.max_terminals) || 1)),
+        max_terminals: body.max_terminals || 1,
         celesi: celesi || undefined,
         hardware_id: hwHex.length === 16 ? hardwareId : undefined,
         data_skadimit: dataSkadimit || undefined,
@@ -196,9 +196,7 @@ router.patch(
         if (lp.data_skadimit != null && String(lp.data_skadimit).trim()) {
           patch.data_skadimit = lp.data_skadimit;
         }
-        if (lp.max_terminals != null) {
-          patch.max_terminals = Math.min(4, Math.max(1, Number(lp.max_terminals) || 1));
-        }
+        if (lp.max_terminals != null) patch.max_terminals = lp.max_terminals;
         if (!Object.keys(patch).length) continue;
         licenses.push(await updateLicense(lp.id, patch));
       } catch (licErr) {
