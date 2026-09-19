@@ -530,6 +530,7 @@ function buildCatalogPayload(db) {
   const categories = db.getCategories().map((c, i) => ({
     name: c.name,
     sort_order: c.sort_order ?? i,
+    route: c.route === "kitchen" ? "kitchen" : "bar",
   }));
   const menu_items = db.getMenuItems(false, { includePhoto: true }).map(m => {
     const threshold = Number(m.low_stock_threshold) || 0;
@@ -636,7 +637,15 @@ async function pullNewCatalogItemsFromCloud(db) {
       if (!name || localCategoryNames.has(name.toLowerCase())) continue;
       // KS/AL: mos shto kategori frënge nga cloud
       if (sqLocale && (frNameSet.has(name.toLowerCase()) || looksFrenchMenuName(name))) continue;
-      db.addCategory(name);
+      const cloudRoute =
+        c.route === "kitchen" ? "kitchen" : c.route === "bar" ? "bar" : undefined;
+      db.addCategory(
+        name,
+        cloudRoute ??
+          (typeof db.inferCategoryRouteFromName === "function"
+            ? db.inferCategoryRouteFromName(name)
+            : undefined),
+      );
       localCategoryNames.add(name.toLowerCase());
       categoriesAdded++;
     }
@@ -679,7 +688,12 @@ async function pullNewCatalogItemsFromCloud(db) {
           itemsSkippedFr++;
           continue;
         }
-        db.addCategory(category);
+        db.addCategory(
+          category,
+          typeof db.inferCategoryRouteFromName === "function"
+            ? db.inferCategoryRouteFromName(category)
+            : undefined,
+        );
         localCategoryNames.add(category.toLowerCase());
       }
       const id = db.addMenuItem({ name, category, price: Number(m.price) || 0, vat_category: "18" });
@@ -1638,6 +1652,10 @@ async function syncLocalCancelledFromCloud(db) {
       if (cloudOrderedIds.has(cId)) continue; // ekziston ende në cloud → OK
 
       // Porosia cloud u anulua/mbyll, por lokalisht është ende aktive → anulo
+      const srcLabel = String(order.source_label ?? "").trim();
+      // MBROJTJE: Asnjë porosi aktive nuk anulohet automatikisht nga cloud sync
+      console.log(`[sync] SKIP auto-cancel — porosi aktive e mbrojtur, table_id=${order.table_id}, source_label=${srcLabel || '(POS)'}`);
+      continue;
       try {
         console.log(
           `[STATUS-CHANGE][cloud-sync.syncLocalCancelledFromCloud] T${tableNum} order.id=${order.id} ` +
@@ -2055,7 +2073,7 @@ function freeLocalTableFromCloudEvent(db, tableNumber) {
   if (!table?.id) return;
 
   const activeOrders = db.db.prepare(
-    "SELECT id, cloud_order_id, waiter_name, total FROM orders WHERE table_id = ? AND status IN ('active', 'ordered')",
+    "SELECT id, cloud_order_id, waiter_name, total, table_id, source_label FROM orders WHERE table_id = ? AND status IN ('active', 'ordered')",
   ).all(table.id);
   const localOnly = activeOrders.filter(o => !String(o.cloud_order_id || "").trim());
   const cloudLinked = activeOrders.filter(o => String(o.cloud_order_id || "").trim());
@@ -2070,12 +2088,30 @@ function freeLocalTableFromCloudEvent(db, tableNumber) {
   }
 
   if (cloudLinked.length) {
-    console.log(
-      `[STATUS-CHANGE][cloud-sync.freeLocalTableFromCloudEvent] T${num} anulon porosi cloud id(s)=` +
-      cloudLinked.map(o => o.id).join(","),
-    );
+    const toCancel = [];
     for (const o of cloudLinked) {
-      db.db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(o.id);
+      // MBROJTJE: SSE free nuk guxon me anulua porosi aktive
+      console.log(`[cloud/sse] SKIP auto-cancel — porosi aktive e mbrojtur, table_id=${o.table_id}, source_label=${o.source_label || '(POS)'}`);
+      continue;
+      toCancel.push(o);
+    }
+    if (toCancel.length) {
+      console.log(
+        `[STATUS-CHANGE][cloud-sync.freeLocalTableFromCloudEvent] T${num} anulon porosi cloud id(s)=` +
+        toCancel.map(o => o.id).join(","),
+      );
+      for (const o of toCancel) {
+        db.db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(o.id);
+      }
+    }
+    const stillActive = db.db.prepare(
+      "SELECT 1 AS x FROM orders WHERE table_id = ? AND status IN ('active', 'ordered') LIMIT 1",
+    ).get(table.id);
+    if (stillActive) {
+      console.log(
+        `[STATUS-CHANGE][cloud-sync.freeLocalTableFromCloudEvent] T${num} SKIP table free — porosi aktive mbeten`,
+      );
+      return;
     }
   } else {
     console.log(`[STATUS-CHANGE][cloud-sync.freeLocalTableFromCloudEvent] T${num} nuk ka porosi aktive — vetëm normalizim tavoline`);
