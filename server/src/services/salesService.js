@@ -232,6 +232,8 @@ async function freeTableFromPos(body) {
   return { ok: true, cancelled };
 }
 
+const { normalizePosOrderedAt } = require("../lib/posOrderedAt");
+
 async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
   const celesi = normalizeKey(body.celesi || body.license_key);
   if (!celesi) throw new Error("Mungon çelësi i licencës.");
@@ -325,7 +327,9 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
   }
 
   if (finalStatus === "ordered") {
-    row.ordered_at = itemsChanged ? now : (body.ordered_at || existing?.ordered_at || now);
+    row.ordered_at = itemsChanged
+      ? now
+      : normalizePosOrderedAt(body.ordered_at || existing?.ordered_at, now);
     row.closed_at = row.ordered_at;
     row.ready_at = null;
     if (itemsChanged) {
@@ -334,7 +338,7 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
       row.accepted_by_waiter_id = null;
     }
   } else if (finalStatus === "cancelled") {
-    row.ordered_at = body.ordered_at || existing?.ordered_at || now;
+    row.ordered_at = normalizePosOrderedAt(body.ordered_at || existing?.ordered_at, now);
     row.closed_at = now;
     row.ready_at = null;
     const preserveItems = items.length
@@ -350,7 +354,7 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
     if (finalStatus === "closed") {
       row.payment_status = "paid";
       if (!existing) {
-        row.ordered_at = body.ordered_at || row.closed_at;
+        row.ordered_at = normalizePosOrderedAt(body.ordered_at, row.closed_at);
       }
       if (existing?.accepted_at) row.accepted_at = existing.accepted_at;
       if (existing?.accepted_by_waiter_name) {

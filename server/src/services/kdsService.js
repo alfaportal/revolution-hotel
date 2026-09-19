@@ -2,6 +2,7 @@ const { getClientById, normalizeItems } = require("./salesService");
 const { getSupabase } = require("../db");
 const { notifyKitchenUpdate } = require("./kdsEvents");
 const { isBarMobileOrder, isKioskWaiterName, isDirectCustomerKitchenOrder, isStaffWaiterOrder, WEB_KIOSK, WEB_PUBLIC } = require("../lib/orderSource");
+const { kdsOrderedAtInstant } = require("../lib/posOrderedAt");
 const { isDrinkCategory, isDrinkItemName, isKitchenRouteItem } = require("../lib/menuGroups");
 const { selectWithAcceptanceFallback, updateOrdersAcceptance, normalizeAcceptanceFields, isMissingAcceptanceColumnError } = require("../lib/salesOrderSelect");
 const { getPgPool } = require("../lib/pgPool");
@@ -244,7 +245,7 @@ function mergeOrdersById(primary, extra) {
 async function fetchOrderedSales(clientId) {
   const db = getSupabase();
   const base =
-    "id, table_number, waiter_name, waiter_id, items_json, total, ordered_at, created_at, local_order_id, device_id";
+    "id, table_number, waiter_name, waiter_id, items_json, total, ordered_at, created_at, local_order_id, device_id, pos_synced_at";
   const refusalExtra = ", refused_at, order_expires_at, refused_by_waiter_ids";
 
   async function runQuery(withAcceptance, withRefusal) {
@@ -271,10 +272,14 @@ async function fetchOrderedSales(clientId) {
   }
   if (result.error) throw result.error;
 
-  return (result.data || []).map(o => normalizeRefusalFields(normalizeAcceptanceFields(o))).map(o => ({
-    ...o,
-    items_json: normalizeItems(o.items_json),
-  }));
+  return (result.data || []).map(o => normalizeRefusalFields(normalizeAcceptanceFields(o))).map(o => {
+    const fixed = kdsOrderedAtInstant(o);
+    return {
+      ...o,
+      ordered_at: fixed || o.ordered_at,
+      items_json: normalizeItems(o.items_json),
+    };
+  });
 }
 
 /** Porosi që duhen te banaku (QR, kamarier web, online, POS lokal) */

@@ -303,6 +303,21 @@ function applyFiscalCloseFields(payload, opts = {}) {
   return payload;
 }
 
+/** SQLite created_at (pa TZ) → ISO UTC për cloud. */
+function posLocalDatetimeToIso(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : "";
+  }
+  let t = s.includes("T") ? s : s.replace(" ", "T");
+  t = t.replace(/\.\d+$/, "");
+  if (t.length === 16) t += ":00";
+  const d = new Date(`${t}+02:00`);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : "";
+}
+
 function buildSalePayload(db, order, opts = {}) {
   const cfg = getConfig(db);
   if (!cfg.celesi || !order) return null;
@@ -327,10 +342,13 @@ function buildSalePayload(db, order, opts = {}) {
   const tbl = resolveTableNumber(db, order, table_number);
   const saleStatus = status || "closed";
   const now = new Date().toISOString();
-  const orderedAt =
+  const orderedAtRaw =
     ordered_at ||
     order.created_at ||
     (saleStatus === "ordered" ? now : "");
+  const orderedAt = orderedAtRaw
+    ? (posLocalDatetimeToIso(orderedAtRaw) || orderedAtRaw)
+    : "";
   const closedAt = saleStatus === "closed" ? resolveClosedAt(order, closed_at) : "";
 
   const payload = {

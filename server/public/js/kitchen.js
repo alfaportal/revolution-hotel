@@ -58,10 +58,18 @@
     errorEl.classList.add("hidden");
   }
 
-  function formatTime(iso) {
-    if (!iso) return "—";
+  function toInstant(isoOrDate) {
+    if (!isoOrDate) return null;
+    if (isoOrDate instanceof Date) return isoOrDate;
+    const d = new Date(isoOrDate);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
+  function formatTime(isoOrDate) {
+    const d = toInstant(isoOrDate);
+    if (!d) return "—";
     try {
-      return new Date(iso).toLocaleTimeString("sq-AL", {
+      return d.toLocaleTimeString("sq-AL", {
         hour: "2-digit",
         minute: "2-digit",
         timeZone: "Europe/Belgrade",
@@ -73,7 +81,9 @@
 
   function elapsed(iso) {
     if (!iso) return "";
-    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    const t = toInstant(iso);
+    if (!t) return "";
+    const min = Math.floor((Date.now() - t.getTime()) / 60000);
     if (min < 1) return "tani";
     return `${min} min`;
   }
@@ -255,7 +265,7 @@
     updateAlarmState(active);
     const n = active.length;
     countEl.textContent = n === 1 ? "1 porosi" : `${n} porosi`;
-    syncEl.textContent = `Rifreskuar: ${formatTime(new Date().toISOString())}`;
+    syncEl.textContent = `Rifreskuar: ${formatTime(new Date())}`;
 
     if (!active.length && !cancelled.length) {
       gridEl.innerHTML = "";
