@@ -151,32 +151,12 @@ router.post("/:slug/orders/:orderId/accept", resolveKitchenClient, requirePackag
   try {
     const client = req.kitchenClient;
     const { acceptBarOrder } = require("../services/kdsService");
-
     const handler = await resolveWaiterForBarView(client.id, req);
-    if (handler?.id) {
-      const order = await acceptBarOrder(client.id, req.params.orderId, {
-        waiterId: handler.id,
-        waiterName: handler.name,
-      });
-      res.json({ ok: true, order, accepted_by: handler.name });
-      return;
-    }
-
-    // Rrjedha e vjetër (ekran i përbashkët pa token): pranim me PIN.
-    const pin = String(req.body?.pin || req.body?.waiter_pin || "").trim();
-    if (!pin) {
-      return res.status(400).json({
-        ok: false,
-        gabim: "Vendosni PIN-in e kamarierit që e pranon porosinë.",
-      });
-    }
-    const { verifyWaiterPin } = require("../services/waiterPinService");
-    const pinWaiter = await verifyWaiterPin(client.id, pin);
     const order = await acceptBarOrder(client.id, req.params.orderId, {
-      waiterId: pinWaiter.id,
-      waiterName: pinWaiter.name,
+      waiterId: handler?.id || null,
+      waiterName: handler?.name || "Kuzhina",
     });
-    res.json({ ok: true, order, accepted_by: pinWaiter.name });
+    res.json({ ok: true, order, accepted_by: handler?.name || "Kuzhina" });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }

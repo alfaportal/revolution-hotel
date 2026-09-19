@@ -294,7 +294,7 @@
           <button type="button" class="btn-ready btn-refuse" data-refuse="${o.id}">REFUZO ✖</button>
         </div>`;
       } else {
-        actions = `<button type="button" class="btn-ready btn-accept" data-accept="${o.id}">Prano me PIN 🔐</button>`;
+        actions = `<button type="button" class="btn-ready btn-accept" data-accept="${o.id}">Prano ✅</button>`;
       }
       return `
         <article class="order-ticket${isNew ? " new" : ""}${accepted ? " accepted" : " pending"}" data-id="${o.id}">
@@ -364,20 +364,7 @@
   }
 
   async function acceptOrder(orderId, btn, orderForReceipt) {
-    let body = {};
-    // Rrjedha e re (link personal): pa PIN — kamarieri është identifikuar.
-    if (!waiterMode) {
-      const pinTrim = await OrderPinModal.request({
-        title: "Prano porosinë",
-        hint: "Shkruani PIN-in 4-shifror të kamarierit që e pranon porosinë",
-      });
-      if (!pinTrim) return;
-      if (!/^\d{4}$/.test(String(pinTrim).trim())) {
-        showToast("PIN duhet të jetë 4 shifra.", "error");
-        return;
-      }
-      body = { pin: String(pinTrim).trim() };
-    }
+    const body = {};
     if (btn) { btn.disabled = true; btn.textContent = "Duke u përpunuar..."; }
     try {
       const res = await fetch(
@@ -391,7 +378,7 @@
       const data = await res.json();
       if (!res.ok || !data.ok) {
         showToast(data.gabim || "Nuk u pranua porosia.", "error");
-        if (btn) { btn.disabled = false; btn.textContent = waiterMode ? "PRANO ✅" : "Prano me PIN 🔐"; }
+        if (btn) { btn.disabled = false; btn.textContent = waiterMode ? "PRANO ✅" : "Prano ✅"; }
         return;
       }
       handledOrderIds.add(orderId);
@@ -406,7 +393,7 @@
       await fetchOrders();
     } catch (e) {
       showToast(e.message || "Gabim.", "error");
-      if (btn) { btn.disabled = false; btn.textContent = waiterMode ? "PRANO ✅" : "Prano me PIN 🔐"; }
+      if (btn) { btn.disabled = false; btn.textContent = waiterMode ? "PRANO ✅" : "Prano ✅"; }
     }
   }
 
