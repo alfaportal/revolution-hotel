@@ -1575,6 +1575,8 @@
   </div>
 
   <script src="/js/app.js?v=6"></script>
+  <script src="/js/sales-invoice-html.js?v=1"></script>
+  <script src="/js/sales-invoice-waiter.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/order-alarm-sound.js"></script>
   <script src="/js/cloud-status.js"></script>
@@ -3945,7 +3947,10 @@
             card.style.opacity = "";
             card.style.pointerEvents = "";
           });
-        } else klikoTavoline(t);
+        } else {
+          const freshTable = (lastTablesFlat || []).find(x => x.id === t.id) || t;
+          klikoTavoline(freshTable);
+        }
       });
       return card;
     }
@@ -5128,7 +5133,7 @@
         artikujNeTavoline = itemsToSend;
         porosia = [];
         perditesoPorosine();
-        mbyllEkraninPorosise();
+        await mbyllEkraninPorosise();
         kyçKamarierPasPorosise();
       } catch (err) {
         shfaqGabim(gabimEl, err.message);
@@ -5249,12 +5254,19 @@
           shfaqGabim(gabimEl, res.printMessage);
         }
         lironTavolinenNëPamje(tavolinaId);
+        const closedSaleCtx = {
+          order_id: res.order_id,
+          sale_items: res.sale_items,
+        };
         await mbyllEkraninPorosise();
         kyçKamarierPasPorosise();
         ngarkoPazarin();
         ngarkoPorosiOnlineWaiter(true).catch(() => {});
         try { window.dispatchEvent(new Event("pos-order-closed")); } catch (_e) { /* */ }
         if (typeof refreshFiscalNetIndicator === "function") refreshFiscalNetIndicator();
+        if (typeof openWaiterSalesInvoiceModal === "function" && closedSaleCtx.order_id) {
+          openWaiterSalesInvoiceModal(closedSaleCtx);
+        }
       } catch (err) {
         const cloudId = String(tavolinaAktive?.order?.cloud_order_id || "").trim();
         const lbl = String(tavolinaAktive?.label || tavolinaAktive?.display_name || "");
