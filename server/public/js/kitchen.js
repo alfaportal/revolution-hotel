@@ -61,7 +61,11 @@
   function formatTime(iso) {
     if (!iso) return "—";
     try {
-      return new Date(iso).toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit" });
+      return new Date(iso).toLocaleTimeString("sq-AL", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Belgrade",
+      });
     } catch {
       return "—";
     }
