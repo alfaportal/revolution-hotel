@@ -1,6 +1,6 @@
 {
   "name": "revolution-hotel",
-  "version": "1.0.615",
+  "version": "1.0.621",
   "description": "Revolution HOTEL — sistem lokal (një Setup, pako 3/4 nga telefoni)",
   "main": "main.js",
   "scripts": {
@@ -20,6 +20,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
     "protobufjs": "^8.7.1",
     "qrcode": "^1.5.4",
     "sql.js": "^1.14.1"
@@ -77,7 +78,10 @@
       "i18n.js",
       "package.json",
       "locales/**/*",
-      "**/sql.js/**"
+      "**/sql.js/**",
+      "fiscal/fiscal-db.js",
+      "fiscal/fiscal-hash-chain.js",
+      "fiscal/fiscal-vat.js"
     ],
     "electronFuses": {
       "runAsNode": false,

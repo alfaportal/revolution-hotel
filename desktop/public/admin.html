@@ -2799,6 +2799,13 @@
             <input type="text" id="staf-emri" placeholder="p.sh. Arben" required>
           </div>
           <div>
+            <label>Roli</label>
+            <select id="staf-roli">
+              <option value="kamarier">Kamarier</option>
+              <option value="recepsion">Recepsion</option>
+            </select>
+          </div>
+          <div>
             <label>PIN (4 shifra)</label>
             <input type="text" id="staf-pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" required>
           </div>
@@ -4184,13 +4191,26 @@
             Linket për stafin — format si restoranti: <strong>revolution-pos.com/menu/emri-hotelit/1</strong>
           </p>
           <p id="cloud-links-hint" style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem"></p>
-          <div class="fiscal-field-row" id="cloud-row-waiter">
-            <label>Kamarierë (hyrje e përgjithshme)</label>
+          <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
+            <label>Kamarierë (cloud — i çaktivizuar)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-waiter-url" readonly placeholder="https://revolution-pos.com/waiter/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-waiter-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-waiter-url">Kopjo</button>
             </div>
-            <p class="field-hint" style="margin:0.35rem 0 0">Link personal për çdo kamarier — te skeda <strong>Stafi</strong> → Ndrysho → Kopjo.</p>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-local-waiter">
+            <label id="cloud-local-waiter-label">Kamarieri — WiFi lokal</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-local-waiter-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-waiter-url">Kopjo</button>
+            </div>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-local-recepsion">
+            <label id="cloud-local-recepsion-label">Recepsioni — WiFi lokal</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-local-recepsion-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-recepsion-url">Kopjo</button>
+            </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-kitchen">
             <label>Kuzhina (ekran porosish)</label>
@@ -4227,10 +4247,10 @@
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-hk-url">Kopjo</button>
             </div>
           </div>
-          <div class="fiscal-field-row" id="cloud-row-reception">
-            <label>Recepsion (hyrje staf)</label>
+          <div class="fiscal-field-row" id="cloud-row-reception" hidden>
+            <label>Recepsion (cloud — i çaktivizuar)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-reception-url" readonly placeholder="https://revolution-pos.com/reception/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-reception-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-reception-url">Kopjo</button>
             </div>
           </div>
@@ -4397,20 +4417,20 @@
           <dd><span id="staff-modal-pin" class="pin-mask"></span></dd>
         </div>
       </dl>
-      <div class="staff-modal-kds-block" id="staff-modal-waiter-block" hidden>
-        <label for="staff-modal-waiter-url">Link personal i kamarierit (telefon)</label>
+      <div class="staff-modal-kds-block" id="staff-modal-local-wifi-block" hidden>
+        <label for="staff-modal-local-wifi-url">Link WiFi lokal (telefon/tablet)</label>
         <input
           type="text"
-          id="staff-modal-waiter-url"
+          id="staff-modal-local-wifi-url"
           class="staff-rfid-input"
           readonly
           style="font-family:monospace;font-size:0.75rem;margin-top:0.35rem"
         >
         <div class="staff-rfid-actions" style="margin-top:0.35rem">
-          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-waiter">Kopjo</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-regen-waiter">Link i ri</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-local-wifi">Kopjo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-generate-local-wifi">Gjenero link</button>
         </div>
-        <p id="staff-modal-waiter-hint" class="links-hint" style="margin:0.35rem 0 0" hidden></p>
+        <p id="staff-modal-local-wifi-hint" class="links-hint" style="margin:0.35rem 0 0"></p>
       </div>
       <div class="staff-modal-rfid-block">
         <label for="staff-modal-card-input">RFID</label>
@@ -12925,15 +12945,7 @@
           : '<span class="staff-badge staff-badge-off">Joaktiv</span>';
         const pinText = s.has_pin ? "••••" : "Nuk është vendosur";
         const rfidText = s.has_card ? escMenuAttr(s.card_uid) : "Nuk është vendosur";
-        const linkHtml = s.waiter_url
-          ? `<div class="staff-detail-row staff-detail-link">
-              <dt>Link telefon</dt>
-              <dd>
-                <input type="text" class="staff-link-input" readonly value="${escMenuAttr(s.waiter_url)}" style="font-family:monospace;font-size:0.68rem;width:100%">
-                <button type="button" class="btn btn-ghost btn-sm staff-copy-link-btn" data-copy-link="${escMenuAttr(s.waiter_url)}">Kopjo</button>
-              </dd>
-            </div>`
-          : "";
+        const roleBadgeLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
 
         card.innerHTML = `
           <div class="staff-card-head">
@@ -12941,7 +12953,7 @@
             <div class="staff-card-head-text">
               <div class="staff-name">${escMenuAttr(s.name)}</div>
               <div class="staff-badges">
-                <span class="staff-badge staff-badge-role">Kamarier</span>
+                <span class="staff-badge staff-badge-role">${escMenuAttr(roleBadgeLabel)}</span>
                 ${statusBadge}
               </div>
             </div>
@@ -12959,22 +12971,8 @@
               <dt>RFID</dt>
               <dd class="staff-rfid-code">${rfidText}</dd>
             </div>
-            ${linkHtml}
           </dl>
           <button type="button" class="staff-edit-btn" data-staff-edit="${s.id}">Ndrysho punonjësin</button>`;
-
-        card.querySelector(".staff-copy-link-btn")?.addEventListener("click", async function () {
-          const val = this.getAttribute("data-copy-link") || "";
-          if (!val) return;
-          try {
-            await navigator.clipboard.writeText(val);
-            const orig = this.textContent;
-            this.textContent = "U kopjua!";
-            setTimeout(() => { this.textContent = orig; }, 1500);
-          } catch {
-            prompt("Kopjoni linkun:", val);
-          }
-        });
 
         card.querySelector("[data-staff-edit]").addEventListener("click", () => { void hapModalStafit(s); });
         grid.appendChild(card);
@@ -12983,6 +12981,59 @@
 
     let stafModalAktual = null;
     let stafKdsEnabled = false;
+    let localWifiBaseKamarier = "";
+    let localWifiBaseRecepsion = "";
+
+    async function findStaffLocalWifiCodeRow(staff) {
+      if (!staff) return null;
+      const role = staff.staff_role === "recepsion" ? "recepsion" : "kamarier";
+      try {
+        const data = await api(`/api/waiter-codes?role=${encodeURIComponent(role)}`);
+        if (data.base_url_kamarier) localWifiBaseKamarier = data.base_url_kamarier;
+        if (data.base_url_recepsion) localWifiBaseRecepsion = data.base_url_recepsion;
+        const codes = Array.isArray(data.codes) ? data.codes : [];
+        const byId = codes.find(c => c.waiter_id != null && String(c.waiter_id) === String(staff.id));
+        if (byId) return byId;
+        const norm = String(staff.name || "").trim().toLowerCase();
+        return codes.find(c => String(c.waiter_name || "").trim().toLowerCase() === norm) || null;
+      } catch {
+        return null;
+      }
+    }
+
+    function staffLocalWifiUrlFromRow(row, staff) {
+      if (row?.url) return row.url;
+      const role = staff?.staff_role === "recepsion" ? "recepsion" : "kamarier";
+      const base = role === "recepsion" ? localWifiBaseRecepsion : localWifiBaseKamarier;
+      if (base && row?.code) return `${base.replace(/\/+$/, "")}/${row.code}`;
+      return "";
+    }
+
+    async function refreshStaffModalLocalWifiUi(staff) {
+      const block = document.getElementById("staff-modal-local-wifi-block");
+      const input = document.getElementById("staff-modal-local-wifi-url");
+      const copyBtn = document.getElementById("staff-modal-copy-local-wifi");
+      const genBtn = document.getElementById("staff-modal-generate-local-wifi");
+      const hint = document.getElementById("staff-modal-local-wifi-hint");
+      if (!block || !staff) {
+        if (block) block.hidden = true;
+        return;
+      }
+      block.hidden = false;
+      const roleLabel = staff.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
+      if (hint) hint.textContent = `${roleLabel} — hap linkun në WiFi të hotelit, pastaj PIN.`;
+      const row = await findStaffLocalWifiCodeRow(staff);
+      const url = staffLocalWifiUrlFromRow(row, staff);
+      if (!url) {
+        if (input) { input.value = ""; input.placeholder = "Klikoni Gjenero link"; }
+        if (copyBtn) copyBtn.hidden = true;
+        if (genBtn) genBtn.hidden = false;
+        return;
+      }
+      if (input) { input.value = url; input.placeholder = ""; }
+      if (copyBtn) { copyBtn.hidden = false; copyBtn.disabled = false; }
+      if (genBtn) genBtn.hidden = true;
+    }
 
     function mbyllModalStafit() {
       document.getElementById("modal-staff").hidden = true;
@@ -13001,8 +13052,9 @@
       }
       stafModalAktual = s;
       document.getElementById("staff-modal-title").textContent = s.name;
+      const roleLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
       document.getElementById("staff-modal-sub").textContent =
-        "Kopjoni linkun personal për telefonin e kamarierit — hapet hyrja vetëm për të, pastaj PIN 4-shifror.";
+        `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`;
       document.getElementById("staff-modal-shift").textContent = s.shift_label || "—";
       const pinEl = document.getElementById("staff-modal-pin");
       pinEl.textContent = s.has_pin ? "••••" : "Nuk është vendosur";
@@ -13010,26 +13062,7 @@
       const cardInput = document.getElementById("staff-modal-card-input");
       cardInput.value = s.has_card ? (s.card_uid || "") : "";
       document.getElementById("staff-modal-card-del-btn").hidden = !s.has_card;
-      const waiterUrl = s.waiter_url || "";
-      document.getElementById("staff-modal-waiter-url").value = waiterUrl;
-      document.getElementById("staff-modal-waiter-block").hidden = false;
-      const copyWaiterBtn = document.getElementById("staff-modal-copy-waiter");
-      const regenBtn = document.getElementById("staff-modal-regen-waiter");
-      const waiterHint = document.getElementById("staff-modal-waiter-hint");
-      if (copyWaiterBtn) copyWaiterBtn.disabled = !waiterUrl;
-      if (regenBtn) regenBtn.disabled = !s.has_pin;
-      if (waiterHint) {
-        if (!s.has_pin) {
-          waiterHint.hidden = false;
-          waiterHint.textContent = "Vendosni PIN 4-shifror — pastaj gjenerohet linku personal automatikisht.";
-        } else if (waiterUrl) {
-          waiterHint.hidden = false;
-          waiterHint.textContent = "Dërgojeni këtë link kamarierit (WhatsApp/SMS). Hap linkun → shkruan PIN-in e vet.";
-        } else {
-          waiterHint.hidden = false;
-          waiterHint.textContent = "Duke gjeneruar linkun… rifreskoni listën e stafit.";
-        }
-      }
+      await refreshStaffModalLocalWifiUi(s);
       document.getElementById("modal-staff").hidden = false;
     }
 
@@ -13042,8 +13075,8 @@
     document.getElementById("staff-modal-backdrop").addEventListener("click", mbyllModalStafit);
     document.getElementById("staff-modal-close").addEventListener("click", mbyllModalStafit);
 
-    document.getElementById("staff-modal-copy-waiter").addEventListener("click", async function () {
-      const val = document.getElementById("staff-modal-waiter-url")?.value || "";
+    document.getElementById("staff-modal-copy-local-wifi")?.addEventListener("click", async function () {
+      const val = document.getElementById("staff-modal-local-wifi-url")?.value || "";
       if (!val) return;
       try {
         await navigator.clipboard.writeText(val);
@@ -13051,20 +13084,29 @@
         this.textContent = "U kopjua!";
         setTimeout(() => { this.textContent = orig; }, 1500);
       } catch {
-        prompt("Kopjoni linkun e kamarierit:", val);
+        prompt("Kopjoni linkun WiFi:", val);
       }
     });
 
-    document.getElementById("staff-modal-regen-waiter")?.addEventListener("click", async function () {
-      if (!stafModalAktual?.id) return;
-      if (!confirm("Gjeneroni link të ri? Linku i vjetër nuk punon më.")) return;
+    document.getElementById("staff-modal-generate-local-wifi")?.addEventListener("click", async function () {
+      const s = stafModalAktual;
+      if (!s) return;
+      const btn = this;
+      btn.disabled = true;
       try {
-        const r = await api(`/api/staff/${stafModalAktual.id}/regenerate-link`, { method: "POST" });
-        document.getElementById("staff-modal-waiter-url").value = r.waiter_url || "";
-        document.getElementById("staff-modal-waiter-block").hidden = false;
-        await ngarkoStafin();
-      } catch (e) {
-        alert(e.message || "Gabim");
+        await api("/api/waiter-codes/generate", {
+          method: "POST",
+          body: JSON.stringify({
+            waiter_name: s.name,
+            waiter_id: s.id,
+            role: s.staff_role || "kamarier",
+          }),
+        });
+        await refreshStaffModalLocalWifiUi(s);
+      } catch (err) {
+        alert(err?.message || "Gabim gjatë gjenerimit të linkut.");
+      } finally {
+        btn.disabled = false;
       }
     });
 
@@ -13202,19 +13244,15 @@
         body: JSON.stringify({
           name: document.getElementById("staf-emri").value,
           pin,
+          staff_role: document.getElementById("staf-roli")?.value || "kamarier",
         }),
       });
       document.getElementById("staf-emri").value = "";
       document.getElementById("staf-pin").value = "";
       document.getElementById("staff-add-card").hidden = true;
       await ngarkoStafin();
-      if (created.waiter_url) {
-        try {
-          await navigator.clipboard.writeText(created.waiter_url);
-          alert(`Punonjësi u shtua.\n\nLinku personal u kopjua në clipboard:\n${created.waiter_url}`);
-        } catch {
-          prompt("Punonjësi u shtua. Kopjoni linkun personal:", created.waiter_url);
-        }
+      if (created?.staff_id) {
+        alert("Punonjësi u shtua. Hapni «Ndrysho» për linkun WiFi lokal.");
       }
     });
 
@@ -14596,32 +14634,51 @@
         const el = document.getElementById(id);
         if (el) el.value = val || "";
       };
-      const toggleRow = (rowId, val) => {
+      const toggleRow = (rowId, show) => {
         const row = document.getElementById(rowId);
-        if (row) row.hidden = !String(val || "").trim();
+        if (row) row.hidden = !show;
       };
-      setVal("cloud-waiter-url", s.waiter_url);
+      const cloudDisabled = !!s.cloud_waiter_disabled;
+      setVal("cloud-waiter-url", cloudDisabled ? "" : (s.waiter_url || ""));
       setVal("cloud-kitchen-url", s.kitchen_url);
       setVal("cloud-bar-url", s.bar_url);
       setVal("cloud-kiosk-url", s.kiosk_url);
       setVal("cloud-public-url", s.public_page_url);
       setVal("cloud-hk-url", s.housekeeping_url || "");
-      setVal("cloud-reception-url", s.reception_url || "");
+      setVal("cloud-reception-url", cloudDisabled ? "" : (s.reception_url || ""));
+      toggleRow("cloud-row-waiter", false);
+      toggleRow("cloud-row-reception", false);
+
+      const localWaiterUrl = s.local_waiter_url || "";
+      const localRecepsionUrl = s.local_recepsion_url || "";
+      setVal("cloud-local-waiter-url", localWaiterUrl);
+      setVal("cloud-local-recepsion-url", localRecepsionUrl);
+      toggleRow("cloud-row-local-waiter", !!localWaiterUrl);
+      toggleRow("cloud-row-local-recepsion", !!localRecepsionUrl);
+      const venue = String(emriRestorantit || s.client_name || "").trim();
+      const wLbl = document.getElementById("cloud-local-waiter-label");
+      const rLbl = document.getElementById("cloud-local-recepsion-label");
+      if (wLbl) wLbl.textContent = venue ? `Kamarieri — ${venue}` : "Kamarieri — WiFi lokal";
+      if (rLbl) rLbl.textContent = venue ? `Recepsioni — ${venue}` : "Recepsioni — WiFi lokal";
+      if (localWaiterUrl) localWifiBaseKamarier = localWaiterUrl;
+      if (localRecepsionUrl) localWifiBaseRecepsion = localRecepsionUrl;
+
       toggleRow("cloud-row-kitchen", s.kitchen_url);
       toggleRow("cloud-row-bar", s.bar_url);
       toggleRow("cloud-row-kiosk", s.kiosk_url);
       toggleRow("cloud-row-public", s.public_page_url);
       toggleRow("cloud-row-housekeeping", s.housekeeping_url);
-      toggleRow("cloud-row-reception", s.reception_url);
 
       if (hint) {
         hint.hidden = false;
-        if (s.hotel_slug) {
-          hint.textContent = "Emri i hotelit → slug: hotel/" + s.hotel_slug + " · Link personal kamarier — te Stafi.";
+        if (localWaiterUrl || localRecepsionUrl) {
+          hint.textContent = "Kamarier/recepsion — WiFi i hotelit (pa cloud). Link personal me kod 3-shifror te Stafi → Ndrysho.";
+        } else if (s.hotel_slug) {
+          hint.textContent = "Emri i hotelit → slug: hotel/" + s.hotel_slug + " · Link WiFi lokal — te Stafi.";
         } else if (s.links_ready) {
-          hint.textContent = "Linke gati. Kamarierët personalë — te skeda Stafi → Kopjo linkun.";
+          hint.textContent = "Linke cloud (kuzhinë/bar). Kamarier/recepsion vetëm WiFi lokal.";
         } else {
-          hint.textContent = "Vendosni emrin e hotelit te Cilësimet.";
+          hint.textContent = "Vendosni emrin e hotelit te Cilësimet dhe çelësin e licencës.";
         }
       }
     }
@@ -14657,6 +14714,12 @@
       }
     }
 
+    document.getElementById("btn-copy-local-waiter-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-local-waiter-url", this);
+    });
+    document.getElementById("btn-copy-local-recepsion-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-local-recepsion-url", this);
+    });
     document.getElementById("btn-copy-waiter-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-waiter-url", this);
     });

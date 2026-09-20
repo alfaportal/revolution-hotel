@@ -6,6 +6,17 @@
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/login-modern.css">
+  <style>
+    html.login-mode-staff, html.login-mode-staff body.staff-login-screen { background:#0b1526; min-height:100%; overflow-y:auto; }
+    html.login-mode-staff .staff-login-screen { min-height:100dvh; background:radial-gradient(ellipse 120% 80% at 50% -20%, rgba(30,58,95,.45), transparent 55%), #0b1526; }
+    html.login-mode-staff .staff-login-shell { flex-direction:column; max-width:440px; margin:0 auto; min-height:100dvh; }
+    html.login-mode-staff .staff-brand { width:100%; background:transparent; text-align:center; padding:1.25rem 1rem 0.35rem; }
+    html.login-mode-staff .staff-main { background:transparent; padding:0 1.25rem 1.5rem; }
+    html.login-mode-staff .login-col-admin, html.login-mode-staff .login-col-divider, html.login-mode-staff #btn-online-orders, html.login-mode-staff #btn-emergency-waiter { display:none !important; }
+    html.login-mode-staff .staff-main-head, html.login-mode-staff .login-col-title { color:#fff; }
+    html.login-mode-staff .staff-brand-venue { color:#fff; font-size:1.5rem; }
+    html.login-mode-staff .staff-brand-tag { color:rgba(255,255,255,.55); }
+  </style>
 </head>
 <body class="staff-login-screen">
   <div class="staff-login-shell">
@@ -13,6 +24,9 @@
       <div class="staff-brand-inner">
         <div class="staff-brand-logo-wrap">
           <img src="/img/revolution-logo.png" alt="Revolution Invest" class="staff-brand-logo-img" width="100" height="100">
+        </div>
+        <div class="staff-brand-venue-mark" id="brand-venue-mark" hidden>
+          <img id="brand-venue-logo" alt="" width="44" height="44" style="border-radius:10px">
         </div>
         <p class="staff-brand-tag" id="brand-firm-name">REVOLUTION HOTEL</p>
         <h1 class="staff-brand-venue" id="brand-venue-name">Revolution HOTEL</h1>
@@ -565,10 +579,46 @@
     const gabimEl = document.getElementById("gabim");
     const pinPanel = document.getElementById("pin-panel");
     const pinDots = [...document.querySelectorAll("#pin-display .pin-dot")];
+    const staffInjected = window.__STAFF_WIFI_ENTRY__ || {};
+    const staffFromPath = (() => {
+      const p = window.location.pathname.replace(/\/+$/, "");
+      const m = p.match(/\/(kamarier|recepsion)(?:\/(\d{3}))?$/i);
+      if (!m) return null;
+      return { mode: m[1].toLowerCase(), waiter_code: m[2] || "" };
+    })();
     const urlParams = new URLSearchParams(window.location.search);
+    const staffLoginMode = staffInjected.mode === "recepsion" || staffFromPath?.mode === "recepsion"
+      ? "recepsion"
+      : (staffInjected.mode === "kamarier" || staffFromPath?.mode === "kamarier" || urlParams.get("mode") === "kamarier"
+        ? "kamarier"
+        : (urlParams.get("mode") === "recepsion" ? "recepsion" : null));
+    const isStaffOnlyLoginMode = staffLoginMode === "kamarier" || staffLoginMode === "recepsion";
+    if (isStaffOnlyLoginMode) {
+      document.documentElement.classList.add("login-mode-staff");
+      const head = document.querySelector(".staff-main-head h1");
+      const sub = document.querySelector(".staff-main-head p");
+      if (head) head.textContent = staffLoginMode === "recepsion" ? "Recepsion" : "Kamarier";
+      if (sub) sub.textContent = "Shkruani PIN-in (4 shifra) për hyrje.";
+      fetch("/api/venue-logo").then(r => r.json()).then(d => {
+        if (!d?.logo) return;
+        const mark = document.getElementById("brand-venue-mark");
+        const img = document.getElementById("brand-venue-logo");
+        if (img) img.src = d.logo;
+        if (mark) mark.hidden = false;
+      }).catch(() => {});
+    }
     let personalWebToken = String(urlParams.get("w") || "").trim();
-    let personalStaffId = null;
-    let personalStaffName = "";
+    let personalStaffId = staffInjected.staff_id ? Number(staffInjected.staff_id) : null;
+    let personalStaffName = String(staffInjected.waiter_hint || "").trim();
+    if (isStaffOnlyLoginMode) {
+      personalWebToken = "";
+      const hintEl = document.getElementById("pin-hint-login");
+      if (hintEl && personalStaffName) {
+        hintEl.textContent = `${personalStaffName} — shkruani PIN-in (4 shifra).`;
+      } else if (hintEl && staffInjected.waiter_code) {
+        hintEl.textContent = "Shkruani PIN-in tuaj (4 shifra).";
+      }
+    }
 
     let pinValue = "";
     let pinBusy = false;
@@ -692,8 +742,9 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pin: pinToSend,
-            staff_id: personalStaffId || undefined,
+            staff_id: personalStaffId || (staffInjected.staff_id ? Number(staffInjected.staff_id) : undefined),
             web_token: personalWebToken || undefined,
+            login_mode: staffLoginMode || "kamarier",
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -716,18 +767,33 @@
       const btnHyr = document.getElementById("pin-hyr");
       if (btnHyr) btnHyr.disabled = true;
       try {
+        const cardBody = {
+          card_uid: cardUid,
+          staff_id: personalStaffId || (staffInjected.staff_id ? Number(staffInjected.staff_id) : undefined),
+        };
+        if (isStaffOnlyLoginMode && staffLoginMode) {
+          cardBody.login_mode = staffLoginMode;
+        }
         const res = await fetch("/api/login/card", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ card_uid: cardUid }),
+          body: JSON.stringify(cardBody),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.token) {
           throw new Error(data.gabim || "Kartela nuk njihet!");
         }
         if (data.roli === "admin") {
+          if (isStaffOnlyLoginMode) {
+            throw new Error("Kjo kartelë është e pronarit — përdorni hyrjen e adminit në PC.");
+          }
           hyrSiAdmin(data);
           return;
+        }
+        if (isStaffOnlyLoginMode && staffLoginMode && data.roli !== staffLoginMode) {
+          throw new Error(staffLoginMode === "recepsion"
+            ? "Ky punonjës nuk është recepsion."
+            : "Ky punonjës nuk është kamarier.");
         }
         await hyrSiKamarier(data);
       } catch (err) {
@@ -914,7 +980,7 @@
     });
 
     (async function bootstrapPersonalWaiterLink() {
-      if (!personalWebToken) return;
+      if (isStaffOnlyLoginMode || !personalWebToken) return;
       const hint = document.getElementById("pin-hint-login");
       try {
         const data = await api(`/api/login/waiter-bootstrap?w=${encodeURIComponent(personalWebToken)}`);

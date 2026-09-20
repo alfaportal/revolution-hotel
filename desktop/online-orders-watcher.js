@@ -452,7 +452,7 @@ async function tick(db, printBarTicket) {
       if ((Number(o.table_number) || 0) <= 0) return false;
       if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) return false;
       const device = String(o.device_id || "").trim().toUpperCase();
-      if (device === "WEB-WAITER") return true;
+      if (device === "WEB-WAITER") return false;
       if (
         typeof db.isQrTableOrderSubjectToAcceptGate === "function"
         && db.isQrTableOrderSubjectToAcceptGate(o)

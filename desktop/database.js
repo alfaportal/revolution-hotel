@@ -118,6 +118,11 @@ whenReady = async () => {
     /* ignore */
   }
   try {
+    ensureCategoriesRouteMigration();
+  } catch (e) {
+    console.warn("[categories-route] startup:", e.message);
+  }
+  try {
     baselineStockReconcileDriftsOnce();
   } catch (e) {
     console.warn("[stock] baseline reconcile:", e.message);
@@ -606,12 +611,60 @@ function getSettings() {
   };
 }
 
+function normalizeCategoryRoute(raw) {
+  const r = String(raw ?? "bar").trim().toLowerCase();
+  if (r === "kitchen" || r === "kuzhine" || r === "kuzhinë" || r === "ushqim" || r === "food") {
+    return "kitchen";
+  }
+  return "bar";
+}
+
+function inferCategoryRouteFromName(name) {
+  const { isDrinkCategory, isExplicitFoodCategory } = require("./menu-groups");
+  const n = String(name || "").trim();
+  if (!n) return "bar";
+  if (isDrinkCategory(n)) return "bar";
+  if (isExplicitFoodCategory(n)) return "kitchen";
+  return "bar";
+}
+
+function ensureCategoriesRouteMigration() {
+  try {
+    const cols = sqlite.prepare("PRAGMA table_info(categories)").all();
+    if (cols.length && !cols.some((c) => c.name === "route")) {
+      exec("ALTER TABLE categories ADD COLUMN route TEXT NOT NULL DEFAULT 'bar'");
+    }
+    const routeMarker = sqlite.prepare(
+      "SELECT value FROM settings WHERE key = 'categories_route_v1'",
+    ).get();
+    if (!routeMarker || routeMarker.value !== "1") {
+      const inferRoute = inferCategoryRouteFromName;
+      const cats = sqlite.prepare("SELECT id, name FROM categories").all();
+      const upd = sqlite.prepare("UPDATE categories SET route = ? WHERE id = ?");
+      sqlite.transaction(() => {
+        for (const c of cats) {
+          upd.run(inferRoute(c.name), c.id);
+        }
+        sqlite.prepare(
+          "INSERT OR REPLACE INTO settings (key, value) VALUES ('categories_route_v1', '1')",
+        ).run();
+      })();
+      flushDatabase();
+    }
+  } catch (e) {
+    console.warn("[categories-route] schema:", e.message);
+  }
+}
+
 function getCategories() {
   return sqlite.prepare(
-    "SELECT id, name, sort_order, COALESCE(active, 1) AS active FROM categories ORDER BY sort_order, name",
+    `SELECT id, name, sort_order, COALESCE(active, 1) AS active,
+      COALESCE(NULLIF(trim(route), ''), 'bar') AS route
+     FROM categories ORDER BY sort_order, name`,
   ).all().map((c) => ({
     ...c,
     active: Number(c.active) !== 0 ? 1 : 0,
+    route: normalizeCategoryRoute(c.route),
   }));
 }
 
@@ -624,11 +677,26 @@ function categoryExists(name) {
   return !!sqlite.prepare("SELECT id FROM categories WHERE name = ?").get(name);
 }
 
-function addCategory(name) {
-  const trimmed = name.trim();
+function addCategory(name, route) {
+  const trimmed = String(name || "").trim();
   if (!trimmed) throw new Error("Emri i kategorisë nuk mund të jetë bosh");
+  const routeNorm = normalizeCategoryRoute(
+    route != null && String(route).trim() !== "" ? route : inferCategoryRouteFromName(trimmed),
+  );
   const maxOrder = sqlite.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM categories").get().m;
-  sqlite.prepare("INSERT INTO categories (name, sort_order, active) VALUES (?, ?, 1)").run(trimmed, maxOrder + 1);
+  sqlite.prepare(
+    "INSERT INTO categories (name, sort_order, active, route) VALUES (?, ?, 1, ?)",
+  ).run(trimmed, maxOrder + 1, routeNorm);
+}
+
+function updateCategoryRoute(name, route) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) throw new Error("Mungon emri i kategorisë");
+  const cat = sqlite.prepare("SELECT id FROM categories WHERE name = ?").get(trimmed);
+  if (!cat) throw new Error("Kategoria nuk u gjet");
+  const routeNorm = normalizeCategoryRoute(route);
+  sqlite.prepare("UPDATE categories SET route = ? WHERE id = ?").run(routeNorm, cat.id);
+  return getCategories();
 }
 
 /** Stop/Shfaq kategori — fshihet nga menuja, mbetet në admin. Artikujt ndjekin statusin. */
@@ -810,8 +878,12 @@ function verifyAdminPassword(password) {
 function seedMenuAndCategories() {
   const catCount = sqlite.prepare("SELECT COUNT(*) AS c FROM categories").get().c;
   if (catCount === 0) {
-    const ins = sqlite.prepare("INSERT INTO categories (name, sort_order) VALUES (?, ?)");
-    ins.runMany(VERSION.defaultCategories.map((name, i) => [name, i]));
+    const ins = sqlite.prepare(
+      "INSERT INTO categories (name, sort_order, active, route) VALUES (?, ?, 1, ?)",
+    );
+    ins.runMany(
+      VERSION.defaultCategories.map((name, i) => [name, i, inferCategoryRouteFromName(name)]),
+    );
   }
   const menuCount = sqlite.prepare("SELECT COUNT(*) AS c FROM menu_items").get().c;
   if (menuCount === 0) {
@@ -6224,7 +6296,12 @@ function getReports(dateFrom, dateTo) {
 }
 
 function getStaff() {
-  return sqlite.prepare("SELECT id, name, pin, card_uid, active FROM staff ORDER BY name").all();
+  return sqlite.prepare("SELECT id, name, pin, card_uid, active, staff_role FROM staff ORDER BY name").all();
+}
+
+function normalizeStaffRole(raw) {
+  const r = String(raw || "kamarier").trim().toLowerCase();
+  return r === "recepsion" ? "recepsion" : "kamarier";
 }
 
 function getStaffForAdmin() {
@@ -6245,6 +6322,7 @@ function getStaffForAdmin() {
     return {
       id: s.id,
       name: s.name,
+      staff_role: normalizeStaffRole(s.staff_role),
       active: !!s.active,
       has_pin: !!s.pin,
       has_card: !!uid,
@@ -7181,17 +7259,18 @@ function pinInUse(pin, excludeId = null) {
   return !!row;
 }
 
-function addStaff(name, pin) {
+function addStaff(name, pin, staffRole = "kamarier") {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Shkruani emrin e kamarierit");
   const p = validatePin(pin);
   if (pinInUse(p)) throw new Error("Ky PIN përdoret tashmë");
+  const role = normalizeStaffRole(staffRole);
   let token = generateStaffWebToken();
   for (let attempt = 0; attempt < 8; attempt++) {
     try {
       const r = sqlite.prepare(
-        "INSERT INTO staff (name, pin, active, web_token) VALUES (?, ?, 1, ?)",
-      ).run(trimmed, p, token);
+        "INSERT INTO staff (name, pin, active, web_token, staff_role) VALUES (?, ?, 1, ?, ?)",
+      ).run(trimmed, p, token, role);
       return { id: Number(r.lastInsertRowid), web_token: token };
     } catch (e) {
       if (String(e.message || "").includes("UNIQUE") && String(e.message || "").includes("web_token")) {
@@ -7215,6 +7294,94 @@ function updateStaffPin(id, pin) {
 function findStaffByPin(pin) {
   const p = validatePin(pin);
   return sqlite.prepare("SELECT * FROM staff WHERE pin = ? AND active = 1").get(p);
+}
+
+const MAX_ACTIVE_WAITER_CODES = 10;
+
+function countActiveWaiterCodes(role = null) {
+  const r = role ? normalizeStaffRole(role) : null;
+  if (r) {
+    const row = sqlite.prepare(
+      "SELECT COUNT(*) AS n FROM waiter_codes WHERE active = 1 AND role = ?",
+    ).get(r);
+    return Number(row?.n) || 0;
+  }
+  const row = sqlite.prepare("SELECT COUNT(*) AS n FROM waiter_codes WHERE active = 1").get();
+  return Number(row?.n) || 0;
+}
+
+function getWaiterCodes(role = null) {
+  const r = role ? normalizeStaffRole(role) : null;
+  if (r) {
+    return sqlite.prepare(`
+      SELECT id, code, waiter_id, waiter_name, role, created_at, active
+      FROM waiter_codes
+      WHERE active = 1 AND role = ?
+      ORDER BY created_at DESC, id DESC
+    `).all(r);
+  }
+  return sqlite.prepare(`
+    SELECT id, code, waiter_id, waiter_name, role, created_at, active
+    FROM waiter_codes
+    WHERE active = 1
+    ORDER BY created_at DESC, id DESC
+  `).all();
+}
+
+function findActiveWaiterCode(code, expectedRole = null) {
+  const c = String(code ?? "").trim();
+  if (!/^\d{3}$/.test(c)) return null;
+  const row = sqlite.prepare("SELECT * FROM waiter_codes WHERE code = ? AND active = 1").get(c);
+  if (!row) return null;
+  if (expectedRole) {
+    const want = normalizeStaffRole(expectedRole);
+    if (normalizeStaffRole(row.role) !== want) return null;
+  }
+  return row;
+}
+
+function generateWaiterCode({ waiter_name, waiter_id, role = "kamarier" } = {}) {
+  const codeRole = normalizeStaffRole(role);
+  if (countActiveWaiterCodes(codeRole) >= MAX_ACTIVE_WAITER_CODES) {
+    const err = new Error("Maksimumi 10 kode aktive për këtë rol. Fshini një kod para se të shtoni tjetrin.");
+    err.status = 400;
+    throw err;
+  }
+  const name = String(waiter_name ?? "").trim();
+  if (!name) throw new Error("Jepni emrin e punonjësit.");
+  let wid = waiter_id != null && waiter_id !== "" ? Number(waiter_id) : null;
+  if (wid != null && Number.isFinite(wid)) {
+    const staff = sqlite.prepare("SELECT id, staff_role FROM staff WHERE id = ? AND active = 1").get(wid);
+    if (!staff) wid = null;
+    else if (normalizeStaffRole(staff.staff_role) !== codeRole) {
+      throw new Error(codeRole === "recepsion"
+        ? "Ky punonjës nuk është recepsionist."
+        : "Ky punonjës nuk është kamarier.");
+    }
+  } else {
+    wid = null;
+  }
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const code = String(100 + Math.floor(Math.random() * 900));
+    try {
+      sqlite.prepare(`
+        INSERT INTO waiter_codes (code, waiter_id, waiter_name, role, active)
+        VALUES (?, ?, ?, ?, 1)
+      `).run(code, wid, name, codeRole);
+      return findActiveWaiterCode(code, codeRole);
+    } catch (e) {
+      if (!String(e.message || "").includes("UNIQUE")) throw e;
+    }
+  }
+  throw new Error("Nuk u gjenerua dot kod unik. Provoni përsëri.");
+}
+
+function deactivateWaiterCode(code) {
+  const c = String(code ?? "").trim();
+  if (!/^\d{3}$/.test(c)) throw new Error("Kodi i pavlefshëm.");
+  const r = sqlite.prepare("UPDATE waiter_codes SET active = 0 WHERE code = ? AND active = 1").run(c);
+  if (!r.changes) throw new Error("Kodi nuk u gjet ose është çaktivizuar tashmë.");
+  return { ok: true };
 }
 
 function normalizeCardUid(uid) {
@@ -10498,6 +10665,8 @@ function getVersionInfo() {
     getCategories,
     getCategoryNames,
     addCategory,
+    updateCategoryRoute,
+    inferCategoryRouteFromName,
     toggleCategoryActive,
     deleteCategory,
     reorderCategories,
@@ -10672,6 +10841,12 @@ function getVersionInfo() {
     findStaffByWebToken,
     regenerateStaffWebToken,
     findStaffByPin,
+    normalizeStaffRole,
+    getWaiterCodes,
+    findActiveWaiterCode,
+    generateWaiterCode,
+    deactivateWaiterCode,
+    countActiveWaiterCodes,
     updateAdminCard,
     clearAdminCard,
     findAdminSessionByCard,

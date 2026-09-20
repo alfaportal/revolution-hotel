@@ -8,6 +8,36 @@ const path = require("path");
 const dbCrypto = require("./db-crypto");
 const { createPreMigrationBackup } = require("./hotel-backup");
 
+/** db-engine është në app.asar.unpacked — fiscal/ mbetet në app.asar. */
+function loadFiscalDbModule() {
+  try {
+    return require("./fiscal/fiscal-db");
+  } catch (err) {
+    const msg = String(err?.message || err || "");
+    if (!/Cannot find module/i.test(msg)) throw err;
+  }
+  const candidates = [];
+  try {
+    const { app } = require("electron");
+    if (app && typeof app.getAppPath === "function") {
+      candidates.push(path.join(app.getAppPath(), "fiscal", "fiscal-db.js"));
+    }
+  } catch {
+    /* ignore */
+  }
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, "app.asar", "fiscal", "fiscal-db.js"));
+  }
+  for (const abs of candidates) {
+    try {
+      if (abs && fs.existsSync(abs)) return require(abs);
+    } catch {
+      /* provo path tjetër */
+    }
+  }
+  throw new Error("Cannot find module './fiscal/fiscal-db' (kontrollo app.asar)");
+}
+
 function loadDbFileBytes(dbPath) {
   if (process.env.HOTEL_DB_PLAIN === "1") {
     const raw = fs.readFileSync(dbPath);
@@ -466,7 +496,8 @@ function initSchema() {
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL UNIQUE,
     sort_order INTEGER NOT NULL DEFAULT 0,
-    active     INTEGER NOT NULL DEFAULT 1
+    active     INTEGER NOT NULL DEFAULT 1,
+    route      TEXT NOT NULL DEFAULT 'bar'
   );
 
   CREATE TABLE IF NOT EXISTS menu_items (
@@ -786,7 +817,7 @@ function initSchema() {
     () => {
       if (!tableExists("staff")) return false;
       const staffCols = sqlAll("PRAGMA table_info(staff)");
-      return ["pin", "card_uid", "web_token"].some(
+      return ["pin", "card_uid", "web_token", "staff_role"].some(
         (col) => !staffCols.some((c) => c.name === col),
       );
     },
@@ -801,9 +832,45 @@ function initSchema() {
       if (!staffCols.some((c) => c.name === "web_token")) {
         sqlRun("ALTER TABLE staff ADD COLUMN web_token TEXT");
       }
+      if (!staffCols.some((c) => c.name === "staff_role")) {
+        sqlRun("ALTER TABLE staff ADD COLUMN staff_role TEXT NOT NULL DEFAULT 'kamarier'");
+      }
       sqlRun(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_web_token ON staff(web_token) WHERE web_token IS NOT NULL AND web_token <> ''",
       );
+    },
+  );
+
+  runSchemaMigration(
+    "waiter-codes-table",
+    backupCtx,
+    () => !tableExists("waiter_codes"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS waiter_codes (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          code        TEXT UNIQUE NOT NULL,
+          waiter_id   INTEGER,
+          waiter_name TEXT,
+          role        TEXT NOT NULL DEFAULT 'kamarier',
+          created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          active      INTEGER NOT NULL DEFAULT 1
+        )
+      `);
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_waiter_codes_active ON waiter_codes(active)");
+    },
+  );
+
+  runSchemaMigration(
+    "waiter-codes-role-column",
+    backupCtx,
+    () => {
+      if (!tableExists("waiter_codes")) return false;
+      const cols = sqlAll("PRAGMA table_info(waiter_codes)");
+      return !cols.some((c) => c.name === "role");
+    },
+    () => {
+      sqlRun("ALTER TABLE waiter_codes ADD COLUMN role TEXT NOT NULL DEFAULT 'kamarier'");
     },
   );
 
@@ -892,6 +959,39 @@ function initSchema() {
     "categories",
     [["active", "INTEGER NOT NULL DEFAULT 1"]],
     backupCtx,
+  );
+
+  migrateAddColumns(
+    "categories-route",
+    "categories",
+    [["route", "TEXT NOT NULL DEFAULT 'bar'"]],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "categories-route-backfill-v1",
+    backupCtx,
+    () => {
+      const marker = sqlGet("SELECT value FROM settings WHERE key = 'categories_route_v1'");
+      return !marker || marker.value !== "1";
+    },
+    () => {
+      const { isDrinkCategory, isExplicitFoodCategory } = require("./menu-groups");
+      const inferRoute = (catName) => {
+        const n = String(catName || "").trim();
+        if (!n) return "bar";
+        if (isDrinkCategory(n)) return "bar";
+        if (isExplicitFoodCategory(n)) return "kitchen";
+        return "bar";
+      };
+      const cats = sqlAll("SELECT id, name FROM categories");
+      for (const c of cats) {
+        sqlRun("UPDATE categories SET route = ? WHERE id = ?", [inferRoute(c.name), c.id]);
+      }
+      sqlRun(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('categories_route_v1', '1')",
+      );
+    },
   );
 
   runSchemaMigration(
@@ -1283,11 +1383,60 @@ function initSchema() {
   }
 
   runSchemaMigration(
+    "sales-invoices-schema",
+    backupCtx,
+    () => !tableExists("sales_invoices"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS sales_invoice_counters (
+          year INTEGER NOT NULL PRIMARY KEY,
+          next_seq INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS sales_invoices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          number TEXT NOT NULL UNIQUE,
+          invoice_date TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'final',
+          guest_kind TEXT NOT NULL DEFAULT 'individual',
+          guest_name TEXT NOT NULL DEFAULT '',
+          guest_company_name TEXT NOT NULL DEFAULT '',
+          guest_address TEXT NOT NULL DEFAULT '',
+          guest_nui TEXT NOT NULL DEFAULT '',
+          guest_fiscal_number TEXT NOT NULL DEFAULT '',
+          guest_email TEXT NOT NULL DEFAULT '',
+          guest_phone TEXT NOT NULL DEFAULT '',
+          vat_enabled INTEGER NOT NULL DEFAULT 0,
+          vat_percent REAL NOT NULL DEFAULT 18,
+          subtotal REAL NOT NULL DEFAULT 0,
+          vat_amount REAL NOT NULL DEFAULT 0,
+          grand_total REAL NOT NULL DEFAULT 0,
+          order_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS sales_invoice_lines (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_id INTEGER NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          description TEXT NOT NULL DEFAULT '',
+          qty REAL NOT NULL DEFAULT 1,
+          unit_price REAL NOT NULL DEFAULT 0,
+          discount_type TEXT NOT NULL DEFAULT 'amount',
+          discount_value REAL NOT NULL DEFAULT 0,
+          line_total REAL NOT NULL DEFAULT 0,
+          FOREIGN KEY (invoice_id) REFERENCES sales_invoices(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_sales_invoice_lines_inv ON sales_invoice_lines(invoice_id);
+      `);
+    },
+  );
+
+  runSchemaMigration(
     "fiscal-schema",
     backupCtx,
     () => !tableExists("fiscal_receipts"),
     () => {
-      const { initFiscalDB } = require("./fiscal/fiscal-db");
+      const { initFiscalDB } = loadFiscalDbModule();
       initFiscalDB({
         exec: (sql) => sqlExec(sql),
         run: (sql) => sqlRun(sql),
@@ -1297,7 +1446,7 @@ function initSchema() {
   );
   try {
     if (tableExists("fiscal_receipts")) {
-      const { initFiscalDB } = require("./fiscal/fiscal-db");
+      const { initFiscalDB } = loadFiscalDbModule();
       initFiscalDB({
         exec: (sql) => sqlExec(sql),
         run: (sql) => sqlRun(sql),

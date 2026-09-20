@@ -9,6 +9,7 @@ if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").tr
   process.env.ATK_AUTO_SEND = "0";
 }
 const db = require("./database");
+const { registerSalesInvoiceRoutes } = require("./sales-invoices-routes");
 const printer = require("./printer");
 const fiscalRegister = require("./fiscal-register");
 const fiscalConfig = require("./fiscal/fiscal-config");
@@ -120,6 +121,7 @@ const {
   buildPublicMenuUrl,
   buildWaiterPersonalUrl,
   buildHotelVenueSlug,
+  urlTipiSegment,
   PUBLIC_HOTEL_ORIGIN,
   HOTEL_ACCESS_ROLES,
   STAFF_ACCESS_ROLES,
@@ -825,15 +827,20 @@ function canShowKdsStaffLinks() {
   return t === "pako_3" || t === "pako_4" || t === "pako_5";
 }
 
-function resolveStaffWaiterUrl(cloudWaiter, staffRow) {
+function isCloudWaiterDisabledSetting() {
+  return true;
+}
+
+function resolveStaffWaiterUrl(_cloudWaiter, _staffRow) {
+  if (isCloudWaiterDisabledSetting()) return "";
   const { slug, key } = resolveHotelVenueAccess(db);
-  if (!staffRow || staffRow.id == null) {
+  if (!_staffRow || _staffRow.id == null) {
     return buildHotelStaffLinks(db).waiter_url;
   }
-  const token = db.ensureStaffWebToken(staffRow.id);
-  const fromCloud = String(cloudWaiter?.waiter_url || "").trim();
+  const token = db.ensureStaffWebToken(_staffRow.id);
+  const fromCloud = String(_cloudWaiter?.waiter_url || "").trim();
   if (fromCloud) return fromCloud;
-  const cloudToken = String(cloudWaiter?.web_token || token || "").trim();
+  const cloudToken = String(_cloudWaiter?.web_token || token || "").trim();
   if (slug && cloudToken) {
     const personal = buildWaiterPersonalUrl(slug, key, cloudToken);
     if (personal) return personal;
@@ -841,9 +848,9 @@ function resolveStaffWaiterUrl(cloudWaiter, staffRow) {
   return buildHotelStaffLinks(db).waiter_url;
 }
 
-function getLocalServerBaseUrl() {
+function getLocalLanBaseUrl() {
   const port = process.env.ACTUAL_PORT || process.env.PORT || 3001;
-  let ip = "";
+  let ip = null;
   for (const ifName of Object.keys(os.networkInterfaces())) {
     for (const net of os.networkInterfaces()[ifName] || []) {
       if (net.family === "IPv4" && !net.internal) {
@@ -853,12 +860,108 @@ function getLocalServerBaseUrl() {
     }
     if (ip) break;
   }
-  if (!ip) ip = "127.0.0.1";
-  return `http://${ip}:${port}`.replace(/\/+$/, "");
+  return ip ? `http://${ip}:${port}`.replace(/\/+$/, "") : null;
+}
+
+function getLocalServerBaseUrl() {
+  return getLocalLanBaseUrl() || `http://127.0.0.1:${process.env.ACTUAL_PORT || process.env.PORT || 3001}`;
 }
 
 function getLocalAdminUrl() {
   return `${getLocalServerBaseUrl()}/admin.html`;
+}
+
+function resolveLocalVenueSegments() {
+  const settings = db.getCloudSettings();
+  const rawTipi =
+    db.getSetting("cloud_business_type", "")
+    || settings.client_tipi
+    || db.getSetting("client_tipi", "")
+    || "hotel";
+  const tipi = urlTipiSegment(rawTipi);
+  const slug = String(
+    db.getSetting("cloud_slug", "")
+    || settings.kitchen_slug
+    || settings.cloud_client_id
+    || resolveHotelVenueAccess(db).slug
+    || "",
+  )
+    .trim()
+    .toLowerCase();
+  return { tipi, slug, rawTipi };
+}
+
+function normalizeVenuePathSegment(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+}
+
+function localStaffPathSuffix(role, code) {
+  const { tipi, slug } = resolveLocalVenueSegments();
+  if (!slug) return null;
+  const seg = role === "recepsion" ? "recepsion" : "kamarier";
+  let path = `/${tipi}/${slug}/${seg}`;
+  const c = String(code ?? "").trim();
+  if (c && /^\d{3}$/.test(c)) path += `/${c}`;
+  return path;
+}
+
+function getLocalWaiterUrl() {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix("kamarier");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
+function getLocalRecepsionUrl() {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix("recepsion");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
+function buildLocalStaffCodeUrl(role, code) {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix(role, code);
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
+function isLocalStaffEntryPath(pathname) {
+  const p = String(pathname || "").toLowerCase().replace(/\/+$/, "");
+  return /^\/[a-z0-9-]+\/[a-z0-9-]+\/(kamarier|recepsion)(?:\/\d{3})?$/.test(p);
+}
+
+function renderWaiterCodeErrorPage(message) {
+  const text = String(message || "Kodi nuk ekziston.").replace(/</g, "&lt;");
+  return `<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kodi i pavlefshëm</title><style>body{font-family:system-ui,sans-serif;background:#0b1526;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:1.5rem;text-align:center}p{max-width:22rem;line-height:1.5;color:rgba(255,255,255,.85)}</style></head><body><p>${text}</p></body></html>`;
+}
+
+const LOGIN_HTML_PATH = path.join(__dirname, "public", "login.html");
+const ADMIN_HTML_PATH = path.join(__dirname, "public", "admin.html");
+
+function serveStaffLoginPage(res, mode, entry = {}) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  let html;
+  try {
+    html = fs.readFileSync(LOGIN_HTML_PATH, "utf8");
+  } catch {
+    return res.status(500).send("login.html mungon.");
+  }
+  const loginMode = mode === "recepsion" ? "recepsion" : "kamarier";
+  const payload = {
+    mode: loginMode,
+    waiter_code: entry.waiter_code != null ? String(entry.waiter_code) : "",
+    staff_id: entry.staff_id != null ? String(entry.staff_id) : "",
+    waiter_hint: entry.waiter_hint != null ? String(entry.waiter_hint) : "",
+  };
+  const inject = `<script>window.__STAFF_WIFI_ENTRY__=${JSON.stringify(payload)};</script>\n`;
+  const marker = '<script src="/js/i18n-client.js"></script>';
+  html = html.includes(marker) ? html.replace(marker, `${marker}\n${inject}`) : inject + html;
+  res.type("html").send(html);
 }
 
 function resolveHotelVenueAccess(db) {
@@ -918,11 +1021,14 @@ function cloudSyncLinksPayload(settings, status) {
   const slug = status.kitchen_slug || settings.kitchen_slug || status.client_id || settings.cloud_client_id || "";
   const key = status.kitchen_key || settings.kitchen_key || "";
   const built = buildCloudAccessLinks(serverUrl, { kitchen_slug: slug, kitchen_key: key, client_id: slug });
-  const waiter_url = status.waiter_url || built.waiter_url;
+  const cloudDisabled = isCloudWaiterDisabledSetting();
+  const waiter_url = cloudDisabled ? "" : (status.waiter_url || built.waiter_url);
+  const reception_url = cloudDisabled ? "" : (built.reception_url || "");
   const bar_url = status.bar_url || built.bar_url;
   const kitchen_url = status.kitchen_url || built.kitchen_url;
   const kiosk_url = status.kiosk_url || built.kiosk_url;
   const public_page_url = status.public_page_url || built.public_page_url;
+  const venue = resolveLocalVenueSegments();
   return {
     connected: !!health.online && !!status.connected,
     offline: !health.online,
@@ -936,12 +1042,18 @@ function cloudSyncLinksPayload(settings, status) {
     client_name: status.client_name || settings.cloud_client_name || "",
     kitchen_slug: String(slug || "").trim(),
     kitchen_key: String(key || "").trim(),
-    links_ready: !!(waiter_url || bar_url || kitchen_url || kiosk_url || public_page_url),
+    links_ready: !!(waiter_url || bar_url || kitchen_url || kiosk_url || public_page_url || getLocalWaiterUrl()),
     waiter_url,
+    reception_url,
     bar_url,
     kitchen_url,
     kiosk_url,
     public_page_url,
+    cloud_waiter_disabled: cloudDisabled,
+    local_waiter_url: getLocalWaiterUrl(),
+    local_recepsion_url: getLocalRecepsionUrl(),
+    local_waiter_tipi: venue.tipi,
+    local_waiter_slug: venue.slug,
   };
 }
 
@@ -994,19 +1106,10 @@ function waiterOnly(req, res, next) {
   next();
 }
 
-/** Recepsioni (kamarier) ose pronari — Check-in / Check-out dhomash. */
+/** Recepsion / kamarier / pronari — Check-in / Check-out dhomash. */
 function staffOrAdmin(req, res, next) {
   const role = req.session?.role;
-  if (role !== "kamarier" && role !== "admin") {
-    return res.status(403).json({ gabim: "Nuk keni akses." });
-  }
-  next();
-}
-
-/** Recepsionisti (kamarier) ose pronari — Check-in / Check-out dhomash. */
-function staffOrAdmin(req, res, next) {
-  const role = req.session?.role;
-  if (role !== "kamarier" && role !== "admin") {
+  if (role !== "kamarier" && role !== "recepsion" && role !== "admin") {
     return res.status(403).json({ gabim: "Nuk keni akses." });
   }
   next();
@@ -1156,6 +1259,81 @@ app.get("/api/locale", (_req, res) => {
   res.json(i18n.localeInfo());
 });
 
+function isLocalElectronHost(req) {
+  const host = String(req.hostname || "").toLowerCase().replace(/:\d+$/, "");
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+/** WiFi LAN: vetëm hyrje kamarier/recepsion + statikë/login — Electron (127.0.0.1) pa kufizime. */
+app.use((req, res, next) => {
+  if (isLocalElectronHost(req)) return next();
+  const pathLower = String(req.path || "").toLowerCase();
+  if (isLocalStaffEntryPath(pathLower)) return next();
+  if (pathLower === "/login.html") {
+    const mode = String(req.query.mode || "").toLowerCase();
+    if (mode === "kamarier" || mode === "recepsion") return next();
+    const suffix = localStaffPathSuffix("kamarier");
+    if (suffix) return res.redirect(302, suffix);
+    return res.redirect(302, "/login.html?mode=kamarier");
+  }
+  if (
+    pathLower === "/admin.html"
+    || pathLower === "/setup.html"
+    || pathLower.startsWith("/api/admin")
+    || pathLower.startsWith("/api/setup")
+  ) {
+    const suffix = localStaffPathSuffix("kamarier") || localStaffPathSuffix("recepsion");
+    if (suffix) return res.redirect(302, suffix);
+    return res.redirect(302, "/login.html?mode=kamarier");
+  }
+  if (pathLower === "/" || pathLower === "") {
+    const suffix = localStaffPathSuffix("kamarier") || localStaffPathSuffix("recepsion");
+    if (suffix) return res.redirect(302, suffix);
+    return res.redirect(302, "/login.html?mode=kamarier");
+  }
+  next();
+});
+
+function handleStaffWifiEntry(req, res, mode) {
+  if (!db.isSetupDone()) {
+    return res.status(503).send("Konfigurimi nuk është përfunduar.");
+  }
+  const expected = resolveLocalVenueSegments();
+  const reqTipi = normalizeVenuePathSegment(req.params.tipi);
+  const reqSlug = normalizeVenuePathSegment(req.params.slug);
+  const expTipi = normalizeVenuePathSegment(expected.tipi);
+  const expSlug = normalizeVenuePathSegment(expected.slug);
+  if (!expSlug || reqTipi !== expTipi || reqSlug !== expSlug) {
+    return res.status(404).send("404 — lokali nuk u gjet.");
+  }
+  const kodRaw = req.params.kod != null ? String(req.params.kod).trim() : "";
+  if (kodRaw) {
+    if (!/^\d{3}$/.test(kodRaw)) {
+      return res.status(404).type("html").send(renderWaiterCodeErrorPage("Kodi nuk ekziston."));
+    }
+    const row = db.findActiveWaiterCode(kodRaw, mode);
+    if (!row) {
+      return res.status(404).type("html").send(renderWaiterCodeErrorPage("Kodi nuk ekziston."));
+    }
+    return serveStaffLoginPage(res, mode, {
+      waiter_code: kodRaw,
+      staff_id: row.waiter_id,
+      waiter_hint: row.waiter_name || "",
+    });
+  }
+  return serveStaffLoginPage(res, mode, {});
+}
+
+app.get("/:tipi/:slug/kamarier/:kod?", (req, res) => handleStaffWifiEntry(req, res, "kamarier"));
+app.get("/:tipi/:slug/recepsion/:kod?", (req, res) => handleStaffWifiEntry(req, res, "recepsion"));
+
+app.get("/api/venue-logo", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  const venue = String(db.getSetting("venue_logo_data_url", "") || "").trim();
+  if (venue) return res.json({ ok: true, logo: venue });
+  return res.json({ ok: true, logo: null });
+});
+
 /** Meny publike — /menu/{slug}/{tavolina} (si restoranti). */
 app.get("/menu/:slug/:tableNumber", (req, res) => {
   const table = String(req.params.tableNumber || "1").trim();
@@ -1217,6 +1395,14 @@ app.get("/hotel/:a/:b", (req, res) => {
   }
   return res.status(404).send("Not found");
 });
+
+if (fs.existsSync(ADMIN_HTML_PATH)) {
+  app.get("/admin.html", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.sendFile(ADMIN_HTML_PATH);
+  });
+}
 
 app.use(express.static(path.join(__dirname, "public"), {
   setHeaders(res, filePath) {
@@ -1522,6 +1708,7 @@ app.post("/api/login/pin", async (req, res) => {
   const pin = String(req.body.pin ?? "").trim();
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
   const webToken = String(req.body.web_token || req.body.w || "").trim();
+  const loginMode = db.normalizeStaffRole(req.body.login_mode || req.body.mode || "kamarier");
   if (!/^\d{4}$/.test(pin)) {
     return res.status(400).json({ gabim: "PIN duhet të jetë 4 shifra" });
   }
@@ -1529,6 +1716,14 @@ app.post("/api/login/pin", async (req, res) => {
     const staff = db.findStaffByPin(pin);
     if (!staff) {
       return res.status(401).json({ gabim: "PIN i gabuar!" });
+    }
+    const staffRole = db.normalizeStaffRole(staff.staff_role);
+    if (staffRole !== loginMode) {
+      return res.status(401).json({
+        gabim: loginMode === "recepsion"
+          ? "Ky PIN nuk është i recepsionit."
+          : "Ky PIN nuk është i kamarierit.",
+      });
     }
     if (webToken) {
       const linked = db.findStaffByWebToken(webToken);
@@ -1540,13 +1735,14 @@ app.post("/api/login/pin", async (req, res) => {
       return res.status(401).json({ gabim: "PIN i gabuar për këtë kamarier!" });
     }
 
-    const sess = createSession("kamarier", staff.name, staff.id);
-    auditActivity(staff.name, "kamarier", "Hyrje PIN", "4 shifra");
+    const sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
+    const sess = createSession(sessionRole, staff.name, staff.id);
+    auditActivity(staff.name, sessionRole, "Hyrje PIN", "4 shifra");
     logFiscalLoginAudit(req, staff.name, staff.id);
 
     return res.json({
       ok: true,
-      roli: "kamarier",
+      roli: sessionRole,
       emri: staff.name,
       staff_id: staff.id,
       ...sess,
@@ -1557,9 +1753,63 @@ app.post("/api/login/pin", async (req, res) => {
   }
 });
 
+app.get("/api/waiter-codes", auth, adminOnly, (req, res) => {
+  try {
+    const role = req.query.role ? db.normalizeStaffRole(req.query.role) : null;
+    const codes = db.getWaiterCodes(role).map(row => ({
+      ...row,
+      url: buildLocalStaffCodeUrl(row.role || "kamarier", row.code) || "",
+    }));
+    res.json({
+      ok: true,
+      codes,
+      base_url_kamarier: getLocalWaiterUrl() || "",
+      base_url_recepsion: getLocalRecepsionUrl() || "",
+      max_active: 10,
+      active_count: db.countActiveWaiterCodes(role),
+    });
+  } catch (e) {
+    res.status(500).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/waiter-codes/generate", auth, adminOnly, (req, res) => {
+  try {
+    const waiter_name = req.body?.waiter_name ?? req.body?.name ?? "";
+    const waiter_id = req.body?.waiter_id;
+    const role = db.normalizeStaffRole(req.body?.role || "kamarier");
+    const row = db.generateWaiterCode({ waiter_name, waiter_id, role });
+    res.json({
+      ok: true,
+      code: row,
+      url: buildLocalStaffCodeUrl(row.role, row.code) || "",
+    });
+  } catch (e) {
+    res.status(e.status || 400).json({ gabim: e.message });
+  }
+});
+
+app.delete("/api/waiter-codes/:code", auth, adminOnly, (req, res) => {
+  try {
+    db.deactivateWaiterCode(req.params.code);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.get("/api/settings/cloud-waiter-status", auth, adminOnly, (_req, res) => {
+  res.json({
+    ok: true,
+    disabled: true,
+    cloud_waiter_disabled: "true",
+  });
+});
+
 app.post("/api/login/card", async (req, res) => {
   const card_uid = req.body.card_uid ?? req.body.card ?? req.body.uid ?? "";
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
+  const loginModeRaw = req.body.login_mode || req.body.mode || "";
   try {
     const adminHit = db.findAdminSessionByCard(card_uid);
     if (adminHit) {
@@ -1578,15 +1828,28 @@ app.post("/api/login/card", async (req, res) => {
       return res.status(401).json({ gabim: "Kartela nuk njihet!" });
     }
     if (staffId != null && staff.id !== staffId) {
-      return res.status(401).json({ gabim: "Kjo kartelë nuk i takon këtij kamarieri!" });
+      return res.status(401).json({ gabim: "Kjo kartelë nuk i takon këtij punonjësi!" });
     }
-    const sess = createSession("kamarier", staff.name, staff.id);
-    auditActivity(staff.name, "kamarier", "Hyrje kartelë RFID", "RFID");
+    const staffRole = db.normalizeStaffRole(staff.staff_role);
+    let sessionRole = staffRole === "recepsion" ? "recepsion" : "kamarier";
+    if (loginModeRaw) {
+      const loginMode = db.normalizeStaffRole(loginModeRaw);
+      if (staffRole !== loginMode) {
+        return res.status(401).json({
+          gabim: loginMode === "recepsion"
+            ? "Kjo kartelë nuk është e recepsionit."
+            : "Kjo kartelë nuk është e kamarierit.",
+        });
+      }
+      sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
+    }
+    const sess = createSession(sessionRole, staff.name, staff.id);
+    auditActivity(staff.name, sessionRole, "Hyrje kartelë RFID", "RFID");
     logFiscalLoginAudit(req, staff.name, staff.id);
 
     return res.json({
       ok: true,
-      roli: "kamarier",
+      roli: sessionRole,
       emri: staff.name,
       staff_id: staff.id,
       ...sess,
@@ -2581,6 +2844,8 @@ app.get("/api/admin/hotel-reports/rooms", auth, adminOnly, (req, res) => {
   }
 });
 
+registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly });
+
 /** Recepsioni — dhomat (PIN / kamarier). Pa cloud. */
 app.get("/api/waiter/rooms", auth, staffOrAdmin, (_req, res) => {
   res.json(db.listRoomsWithGuests());
@@ -3554,6 +3819,8 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
     res.json({
       ok: true,
       receipt,
+      order_id: order.id,
+      sale_items: closeItems,
       fiscal,
       totals,
       coupon_type: printResult.coupon_type || couponType,
@@ -3877,14 +4144,25 @@ app.get("/api/admin/ditari/export", auth, adminOnly, (req, res) => {
 });
 
 app.post("/api/categories", auth, adminOnly, (req, res) => {
-  const { name } = req.body;
+  const { name, route } = req.body;
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e kategorisë" });
   try {
-    db.addCategory(name);
+    db.addCategory(name, route);
     syncCatalogToCloud();
     res.json({ ok: true, categories: db.getCategories() });
   } catch (e) {
     res.status(400).json({ gabim: e.message.includes("UNIQUE") ? "Kjo kategori ekziston tashmë" : e.message });
+  }
+});
+
+app.put("/api/categories/:name/route", auth, adminOnly, (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name);
+    const categories = db.updateCategoryRoute(name, req.body?.route);
+    syncCatalogToCloud();
+    res.json({ ok: true, categories });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
   }
 });
 
@@ -4566,9 +4844,10 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
   const staffById = new Map(staffRows.map((s) => [Number(s.id), s]));
   res.json({
     kds_enabled: kdsEnabled,
+    cloud_waiter_disabled: isCloudWaiterDisabledSetting(),
     staff: staff.map(s => {
       const full = staffById.get(Number(s.id)) || null;
-      const cw = kdsEnabled ? byName.get(normalizeStaffName(s.name)) : null;
+      const cw = kdsEnabled && !isCloudWaiterDisabledSetting() ? byName.get(normalizeStaffName(s.name)) : null;
       return {
         ...s,
         waiter_url: resolveStaffWaiterUrl(cw, full),
@@ -4580,12 +4859,13 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
 
 app.post("/api/staff", auth, adminOnly, (req, res) => {
   const { name, pin } = req.body;
+  const staff_role = db.normalizeStaffRole(req.body?.staff_role || req.body?.role || "kamarier");
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e kamarierit" });
   if (!/^\d{4}$/.test(String(pin ?? "").trim())) {
     return res.status(400).json({ gabim: "PIN duhet të jetë 4 shifra" });
   }
   try {
-    const created = db.addStaff(name, pin);
+    const created = db.addStaff(name, pin, staff_role);
     syncCatalogToCloud();
     void cloudSync.pushStaffAsync(db);
     const full = db.getStaff().find(s => Number(s.id) === Number(created.id));

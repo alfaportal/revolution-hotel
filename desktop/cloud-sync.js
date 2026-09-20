@@ -109,6 +109,129 @@ function parseCloudJson(data) {
   }
 }
 
+function requestBinaryOnce(baseUrl, pathPart, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try {
+      const base = String(baseUrl || PUBLIC_CLOUD_SERVER).trim().replace(/\/+$/, "");
+      const p = String(pathPart || "").startsWith("/") ? pathPart : `/${pathPart}`;
+      url = new URL(p, `${base}/`);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    const lib = url.protocol === "https:" ? https : http;
+    const req = lib.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname + url.search,
+        method: "GET",
+        timeout: timeoutMs,
+      },
+      res => {
+        const chunks = [];
+        res.on("data", c => chunks.push(c));
+        res.on("end", () => {
+          resolve({
+            status: res.statusCode || 0,
+            buffer: Buffer.concat(chunks),
+            contentType: String(res.headers["content-type"] || "image/png"),
+          });
+        });
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.end();
+  });
+}
+
+let venueLogoSyncInFlight = false;
+
+async function syncVenueLogoFromCloud(db) {
+  if (!db?.getSetting || !db?.setSetting) return { ok: false, skipped: true };
+  if (venueLogoSyncInFlight) return { ok: false, skipped: true, reason: "in_flight" };
+  if (!isCloudConfigured(db)) return { ok: false, skipped: true, reason: "not_configured" };
+
+  const health = cloudHealth.getHealthStatus();
+  if (!health.online) return { ok: false, skipped: true, reason: "offline" };
+
+  const slug = String(
+    db.getCloudSettings?.()?.kitchen_slug || db.getSetting("kitchen_slug", "") || "",
+  ).trim();
+  if (!slug) return { ok: false, skipped: true, reason: "no_slug" };
+
+  venueLogoSyncInFlight = true;
+  try {
+    const cfg = getConfig(db);
+    const bases = [...new Set(
+      [cfg.publicServerUrl, PUBLIC_CLOUD_SERVER]
+        .map(u => String(u || "").trim().replace(/\/+$/, ""))
+        .filter(Boolean),
+    )];
+
+    let logoPath = "";
+    for (const base of bases) {
+      try {
+        const res = await requestJson(
+          "GET",
+          base,
+          `/api/r/${encodeURIComponent(slug)}`,
+          null,
+          { timeoutMs: 12000 },
+        );
+        const parsed = parseCloudJson(res.data);
+        if (res.status >= 400) continue;
+        const rel = String(parsed.logo_url || "").trim();
+        if (rel) {
+          logoPath = rel.startsWith("http") ? new URL(rel).pathname + new URL(rel).search : rel;
+          break;
+        }
+      } catch {
+        /* provo base tjetër */
+      }
+    }
+
+    if (!logoPath) {
+      return { ok: true, skipped: true, reason: "no_custom_logo" };
+    }
+
+    let buffer = null;
+    let contentType = "image/png";
+    for (const base of bases) {
+      try {
+        const bin = await requestBinaryOnce(base, logoPath, 15000);
+        if (bin.status >= 200 && bin.status < 300 && bin.buffer?.length > 32) {
+          buffer = bin.buffer;
+          contentType = bin.contentType;
+          break;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!buffer) return { ok: false, reason: "logo_fetch_failed" };
+
+    const ct = String(contentType || "image/png").split(";")[0].trim() || "image/png";
+    const dataUrl = `data:${ct};base64,${buffer.toString("base64")}`;
+    if (dataUrl.length > 3 * 1024 * 1024) {
+      console.warn("[cloud/sync] venue logo shumë e madhe — skip");
+      return { ok: false, reason: "too_large" };
+    }
+
+    db.setSetting("venue_logo_data_url", dataUrl);
+    console.log("[cloud/sync] Logo e lokalit u sinkronizua nga cloud — slug:", slug);
+    return { ok: true, saved: true };
+  } catch (err) {
+    console.warn("[cloud/sync] syncVenueLogoFromCloud:", err.message);
+    return { ok: false, message: err.message };
+  } finally {
+    venueLogoSyncInFlight = false;
+  }
+}
+
 /** Pas sync/update — lidh UUID cloud te porosia lokale (mbyllje nga telefoni WEB-WAITER). */
 function attachCloudIdFromSyncResponse(db, order, response) {
   if (!db?.db || !order?.id || !response || response.status >= 400) return;
@@ -901,6 +1024,10 @@ async function fullCloudSync(db) {
       result.waiter_sales_synced = waiterSync.imported || 0;
     } catch (err) {
       console.warn("[cloud/sync] fullSync waiter closed:", err.message);
+    }
+
+    if (result.connected) {
+      syncVenueLogoFromCloud(db).catch(() => {});
     }
 
     if (result.connected && result.catalog_ok) {
@@ -2309,6 +2436,7 @@ module.exports = {
   pullMenuPhotosFromCloud,
   pullNewCatalogItemsFromCloud,
   syncRestaurantIdentityFromCloud,
+  syncVenueLogoFromCloud,
   listCloudReservations,
   createCloudReservation,
   updateCloudReservationStatus,

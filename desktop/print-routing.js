@@ -1,4 +1,8 @@
-const { isFoodCategory } = require("./menu-groups");
+const {
+  isDrinkCategory,
+  isDrinkItemName,
+  isKitchenRouteItem,
+} = require("./menu-groups");
 
 function buildCategoryLookup(db) {
   const byId = new Map();
@@ -12,6 +16,17 @@ function buildCategoryLookup(db) {
   return { byId, byName };
 }
 
+function buildCategoryRouteMap(db) {
+  const map = new Map();
+  for (const c of db.getCategories() || []) {
+    const name = String(c.name || "").trim();
+    if (!name) continue;
+    const route = String(c.route || "bar").trim().toLowerCase();
+    map.set(name, route === "kitchen" ? "kitchen" : "bar");
+  }
+  return map;
+}
+
 function resolveItemCategory(item, lookup) {
   const inline = String(item.category || item.kategoria || "").trim();
   if (inline) return inline;
@@ -19,29 +34,35 @@ function resolveItemCategory(item, lookup) {
   if (menuId != null && lookup.byId.has(String(menuId))) {
     return lookup.byId.get(String(menuId));
   }
-  const name = String(item.name || "").trim().toLowerCase();
+  const name = String(item.name || item.emri || "").trim().toLowerCase();
   if (name && lookup.byName.has(name)) return lookup.byName.get(name);
   return "";
 }
 
-function isKitchenItem(item, lookup) {
-  return isFoodCategory(resolveItemCategory(item, lookup));
+/** Kuzhinë kur kategoria ka route=kitchen; përndryshe bar (fallback heuristik). */
+function isKitchenItem(item, lookup, routeByCategory) {
+  const name = String(item?.name || item?.emri || "");
+  const cat = resolveItemCategory(item, lookup);
+  if (cat && routeByCategory && routeByCategory.has(cat)) {
+    return routeByCategory.get(cat) === "kitchen";
+  }
+  return isKitchenRouteItem(name, cat);
 }
 
-function isBarItem(item, lookup) {
-  const cat = resolveItemCategory(item, lookup);
-  if (!cat) return true;
-  return !isFoodCategory(cat);
+/** Pije + unknown → bar. */
+function isBarItem(item, lookup, routeByCategory) {
+  return !isKitchenItem(item, lookup, routeByCategory);
 }
 
 function splitItemsByStation(items, db) {
   const lookup = buildCategoryLookup(db);
+  const routeByCategory = buildCategoryRouteMap(db);
   const barItems = [];
   const kitchenItems = [];
   for (const it of items || []) {
     if ((Number(it.quantity) || 0) <= 0) continue;
-    if (isKitchenItem(it, lookup)) kitchenItems.push(it);
-    else if (isBarItem(it, lookup)) barItems.push(it);
+    if (isKitchenItem(it, lookup, routeByCategory)) kitchenItems.push(it);
+    else barItems.push(it);
   }
   return { barItems, kitchenItems };
 }
@@ -50,4 +71,7 @@ module.exports = {
   splitItemsByStation,
   isKitchenItem,
   isBarItem,
+  isDrinkCategory,
+  isDrinkItemName,
+  buildCategoryRouteMap,
 };

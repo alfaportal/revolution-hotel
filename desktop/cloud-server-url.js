@@ -100,6 +100,16 @@ function slugifyVenueName(name) {
     .slice(0, 40) || "hotel";
 }
 
+/** Segment URL publik/lokal — hotel/{slug}/kamarier|recepsion */
+function urlTipiSegment(tipi) {
+  const normalized = String(tipi || "hotel").toLowerCase().trim();
+  if (normalized === "hotel" || normalized.startsWith("hotel")) return "hotel";
+  return String(normalized)
+    .replace(/_/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    || "hotel";
+}
+
 /** Slug unik — hotel-{emri}-{hash} (si restaurant-naser-c57eb7). */
 function buildHotelVenueSlug(name, deviceId) {
   let base = slugifyVenueName(name);
@@ -314,6 +324,7 @@ module.exports = {
   buildWaiterKdsUrl,
   buildWaiterPersonalUrl,
   buildLocalWaiterPersonalUrl,
+  urlTipiSegment,
   trimTrailingSlash,
   normalizeSlug,
   HOTEL_ACCESS_ROLES,
