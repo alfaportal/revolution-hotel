@@ -934,6 +934,8 @@ function cloudSyncLinksPayload(settings, status) {
     links_stale: !!status.links_stale,
     client_id: status.client_id || settings.cloud_client_id || "",
     client_name: status.client_name || settings.cloud_client_name || "",
+    kitchen_slug: String(slug || "").trim(),
+    kitchen_key: String(key || "").trim(),
     links_ready: !!(waiter_url || bar_url || kitchen_url || kiosk_url || public_page_url),
     waiter_url,
     bar_url,

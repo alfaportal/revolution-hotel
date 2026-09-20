@@ -168,10 +168,45 @@
     #panel-fiskalizimi,
     #panel-fiskale,
     #panel-cloud,
+    #panel-faqja-publike,
     #panel-licenca,
     #panel-restorant {
       font-family: "Inter", system-ui, -apple-system, sans-serif;
     }
+
+    .admin-public-page-card .public-page-form textarea,
+    .admin-public-page-card .public-page-form input[type="url"],
+    .admin-public-page-card .public-page-form input[type="tel"],
+    .admin-public-page-card .public-page-form input[type="text"]:not([type="color"]) {
+      width: 100%; padding: 0.5rem 0.65rem; border-radius: 8px;
+      border: 1px solid var(--ngjyr-border); background: var(--ngjyr-bg-soft); color: inherit;
+    }
+    .public-logo-row, .public-cover-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; margin-bottom: 0.75rem; }
+    .public-logo-preview-wrap { width: 88px; height: 88px; flex-shrink: 0; }
+    .public-logo-preview, .public-logo-placeholder { width: 88px; height: 88px; border-radius: 12px; object-fit: cover; border: 1px solid var(--ngjyr-border); }
+    .public-logo-placeholder { display: flex; align-items: center; justify-content: center; background: var(--ngjyr-bg-soft); color: var(--ngjyr-muted); font-size: 0.8rem; font-weight: 700; }
+    .public-logo-hint { margin: 0; font-size: 0.75rem; color: var(--ngjyr-muted); }
+    .public-logo-actions { display: flex; flex-direction: column; gap: 0.35rem; }
+    .public-cover-preview-wrap { width: 100%; max-width: 280px; }
+    .public-cover-preview, .public-cover-placeholder { width: 100%; aspect-ratio: 16/9; border-radius: 12px; object-fit: cover; border: 1px solid var(--ngjyr-border); }
+    .public-cover-placeholder { display: flex; align-items: center; justify-content: center; background: var(--ngjyr-bg-soft); color: var(--ngjyr-muted); font-weight: 700; }
+    .public-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 0.5rem; margin: 0.35rem 0; }
+    .public-gallery-item { position: relative; }
+    .public-gallery-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--ngjyr-border); }
+    .public-gallery-item .btn { position: absolute; top: 0.2rem; right: 0.2rem; min-height: auto; padding: 0.1rem 0.35rem; font-size: 0.7rem; }
+    .public-reviews-list { display: grid; gap: 0.5rem; margin-bottom: 0.35rem; }
+    .public-review-row { padding: 0.55rem; border: 1px solid var(--ngjyr-border); border-radius: 8px; }
+    .public-review-row-head { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-bottom: 0.35rem; }
+    .public-review-stars button { background: none; border: none; color: #94a3b8; font-size: 1.1rem; cursor: pointer; padding: 0; }
+    .public-review-stars button.active { color: #fbbf24; }
+    .public-social-grid { display: grid; gap: 0.5rem; }
+    @media (min-width: 720px) { .public-social-grid { grid-template-columns: 1fr 1fr; } }
+    .public-hours-grid { display: flex; flex-direction: column; gap: 0.35rem; }
+    .public-hours-row { display: grid; grid-template-columns: 5rem 4.5rem 1fr auto 1fr; gap: 0.35rem; align-items: center; font-size: 0.82rem; }
+    .public-slug-prefix { display: inline-flex; align-items: center; padding: 0.45rem 0.55rem; border: 1px solid var(--ngjyr-border); border-radius: 8px; font-family: monospace; color: var(--ngjyr-muted); }
+    .public-page-qr-preview { text-align: center; padding: 0.75rem; border: 1px solid var(--ngjyr-border); border-radius: 10px; margin-top: 0.5rem; }
+    .public-page-qr-preview.hidden { display: none; }
+    .public-page-qr-canvas canvas, .public-page-qr-canvas img { display: block; margin: 0 auto; background: #fff; padding: 4px; border-radius: 6px; }
 
     #settings-subnav-bar.settings-subnav-global {
       background: #12121f;
@@ -1902,6 +1937,7 @@
       <button type="button" class="admin-tab-btn" data-panel="pastrimi">Pastrimi</button>
       <button type="button" class="admin-tab-btn" data-panel="qr-tavolinat">QR Kodet</button>
       <button type="button" class="admin-tab-btn" data-panel="raportet">Raportet</button>
+      <button type="button" class="admin-tab-btn" data-panel="faturat">Faturat</button>
       <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
       <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
       <button type="button" class="admin-tab-btn" data-panel="audit">Audit</button>
@@ -1919,6 +1955,7 @@
       <button type="button" class="settings-subnav-btn" data-settings-go="restorant">Restorant &amp; Bar</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="fiskale">Printer &amp; TVSh</button>
       <button type="button" class="settings-subnav-btn" data-settings-go="cloud">Linke stafi</button>
+      <button type="button" class="settings-subnav-btn" data-settings-go="faqja-publike">Faqja publike</button>
     </nav>
 
     <main class="admin-main">
@@ -2095,14 +2132,21 @@
             <strong>Stop</strong> i fsheh nga menuja · <strong>✕</strong> i fshin ·
             <strong>Zvarrit</strong> (⋮⋮) për të ndryshuar renditjen — vetëm pronari.
           </p>
-          <form id="forma-kategori" class="form-row">
-            <div>
-              <label>Emri i kategorisë së re</label>
-              <input type="text" id="kat-emri" placeholder="p.sh. Specialitete" required>
+          <form id="forma-kategori">
+            <div class="form-row">
+              <div>
+                <label>Emri i kategorisë së re</label>
+                <input type="text" id="kat-emri" placeholder="p.sh. Specialitete" required>
+              </div>
+              <div style="flex:0">
+                <label>&nbsp;</label>
+                <button type="submit" class="btn btn-primary">Shto kategori</button>
+              </div>
             </div>
-            <div style="flex:0">
-              <label>&nbsp;</label>
-              <button type="submit" class="btn btn-primary">Shto kategori</button>
+            <div class="form-row" style="align-items:center;gap:1rem;flex-wrap:wrap">
+              <span style="font-size:0.9rem;color:var(--ngjyr-muted)">Porositë shkojnë te:</span>
+              <label><input type="radio" name="kat-route" value="bar" checked /> Pije (banak)</label>
+              <label><input type="radio" name="kat-route" value="kitchen" /> Ushqim (kuzhinë)</label>
             </div>
           </form>
           <div id="lista-kategorive" class="tag-list"></div>
@@ -2719,6 +2763,21 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <!-- FATURAT A4 -->
+    <section id="panel-faturat" class="panel">
+      <div class="reports-panel-header">
+        <div>
+          <h2 class="reports-panel-title">Faturat</h2>
+          <p class="reports-panel-sub" style="margin:0.25rem 0 0;color:var(--ngjyr-muted);font-size:0.85rem">
+            Fatura shitje A4 — mysafir/klient, artikuj, preview, print dhe email (lokal SQLite)
+          </p>
+        </div>
+      </div>
+      <div id="admin-sales-invoices-root">
+        <p class="purchases-panel-sub">Hapni këtë skedë për të ngarkuar faturat…</p>
       </div>
     </section>
 
@@ -3795,9 +3854,7 @@
             </select>
           </div>
           <p style="margin:0.35rem 0 0;color:var(--ngjyr-muted);font-size:0.8rem">
-            Ndarja është automatike sipas kategorisë së produktit (jo zgjedhje manuale për kategori):
-            <strong>pije / birra / verë / kafe / alkool</strong> → banak;
-            <strong>pizza / pasta / mish / sanduiç / etj.</strong> → kuzhinë.
+            Ndarja banak/kuzhinë vjen nga <strong>Produktet → Kategoritë</strong> (Pije banak / Ushqim kuzhinë).
             Nëse mungon printeri i kuzhinës, fleta e ushqimit printohet te banaku por mbetet e ndarë (2 fletë).
             Fatura e pagesës gjithmonë te banaku.
           </p>
@@ -4187,6 +4244,110 @@
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
           <button type="button" id="btn-menu-print" class="btn btn-primary">Printo menunë</button>
           <button type="button" id="btn-raport-print" class="btn btn-primary">Printo raportin e sotshëm</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-faqja-publike" class="panel">
+      <button type="button" class="btn btn-ghost settings-sub-back" data-settings-back>← Kthehu te cilësimet</button>
+      <div class="card settings-card admin-public-page-card">
+        <div class="card-title card-title-row" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+          <span>Faqja publike e hotelit</span>
+          <a class="btn btn-ghost btn-sm" id="btn-public-preview" href="#" target="_blank" rel="noopener">Shiko faqen</a>
+        </div>
+        <p style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem">
+          Logo, cover, oferta, orari — ruhet në cloud (pa login pronari).
+        </p>
+        <div id="public-page-upgrade" class="fiscal-save-msg" hidden></div>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.75rem 0;font-size:0.9rem">
+          <input type="checkbox" id="public-enabled" checked>
+          <span>Faqja publike është aktive</span>
+        </label>
+        <div class="public-page-form">
+          <div class="public-logo-row">
+            <div class="public-logo-preview-wrap">
+              <img id="public-logo-preview" class="public-logo-preview hidden" alt="Logo" hidden>
+              <div id="public-logo-placeholder" class="public-logo-placeholder">Logo</div>
+            </div>
+            <div class="public-logo-actions">
+              <label class="btn btn-primary btn-sm" for="public-logo-input">Ngarko logo</label>
+              <input type="file" id="public-logo-input" accept="image/png,image/jpeg,image/jpg" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-logo-remove">Hiq logon</button>
+              <p class="public-logo-hint">PNG ose JPG, max 500 KB.</p>
+            </div>
+          </div>
+          <div class="public-cover-row">
+            <div class="public-cover-preview-wrap">
+              <img id="public-cover-preview" class="public-cover-preview hidden" alt="Cover" hidden>
+              <div id="public-cover-placeholder" class="public-cover-placeholder">Cover</div>
+            </div>
+            <div class="public-logo-actions">
+              <label class="btn btn-primary btn-sm" for="public-cover-input">Ngarko foto cover</label>
+              <input type="file" id="public-cover-input" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-cover-remove">Hiq cover-in</button>
+              <p class="public-logo-hint">PNG/JPG, max 800 KB.</p>
+            </div>
+          </div>
+          <div class="fiscal-field-row">
+            <label for="public-daily-offer">Oferta e ditës</label>
+            <input type="text" id="public-daily-offer" maxlength="500" placeholder="p.sh. Sot: spa + mëngjes">
+          </div>
+          <div class="fiscal-field-row">
+            <label>Galeri foto (max 5)</label>
+            <div id="public-gallery-grid" class="public-gallery-grid"></div>
+            <label class="btn btn-ghost btn-sm" for="public-gallery-input">+ Shto foto</label>
+            <input type="file" id="public-gallery-input" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
+          </div>
+          <div class="fiscal-field-row">
+            <label>Vlerësimet e klientëve (max 5)</label>
+            <div id="public-reviews-list" class="public-reviews-list"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-public-review-add">+ Shto vlerësim</button>
+          </div>
+          <div class="public-social-grid">
+            <div class="fiscal-field-row"><label for="public-social-instagram">Instagram</label><input type="url" id="public-social-instagram" placeholder="https://instagram.com/..."></div>
+            <div class="fiscal-field-row"><label for="public-social-facebook">Facebook</label><input type="url" id="public-social-facebook" placeholder="https://facebook.com/..."></div>
+            <div class="fiscal-field-row"><label for="public-social-tiktok">TikTok</label><input type="url" id="public-social-tiktok" placeholder="https://tiktok.com/@..."></div>
+            <div class="fiscal-field-row"><label for="public-social-whatsapp">WhatsApp</label><input type="tel" id="public-whatsapp" placeholder="+383 44 123 456"></div>
+          </div>
+          <div class="fiscal-field-row">
+            <label for="public-description">Përshkrim i shkurtër</label>
+            <textarea id="public-description" rows="3" maxlength="2000"></textarea>
+          </div>
+          <div class="fiscal-field-row">
+            <label for="public-theme">Ngjyra kryesore</label>
+            <input type="color" id="public-theme" value="#c2410c" style="max-width:5rem;height:2.25rem;padding:0.15rem">
+          </div>
+          <div class="card-title" style="margin-top:1rem;font-size:0.95rem">Orari i punës</div>
+          <div id="public-hours-grid" class="public-hours-grid"></div>
+          <div class="fiscal-field-row" style="margin-top:1rem">
+            <label for="public-page-slug">Slug i faqes publike</label>
+            <p style="font-size:0.8rem;margin:0.25rem 0;color:var(--ngjyr-muted)">URL: <code>revolution-pos.com<span id="public-slug-path">/hotel/</span><span id="public-slug-preview">slug</span></code></p>
+            <div class="fiscal-field-actions public-slug-actions" style="flex-wrap:wrap">
+              <span class="public-slug-prefix" id="public-slug-prefix">/hotel/</span>
+              <input type="text" id="public-page-slug" maxlength="48" autocomplete="off" spellcheck="false" style="font-family:monospace;flex:1;min-width:10rem">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-public-save-slug">Ruaj slug</button>
+            </div>
+          </div>
+          <div class="fiscal-field-row">
+            <label>URL publike</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap">
+              <input type="text" id="public-page-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-copy-url">Kopjo</button>
+            </div>
+          </div>
+          <div class="public-page-qr-block">
+            <div class="card-title" style="font-size:0.95rem">QR kodi i faqes publike</div>
+            <div class="public-page-qr-actions" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.5rem 0">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-public-generate-qr">Gjenero QR Kod</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-download-qr" disabled>Shkarko QR</button>
+            </div>
+            <div id="public-page-qr-preview" class="public-page-qr-preview hidden" hidden>
+              <div id="public-page-qr-canvas" class="public-page-qr-canvas"></div>
+              <p id="public-page-qr-url" style="word-break:break-all;font-size:0.75rem;color:var(--ngjyr-muted)"></p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary" id="btn-public-save" style="margin-top:1rem">Ruaj faqen publike</button>
+          <div id="public-page-msg" class="fiscal-save-msg"></div>
         </div>
       </div>
     </section>
@@ -5009,9 +5170,12 @@
   <script src="/js/vat-smart-mapping.js"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/cloud-status.js"></script>
+  <script src="/js/sales-invoice-html.js?v=1"></script>
+  <script src="/js/sales-invoices-ui.js?v=1"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
   <script src="/js/fiscal-offline-status.js?v=2"></script>
   <script src="/js/kontabilisti-atk-ui.js?v=6"></script>
+  <script src="https://revolution-pos.com/js/qrcode.js?v=1"></script>
   <script>
     const user = kerkonHyrje("admin");
     if (!user) throw new Error("");
@@ -5214,6 +5378,7 @@
         ngarkoArkenFiskale();
       }
       if (name === "cloud") ngarkoCloudSync();
+      if (name === "faqja-publike") loadAdminPublicPage().catch((err) => alert(err.message || "Gabim"));
       if (name === "restorant") {
         ngarkoMenaxhimTavolinash();
         ngarkoTavolinat();
@@ -5254,6 +5419,7 @@
         if (!document.getElementById("raport-nga").value) applyRaportPreset("sot");
         ngarkoRaportet();
       }
+      if (name === "faturat") window.initAdminSalesInvoices?.();
       if (name === "fiskalizimi") ngarkoFiscalizimin();
       if (name === "audit") { /* audit log */ }
       if (name === "test-atk") {
@@ -5867,13 +6033,37 @@
         const active = Number(c.active) !== 0;
         const enc = encodeURIComponent(k);
         const toggleLabel = active ? "Stop" : "Shfaq";
+        const route = c.route === "kitchen" ? "kitchen" : "bar";
         return `<span class="tag${active ? "" : " tag-inactive"}" draggable="true" data-kat-name="${enc}">
           <span class="tag-drag" title="Zvarrit për renditje" aria-hidden="true">⋮⋮</span>
           <span class="tag-label">${escMenuAttr(k)}</span>
+          <select class="tag-route" data-kat="${enc}" title="Banak ose kuzhinë" aria-label="Rruga ${escMenuAttr(k)}">
+            <option value="bar" ${route === "bar" ? "selected" : ""}>Pije (banak)</option>
+            <option value="kitchen" ${route === "kitchen" ? "selected" : ""}>Ushqim (kuzhinë)</option>
+          </select>
           <button type="button" class="tag-stop" data-kat="${enc}" title="${active ? "Ndale nga menuja" : "Shfaq në meny"}">${toggleLabel}</button>
           <button type="button" class="tag-del" data-kat="${enc}" title="Fshi kategorinë">✕</button>
         </span>`;
       }).join("");
+      lista.querySelectorAll(".tag-route").forEach((sel) => {
+        sel.addEventListener("change", async (e) => {
+          e.stopPropagation();
+          const kat = sel.dataset.kat;
+          const route = sel.value;
+          try {
+            await api(`/api/categories/${kat}/route`, {
+              method: "PUT",
+              body: JSON.stringify({ route }),
+            });
+            await ngarkoKategoriteUI();
+          } catch (err) {
+            alert(err.message || "Nuk u ruajt rruga e kategorisë.");
+            await ngarkoKategoriteUI();
+          }
+        });
+        sel.addEventListener("mousedown", (e) => e.stopPropagation());
+        sel.addEventListener("click", (e) => e.stopPropagation());
+      });
       lista.querySelectorAll(".tag-stop").forEach((btn) => {
         btn.addEventListener("click", async (e) => {
           e.stopPropagation();
@@ -9815,11 +10005,17 @@
 
     document.getElementById("forma-kategori").addEventListener("submit", async e => {
       e.preventDefault();
+      const route = document.querySelector('input[name="kat-route"]:checked')?.value || "bar";
       await api("/api/categories", {
         method: "POST",
-        body: JSON.stringify({ name: document.getElementById("kat-emri").value }),
+        body: JSON.stringify({
+          name: document.getElementById("kat-emri").value,
+          route,
+        }),
       });
       document.getElementById("kat-emri").value = "";
+      const barRadio = document.querySelector('input[name="kat-route"][value="bar"]');
+      if (barRadio) barRadio.checked = true;
       await ngarkoKategoriteUI();
     });
 
@@ -14540,6 +14736,439 @@
         msg.style.color = "var(--ngjyr-danger)";
       } finally {
         btn.disabled = false;
+      }
+    });
+
+    const ADMIN_PUBLIC_DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    const ADMIN_PUBLIC_DAY_LABELS = {
+      mon: "E hënë", tue: "E martë", wed: "E mërkurë", thu: "E enjte",
+      fri: "E premte", sat: "E shtunë", sun: "E diel",
+    };
+    let adminPublicCloud = { server: "https://revolution-pos.com", slug: "", key: "" };
+    let adminPublicPageLogo = null;
+    let adminPublicPageLogoDirty = false;
+    let adminPublicCover = null;
+    let adminPublicCoverDirty = false;
+    let adminPublicGallery = [];
+    let adminPublicGalleryDirty = false;
+    let adminPublicReviews = [];
+    let adminPublicPageUrlPrefix = "/hotel/";
+    let adminPublicPageQrData = null;
+
+    function setAdminPublicPageMsg(text, ok) {
+      const msg = document.getElementById("public-page-msg");
+      if (!msg) return;
+      msg.textContent = text || "";
+      msg.style.color = text ? (ok ? "var(--ngjyr-success)" : "var(--ngjyr-danger)") : "";
+    }
+
+    async function refreshAdminPublicCloudCreds() {
+      const s = await api("/api/cloud-sync");
+      adminPublicCloud.server = String(s.public_server || s.cloud_server_url || "https://revolution-pos.com").replace(/\/+$/, "");
+      adminPublicCloud.slug = String(s.kitchen_slug || s.client_id || "").trim();
+      adminPublicCloud.key = String(s.kitchen_key || "").trim();
+      if (!adminPublicCloud.slug || !adminPublicCloud.key) {
+        throw new Error("Mungon kitchen_slug ose kitchen_key. Ruani licencën dhe «Testo lidhjen» te Linke stafi.");
+      }
+      return adminPublicCloud;
+    }
+
+    function adminPublicPageApiUrl() {
+      const { server, slug, key } = adminPublicCloud;
+      const q = new URLSearchParams({ key });
+      return `${server}/hotel/api/kds/${encodeURIComponent(slug)}/public-page?${q}`;
+    }
+
+    async function adminPublicPageApi(method, body) {
+      const opts = { method, headers: { "Content-Type": "application/json" } };
+      if (body != null) opts.body = JSON.stringify(body);
+      const res = await fetch(adminPublicPageApiUrl(), opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.gabim || data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    function adminUpdatePublicLogoPreview(dataUrl) {
+      const img = document.getElementById("public-logo-preview");
+      const ph = document.getElementById("public-logo-placeholder");
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.hidden = false;
+        img.classList.remove("hidden");
+        if (ph) ph.classList.add("hidden");
+      } else {
+        img.removeAttribute("src");
+        img.hidden = true;
+        img.classList.add("hidden");
+        if (ph) ph.classList.remove("hidden");
+      }
+    }
+
+    function adminUpdatePublicCoverPreview(dataUrl) {
+      const img = document.getElementById("public-cover-preview");
+      const ph = document.getElementById("public-cover-placeholder");
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.hidden = false;
+        img.classList.remove("hidden");
+        if (ph) ph.classList.add("hidden");
+      } else {
+        img.removeAttribute("src");
+        img.hidden = true;
+        img.classList.add("hidden");
+        if (ph) ph.classList.remove("hidden");
+      }
+    }
+
+    function adminRenderPublicGallery() {
+      const grid = document.getElementById("public-gallery-grid");
+      const input = document.getElementById("public-gallery-input");
+      if (!grid) return;
+      grid.innerHTML = adminPublicGallery.map((url, idx) => `
+        <div class="public-gallery-item">
+          <img src="${escAttr(url)}" alt="">
+          <button type="button" class="btn btn-danger btn-sm" data-gallery-remove="${idx}">×</button>
+        </div>`).join("");
+      grid.querySelectorAll("[data-gallery-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          adminPublicGallery.splice(Number(btn.dataset.galleryRemove), 1);
+          adminPublicGalleryDirty = true;
+          adminRenderPublicGallery();
+        });
+      });
+      if (input) input.disabled = adminPublicGallery.length >= 5;
+    }
+
+    function adminRenderPublicReviews() {
+      const list = document.getElementById("public-reviews-list");
+      const addBtn = document.getElementById("btn-public-review-add");
+      if (!list) return;
+      list.innerHTML = adminPublicReviews.map((row, idx) => {
+        const stars = Math.max(1, Math.min(5, Number(row.stars) || 5));
+        const starBtns = [1, 2, 3, 4, 5].map((n) =>
+          `<button type="button" class="${n <= stars ? "active" : ""}" data-review-star="${idx}" data-star="${n}">★</button>`).join("");
+        return `<div class="public-review-row"><div class="public-review-row-head">
+          <input type="text" class="public-review-name" value="${escAttr(row.name || "")}" placeholder="Emri" maxlength="80" style="flex:1">
+          <div class="public-review-stars">${starBtns}</div>
+          <button type="button" class="btn btn-danger btn-sm" data-review-remove="${idx}">Fshi</button>
+        </div><textarea class="public-review-text" rows="2" maxlength="500">${escHtml(row.text || "")}</textarea></div>`;
+      }).join("");
+      list.querySelectorAll("[data-review-star]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          adminPublicReviews[Number(btn.dataset.reviewStar)].stars = Number(btn.dataset.star);
+          adminRenderPublicReviews();
+        });
+      });
+      list.querySelectorAll("[data-review-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          adminPublicReviews.splice(Number(btn.dataset.reviewRemove), 1);
+          adminRenderPublicReviews();
+        });
+      });
+      list.querySelectorAll(".public-review-name").forEach((el, idx) => {
+        el.addEventListener("input", () => { adminPublicReviews[idx].name = el.value; });
+      });
+      list.querySelectorAll(".public-review-text").forEach((el, idx) => {
+        el.addEventListener("input", () => { adminPublicReviews[idx].text = el.value; });
+      });
+      if (addBtn) addBtn.disabled = adminPublicReviews.length >= 5;
+    }
+
+    function adminCollectPublicReviews() {
+      return adminPublicReviews.map((r) => ({
+        name: String(r.name || "").trim(),
+        stars: Math.max(1, Math.min(5, Number(r.stars) || 5)),
+        text: String(r.text || "").trim(),
+      })).filter((r) => r.name);
+    }
+
+    function adminRenderPublicHours(hours) {
+      const grid = document.getElementById("public-hours-grid");
+      if (!grid) return;
+      grid.innerHTML = ADMIN_PUBLIC_DAY_KEYS.map((key) => {
+        const row = hours?.[key] || { open: "09:00", close: "22:00", closed: false };
+        return `<div class="public-hours-row" data-day="${key}">
+          <span>${ADMIN_PUBLIC_DAY_LABELS[key]}</span>
+          <label><input type="checkbox" class="public-hours-closed-cb" ${row.closed ? "checked" : ""}> Mbyllur</label>
+          <input type="time" class="public-hours-open" value="${row.open || "09:00"}" ${row.closed ? "disabled" : ""}>
+          <span>–</span>
+          <input type="time" class="public-hours-close" value="${row.close || "22:00"}" ${row.closed ? "disabled" : ""}>
+        </div>`;
+      }).join("");
+      grid.querySelectorAll(".public-hours-closed-cb").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const row = cb.closest(".public-hours-row");
+          const dis = cb.checked;
+          row.querySelector(".public-hours-open").disabled = dis;
+          row.querySelector(".public-hours-close").disabled = dis;
+        });
+      });
+    }
+
+    function adminCollectPublicHours() {
+      const hours = {};
+      document.querySelectorAll("#public-hours-grid .public-hours-row").forEach((row) => {
+        const key = row.dataset.day;
+        hours[key] = {
+          open: row.querySelector(".public-hours-open")?.value || "09:00",
+          close: row.querySelector(".public-hours-close")?.value || "22:00",
+          closed: !!row.querySelector(".public-hours-closed-cb")?.checked,
+        };
+      });
+      return hours;
+    }
+
+    function adminSanitizePublicSlug(raw) {
+      return String(raw || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+    }
+
+    function adminUpdatePublicSlugPreview(slug) {
+      const preview = document.getElementById("public-slug-preview");
+      if (preview) preview.textContent = slug || "slug";
+      const prefixEl = document.getElementById("public-slug-prefix");
+      if (prefixEl) prefixEl.textContent = adminPublicPageUrlPrefix;
+      const pathEl = document.getElementById("public-slug-path");
+      if (pathEl) pathEl.textContent = adminPublicPageUrlPrefix;
+    }
+
+    function adminValidatePublicSlug(raw) {
+      const slug = adminSanitizePublicSlug(raw);
+      if (slug.length < 3 || slug.length > 48) throw new Error("Slug duhet 3–48 karaktere.");
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("Slug: vetëm a-z, 0-9 dhe vizë (-).");
+      return slug;
+    }
+
+    function adminPublicPageTargetUrl() {
+      const saved = document.getElementById("public-page-url")?.value?.trim();
+      if (saved) return saved;
+      const slug = adminValidatePublicSlug(document.getElementById("public-page-slug")?.value);
+      const origin = adminPublicCloud.server || "https://revolution-pos.com";
+      const prefix = adminPublicPageUrlPrefix.replace(/\/+$/, "");
+      return `${origin}${prefix}/${encodeURIComponent(slug)}`;
+    }
+
+    function adminResetPublicQr() {
+      adminPublicPageQrData = null;
+      const wrap = document.getElementById("public-page-qr-preview");
+      wrap?.classList.add("hidden");
+      if (wrap) wrap.hidden = true;
+      const canvasWrap = document.getElementById("public-page-qr-canvas");
+      if (canvasWrap) canvasWrap.innerHTML = "";
+      const dl = document.getElementById("btn-public-download-qr");
+      if (dl) dl.disabled = true;
+    }
+
+    async function loadAdminPublicPage() {
+      setAdminPublicPageMsg("Duke ngarkuar…", true);
+      await refreshAdminPublicCloudCreds();
+      const data = await adminPublicPageApi("GET");
+      const upgrade = document.getElementById("public-page-upgrade");
+      if (upgrade) {
+        if (data.website_enabled === false) {
+          upgrade.hidden = false;
+          upgrade.textContent = "Paketa nuk përfshin faqen publike.";
+          upgrade.style.color = "var(--ngjyr-danger)";
+        } else {
+          upgrade.hidden = true;
+          upgrade.textContent = "";
+        }
+      }
+      adminPublicPageUrlPrefix = data.url_prefix || "/hotel/";
+      document.getElementById("public-enabled").checked = data.public_enabled !== false;
+      document.getElementById("public-description").value = data.public_description || "";
+      document.getElementById("public-theme").value = data.public_theme_color || "#c2410c";
+      document.getElementById("public-page-url").value = data.public_url || "";
+      document.getElementById("public-page-slug").value = data.slug || "";
+      adminUpdatePublicSlugPreview(data.slug || "");
+      adminResetPublicQr();
+      const preview = document.getElementById("btn-public-preview");
+      if (preview && data.public_url) preview.href = data.public_url;
+      adminPublicPageLogo = data.logo_preview || null;
+      adminPublicPageLogoDirty = false;
+      adminUpdatePublicLogoPreview(adminPublicPageLogo);
+      adminPublicCover = data.cover_preview || null;
+      adminPublicCoverDirty = false;
+      adminUpdatePublicCoverPreview(adminPublicCover);
+      adminPublicGallery = Array.isArray(data.gallery_previews) ? [...data.gallery_previews] : [];
+      adminPublicGalleryDirty = false;
+      adminRenderPublicGallery();
+      adminPublicReviews = Array.isArray(data.reviews)
+        ? data.reviews.map((r) => ({ name: r.name || "", stars: r.stars || 5, text: r.text || "" }))
+        : [];
+      adminRenderPublicReviews();
+      document.getElementById("public-daily-offer").value = data.daily_offer || "";
+      document.getElementById("public-social-instagram").value = data.social_instagram || "";
+      document.getElementById("public-social-facebook").value = data.social_facebook || "";
+      document.getElementById("public-social-tiktok").value = data.social_tiktok || "";
+      document.getElementById("public-whatsapp").value = data.public_whatsapp || "";
+      adminRenderPublicHours(data.public_hours);
+      setAdminPublicPageMsg("", true);
+    }
+
+    async function saveAdminPublicPage() {
+      setAdminPublicPageMsg("Duke ruajtur…", true);
+      await refreshAdminPublicCloudCreds();
+      const body = {
+        public_enabled: document.getElementById("public-enabled").checked,
+        public_description: document.getElementById("public-description").value,
+        public_hours: adminCollectPublicHours(),
+        public_theme_color: document.getElementById("public-theme").value,
+        public_daily_offer: document.getElementById("public-daily-offer").value,
+        public_reviews: adminCollectPublicReviews(),
+        public_social_instagram: document.getElementById("public-social-instagram").value,
+        public_social_facebook: document.getElementById("public-social-facebook").value,
+        public_social_tiktok: document.getElementById("public-social-tiktok").value,
+        public_whatsapp: document.getElementById("public-whatsapp").value,
+      };
+      if (adminPublicPageLogoDirty) body.public_logo = adminPublicPageLogo || "";
+      if (adminPublicCoverDirty) body.public_cover = adminPublicCover || "";
+      if (adminPublicGalleryDirty) body.public_gallery = adminPublicGallery;
+      const data = await adminPublicPageApi("PATCH", body);
+      adminPublicPageLogo = data.logo_preview || null;
+      adminPublicPageLogoDirty = false;
+      adminUpdatePublicLogoPreview(adminPublicPageLogo);
+      adminPublicCover = data.cover_preview || null;
+      adminPublicCoverDirty = false;
+      adminUpdatePublicCoverPreview(adminPublicCover);
+      adminPublicGallery = Array.isArray(data.gallery_previews) ? [...data.gallery_previews] : [];
+      adminPublicGalleryDirty = false;
+      adminRenderPublicGallery();
+      document.getElementById("public-page-url").value = data.public_url || "";
+      setAdminPublicPageMsg("Faqja publike u ruajt.", true);
+    }
+
+    function adminReadImageFile(file, maxBytes, onDone) {
+      if (!file || file.size > maxBytes) {
+        setAdminPublicPageMsg(`Skedari max ${Math.round(maxBytes / 1024)} KB.`, false);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => onDone(reader.result);
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById("btn-public-save")?.addEventListener("click", () =>
+      saveAdminPublicPage().catch((e) => setAdminPublicPageMsg(e.message, false)),
+    );
+    document.getElementById("public-logo-input")?.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      adminReadImageFile(file, 512_000, (dataUrl) => {
+        adminPublicPageLogo = dataUrl;
+        adminPublicPageLogoDirty = true;
+        adminUpdatePublicLogoPreview(dataUrl);
+      });
+      e.target.value = "";
+    });
+    document.getElementById("btn-public-logo-remove")?.addEventListener("click", () => {
+      adminPublicPageLogo = null;
+      adminPublicPageLogoDirty = true;
+      adminUpdatePublicLogoPreview(null);
+    });
+    document.getElementById("public-cover-input")?.addEventListener("change", (e) => {
+      adminReadImageFile(e.target.files?.[0], 800_000, (dataUrl) => {
+        adminPublicCover = dataUrl;
+        adminPublicCoverDirty = true;
+        adminUpdatePublicCoverPreview(dataUrl);
+      });
+      e.target.value = "";
+    });
+    document.getElementById("btn-public-cover-remove")?.addEventListener("click", () => {
+      adminPublicCover = null;
+      adminPublicCoverDirty = true;
+      adminUpdatePublicCoverPreview(null);
+    });
+    document.getElementById("public-gallery-input")?.addEventListener("change", (e) => {
+      if (adminPublicGallery.length >= 5) return;
+      adminReadImageFile(e.target.files?.[0], 512_000, (dataUrl) => {
+        adminPublicGallery.push(dataUrl);
+        adminPublicGalleryDirty = true;
+        adminRenderPublicGallery();
+      });
+      e.target.value = "";
+    });
+    document.getElementById("btn-public-review-add")?.addEventListener("click", () => {
+      if (adminPublicReviews.length >= 5) return;
+      adminPublicReviews.push({ name: "", stars: 5, text: "" });
+      adminRenderPublicReviews();
+    });
+    document.getElementById("public-page-slug")?.addEventListener("input", (e) => {
+      const cleaned = adminSanitizePublicSlug(e.target.value);
+      if (e.target.value !== cleaned) e.target.value = cleaned;
+      adminUpdatePublicSlugPreview(cleaned);
+    });
+    document.getElementById("btn-public-save-slug")?.addEventListener("click", async () => {
+      const btn = document.getElementById("btn-public-save-slug");
+      if (btn) btn.disabled = true;
+      setAdminPublicPageMsg("Duke ruajtur slug…", true);
+      try {
+        await refreshAdminPublicCloudCreds();
+        const slug = adminValidatePublicSlug(document.getElementById("public-page-slug")?.value);
+        const data = await adminPublicPageApi("PATCH", { slug });
+        document.getElementById("public-page-slug").value = data.slug || slug;
+        document.getElementById("public-page-url").value = data.public_url || "";
+        adminUpdatePublicSlugPreview(data.slug || slug);
+        adminResetPublicQr();
+        const preview = document.getElementById("btn-public-preview");
+        if (preview && data.public_url) preview.href = data.public_url;
+        setAdminPublicPageMsg("Slug u ruajt.", true);
+      } catch (err) {
+        setAdminPublicPageMsg(err.message, false);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+    document.getElementById("btn-public-copy-url")?.addEventListener("click", async () => {
+      const url = document.getElementById("public-page-url")?.value;
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setAdminPublicPageMsg("URL u kopjua.", true);
+      } catch {
+        setAdminPublicPageMsg("Nuk u kopjua.", false);
+      }
+    });
+    document.getElementById("btn-public-generate-qr")?.addEventListener("click", async () => {
+      try {
+        await refreshAdminPublicCloudCreds();
+        const url = adminPublicPageTargetUrl();
+        if (typeof QRCode === "undefined") throw new Error("qrcode.js nuk u ngarkua.");
+        const canvasWrap = document.getElementById("public-page-qr-canvas");
+        canvasWrap.innerHTML = "";
+        // eslint-disable-next-line no-new
+        new QRCode(canvasWrap, {
+          text: url,
+          width: 200,
+          height: 200,
+          colorDark: "#0f172a",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+        adminPublicPageQrData = { url };
+        const wrap = document.getElementById("public-page-qr-preview");
+        wrap?.classList.remove("hidden");
+        if (wrap) wrap.hidden = false;
+        document.getElementById("public-page-qr-url").textContent = url;
+        document.getElementById("btn-public-download-qr").disabled = false;
+        setAdminPublicPageMsg("QR u gjenerua.", true);
+      } catch (err) {
+        setAdminPublicPageMsg(err.message, false);
+      }
+    });
+    document.getElementById("btn-public-download-qr")?.addEventListener("click", () => {
+      try {
+        const canvas = document.querySelector("#public-page-qr-canvas canvas");
+        if (!canvas) throw new Error("Gjeneroni QR fillimisht.");
+        const slug = adminSanitizePublicSlug(document.getElementById("public-page-slug")?.value) || "faqja";
+        const a = document.createElement("a");
+        a.href = canvas.toDataURL("image/png");
+        a.download = `qr-faqe-${slug}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setAdminPublicPageMsg("QR u shkarkua.", true);
+      } catch (err) {
+        setAdminPublicPageMsg(err.message, false);
       }
     });
 
