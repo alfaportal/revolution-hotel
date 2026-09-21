@@ -818,6 +818,33 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   }
 }
 
+/* Telefon: menu lart (produkte), checkout poshtë — scroll i plotë */
+@media (max-width: 767px) {
+  #ekrani-porosia.active {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #ekrani-porosia .waiter-order-body {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  #ekrani-porosia .menu-pos-wrap {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    min-height: min(52dvh, 420px);
+    width: 100%;
+  }
+
+  #ekrani-porosia .menu-photo-grid {
+    flex: 1 1 auto;
+    min-height: 12rem;
+  }
+}
+
 /* ��� Product detail modal (description) ��� */
 .menu-item-detail-modal {
   position: fixed;
