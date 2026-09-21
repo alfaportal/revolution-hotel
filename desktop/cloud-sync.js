@@ -15,6 +15,22 @@ const SERVER_URL = PUBLIC_CLOUD_SERVER;
 
 /** Porosi cloud «fantazmë» — vetëm auto-pastim kur lokalisht lirë dhe mbi këtë moshe. */
 const STALE_CLOUD_TABLE_GHOST_MS = 2 * 60 * 60 * 1000;
+/** Lokalisht lirë + cloud e zënë (QR/telefon) — pas kësaj moshe provo clearStuck (jo vetëm table-free). */
+const STUCK_TABLE_AUTO_CLEAR_MS = 3 * 60 * 1000;
+const QR_PENDING_PROTECT_MS = 15 * 60 * 1000;
+const lastAutoClearStuckByTable = new Map();
+
+function scheduleAutoClearStuckCloudTable(db, tableNumber) {
+  const num = Number(tableNumber);
+  if (!num) return;
+  const now = Date.now();
+  const last = lastAutoClearStuckByTable.get(num) || 0;
+  if (now - last < 90_000) return;
+  lastAutoClearStuckByTable.set(num, now);
+  clearStuckCloudTableOrder(db, num).catch(err => {
+    console.warn("[sync] auto clear stuck T" + num + ":", err.message);
+  });
+}
 
 function normalizeKey(k) {
   return String(k || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -651,6 +667,16 @@ async function forceCancelCloudSalesOrder(db, cloudOrder) {
 
   let deviceId = String(cloudOrder?.device_id || "").trim().toUpperCase();
   let localOrderId = String(cloudOrder?.local_order_id || "").trim();
+  if (cloudUuid && (!deviceId || !localOrderId)) {
+    try {
+      const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
+      const key = map[cloudUuid];
+      if (key?.device_id) deviceId = String(key.device_id).trim().toUpperCase();
+      if (key?.local_order_id) localOrderId = String(key.local_order_id).trim();
+    } catch {
+      /* ignore */
+    }
+  }
   if (!deviceId || !localOrderId) {
     if (cloudUuid) {
       localOrderId = localOrderId || cloudUuid;
@@ -1923,12 +1949,28 @@ async function syncLocalCancelledFromCloud(db) {
         }
       }
 
-      // Nëse porosia cloud u krijua nga ky POS → e lirojmë në cloud
+      const orderBlob = ct.order || {};
+      const accepted = isCloudOrderAccepted(orderBlob);
+      const isKiosk = cloudDevice === "WEB-KIOSK";
+      const ageMs =
+        orderedAtRaw && Number.isFinite(new Date(orderedAtRaw).getTime())
+          ? now - new Date(orderedAtRaw).getTime()
+          : 0;
+
+      // QR në pritje pranimi — mos e anulo automatikisht (klienti sapo skanoi)
+      if (isKiosk && !accepted && ageMs > 0 && ageMs < QR_PENDING_PROTECT_MS) continue;
+
       if (localDeviceId && cloudDevice === localDeviceId) {
-        pushTableFree(db, tNum);
+        scheduleAutoClearStuckCloudTable(db, tNum);
         console.log(
-          `[sync] T${tNum} lirohet cloud — POS lokale e ka mbyllur pa njoftuar`,
+          `[sync] T${tNum} auto-pastim cloud — POS lokale e ka mbyllur`,
         );
+        continue;
+      }
+
+      // WEB-KIOSK/telefon: table-free nuk i anulon — pastrim i plotë pas 3 min ose pas pranimit
+      if (accepted || ageMs >= STUCK_TABLE_AUTO_CLEAR_MS) {
+        scheduleAutoClearStuckCloudTable(db, tNum);
       }
     }
 
@@ -2333,11 +2375,16 @@ async function closeCloudOnlineOrderById(db, opts = {}) {
   return parsed;
 }
 
-async function fetchLiveCloudTables(db) {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.maskStaleFree=false] — vetëm UI e përkohshme; sync/admin duhet gjendje reale (Supabase).
+ */
+async function fetchLiveCloudTables(db, opts = {}) {
   ensureKdsEventsListener(db);
   const cfg = getConfig(db);
   const { slug, key } = getKitchenAccess(db);
   if (!cfg.serverUrl || !slug || !key) return null;
+  const maskStaleFree = opts.maskStaleFree === true;
   try {
     const res = await requestJson(
       "GET",
@@ -2349,13 +2396,15 @@ async function fetchLiveCloudTables(db) {
     const parsed = parseCloudJson(res.data);
     if (res.status < 400 && parsed.ok) {
       if (Array.isArray(parsed.tables)) {
-        parsed.tables = parsed.tables.map(t => {
-          const num = Number(t.number);
-          if (num >= 1 && sseFreedTableNums.has(num) && t.status === "occupied") {
-            return { ...t, status: "free", order: null };
-          }
-          return t;
-        });
+        if (maskStaleFree) {
+          parsed.tables = parsed.tables.map(t => {
+            const num = Number(t.number);
+            if (num >= 1 && sseFreedTableNums.has(num) && t.status === "occupied") {
+              return { ...t, status: "free", order: null };
+            }
+            return t;
+          });
+        }
         for (const t of parsed.tables) {
           const num = Number(t.number);
           if (num >= 1 && t.status === "free") sseFreedTableNums.delete(num);

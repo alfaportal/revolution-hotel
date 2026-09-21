@@ -15,6 +15,16 @@ const {
   listWaiterReservations,
   attachReservationsToLayout,
 } = require("./reservationService");
+const { isOrderAccepted } = require("../lib/salesOrderSelect");
+const { isOnlineSlotOrder } = require("./kdsService");
+
+/** QR (WEB-KIOSK) në pritje — jo «T1 e zënë» deri PRANO (si takeaway te Online). */
+function attachActiveOrderToWaiterTableLayout(row) {
+  if (!row) return false;
+  const device = String(row.device_id || "").trim().toUpperCase();
+  if (device === WEB_KIOSK && !isOrderAccepted(row)) return false;
+  return true;
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WEB_DEVICE = WEB_WAITER;
@@ -31,7 +41,7 @@ async function getActiveTableOrders(clientId) {
   const db = getSupabase();
   const { data, error } = await db
     .from("sales_orders")
-    .select("id, table_number, waiter_name, waiter_id, status, total, ordered_at, items_json, local_order_id, device_id, accepted_by_waiter_id, accepted_by_waiter_name")
+    .select("id, table_number, waiter_name, waiter_id, status, total, ordered_at, items_json, local_order_id, device_id, accepted_at, accepted_by_waiter_id, accepted_by_waiter_name")
     .eq("client_id", clientId)
     .in("status", ["ordered", "ready"])
     .order("ordered_at", { ascending: true });
@@ -47,26 +57,29 @@ async function getActiveTableOrders(clientId) {
 
   const byTable = new Map();
   for (const [n, rows] of rowsByTable) {
-    if (rows.length === 1) {
-      byTable.set(n, rows[0]);
+    const payable = rows.filter(attachActiveOrderToWaiterTableLayout);
+    if (!payable.length) continue;
+
+    if (payable.length === 1) {
+      byTable.set(n, payable[0]);
       continue;
     }
     let items = [];
-    for (const row of rows) {
+    for (const row of payable) {
       items = mergeOrderItems(items, row.items_json);
     }
     const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const withLocalId = rows.filter(r => String(r.local_order_id || "").trim());
+    const withLocalId = payable.filter(r => String(r.local_order_id || "").trim());
     const primary =
       withLocalId.find(r => String(r.device_id || "").toUpperCase() !== WEB_WAITER)
       || withLocalId[0]
-      || rows.find(r => String(r.device_id || "").toUpperCase() !== WEB_WAITER)
-      || rows[0];
+      || payable.find(r => String(r.device_id || "").toUpperCase() !== WEB_WAITER)
+      || payable[0];
     byTable.set(n, {
       ...primary,
       items_json: items,
       total,
-      merged_order_ids: rows.map(r => r.id),
+      merged_order_ids: payable.map(r => r.id),
     });
   }
   return byTable;
@@ -421,6 +434,55 @@ async function cancelSiblingActiveTableOrders(clientId, tableNumber, keepOrderId
   }
 }
 
+/**
+ * Pas mbylljes së një porosie Online/takeaway — anulo ghost-e «ordered» të pranuara
+ * me të njëjtin klient + total (shfaqen si Online 1…4 te pronari).
+ */
+async function cancelMatchingAcceptedOnlineSlotGhosts(clientId, keepOrderId, referenceOrder) {
+  const keepId = String(keepOrderId || "").trim();
+  const ref = referenceOrder || {};
+  const customer = String(ref.waiter_name || "").trim().toLowerCase();
+  const total = Number(ref.total);
+  if (!keepId || !customer || !Number.isFinite(total)) return 0;
+
+  const db = getSupabase();
+  const { data, error } = await db
+    .from("sales_orders")
+    .select("id, waiter_name, total, device_id, table_number, status, accepted_at, accepted_by_waiter_name")
+    .eq("client_id", clientId)
+    .eq("status", "ordered");
+  if (error) {
+    console.warn("[close] online slot ghost scan:", error.message);
+    return 0;
+  }
+
+  const cancelNow = new Date().toISOString();
+  let cancelled = 0;
+  for (const row of data || []) {
+    if (String(row.id) === keepId) continue;
+    if (!isOnlineSlotOrder(row)) continue;
+    if (!isOrderAccepted(row)) continue;
+    const w = String(row.waiter_name || "").trim().toLowerCase();
+    if (w !== customer) continue;
+    if (Math.abs(Number(row.total) - total) > 0.02) continue;
+    const { error: updErr } = await db
+      .from("sales_orders")
+      .update({ status: "cancelled", closed_at: cancelNow, total: 0, ready_at: null })
+      .eq("id", row.id);
+    if (!updErr) cancelled += 1;
+  }
+
+  if (cancelled > 0) {
+    try {
+      require("./kdsEvents").notifyKitchenUpdate(clientId, { online_slots: true });
+    } catch {
+      /* optional */
+    }
+    console.log(`[close] online slot ghosts cancelled: ${cancelled} (keep ${keepId})`);
+  }
+  return cancelled;
+}
+
 async function closeWaiterTable(clientId, body) {
   await assertClient(clientId);
   const waiter = await resolveWaiterForOrder(clientId, body.waiter_id, body.waiter_name);
@@ -493,6 +555,9 @@ async function closeWaiterTable(clientId, body) {
         .in("status", ["ordered", "ready"]);
     } else if (closeTableNum >= 1) {
       await cancelSiblingActiveTableOrders(clientId, closeTableNum, saleResult.sale.id);
+    }
+    if (isOnlineSlotOrder(existing)) {
+      await cancelMatchingAcceptedOnlineSlotGhosts(clientId, saleResult.sale.id, existing);
     }
   }
 
