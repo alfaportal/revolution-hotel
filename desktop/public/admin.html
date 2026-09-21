@@ -456,6 +456,57 @@
       box-shadow: none;
     }
 
+    #panel-fiskalizimi .sef-secret-field-wrap,
+    #panel-fiskale .sef-secret-field-wrap {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    #panel-fiskalizimi .sef-secret-field-wrap input,
+    #panel-fiskale .sef-secret-field-wrap input {
+      flex: 1;
+      min-width: 0;
+      margin-bottom: 0;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      letter-spacing: 0.04em;
+    }
+    #panel-fiskalizimi .sef-secret-field-wrap input[readonly],
+    #panel-fiskale .sef-secret-field-wrap input[readonly] {
+      cursor: default;
+      color: #a0a0b8 !important;
+      user-select: none;
+    }
+    #panel-fiskalizimi .sef-secret-eye,
+    #panel-fiskale .sef-secret-eye {
+      flex: 0 0 auto;
+      width: auto;
+      min-width: 40px;
+      margin: 0;
+      padding: 0.55rem 0.65rem;
+      font-size: 1rem;
+      line-height: 1;
+      background: #12121f !important;
+      border: 1px solid #2e2e45 !important;
+      border-radius: 10px;
+      color: #e8e8ef !important;
+      cursor: pointer;
+      box-shadow: none;
+    }
+    #panel-fiskalizimi .sef-secret-eye:hover:not(:disabled),
+    #panel-fiskale .sef-secret-eye:hover:not(:disabled) {
+      border-color: #FF6B35 !important;
+    }
+    #panel-fiskalizimi .sef-secret-eye:disabled,
+    #panel-fiskale .sef-secret-eye:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    #panel-fiskalizimi .sef-secret-eye.revealed,
+    #panel-fiskale .sef-secret-eye.revealed {
+      border-color: #FF6B35 !important;
+      color: #FF6B35 !important;
+    }
+
     #panel-lokal .settings-field input:focus,
     #panel-lokal .settings-field select:focus,
     #panel-lokal .settings-form input:focus,
@@ -616,9 +667,14 @@
     #card-fiscalizimi {
       /* Tab Fiskalizimi — gjithmonë i dukshëm kur zgjidhet tab-i */
     }
-    #fiscal-unlock-wrap {
-      display: none !important;
+    .admin-tab-gate {
+      max-width: 420px;
+      margin: 1rem 0 1.5rem;
     }
+    .admin-tab-gate .settings-field input[type="password"] {
+      width: 100%;
+    }
+
     #fiskalizimi-panel-secret-title {
       user-select: none;
       cursor: default;
@@ -1941,7 +1997,6 @@
       <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
       <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
       <button type="button" class="admin-tab-btn" data-panel="audit">Audit</button>
-      <button type="button" class="admin-tab-btn" data-panel="test-atk">Test ATK</button>
       <button type="button" class="admin-tab-btn" data-panel="paper-block">Bllokimi i letrës</button>
       <button type="button" class="admin-tab-btn" data-panel="cilësimet">Cilësimet</button>
       <button type="button" class="admin-tab-btn" data-panel="licenca">Licenca</button>
@@ -2473,7 +2528,7 @@
       <div class="tables-panel-header">
         <div>
           <h2 class="tables-panel-title">Pastrimi</h2>
-          <p class="tables-panel-sub">Housekeeping — statuset e dhomave, pastruesi, prioritet mbërritjesh (SQLite lokal)</p>
+          <p class="tables-panel-sub">Housekeeping — statuset e dhomave, pastruesi dhe prioriteti i mbërritjeve</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-admin-hk-refresh">Rifresko</button>
       </div>
@@ -2491,7 +2546,7 @@
       <div class="purchases-panel-header">
         <div>
           <h2 class="purchases-panel-title">QR Kodet — Hotel</h2>
-          <p class="purchases-panel-sub">Room Service (për çdo dhomë) · Menyja · Shërbime — gjenero dhe printo lokalisht</p>
+          <p class="purchases-panel-sub">Room Service (për çdo dhomë) · Menyja · Shërbime — gjenero dhe printo</p>
         </div>
         <div class="purchases-panel-actions" style="display:flex;gap:0.5rem;flex-wrap:wrap">
           <button type="button" class="btn btn-ghost" id="btn-print-hotel-qr-menu">Printo QR Menyja</button>
@@ -2501,13 +2556,12 @@
       </div>
       <div class="card settings-card">
         <p class="table-qr-hint">
-          QR në dhomë: Room Service · Menyja · Shërbime (bazen, spa, transport…) — me <code>?room=101</code>.
-          Mysafiri porosit nga dhoma → stafi merr njoftim (si takeaway) → PRANO → shkon te fatura.
-          Pa cloud / LAN: <code>/guest/services.html?room=…</code> · Menyja: <code>/guest/menu.html?room=…</code> ose takeaway pa dhomë.
+          QR në dhomë: Room Service, Menyja dhe Shërbime (bazen, spa, transport…).
+          Mysafiri porosit nga dhoma; stafi merr njoftim, e konfirmon porosinë dhe shkon te fatura.
         </p>
         <div class="reports-filter-bar" style="margin:0.75rem 0;flex-wrap:wrap;gap:0.5rem">
-          <label style="font-size:0.85rem;flex:1;min-width:240px">URL bazë
-            <input type="url" id="hotel-qr-base-url" placeholder="https://revolution-pos.com" style="width:100%;margin-top:0.25rem">
+          <label style="font-size:0.85rem;flex:1;min-width:240px">Adresa publike e hotelit (për linket QR)
+            <input type="url" id="hotel-qr-base-url" placeholder="https://…" style="width:100%;margin-top:0.25rem">
           </label>
           <button type="button" class="btn btn-primary" id="btn-hotel-qr-save-base" style="align-self:end">Ruaj &amp; rifresko QR</button>
         </div>
@@ -2636,7 +2690,7 @@
         <div class="tables-panel-header" style="margin:1.25rem 0 0.75rem">
           <div>
             <h3 class="tables-panel-title tables-panel-title-sm">Raportet e hotelit</h3>
-            <p class="tables-panel-sub">Ocupancy, të ardhura, mysafirë, shërbime dhe dhoma — nga SQLite lokal (e njëjta periudhë si filtri lart)</p>
+            <p class="tables-panel-sub">Ocupancy, të ardhura, mysafirë, shërbime dhe dhoma — sipas periudhës së filtrit lart</p>
           </div>
         </div>
 
@@ -3509,6 +3563,21 @@
         <p class="settings-page-sub">SEF / ATK — konfigurimi i fiskalizimit dhe lidhja me ATK.</p>
       </div>
 
+      <div id="hotel-gate-fiskalizimi" class="card settings-card admin-tab-gate" hidden>
+        <div class="settings-card-title">Fiskalizimi i mbrojtur</div>
+        <p class="settings-card-desc">Fut fjalëkalimin e pronarit për të hapur cilësimet SEF / ATK.</p>
+        <div class="settings-field">
+          <label for="hotel-gate-fiskalizimi-input">Fjalëkalimi</label>
+          <input type="password" id="hotel-gate-fiskalizimi-input" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="settings-form-actions settings-form-actions-inline">
+          <button type="button" class="btn btn-primary btn-sm" id="hotel-gate-fiskalizimi-btn">Hap Fiskalizimin</button>
+        </div>
+        <div class="fiscal-save-msg" id="hotel-gate-fiskalizimi-msg"></div>
+      </div>
+
+      <div id="hotel-body-fiskalizimi" class="admin-tab-gate-body" hidden>
+
       <div class="card settings-card" id="card-fiscalizimi">
         <div class="settings-card-head">
           <span class="settings-hub-icon">F</span>
@@ -3576,7 +3645,10 @@
           </div>
           <div class="settings-field">
             <label for="sef-fiscalization-number" data-fi18n="fiscalization_number_label">Nr. Fiskalizimit</label>
-            <input type="text" id="sef-fiscalization-number" data-fi18n-placeholder="fiscalization_number_placeholder" placeholder="Plotësohet nga ATK / EDI">
+            <div class="sef-secret-field-wrap">
+              <input type="text" id="sef-fiscalization-number" data-fi18n-placeholder="fiscalization_number_placeholder" placeholder="Plotësohet nga ATK / EDI" autocomplete="new-password" inputmode="numeric" spellcheck="false" autocapitalize="off" data-form-type="other">
+              <button type="button" id="btn-sef-fiscalization-number-eye" class="sef-secret-eye" aria-label="Shfaq numrin" title="Shfaq / fsheh numrin" disabled>👁</button>
+            </div>
           </div>
           <div class="settings-field">
             <label for="sef-sef-code" data-fi18n="sef_code_label">Kodi SEF</label>
@@ -3617,7 +3689,10 @@
           </div>
           <div class="settings-field">
             <label for="sef-application-id">Application ID (nga ATK pas certifikimit)</label>
-            <input type="text" id="sef-application-id" inputmode="numeric" placeholder="p.sh. 756192120167">
+            <div class="sef-secret-field-wrap">
+              <input type="text" id="sef-application-id" inputmode="numeric" placeholder="p.sh. 756192120167" autocomplete="new-password" spellcheck="false" autocapitalize="off" data-form-type="other">
+              <button type="button" id="btn-sef-application-id-eye" class="sef-secret-eye" aria-label="Shfaq numrin" title="Shfaq / fsheh numrin" disabled>👁</button>
+            </div>
           </div>
           <div class="settings-field" style="grid-column:1/-1">
             <label for="sef-keys-dir">Folderi i çelësave / certifikatës</label>
@@ -3630,10 +3705,27 @@
           </div>
         </div>
       </div>
+
+      </div>
     </section>
 
     <!-- AUDIT (tab kryesor — si biznes SEF) -->
     <section id="panel-audit" class="panel">
+      <div id="hotel-gate-audit" class="card settings-card admin-tab-gate" hidden>
+        <div class="settings-card-title">Audit i mbrojtur</div>
+        <p class="settings-card-desc">Fut kodin e instaluesit për të hapur audit log-un fiskal.</p>
+        <div class="settings-field">
+          <label for="hotel-gate-audit-input">Fjalëkalimi</label>
+          <input type="password" id="hotel-gate-audit-input" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="settings-form-actions settings-form-actions-inline">
+          <button type="button" class="btn btn-primary btn-sm" id="hotel-gate-audit-btn">Hap Audit</button>
+        </div>
+        <div class="fiscal-save-msg" id="hotel-gate-audit-msg"></div>
+      </div>
+
+      <div id="hotel-body-audit" class="admin-tab-gate-body" hidden>
+
       <div class="card settings-card" id="fiscal-sef-panel-audit">
         <div class="sef-audit-box" id="sef-audit-box">
           <div class="sef-audit-title" data-fi18n="audit_log_title">Audit Log (WRITE-ONCE)</div>
@@ -3654,50 +3746,7 @@
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- TEST ATK (tab kryesor) -->
-    <section id="panel-test-atk" class="panel">
-      <div class="card settings-card" id="fiscal-sef-panel-test-atk">
-        <div class="sef-field8-box" id="sef-field8-box">
-          <div class="sef-audit-title">Test ATK — field 8 (discount)</div>
-          <p class="sef-field8-desc">
-            Preview lokal (pa dërgim). <strong>HOTEL:</strong> dërgimi te ATK është i ndaluar — vetëm preview lokal.
-          </p>
-          <div style="display:flex;flex-direction:column;gap:6px;margin:0 0 10px;font-size:0.85rem">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a0a0b8">
-              <input type="radio" name="e2e-source" value="receipt" checked style="width:auto;margin:0" />
-              <span>Kuponi ekzistues (NUIKF ose lista)</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a0a0b8">
-              <input type="radio" name="e2e-source" value="sample" style="width:auto;margin:0" />
-              <span>Shembull statik (8 artikuj, 110.90 €)</span>
-            </label>
-          </div>
-          <div id="e2e-receipt-wrap" class="sef-field8-receipt-wrap">
-            <div class="sef-field8-receipt-row">
-              <div class="settings-field">
-                <label for="e2e-nuikf">NUIKF</label>
-                <input type="text" id="e2e-nuikf" maxlength="16" placeholder="16 shifra" autocomplete="off" />
-              </div>
-              <div class="settings-field">
-                <label for="e2e-receipt-pick">Kuponët e fundit</label>
-                <select id="e2e-receipt-pick">
-                  <option value="">— zgjidh nga lista —</option>
-                </select>
-              </div>
-              <button type="button" class="btn btn-sm btn-sef-audit" id="btn-e2e-refresh-receipts">Rifresko</button>
-            </div>
-            <p id="e2e-receipt-hint" style="color:#888;font-size:0.82rem;margin:0;line-height:1.4"></p>
-          </div>
-          <p id="e2e-sample-hint" class="sef-field8-desc" hidden>Do përdoret shembulli statik (8 artikuj, 110.90 €).</p>
-          <div class="sef-field8-actions">
-            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-discount-e2e-preview">Preview field 8 (lokal)</button>
-            <button type="button" class="btn btn-sm btn-primary" id="btn-discount-e2e-send">Dërgo te ATK TEST (E2E)</button>
-          </div>
-          <pre id="discount-e2e-box" hidden></pre>
-          <div class="fiscal-save-msg" id="msg-field8-atk"></div>
-        </div>
       </div>
     </section>
 
@@ -4204,6 +4253,7 @@
               <input type="text" id="cloud-local-waiter-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-waiter-url">Kopjo</button>
             </div>
+            <p id="cloud-local-waiter-reach-hint" class="links-hint hidden" style="margin:0.35rem 0 0;color:var(--ngjyr-danger)"></p>
           </div>
           <div class="fiscal-field-row" id="cloud-row-local-recepsion">
             <label id="cloud-local-recepsion-label">Recepsioni — WiFi lokal</label>
@@ -5384,6 +5434,97 @@
       }
     }
 
+    const HOTEL_TAB_GATES = {
+      fiskalizimi: {
+        password: "Qendresa-/-292-/-",
+        storageKey: "hotel_unlock_fiskalizimi_v1",
+        gateId: "hotel-gate-fiskalizimi",
+        bodyId: "hotel-body-fiskalizimi",
+        inputId: "hotel-gate-fiskalizimi-input",
+        btnId: "hotel-gate-fiskalizimi-btn",
+        msgId: "hotel-gate-fiskalizimi-msg",
+        wrongMsg: "Fjalëkalimi i gabuar.",
+        okMsg: "Fiskalizimi u hap.",
+      },
+      audit: {
+        password: "REV2026ATK",
+        storageKey: "hotel_unlock_audit_v1",
+        gateId: "hotel-gate-audit",
+        bodyId: "hotel-body-audit",
+        inputId: "hotel-gate-audit-input",
+        btnId: "hotel-gate-audit-btn",
+        msgId: "hotel-gate-audit-msg",
+        wrongMsg: "Kodi i instaluesit nuk është i saktë.",
+        okMsg: "Audit u hap.",
+      },
+    };
+
+    function isHotelTabGateUnlocked(panelName) {
+      const cfg = HOTEL_TAB_GATES[panelName];
+      if (!cfg) return true;
+      try {
+        return sessionStorage.getItem(cfg.storageKey) === "1";
+      } catch {
+        return false;
+      }
+    }
+
+    function setHotelTabGateUnlocked(panelName, on) {
+      const cfg = HOTEL_TAB_GATES[panelName];
+      if (!cfg) return;
+      try {
+        if (on) sessionStorage.setItem(cfg.storageKey, "1");
+        else sessionStorage.removeItem(cfg.storageKey);
+      } catch { /* */ }
+    }
+
+    function applyHotelTabGateUi(panelName) {
+      for (const [name, cfg] of Object.entries(HOTEL_TAB_GATES)) {
+        if (panelName && panelName !== name) continue;
+        const gate = document.getElementById(cfg.gateId);
+        const body = document.getElementById(cfg.bodyId);
+        const unlocked = isHotelTabGateUnlocked(name);
+        if (gate) gate.hidden = unlocked;
+        if (body) body.hidden = !unlocked;
+      }
+    }
+
+    function tryUnlockHotelTab(panelName) {
+      const cfg = HOTEL_TAB_GATES[panelName];
+      if (!cfg) return true;
+      const input = document.getElementById(cfg.inputId);
+      const msg = document.getElementById(cfg.msgId);
+      const code = String(input?.value ?? "");
+      if (code !== cfg.password) {
+        if (msg) {
+          msg.textContent = cfg.wrongMsg;
+          msg.style.color = "var(--ngjyr-danger, #ef4444)";
+        }
+        return false;
+      }
+      setHotelTabGateUnlocked(panelName, true);
+      applyHotelTabGateUi(panelName);
+      if (input) input.value = "";
+      if (msg) {
+        msg.textContent = cfg.okMsg;
+        msg.style.color = "var(--ngjyr-sukses, #22c55e)";
+      }
+      return true;
+    }
+
+    function bindHotelTabGates() {
+      for (const [panelName, cfg] of Object.entries(HOTEL_TAB_GATES)) {
+        document.getElementById(cfg.btnId)?.addEventListener("click", () => {
+          if (!tryUnlockHotelTab(panelName)) return;
+          if (panelName === "fiskalizimi") ngarkoFiscalizimin().catch(() => {});
+        });
+        document.getElementById(cfg.inputId)?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") document.getElementById(cfg.btnId)?.click();
+        });
+      }
+      applyHotelTabGateUi();
+    }
+
     function showSettingsSubpanel(name) {
       adminSettingsMode = true;
       document.querySelectorAll(".admin-tab-btn").forEach(t => t.classList.remove("active"));
@@ -5440,12 +5581,9 @@
         ngarkoRaportet();
       }
       if (name === "faturat") window.initAdminSalesInvoices?.();
-      if (name === "fiskalizimi") ngarkoFiscalizimin();
-      if (name === "audit") { /* audit log */ }
-      if (name === "test-atk") {
-        updateField8SourceUi();
-        loadField8ReceiptPicker().catch(() => {});
-      }
+      applyHotelTabGateUi(name);
+      if (name === "fiskalizimi" && isHotelTabGateUnlocked("fiskalizimi")) ngarkoFiscalizimin();
+      if (name === "audit" && isHotelTabGateUnlocked("audit")) { /* audit log */ }
       if (name === "paper-block") refreshPaperBlockUi().catch(() => {});
       if (name === "licenca") ngarkoLicencen();
       if (name === "stafi") ngarkoStafin();
@@ -5469,6 +5607,8 @@
     document.querySelectorAll(".admin-tab-btn").forEach(tab => {
       tab.addEventListener("click", () => switchAdminPanel(tab.dataset.panel));
     });
+
+    bindHotelTabGates();
 
     document.getElementById("btn-low-stock-goto")?.addEventListener("click", () => {
       document.querySelector('.admin-tab-btn[data-panel="stoku"]')?.click();
@@ -8092,7 +8232,7 @@
       const shared = document.getElementById("hotel-qr-shared");
       const baseInput = document.getElementById("hotel-qr-base-url");
       if (!body) return;
-      body.innerHTML = '<tr><td colspan="4" class="purchases-empty">Duke gjeneruar QR lokale…</td></tr>';
+      body.innerHTML = '<tr><td colspan="4" class="purchases-empty">Duke gjeneruar QR…</td></tr>';
       setTableQrMsg("");
       try {
         const data = await api("/api/hotel-qrs");
@@ -8129,7 +8269,7 @@
             </tr>`).join("");
         }
         bindHotelQrActions();
-        setTableQrMsg(`${rooms.length} QR Room Service · bazë: ${data.base_url || "—"} (SQLite lokal).`, true);
+        setTableQrMsg(`${rooms.length} QR Room Service u përditësuan.`, true);
       } catch (err) {
         body.innerHTML = `<tr><td colspan="4" class="purchases-empty">${escHtml(err.message || "QR nuk u ngarkuan.")}</td></tr>`;
         setTableQrMsg(err.message || "QR nuk u ngarkuan.", false);
@@ -8146,7 +8286,7 @@
       try {
         await api("/api/hotel-qrs/base-url", { method: "PUT", body: JSON.stringify({ base_url }) });
         await ngarkoHotelQrs();
-        setTableQrMsg("URL bazë u ruajt — QR u rifreskuan.", true);
+        setTableQrMsg("Adresa u ruajt — QR u rifreskuan.", true);
       } catch (err) {
         setTableQrMsg(err.message || "Ruajtja dështoi.", false);
       } finally {
@@ -13372,6 +13512,159 @@
       }
     }
 
+    function setupSefMaskedInput({ inputId, eyeBtnId }) {
+      let revealed = false;
+      let realValue = "";
+
+      function els() {
+        return {
+          input: document.getElementById(inputId),
+          eye: document.getElementById(eyeBtnId),
+        };
+      }
+
+      function normalize(raw) {
+        const v = String(raw ?? "").trim();
+        if (!v || v.includes("•")) return "";
+        return v.replace(/\s+/g, "");
+      }
+
+      function mask(raw) {
+        const v = normalize(raw);
+        if (!v) return "";
+        if (v.length <= 4) return "•".repeat(v.length);
+        return "•".repeat(v.length - 4) + v.slice(-4);
+      }
+
+      function syncCache(value) {
+        realValue = normalize(value);
+        const { input: el } = els();
+        if (el) el.dataset.realValue = realValue;
+        return realValue;
+      }
+
+      function commit() {
+        const { input: el } = els();
+        if (!el) return realValue;
+        if (!el.readOnly) {
+          syncCache(el.value);
+          if (revealed && realValue !== String(el.value ?? "").trim()) {
+            el.value = realValue;
+          }
+        } else if (!realValue && el.dataset.realValue) {
+          syncCache(el.dataset.realValue);
+        }
+        return realValue;
+      }
+
+      function updateEye() {
+        const { eye: btn, input: el } = els();
+        if (!btn || !el) return;
+        const hasValue = !!normalize(realValue || el.dataset.realValue);
+        btn.disabled = !hasValue;
+        btn.classList.toggle("revealed", revealed);
+        btn.setAttribute("aria-label", revealed ? "Fsheh numrin" : "Shfaq numrin");
+        btn.title = revealed ? "Fsheh numrin" : "Shfaq numrin";
+      }
+
+      function applyDisplay() {
+        const { input: el } = els();
+        if (!el) return;
+        const real = normalize(realValue || el.dataset.realValue);
+        realValue = real;
+        el.dataset.realValue = real;
+        if (!real) {
+          el.value = "";
+          el.readOnly = false;
+          updateEye();
+          return;
+        }
+        if (revealed) {
+          el.value = real;
+          el.readOnly = false;
+        } else {
+          el.value = mask(real);
+          el.readOnly = true;
+        }
+        updateEye();
+      }
+
+      function set(raw) {
+        syncCache(raw);
+        revealed = false;
+        applyDisplay();
+      }
+
+      function read() {
+        commit();
+        return realValue || "";
+      }
+
+      function toggleReveal() {
+        const { input: el } = els();
+        if (!el) return;
+        commit();
+        if (!realValue) return;
+        revealed = !revealed;
+        applyDisplay();
+        if (revealed) {
+          el.focus();
+          try {
+            el.select();
+          } catch {
+            /* */
+          }
+        }
+      }
+
+      function init() {
+        const { input: el, eye } = els();
+        if (!el || el.dataset.sefMaskedBound === "1") return;
+        el.dataset.sefMaskedBound = "1";
+        eye?.addEventListener("click", toggleReveal);
+        el.addEventListener("input", () => {
+          if (!el.readOnly) {
+            syncCache(el.value);
+            updateEye();
+          }
+        });
+        el.addEventListener("blur", () => {
+          if (!el.readOnly) syncCache(el.value);
+        });
+        el.addEventListener("paste", (e) => {
+          if (el.readOnly) e.preventDefault();
+        });
+        el.addEventListener("keydown", (e) => {
+          if (el.readOnly && !e.ctrlKey && !e.metaKey && e.key.length === 1) {
+            e.preventDefault();
+          }
+        });
+        el.addEventListener("copy", (e) => {
+          if (el.readOnly) {
+            e.preventDefault();
+            try {
+              e.clipboardData.setData("text/plain", realValue || el.dataset.realValue || "");
+            } catch {
+              /* */
+            }
+          }
+        });
+      }
+
+      return { set, read, init, commit };
+    }
+
+    const sefFiscalizationNumberField = setupSefMaskedInput({
+      inputId: "sef-fiscalization-number",
+      eyeBtnId: "btn-sef-fiscalization-number-eye",
+    });
+    const sefApplicationIdField = setupSefMaskedInput({
+      inputId: "sef-application-id",
+      eyeBtnId: "btn-sef-application-id-eye",
+    });
+    sefFiscalizationNumberField.init();
+    sefApplicationIdField.init();
+
     function applySefFieldsEditable() {
       const ids = [
         "sef-taxpayer-nui",
@@ -13412,10 +13705,10 @@
         unit_name: document.getElementById("sef-unit-name")?.value || "",
         unit_phone: document.getElementById("sef-unit-phone")?.value || "",
         pos_id: document.getElementById("sef-pos-id")?.value || "",
-        fiscalization_number: (document.getElementById("sef-fiscalization-number")?.value || "").trim(),
+        fiscalization_number: sefFiscalizationNumberField.read(),
         sef_code: (document.getElementById("sef-sef-code")?.value || "").trim(),
         language: document.getElementById("sef-language")?.value || "sq",
-        application_id: (document.getElementById("sef-application-id")?.value || "").trim(),
+        application_id: sefApplicationIdField.read(),
         atk_api_url: document.getElementById("sef-atk-url")?.value || "https://fiskalizimi-test.atk-ks.org",
       };
     }
@@ -13446,14 +13739,12 @@
       }
     }
 
-    const FISCAL_UNLOCK_CODE = "FISKALIZIM2026";
+    const FISCAL_UNLOCK_CODE = "Qendresa-/-292-/-";
     const FISCAL_UNLOCK_KEY = "fiscal_ui_unlock_v1";
     function applySefFiscalFeatures(active) {
       const printWrap = document.getElementById("sef-print-mode-wrap");
       if (printWrap) printWrap.hidden = !active;
       if (active) {
-        updateField8SourceUi();
-        loadField8ReceiptPicker().catch(() => {});
         refreshPaperBlockUi().catch(() => {});
       }
     }
@@ -13551,6 +13842,7 @@
     }
 
     async function ngarkoFiscalizimin() {
+      if (!isHotelTabGateUnlocked("fiskalizimi")) return;
       const msg = document.getElementById("msg-fiscalizimi");
       const btnCorr = document.getElementById("btn-kupon-korrigjues");
       const btnReceiptsList = document.getElementById("btn-fiscal-receipts-list");
@@ -13598,12 +13890,11 @@
         document.getElementById("sef-unit-name").value = s.unit_name || "";
         document.getElementById("sef-unit-phone").value = s.unit_phone || "";
         document.getElementById("sef-pos-id").value = s.pos_id || "";
-        document.getElementById("sef-fiscalization-number").value = s.fiscalization_number || "";
+        sefFiscalizationNumberField.set(s.fiscalization_number || "");
         document.getElementById("sef-sef-code").value = s.sef_code || s.sef_identifier || "";
         document.getElementById("sef-language").value = s.language === "sr" ? "sr" : "sq";
         setAtkUrlSelectValue(s.atk_api_url);
-        const appIdEl = document.getElementById("sef-application-id");
-        if (appIdEl) appIdEl.value = s.application_id || "";
+        sefApplicationIdField.set(s.application_id || "");
         applySefFiscalFeatures(!!s.fiscal_enabled);
         if (btnCorr) btnCorr.hidden = !fiscalActive;
         if (btnReceiptsList) btnReceiptsList.hidden = !fiscalActive;
@@ -13844,6 +14135,7 @@
     });
 
     async function exportFiscalAudit(format) {
+      if (!isHotelTabGateUnlocked("audit")) return;
       const msg = document.getElementById("msg-fiscal-audit");
       const from = document.getElementById("sef-audit-from")?.value || "";
       const to = document.getElementById("sef-audit-to")?.value || "";
@@ -13892,120 +14184,6 @@
 
     document.getElementById("btn-audit-csv")?.addEventListener("click", () => exportFiscalAudit("csv"));
     document.getElementById("btn-audit-pdf")?.addEventListener("click", () => exportFiscalAudit("pdf"));
-
-    function getField8E2eSource() {
-      return document.querySelector('input[name="e2e-source"]:checked')?.value || "receipt";
-    }
-
-    function updateField8SourceUi() {
-      const source = getField8E2eSource();
-      const receiptWrap = document.getElementById("e2e-receipt-wrap");
-      const sampleHint = document.getElementById("e2e-sample-hint");
-      if (receiptWrap) receiptWrap.hidden = source !== "receipt";
-      if (sampleHint) sampleHint.hidden = source !== "sample";
-      refreshField8SourceHint();
-    }
-
-    async function loadField8ReceiptPicker() {
-      const sel = document.getElementById("e2e-receipt-pick");
-      const hint = document.getElementById("e2e-receipt-hint");
-      if (!sel) return;
-      const prev = sel.value;
-      try {
-        const data = await api("/api/fiscal-test-atk-discount/receipts");
-        const rows = (data.receipts || []).filter(
-          (r) => String(r.receipt_type || "").toLowerCase() === "regular"
-        );
-        sel.innerHTML =
-          '<option value="">— zgjidh nga lista —</option>' +
-          rows
-            .map((r) => {
-              const atk = r.atk_ok || Number(r.sent_to_atk) === 1 ? "ATK OK" : "në pritje";
-              const label = `#${r.id} · ${r.nuikf} · ${formatEuro(r.total_amount)} · ${r.fiscal_date || ""} · ${atk}`;
-              return `<option value="${r.id}" data-nuikf="${escHtml(r.nuikf || "")}">${escHtml(label)}</option>`;
-            })
-            .join("");
-        if (prev && sel.querySelector(`option[value="${prev}"]`)) sel.value = prev;
-        if (hint && getField8E2eSource() === "receipt") {
-          hint.textContent = rows.length
-            ? `${rows.length} kuponë regular — zgjidhni ose shkruani NUIKF`
-            : "Nuk ka kuponë regular — bëni një shitje me zbritje fillimisht.";
-        }
-      } catch (e) {
-        if (hint) hint.textContent = e.message || "Lista e kuponëve dështoi";
-      }
-    }
-
-    function refreshField8SourceHint() {
-      const hint = document.getElementById("e2e-receipt-hint");
-      if (getField8E2eSource() !== "receipt") return;
-      const nuikf = String(document.getElementById("e2e-nuikf")?.value || "").trim();
-      const pick = document.getElementById("e2e-receipt-pick");
-      const pickNuikf = pick?.selectedOptions?.[0]?.dataset?.nuikf || "";
-      const label = nuikf || pickNuikf;
-      if (hint) {
-        hint.textContent = label
-          ? `Kuponi i zgjedhur: ${label} — preview/dërgim lexon artikujt dhe zbritjet (field 8) nga databaza.`
-          : "Vendosni NUIKF ose zgjidhni nga lista e kuponëve të fundit.";
-      }
-    }
-
-    function buildField8E2eBody(extra = {}) {
-      const source = getField8E2eSource();
-      if (source === "sample") {
-        return { use_sample: true, ...extra };
-      }
-      const nuikf = String(document.getElementById("e2e-nuikf")?.value || "")
-        .trim()
-        .toUpperCase();
-      const pick = document.getElementById("e2e-receipt-pick")?.value;
-      const receipt_id = pick ? Number(pick) : null;
-      if (!nuikf && !receipt_id) {
-        throw new Error("Vendosni NUIKF ose zgjidhni kupon nga lista");
-      }
-      return {
-        use_sample: false,
-        nuikf: nuikf || undefined,
-        receipt_id: receipt_id || undefined,
-        ...extra,
-      };
-    }
-
-    function formatField8E2eResult(r) {
-      const p = r.preview || {};
-      const src =
-        r.source === "receipt" || p.source === "receipt"
-          ? `kuponi ${r.receipt_nuikf || p.receipt_nuikf || r.nuikf || "—"}`
-          : "shembull statik";
-      const lines = [
-        r.message || "Preview field 8",
-        "",
-        `Burimi: ${src}`,
-        `field8_ok: ${p.field8_ok ? "PO" : "JO"}`,
-        `shuma artikujve = totali: ${p.items_sum_ok ? "PO" : "JO"}`,
-        `proto_bytes: ${p.proto_bytes ?? "—"}`,
-        `artikuj: ${p.item_count ?? "—"}`,
-        `total_discount: ${p.total_discount_eur ?? "—"} EUR`,
-        `zbritje rreshta: ${p.line_discounts_eur ?? "—"} EUR`,
-        `zbritje shporte: ${p.cart_discount_eur ?? "—"} EUR`,
-        `totali: ${p.total_amount ?? "—"} EUR`,
-        "",
-        r.send_ready != null
-          ? r.send_ready
-            ? "Gati për dërgim te ATK TEST: PO"
-            : `Dërgim: JO — ${r.send_block_reason || "—"}`
-          : "",
-      ].filter(Boolean);
-      if (Array.isArray(p.items)) {
-        lines.push("", "Artikuj (field 8):");
-        for (const it of p.items) {
-          lines.push(
-            `  · ${it.name}: total=${it.total_eur ?? "?"}€ discount=${it.discount_field8_eur ?? 0}€`
-          );
-        }
-      }
-      return lines.join("\n");
-    }
 
     function setPaperBlockMsg(text, ok) {
       const msg = document.getElementById("paper-block-msg");
@@ -14188,114 +14366,6 @@
         refreshPaperBlockUi().catch(() => {});
       } catch (e) {
         setPaperBlockMsg(e.message, false);
-      }
-    });
-
-    document.querySelectorAll('input[name="e2e-source"]').forEach((el) => {
-      el.addEventListener("change", () => {
-        updateField8SourceUi();
-        if (getField8E2eSource() === "receipt") {
-          loadField8ReceiptPicker().catch(console.error);
-        }
-      });
-    });
-    document.getElementById("e2e-receipt-pick")?.addEventListener("change", () => {
-      const opt = document.getElementById("e2e-receipt-pick")?.selectedOptions?.[0];
-      if (opt?.dataset?.nuikf) {
-        const inp = document.getElementById("e2e-nuikf");
-        if (inp) inp.value = opt.dataset.nuikf;
-      }
-      refreshField8SourceHint();
-    });
-    document.getElementById("e2e-nuikf")?.addEventListener("input", () => {
-      const sel = document.getElementById("e2e-receipt-pick");
-      if (sel) sel.value = "";
-      refreshField8SourceHint();
-    });
-    document.getElementById("btn-e2e-refresh-receipts")?.addEventListener("click", () => {
-      loadField8ReceiptPicker().catch((e) => {
-        const msg = document.getElementById("msg-field8-atk");
-        if (msg) {
-          msg.textContent = e.message || "Rifreskim dështoi";
-          msg.style.color = "#ef4444";
-        }
-      });
-    });
-    document.getElementById("btn-discount-e2e-preview")?.addEventListener("click", async () => {
-      const msg = document.getElementById("msg-field8-atk");
-      const box = document.getElementById("discount-e2e-box");
-      try {
-        const body = buildField8E2eBody({ dry_run: true });
-        const data = await api("/api/fiscal-test-atk-discount", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        const r = data.result || {};
-        if (box) {
-          box.hidden = false;
-          box.textContent = formatField8E2eResult(r);
-        }
-        if (msg) {
-          msg.style.color = r.preview?.field8_ok ? "#FF6B35" : "#ef4444";
-          msg.textContent = r.message || "Preview OK";
-        }
-      } catch (err) {
-        if (msg) {
-          msg.textContent = err.message || "Preview dështoi";
-          msg.style.color = "#ef4444";
-        }
-      }
-    });
-    document.getElementById("btn-discount-e2e-send")?.addEventListener("click", async () => {
-      const msg = document.getElementById("msg-field8-atk");
-      const box = document.getElementById("discount-e2e-box");
-      const source = getField8E2eSource();
-      const srcLabel =
-        source === "receipt"
-          ? `kuponit ${document.getElementById("e2e-nuikf")?.value.trim() || document.getElementById("e2e-receipt-pick")?.selectedOptions?.[0]?.dataset?.nuikf || "—"}`
-          : "shembullit statik";
-      const ok1 = window.confirm(
-        `E2E field 8 (discount) — dërgo te ATK TEST nga ${srcLabel}?\n\n` +
-          "Kërkohet mjedisi TEST + certifikata.\n" +
-          "Vetëm kur jeni gati — jo për shitje normale."
-      );
-      if (!ok1) return;
-      const ok2 = window.confirm("Konfirmim i dytë: PO, dërgo te fiskalizimi-test.atk-ks.org");
-      if (!ok2) return;
-      try {
-        const body = buildField8E2eBody({
-          send_to_atk: true,
-          confirmed: true,
-          operator_name: String(window.__adminName || "Admin").trim() || "Admin",
-        });
-        const data = await api("/api/fiscal-test-atk-discount", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        const r = data.result || {};
-        const lines = [
-          r.message || (data.ok ? "OK" : "Dështoi"),
-          "",
-          `NUIKF: ${r.nuikf || "—"}`,
-          `ATK dërguar: ${r.atk_sent ? "PO" : "JO"}`,
-          r.atk_result?.error ? `Gabim: ${r.atk_result.error}` : "",
-          r.atk_result?.transaction_id ? `Transaction: ${r.atk_result.transaction_id}` : "",
-          r.verify_hint || "",
-        ].filter(Boolean);
-        if (box) {
-          box.hidden = false;
-          box.textContent = lines.join("\n");
-        }
-        if (msg) {
-          msg.style.color = r.atk_sent ? "#FF6B35" : "#ef4444";
-          msg.textContent = r.message || "E2E përfundoi";
-        }
-        loadField8ReceiptPicker().catch(() => {});
-      } catch (err) {
-        if (msg) {
-          msg.textContent = err.message || "E2E dështoi";
-          msg.style.color = "#ef4444";
-        }
       }
     });
 
@@ -14625,6 +14695,37 @@
       }
     }
 
+    async function provoLidhjenLokalTeKamarierit(url) {
+      const el = document.getElementById("cloud-local-waiter-reach-hint");
+      if (!el) return;
+      const target = String(url || "").trim();
+      if (!target) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      el.hidden = false;
+      el.style.color = "var(--ngjyr-muted)";
+      el.textContent = "Duke provuar lidhjen…";
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch(target, { method: "GET", cache: "no-store", signal: ctrl.signal });
+        clearTimeout(timer);
+        if (res.ok || (res.status >= 300 && res.status < 400)) {
+          el.hidden = true;
+          el.textContent = "";
+          return;
+        }
+        throw new Error("unreachable");
+      } catch {
+        el.hidden = false;
+        el.style.color = "var(--ngjyr-danger)";
+        el.textContent =
+          "Telefoni nuk mundet me u lidh — sigurohuni që kompjuteri dhe telefoni janë në të njëjtin WiFi";
+      }
+    }
+
     function vendosLinketCloud(s) {
       const links = document.getElementById("web-app-links");
       const hint = document.getElementById("cloud-links-hint");
@@ -14660,6 +14761,7 @@
       const rLbl = document.getElementById("cloud-local-recepsion-label");
       if (wLbl) wLbl.textContent = venue ? `Kamarieri — ${venue}` : "Kamarieri — WiFi lokal";
       if (rLbl) rLbl.textContent = venue ? `Recepsioni — ${venue}` : "Recepsioni — WiFi lokal";
+      void provoLidhjenLokalTeKamarierit(localWaiterUrl);
       if (localWaiterUrl) localWifiBaseKamarier = localWaiterUrl;
       if (localRecepsionUrl) localWifiBaseRecepsion = localRecepsionUrl;
 

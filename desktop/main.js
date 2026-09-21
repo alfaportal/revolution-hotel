@@ -6,6 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { runProdLicenseDialogUntilOk, loadCloud } = require("./protection/license-boot");
 const path = require("path");
 const fs = require("fs");
+const { joinContent } = require("./app-paths");
 const pkg = require("./package.json");
 
 if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
@@ -113,10 +114,10 @@ function createSplash() {
       movable: true,
       center: true,
       show: false,
-      alwaysOnTop: true,
+      alwaysOnTop: false,
       skipTaskbar: true,
       backgroundColor: "#0b1220",
-      icon: path.join(__dirname, "build", "icon.ico"),
+      icon: joinContent("build", "icon.ico"),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -127,7 +128,7 @@ function createSplash() {
     splashWindow.once("ready-to-show", () => {
       if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
     });
-    splashWindow.loadFile(path.join(__dirname, "public", "splash.html")).catch(() => {
+    splashWindow.loadFile(joinContent("public", "splash.html")).catch(() => {
       try {
         splashWindow.show();
       } catch {
@@ -271,6 +272,7 @@ async function bootHotelLicenseLayers() {
     return true;
   }
 
+  closeSplash();
   const bootOk = await runProdLicenseDialogUntilOk(app, bootReason);
   if (!bootOk) {
     app.quit();
@@ -383,8 +385,8 @@ async function mountHotelMainWindow(started, userData) {
     mainWindow = null;
   }
 
-  const logoPath = path.join(__dirname, "public", "img", "revolution-logo.png");
-  const iconIco = path.join(__dirname, "build", "icon.ico");
+  const logoPath = joinContent("public", "img", "revolution-logo.png");
+  const iconIco = joinContent("build", "icon.ico");
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -549,6 +551,15 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     try {
+      if (process.platform === "win32") {
+        const { exec } = require("child_process");
+        const fwPort = Number(process.env.PORT) || 3001;
+        exec(
+          `netsh advfirewall firewall add rule name="Revolution HOTEL" dir=in action=allow protocol=tcp localport=${fwPort}`,
+          () => {},
+        );
+      }
+
       createSplash();
       startupMark("splash");
       const userData = path.join(app.getPath("appData"), "Revolution HOTEL");

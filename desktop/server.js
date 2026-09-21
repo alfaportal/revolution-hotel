@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const { joinContent } = require("./app-paths");
 const os = require("os");
 const crypto = require("crypto");
 /** Urdhër pronari: asgjë te ATK deri HOTEL_ATK_SEND_ALLOWED=1 */
@@ -798,7 +799,7 @@ function mapGuestServicePhoto(req, res) {
 }
 
 function sendMenuPhoto(res, photoPath) {
-  const filePath = path.join(__dirname, "public", photoPath.replace(/^\//, ""));
+  const filePath = joinContent("public", photoPath.replace(/^\//, ""));
   if (!fs.existsSync(filePath)) return false;
   res.setHeader("Cache-Control", "private, max-age=86400");
   res.sendFile(filePath);
@@ -848,18 +849,33 @@ function resolveStaffWaiterUrl(_cloudWaiter, _staffRow) {
   return buildHotelStaffLinks(db).waiter_url;
 }
 
+function lanInterfaceKind(ifName) {
+  const n = String(ifName || "").toLowerCase();
+  if (/wi-?fi|wireless|wlan|wifi/.test(n)) return "wifi";
+  if (/ethernet|local area connection|\beth\b/.test(n)) return "ethernet";
+  return "other";
+}
+
+function pickLanIPv4Address() {
+  const candidates = [];
+  for (const [ifName, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const net of addrs || []) {
+      if (net.family !== "IPv4" || net.internal) continue;
+      const ip = String(net.address || "").trim();
+      if (!ip || ip.startsWith("169.254.")) continue;
+      candidates.push({ ip, kind: lanInterfaceKind(ifName) });
+    }
+  }
+  const wifi = candidates.find((c) => c.kind === "wifi");
+  if (wifi) return wifi.ip;
+  const ethernet = candidates.find((c) => c.kind === "ethernet");
+  if (ethernet) return ethernet.ip;
+  return candidates[0]?.ip || null;
+}
+
 function getLocalLanBaseUrl() {
   const port = process.env.ACTUAL_PORT || process.env.PORT || 3001;
-  let ip = null;
-  for (const ifName of Object.keys(os.networkInterfaces())) {
-    for (const net of os.networkInterfaces()[ifName] || []) {
-      if (net.family === "IPv4" && !net.internal) {
-        ip = net.address;
-        break;
-      }
-    }
-    if (ip) break;
-  }
+  const ip = pickLanIPv4Address();
   return ip ? `http://${ip}:${port}`.replace(/\/+$/, "") : null;
 }
 
@@ -939,8 +955,8 @@ function renderWaiterCodeErrorPage(message) {
   return `<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kodi i pavlefshëm</title><style>body{font-family:system-ui,sans-serif;background:#0b1526;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:1.5rem;text-align:center}p{max-width:22rem;line-height:1.5;color:rgba(255,255,255,.85)}</style></head><body><p>${text}</p></body></html>`;
 }
 
-const LOGIN_HTML_PATH = path.join(__dirname, "public", "login.html");
-const ADMIN_HTML_PATH = path.join(__dirname, "public", "admin.html");
+const LOGIN_HTML_PATH = joinContent("public", "login.html");
+const ADMIN_HTML_PATH = joinContent("public", "admin.html");
 
 function serveStaffLoginPage(res, mode, entry = {}) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -1404,7 +1420,7 @@ if (fs.existsSync(ADMIN_HTML_PATH)) {
   });
 }
 
-app.use(express.static(path.join(__dirname, "public"), {
+app.use(express.static(joinContent("public"), {
   setHeaders(res, filePath) {
     if (/\.(html|js|css)$/i.test(filePath)) {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
