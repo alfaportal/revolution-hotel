@@ -3917,34 +3917,62 @@
           });
           hapWaiterOnlinePop();
         } else if (cloudLive) {
-          // Ka porosi aktive cloud — importo direkt pastaj hap tavolinën
-          card.style.opacity = "0.6";
-          card.style.pointerEvents = "none";
-          const cloudOrder = cloudLive.order || {};
-          const importProm = cloudOrder.id
-            ? api("/api/waiter/import-cloud-table-order", {
-                method: "POST",
-                body: JSON.stringify({ order: cloudOrder, waiter_name: cloudOrder.waiter_name }),
-              }).catch(() => ({}))
-            : Promise.resolve({});
-          importProm.then(r => {
-            if (r?.ok && !r?.skipped) {
-              return ngarkoTavolinat().then(() => {
+          void (async () => {
+            const openImport = confirm(
+              `T${t.number} — porosi cloud (☁).\n\nOK = Hap & importo\nAnulo = Pastro porosinë cloud pa import`,
+            );
+            if (!openImport) {
+              const dismiss = confirm(
+                "Pastro / anulo porosinë cloud për këtë tavolinë (pa import)?",
+              );
+              if (!dismiss) return;
+              card.style.opacity = "0.6";
+              card.style.pointerEvents = "none";
+              try {
+                const dr = await api("/api/waiter/cloud-table/dismiss", {
+                  method: "POST",
+                  body: JSON.stringify({ table_id: t.id, table_number: t.number }),
+                });
+                if (dr.still_occupied_in_cloud && !dr.cloud_cancelled) {
+                  alert("Cloud nuk u pastrua plotësisht — provoni Anulo pas hapjes së tavolinës ose Admin → Pastro.");
+                }
+                await ngarkoCloudTavolinat();
+                await ngarkoTavolinat();
+              } catch (err) {
+                alert(err.message || "Nuk u pastrua cloud.");
+              } finally {
+                card.style.opacity = "";
+                card.style.pointerEvents = "";
+              }
+              return;
+            }
+            card.style.opacity = "0.6";
+            card.style.pointerEvents = "none";
+            const cloudOrder = cloudLive.order || {};
+            const waiterForImport = String(cloudOrder.waiter_name || user.emri || "").trim();
+            try {
+              const r = cloudOrder.id
+                ? await api("/api/waiter/import-cloud-table-order", {
+                    method: "POST",
+                    body: JSON.stringify({ order: cloudOrder, waiter_name: waiterForImport }),
+                  })
+                : {};
+              if (r?.ok && !r?.skipped) {
+                await ngarkoTavolinat();
                 const fresh = (lastTablesFlat || []).find(x => x.number === t.number);
                 if (fresh && fresh.status !== "free") klikoTavoline(fresh);
-              });
-            }
-            if (r?.ok && r?.skipped && r?.table_number) {
-              return ngarkoTavolinat().then(() => {
+              } else if (r?.ok && r?.skipped && r?.table_number) {
+                await ngarkoTavolinat();
                 const fresh = (lastTablesFlat || []).find(x => x.number === Number(r.table_number));
                 if (fresh && fresh.status !== "free") klikoTavoline(fresh);
-              });
+              } else {
+                await ngarkoTavolinat();
+              }
+            } finally {
+              card.style.opacity = "";
+              card.style.pointerEvents = "";
             }
-            return ngarkoTavolinat();
-          }).finally(() => {
-            card.style.opacity = "";
-            card.style.pointerEvents = "";
-          });
+          })();
         } else {
           const freshTable = (lastTablesFlat || []).find(x => x.id === t.id) || t;
           klikoTavoline(freshTable);

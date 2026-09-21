@@ -4447,6 +4447,7 @@
           <button type="button" class="btn-coupon btn-coupon-fiscal" data-coupon="fiscal" id="modal-kupon-fiskal">Kuponi Fiskal</button>
         </div>
         <button type="button" class="btn btn-danger" id="btn-anullo-porosi">Anullo porosinë</button>
+        <button type="button" class="btn btn-warning" id="btn-pastro-cloud-tavoline" hidden>Pastro tavolinën (☁ cloud)</button>
         <button type="button" class="btn btn-ghost" id="btn-mbyll-modal">Mbyll</button>
       </div>
     </div>
@@ -10517,17 +10518,36 @@
       document.getElementById("modal-fiscal-breakdown").hidden = true;
       document.getElementById("btn-printo").hidden = false;
       document.getElementById("btn-anullo-porosi").hidden = false;
+      document.getElementById("btn-pastro-cloud-tavoline").hidden = true;
       document.getElementById("btn-mbyll-modal").hidden = false;
     }
 
-    function hapModalTavolineELire(t) {
+    let adminCloudOccupiedMap = new Map();
+
+    function hapModalTavolineELire(t, cloudCt) {
       tavolinaModal = null;
       document.getElementById("modal-titull").textContent = "Tavolina " + t.number;
       document.getElementById("modal-kamarieri").hidden = true;
-      document.getElementById("modal-artikuj").innerHTML =
-        `<li style="color:var(--ngjyr-muted);padding:0.75rem 0;text-align:center;list-style:none">
-          Tavolina ${t.number} është e lirë — nuk ka porosi aktive
-        </li>`;
+      const btnPastro = document.getElementById("btn-pastro-cloud-tavoline");
+      if (cloudCt) {
+        const clo = cloudCt.order || {};
+        const total = Number(clo.total) || 0;
+        document.getElementById("modal-artikuj").innerHTML =
+          `<li style="color:var(--ngjyr-muted);padding:0.75rem 0;text-align:center;list-style:none">
+            Tavolina ${t.number} është e lirë lokalisht, por cloud ka porosi të hapur (☁).<br>
+            <span style="font-size:0.85rem">${formatEuro(total)} — pastroni nëse është e ngecur.</span>
+          </li>`;
+        if (btnPastro) {
+          btnPastro.hidden = false;
+          btnPastro.dataset.tableId = String(t.id);
+        }
+      } else {
+        document.getElementById("modal-artikuj").innerHTML =
+          `<li style="color:var(--ngjyr-muted);padding:0.75rem 0;text-align:center;list-style:none">
+            Tavolina ${t.number} është e lirë — nuk ka porosi aktive
+          </li>`;
+        if (btnPastro) btnPastro.hidden = true;
+      }
       document.getElementById("modal-sep").hidden = true;
       document.getElementById("modal-fiscal-breakdown").hidden = true;
       document.getElementById("modal-total-wrap").hidden = true;
@@ -10537,11 +10557,12 @@
       document.getElementById("modal-tavolina").hidden = false;
     }
 
-    function klikoTavoline(t) {
+    function klikoTavoline(t, cloudCt) {
       if (t.status === "occupied" && t.order) {
         hapModalTavoline(t);
       } else {
-        hapModalTavolineELire(t);
+        const ct = cloudCt ?? adminCloudOccupiedMap.get(Number(t.number)) ?? null;
+        hapModalTavolineELire(t, ct);
       }
     }
 
@@ -10627,6 +10648,8 @@
       document.getElementById("modal-sep").hidden = false;
       document.getElementById("modal-total-wrap").hidden = false;
       document.getElementById("btn-printo").hidden = false;
+      document.getElementById("btn-anullo-porosi").hidden = false;
+      document.getElementById("btn-pastro-cloud-tavoline").hidden = true;
       document.getElementById("btn-mbyll-modal").hidden = false;
       shfaqTotaletModal(t.order.total);
       document.getElementById("modal-tavolina").hidden = false;
@@ -10951,12 +10974,29 @@
     });
 
     async function ngarkoTavolinat() {
+      if (ngarkoTavolinat._busy) return;
+      ngarkoTavolinat._busy = true;
+      try {
       let tables = await api("/api/tables");
       tables = injektoDemoT1(tables);
-      const sig = JSON.stringify((tables || []).map(t => [
-        t.id, t.status, t.order && t.order.id, t.order && t.order.waiter_name,
-        (t.items || []).length,
-      ]));
+      let cloudRows = [];
+      try {
+        const cloudData = await api("/api/admin/cloud-tables");
+        cloudRows = cloudData.tables || [];
+      } catch {
+        cloudRows = [];
+      }
+      adminCloudOccupiedMap = new Map();
+      for (const ct of cloudRows) {
+        if (ct.status === "occupied") adminCloudOccupiedMap.set(Number(ct.number), ct);
+      }
+      const sig = JSON.stringify({
+        local: (tables || []).map(t => [
+          t.id, t.status, t.order && t.order.id, t.order && t.order.waiter_name,
+          (t.items || []).length,
+        ]),
+        cloud: [...adminCloudOccupiedMap.keys()].sort(),
+      });
       if (sig === ngarkoTavolinat._sig) return;
       ngarkoTavolinat._sig = sig;
       const grid = document.getElementById("grida-tavolinave");
@@ -10965,11 +11005,18 @@
         const card = document.createElement("button");
         card.type = "button";
         const isFree = t.status === "free";
-        card.className = "admin-table-card " + (isFree ? "free" : "occupied");
+        const cloudCt = isFree ? adminCloudOccupiedMap.get(Number(t.number)) : null;
+        card.className = "admin-table-card " + (isFree ? (cloudCt ? "free cloud-stuck" : "free") : "occupied");
         let inner = `<div class="admin-table-label">${escMenuAttr(t.label || ("T" + t.number))}</div>`;
         if (t.zone_name) inner += `<div class="admin-table-zone">${escMenuAttr(t.zone_name)}</div>`;
         if (isFree) {
-          inner += `<span class="admin-table-badge admin-table-badge-free">E LIRË</span>`;
+          if (cloudCt) {
+            const clo = cloudCt.order || {};
+            inner += `<span class="admin-table-badge admin-table-badge-busy">☁ CLOUD</span>`;
+            inner += `<div class="admin-table-stat">${formatEuro(Number(clo.total) || 0)} — e ngecur në cloud</div>`;
+          } else {
+            inner += `<span class="admin-table-badge admin-table-badge-free">E LIRË</span>`;
+          }
         } else {
           const count = (t.items || []).reduce((s, i) => s + i.quantity, 0);
           const total = (t.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
@@ -10980,8 +11027,11 @@
           }
         }
         card.innerHTML = inner;
-        card.onclick = () => klikoTavoline(t);
+        card.onclick = () => klikoTavoline(t, cloudCt);
         grid.appendChild(card);
+      }
+      } finally {
+        ngarkoTavolinat._busy = false;
       }
     }
 
@@ -12384,6 +12434,29 @@
         ngarkoDitarin();
       } catch (err) {
         alert(err.message);
+      }
+    });
+    document.getElementById("btn-pastro-cloud-tavoline")?.addEventListener("click", async () => {
+      const btn = document.getElementById("btn-pastro-cloud-tavoline");
+      const tableId = Number(btn?.dataset.tableId);
+      if (!tableId) return;
+      if (!confirm("Pastro tavolinën edhe në cloud (porosi ☁ e ngecur)?")) return;
+      btn.disabled = true;
+      try {
+        const r = await api(`/api/tables/${tableId}/clear`, { method: "POST" });
+        const c = r.cloud || {};
+        if (c.still_occupied_in_cloud) {
+          alert("Lokal u pastrua, por cloud ende tregon tavolinë të zënë — provoni përsëri pas disa sekondash.");
+        } else {
+          alert(`Tavolina u pastrua (cloud: ${c.cloud_cancelled ?? 0} porosi).`);
+        }
+        mbyllModalTavoline();
+        ngarkoTavolinat._sig = "";
+        await ngarkoTavolinat();
+      } catch (err) {
+        alert(err.message || "Nuk u pastrua.");
+      } finally {
+        btn.disabled = false;
       }
     });
     function applyRaportPreset(period) {

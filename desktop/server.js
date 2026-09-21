@@ -1891,6 +1891,46 @@ app.get("/api/waiter/cloud-tables", auth, waiterOnly, async (req, res) => {
   }
 });
 
+app.get("/api/admin/cloud-tables", auth, adminOnly, async (req, res) => {
+  try {
+    const live = await cloudSync.fetchLiveCloudTables(db);
+    res.json({ ok: true, tables: live?.tables || [], updated_at: live?.updated_at || null });
+  } catch (e) {
+    res.json({ ok: false, tables: [], gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/cloud-table/dismiss", auth, waiterOnly, async (req, res) => {
+  try {
+    let tableNum = Number(req.body?.table_number);
+    const tableId = Number(req.body?.table_id);
+    if (!tableNum && tableId) {
+      const row = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
+      tableNum = Number(row?.number) || 0;
+    }
+    if (!tableNum) return res.status(400).json({ ok: false, gabim: "Mungon tavolina." });
+    const tableRow = db.getTableByNumber?.(tableNum) || db.db.prepare("SELECT id FROM tables WHERE id = ?").get(tableId);
+    const tid = Number(tableRow?.id || tableId);
+    if (tid && db.getActiveOrderForTable(tid)) {
+      return res.status(400).json({
+        ok: false,
+        gabim: "Ka porosi lokale — përdorni Anulo ose mbyllni tavolinën.",
+      });
+    }
+    const result = await cloudSync.clearStuckCloudTableOrder(db, tableNum);
+    if (result.still_occupied_in_cloud && !result.cloud_cancelled) {
+      return res.status(409).json({
+        ok: false,
+        gabim: "Cloud nuk u pastrua — provoni përsëri ose nga Admin → Tavolinat.",
+        ...result,
+      });
+    }
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message || "Nuk u pastrua cloud." });
+  }
+});
+
 app.post("/api/waiter/trigger-sync", auth, waiterOnly, async (req, res) => {
   try {
     ensureOnlineOrdersWatcher();
@@ -4523,17 +4563,31 @@ app.post("/api/menu/print", auth, adminOnly, async (req, res) => {
   }
 });
 
-app.post("/api/tables/:id/clear", auth, adminOnly, (req, res) => {
+app.post("/api/tables/:id/clear", auth, adminOnly, async (req, res) => {
   try {
     const tableId = Number(req.params.id);
     const tables = db.getTablesWithOrders();
     const t = tables.find(x => x.id === tableId);
+    const order = db.getActiveOrderForTable(tableId);
+    const cloudIds = order ? db.getLinkedCloudOrderIds(order.id) : [];
     cloudSync.pushTableCancelled(db, tableId);
     db.cancelActiveOrder(tableId);
-    if (t?.number) cloudSync.pushTableFree(db, t.number);
-    res.json({ ok: true });
+    let cloud = null;
+    if (t?.number) {
+      cloud = await cloudSync.clearStuckCloudTableOrder(db, t.number, {
+        cloud_order_ids: cloudIds,
+      });
+    }
+    if (cloud?.still_occupied_in_cloud) {
+      return res.status(409).json({
+        ok: false,
+        gabim: "Cloud ende tregon tavolinë të zënë — kontrolloni lidhjen ose provoni përsëri.",
+        cloud,
+      });
+    }
+    res.json({ ok: true, cloud });
   } catch (e) {
-    res.status(400).json({ gabim: e.message });
+    res.status(400).json({ ok: false, gabim: e.message });
   }
 });
 

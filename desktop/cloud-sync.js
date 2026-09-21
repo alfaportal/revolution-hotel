@@ -13,6 +13,9 @@ const {
 
 const SERVER_URL = PUBLIC_CLOUD_SERVER;
 
+/** Porosi cloud «fantazmë» — vetëm auto-pastim kur lokalisht lirë dhe mbi këtë moshe. */
+const STALE_CLOUD_TABLE_GHOST_MS = 2 * 60 * 60 * 1000;
+
 function normalizeKey(k) {
   return String(k || "").trim().toUpperCase().replace(/\s+/g, "");
 }
@@ -595,6 +598,153 @@ function reconcileAllTablesWithCloud(db) {
   } catch (err) {
     console.warn("Cloud table reconcile:", err.message);
   }
+}
+
+async function collectCloudOrdersForTable(db, tableNumber) {
+  const num = Number(tableNumber);
+  if (!num) return [];
+  const byKey = new Map();
+  const add = (o) => {
+    if (!o) return;
+    const id = String(o.id || "").trim();
+    const key = id || `${o.device_id}|${o.local_order_id}`;
+    if (!key.replace(/\|/g, "")) return;
+    byKey.set(key, { ...o, table_number: num });
+  };
+  try {
+    const live = await fetchLiveCloudTables(db);
+    const ct = (live?.tables || []).find(
+      t => Number(t.number) === num && t.status === "occupied",
+    );
+    if (ct?.order) add(ct.order);
+  } catch {
+    /* offline */
+  }
+  try {
+    const barByTable = await fetchActiveBarOrdersByTable(db);
+    if (barByTable.has(num)) add(barByTable.get(num));
+  } catch {
+    /* offline */
+  }
+  try {
+    const online = await fetchOnlineOrders(db);
+    for (const o of [...(online.all_orders || []), ...(online.orders || [])]) {
+      if (Number(o.table_number) === num) add(o);
+    }
+  } catch {
+    /* offline */
+  }
+  return [...byKey.values()];
+}
+
+/** Anulim i detyruar — online-cancel + sales/update (QR/KIOSK «ready» nuk preken vetëm me table-free). */
+async function forceCancelCloudSalesOrder(db, cloudOrder) {
+  const num = Number(cloudOrder?.table_number) || 0;
+  const cloudUuid = String(cloudOrder?.id || "").trim();
+
+  if (cloudUuid) {
+    const r = await cancelOnlineOrders(db, [cloudUuid]);
+    if (Number(r.cancelled) > 0) {
+      return { ok: true, method: "online-cancel", cloud_id: cloudUuid };
+    }
+  }
+
+  let deviceId = String(cloudOrder?.device_id || "").trim().toUpperCase();
+  let localOrderId = String(cloudOrder?.local_order_id || "").trim();
+  if (!deviceId || !localOrderId) {
+    if (cloudUuid) {
+      localOrderId = localOrderId || cloudUuid;
+    }
+  }
+
+  if (!deviceId || !localOrderId) {
+    return { ok: false, cloud_id: cloudUuid, reason: "missing_keys" };
+  }
+
+  const cfg = getConfig(db);
+  if (!cfg.celesi || !cfg.serverUrl) {
+    return { ok: false, cloud_id: cloudUuid, reason: "no_cloud" };
+  }
+
+  const orderedRaw = cloudOrder?.ordered_at || cloudOrder?.created_at || "";
+  try {
+    const res = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/sales/update",
+      {
+        celesi: cfg.celesi,
+        device_id: deviceId,
+        local_order_id: localOrderId,
+        table_number: num,
+        waiter_name: String(
+          cloudOrder?.waiter_name || cloudOrder?.customer_label || "",
+        ).trim(),
+        items: [],
+        total: 0,
+        status: "cancelled",
+        ...(orderedRaw ? { ordered_at: orderedRaw } : {}),
+      },
+      { timeoutMs: 12000 },
+    );
+    if (res.status < 400) {
+      return { ok: true, method: "sales-update", cloud_id: cloudUuid };
+    }
+    return {
+      ok: false,
+      cloud_id: cloudUuid,
+      reason: `http_${res.status}`,
+    };
+  } catch (err) {
+    return { ok: false, cloud_id: cloudUuid, reason: err.message || "network" };
+  }
+}
+
+/**
+ * Pastron tavolinë të ngecur në cloud (QR/KIOSK/POS) kur lokalisht është lirë.
+ * table-free nuk anulon WEB-KIOSK/WEB-WAITER — prandaj cancel + sales/update.
+ */
+async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
+  const num = Number(tableNumber);
+  if (!num) return { ok: false, message: "Numri i tavolinës mungon." };
+  if (!isCloudConfigured(db)) return { ok: false, message: "Cloud nuk është konfiguruar." };
+
+  const orders = await collectCloudOrdersForTable(db, num);
+  const prefIds = [...new Set((opts.cloud_order_ids || []).map(id => String(id || "").trim()).filter(Boolean))];
+  for (const cid of prefIds) {
+    if (orders.some(o => String(o.id || "") === cid)) continue;
+    const resolved = await resolveCloudOrderById(db, cid);
+    if (resolved) orders.push({ ...resolved, table_number: num });
+    else orders.push({ id: cid, table_number: num });
+  }
+
+  const results = [];
+  for (const o of orders) {
+    results.push(await forceCancelCloudSalesOrder(db, o));
+  }
+
+  pushTableFree(db, num);
+  sseFreedTableNums.add(num);
+
+  const cloudCancelled = results.filter(r => r.ok).length;
+  let stillOccupied = false;
+  try {
+    const live = await fetchLiveCloudTables(db);
+    stillOccupied = !!(live?.tables || []).find(
+      t => Number(t.number) === num && t.status === "occupied",
+    );
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    ok: !stillOccupied || cloudCancelled > 0,
+    table_number: num,
+    orders_found: orders.length,
+    cloud_cancelled: cloudCancelled,
+    still_occupied_in_cloud: stillOccupied,
+    details: results,
+  };
 }
 
 function pushTableFree(db, tableNumber) {
@@ -1747,6 +1897,32 @@ async function syncLocalCancelledFromCloud(db) {
         .trim()
         .toUpperCase();
 
+      const orderedAtRaw = ct.order?.ordered_at || ct.ordered_at || "";
+      if (orderedAtRaw) {
+        const orderedTs = new Date(orderedAtRaw).getTime();
+        if (
+          Number.isFinite(orderedTs)
+          && now - orderedTs >= STALE_CLOUD_TABLE_GHOST_MS
+        ) {
+          const ghostOrder = {
+            ...(ct.order || {}),
+            id: ct.order?.id || ct.id,
+            table_number: tNum,
+            ordered_at: orderedAtRaw,
+            device_id: ct.device_id || ct.order?.device_id,
+          };
+          forceCancelCloudSalesOrder(db, ghostOrder).catch(err => {
+            console.warn("[sync] stale cloud ghost cancel:", err.message);
+          });
+          pushTableFree(db, tNum);
+          sseFreedTableNums.add(tNum);
+          console.log(
+            `[sync] T${tNum} pastruar — porosi cloud e vjetër (>${STALE_CLOUD_TABLE_GHOST_MS / 3600000}h)`,
+          );
+          continue;
+        }
+      }
+
       // Nëse porosia cloud u krijua nga ky POS → e lirojmë në cloud
       if (localDeviceId && cloudDevice === localDeviceId) {
         pushTableFree(db, tNum);
@@ -2422,6 +2598,7 @@ module.exports = {
   cancelOnlineOrders,
   orderMirrorsRemoteCloud,
   resolveCloudOrderById,
+  clearStuckCloudTableOrder,
   pushSale,
   pushActiveOrderUpdate,
   pushAllActiveTables,
