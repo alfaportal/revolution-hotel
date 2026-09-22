@@ -1646,7 +1646,18 @@
       }
     }
 
+    function dridhPorosieWaiter() {
+      try {
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate([300, 200, 300, 200, 300]);
+        }
+      } catch {
+        /* iPhone / browser pa vibrate */
+      }
+    }
+
     function luajTingullPorosieWaiter() {
+      dridhPorosieWaiter();
       if (typeof window.playOrderAlarmSound === "function") {
         window.playOrderAlarmSound();
       }
@@ -1944,7 +1955,7 @@
     let _readyLastDismissMs = 0; // debounce: mos ri-shfaq për 60s pas dismiss
 
     function playReadyBeep() {
-      // Përdor sistemin ekzistues të zërit që tashmë është unlock-uar nga user
+      dridhPorosieWaiter();
       if (typeof window.playOrderAlarmSound === "function") {
         window.playOrderAlarmSound();
       }
@@ -2179,6 +2190,7 @@
       else if (waiterView === "services") ngarkoSherbimetWaiter().catch(() => {});
       else if (waiterView === "housekeeping") ngarkoHousekeepingWaiter().catch(() => {});
       else if (waiterView === "orders") ngarkoPorositeWaiter().catch(() => {});
+      if (typeof window.__waiterSyncIdleTimers === "function") window.__waiterSyncIdleTimers();
     }
 
     function renderWaiterRoomsGrid(rooms, reservations) {
@@ -4095,7 +4107,23 @@
       for (const zone of zones) {
         const section = document.createElement("section");
         section.className = "waiter-zone-section";
-        section.innerHTML = `<h2 class="waiter-zone-title">${zone.name || "Zona"}</h2>`;
+        const zoneHead = document.createElement("div");
+        zoneHead.className = "waiter-zone-head";
+        const zoneTitle = document.createElement("h2");
+        zoneTitle.className = "waiter-zone-title";
+        zoneTitle.textContent = zone.name || "Zona";
+        zoneHead.appendChild(zoneTitle);
+        if (!wrap.childElementCount) {
+          const btnDilMobile = document.createElement("button");
+          btnDilMobile.type = "button";
+          btnDilMobile.className = "waiter-mobile-dil-btn";
+          btnDilMobile.textContent = "DIL";
+          btnDilMobile.addEventListener("click", () => {
+            if (typeof dil === "function") dil();
+          });
+          zoneHead.appendChild(btnDilMobile);
+        }
+        section.appendChild(zoneHead);
         const grid = document.createElement("div");
         grid.className = "table-cards-grid";
         if (eshteZoneOnlinePickup(zone)) {
@@ -4287,6 +4315,15 @@
       try {
         const s = await api("/api/waiter/shift");
         shiftOpen = !!s.open;
+        const acceptModal = document.getElementById("modal-shift-accept");
+        if (
+          s.needs_handover_acceptance &&
+          s.pending_handover &&
+          acceptModal?.hidden &&
+          !pendingHandoverData
+        ) {
+          showShiftAcceptModal(s.pending_handover);
+        }
         const el = document.getElementById("hdr-pazari");
         el.textContent = formatEuro(s.total_sales || 0);
         el.title = s.open
@@ -4374,6 +4411,58 @@
     let tavolinaId = null;
     let porosia = [];
     let artikujNeTavoline = [];
+    const WAITER_ORDER_DRAFT_LS = "rs_waiter_order_drafts_v1";
+
+    function draftStorageKey(waiterName, tableId) {
+      return `${String(waiterName || "").trim()}::${String(tableId)}`;
+    }
+
+    function lexoDraftMap() {
+      try {
+        const raw = localStorage.getItem(WAITER_ORDER_DRAFT_LS);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function ruajDraftMap(map) {
+      try {
+        localStorage.setItem(WAITER_ORDER_DRAFT_LS, JSON.stringify(map || {}));
+      } catch {
+        /* storage i plotë / private mode */
+      }
+    }
+
+    function ruajDraftPorosieTavoline() {
+      if (tavolinaId == null || tavolinaId === "" || !porosia.length) return;
+      const map = lexoDraftMap();
+      map[draftStorageKey(user.emri, tavolinaId)] = {
+        table_id: tavolinaId,
+        waiter_name: user.emri,
+        items: JSON.parse(JSON.stringify(porosia)),
+        saved_at: new Date().toISOString(),
+      };
+      ruajDraftMap(map);
+    }
+
+    function fshiDraftPorosieTavoline(tableId) {
+      if (tableId == null || tableId === "") return;
+      const map = lexoDraftMap();
+      const key = draftStorageKey(user.emri, tableId);
+      if (!map[key]) return;
+      delete map[key];
+      ruajDraftMap(map);
+    }
+
+    function ngarkoDraftPorosieNgaTavolina(tableId) {
+      const entry = lexoDraftMap()[draftStorageKey(user.emri, tableId)];
+      if (!entry || entry.waiter_name !== user.emri || !Array.isArray(entry.items) || !entry.items.length) {
+        return null;
+      }
+      return JSON.parse(JSON.stringify(entry.items));
+    }
+
     let menuGroupFilter = "";
     let couponType = "thermal";
     let checkoutCouponType = "thermal";
@@ -4803,6 +4892,8 @@
       const eHuaj = t.order && t.order.waiter_name !== user.emri;
       artikujNeTavoline = (!eHuaj && t.items) ? JSON.parse(JSON.stringify(t.items)) : (t.items ? JSON.parse(JSON.stringify(t.items)) : []);
       porosia = [];
+      const draftPorosie = ngarkoDraftPorosieNgaTavolina(t.id);
+      if (draftPorosie) porosia = draftPorosie;
       /* Menyja duhet të jetë e ngarkuar para se të hapet ekrani */
       if (!Array.isArray(menuItems) || !menuItems.length) {
         try { await ngarkoMenu(); } catch (e) { console.warn("ngarkoMenu:", e); }
@@ -4956,6 +5047,9 @@
         lista.querySelectorAll("[data-r]").forEach(b => b.addEventListener("click", () => hiqArtikull(+b.dataset.r)));
       }
       document.getElementById("totali").textContent = formatEuro(llogaritTotalin(porosia));
+      if (!porosia.length && tavolinaId != null && tavolinaId !== "") {
+        fshiDraftPorosieTavoline(tavolinaId);
+      }
       const hasItems = artikujNeTavoline.length || porosia.length;
       const splitBtn = document.getElementById("btn-nda-faturen");
       if (splitBtn && !document.getElementById("btn-dergo").disabled) {
@@ -5092,7 +5186,7 @@
         closeSplitModal();
         if (res.table_freed) {
           mbyllEkraninPorosise();
-          kyçKamarierPasPorosise();
+          kyçKamarierPasPagese();
         } else {
           porosia = [];
           const tables = await api("/api/tables?reservations=1");
@@ -5146,9 +5240,10 @@
       _btnDergoLastMs = now;
       const btn = document.getElementById("btn-dergo");
       btn.disabled = true;
+      let orderOk = false;
       try {
         const itemsToSend = mergeOrderItemsClient(artikujNeTavoline, porosia);
-        const res = await api("/api/orders", {
+        await api("/api/orders", {
           method: "POST",
           body: JSON.stringify({
             table_id:    tavolinaId,
@@ -5158,14 +5253,18 @@
         });
         artikujNeTavoline = itemsToSend;
         porosia = [];
+        fshiDraftPorosieTavoline(tavolinaId);
         perditesoPorosine();
-        await mbyllEkraninPorosise();
         kyçKamarierPasPorosise();
+        orderOk = true;
       } catch (err) {
         shfaqGabim(gabimEl, err.message);
-        _btnDergoLastMs = 0; // reset debounce on error
+        _btnDergoLastMs = 0;
+        btn.disabled = false;
       } finally {
-        setTimeout(() => { btn.disabled = false; }, 5000);
+        if (orderOk) {
+          setTimeout(() => { btn.disabled = false; }, 5000);
+        }
       }
     });
 
@@ -5182,6 +5281,7 @@
           body: JSON.stringify({ table_id: tavolinaId }),
         });
         alert("Porosia u anullua");
+        fshiDraftPorosieTavoline(tavolinaId);
         mbyllEkraninPorosise();
       } catch (err) {
         shfaqGabim(gabimEl, err.message);
@@ -5281,7 +5381,7 @@
         }
         lironTavolinenNëPamje(tavolinaId);
         await mbyllEkraninPorosise();
-        kyçKamarierPasPorosise();
+        kyçKamarierPasPagese();
         ngarkoPazarin();
         ngarkoPorosiOnlineWaiter(true).catch(() => {});
         try { window.dispatchEvent(new Event("pos-order-closed")); } catch (_e) { /* */ }
@@ -5305,7 +5405,7 @@
             });
             lironTavolinenNëPamje(tavolinaId);
             await mbyllEkraninPorosise();
-            kyçKamarierPasPorosise();
+            kyçKamarierPasPagese();
             ngarkoPazarin();
             ngarkoPorosiOnlineWaiter(true).catch(() => {});
             try { window.dispatchEvent(new Event("pos-order-closed")); } catch (_e) { /* */ }
@@ -5403,7 +5503,7 @@
         document.getElementById("print-fature").innerHTML = res.html || "";
         lironTavolinenNëPamje(tavolinaId);
         await mbyllEkraninPorosise();
-        kyçKamarierPasPorosise();
+        kyçKamarierPasPagese();
         ngarkoPazarin();
         ngarkoDhomatWaiter().catch(() => {});
         ngarkoPorosiOnlineWaiter(true).catch(() => {});
@@ -5459,7 +5559,162 @@
     document.getElementById("w-charge-room-backdrop")?.addEventListener("click", mbyllChargeRoomModal);
     document.getElementById("w-charge-room-cancel")?.addEventListener("click", mbyllChargeRoomModal);
 
-    aktivizoKyçjenTerminaleKamarier();
+    /** Auto-logout: 30s te tavolinat; 1 min në panel porosie; 5s pas dërgimit/pagesës → PIN. */
+    function aktivizoAutoLogoutKamarierPorosi() {
+      const TABLES_IDLE_MS = 30_000;
+      const ORDER_IDLE_MS = 60_000;
+      const POST_ACTION_LOGOUT_MS = 5000;
+      let tablesIdleTimer = null;
+      let orderIdleTimer = null;
+      let postLogoutTimer = null;
+      let logoutOverlayEl = null;
+
+      function isOrderPanelActive() {
+        return document.getElementById("ekrani-porosia")?.classList.contains("active");
+      }
+
+      function isTablesScreenActive() {
+        const tables = document.getElementById("ekrani-tavolina");
+        if (!tables || tables.classList.contains("hidden")) return false;
+        if (isOrderPanelActive()) return false;
+        if (typeof waiterView !== "undefined" && waiterView !== "tables") return false;
+        return true;
+      }
+
+      function clearTablesIdleTimer() {
+        if (tablesIdleTimer) clearTimeout(tablesIdleTimer);
+        tablesIdleTimer = null;
+      }
+
+      function clearOrderIdleTimer() {
+        if (orderIdleTimer) clearTimeout(orderIdleTimer);
+        orderIdleTimer = null;
+      }
+
+      function clearPostLogoutTimer() {
+        if (postLogoutTimer) clearTimeout(postLogoutTimer);
+        postLogoutTimer = null;
+      }
+
+      function hideLogoutOverlay() {
+        if (logoutOverlayEl) {
+          logoutOverlayEl.remove();
+          logoutOverlayEl = null;
+        }
+      }
+
+      function logoutToPinScreen() {
+        clearTablesIdleTimer();
+        clearOrderIdleTimer();
+        clearPostLogoutTimer();
+        hideLogoutOverlay();
+        ruajDraftPorosieTavoline();
+        if (typeof dil === "function") dil();
+      }
+
+      function showLogoutOverlay(message) {
+        hideLogoutOverlay();
+        const el = document.createElement("div");
+        el.id = "waiter-auto-logout-overlay";
+        el.setAttribute("role", "alertdialog");
+        el.setAttribute("aria-live", "assertive");
+        el.style.cssText =
+          "position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:1.25rem;background:rgba(15,23,42,0.72);box-sizing:border-box;";
+        el.innerHTML =
+          `<div style="max-width:22rem;width:100%;background:#fff;color:#0f172a;border-radius:16px;padding:1.35rem 1.25rem;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.35);">` +
+          `<p style="margin:0 0 0.65rem;font-size:1.15rem;font-weight:800;line-height:1.35;">${message}</p>` +
+          `<p style="margin:0;font-size:0.9rem;color:#64748b;">Duke u kthyer te PIN-i… (5 sek)</p>` +
+          `</div>`;
+        document.body.appendChild(el);
+        logoutOverlayEl = el;
+      }
+
+      function scheduleLogoutPasVeprimi(message) {
+        clearTablesIdleTimer();
+        clearOrderIdleTimer();
+        clearPostLogoutTimer();
+        showLogoutOverlay(message);
+        postLogoutTimer = setTimeout(logoutToPinScreen, POST_ACTION_LOGOUT_MS);
+      }
+
+      function resetTablesIdleTimer() {
+        if (postLogoutTimer) return;
+        clearTablesIdleTimer();
+        if (!isTablesScreenActive()) return;
+        tablesIdleTimer = setTimeout(() => {
+          if (isTablesScreenActive() && !postLogoutTimer) logoutToPinScreen();
+        }, TABLES_IDLE_MS);
+      }
+
+      function resetOrderIdleTimer() {
+        if (postLogoutTimer) return;
+        clearOrderIdleTimer();
+        if (!isOrderPanelActive()) return;
+        orderIdleTimer = setTimeout(() => {
+          if (isOrderPanelActive() && !postLogoutTimer) logoutToPinScreen();
+        }, ORDER_IDLE_MS);
+      }
+
+      function syncIdleTimersForActiveScreen() {
+        if (postLogoutTimer) return;
+        if (isOrderPanelActive()) {
+          clearTablesIdleTimer();
+          resetOrderIdleTimer();
+        } else if (isTablesScreenActive()) {
+          clearOrderIdleTimer();
+          resetTablesIdleTimer();
+        } else {
+          clearTablesIdleTimer();
+          clearOrderIdleTimer();
+        }
+      }
+
+      function onWaiterActivity() {
+        if (postLogoutTimer) return;
+        if (isOrderPanelActive()) resetOrderIdleTimer();
+        else if (isTablesScreenActive()) resetTablesIdleTimer();
+      }
+
+      ["pointerdown", "touchstart", "keydown", "click"].forEach((ev) => {
+        document.addEventListener(ev, onWaiterActivity, { passive: true, capture: true });
+      });
+
+      const orderScreen = document.getElementById("ekrani-porosia");
+      if (orderScreen) {
+        new MutationObserver(() => syncIdleTimersForActiveScreen()).observe(orderScreen, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
+      }
+
+      const tablesScreen = document.getElementById("ekrani-tavolina");
+      if (tablesScreen) {
+        new MutationObserver(() => syncIdleTimersForActiveScreen()).observe(tablesScreen, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
+      }
+
+      window.kyçKamarierPasPorosise = () => scheduleLogoutPasVeprimi("Porosia u dërgua!");
+      window.kyçKamarierPasPagese = () => scheduleLogoutPasVeprimi("Pagesa u krye!");
+      window.__waiterSyncIdleTimers = syncIdleTimersForActiveScreen;
+
+      syncIdleTimersForActiveScreen();
+    }
+
+    aktivizoAutoLogoutKamarierPorosi();
+
+    (function patchDilRuajDraftPorosie() {
+      const origDil = typeof dil === "function" ? dil : null;
+      if (!origDil) return;
+      window.dil = function dilRuajDraftParaLogout() {
+        if (document.getElementById("ekrani-porosia")?.classList.contains("active")) {
+          ruajDraftPorosieTavoline();
+        }
+        return origDil.apply(this, arguments);
+      };
+    })();
+
     if (typeof initWaiterCalculator === "function") initWaiterCalculator();
 
     (async () => {

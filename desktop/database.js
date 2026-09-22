@@ -6838,7 +6838,7 @@ function enrichShiftSummary(shift, totals, staff, extra = {}) {
     needs_handover_on_close: false,
     open: hasOpenShift && shift.opening_cash != null,
     needs_opening_cash: (!hasOpenShift && !pendingHandover) || (hasOpenShift && shift.opening_cash == null),
-    needs_handover_acceptance: !hasOpenShift && !!pendingHandover,
+    needs_handover_acceptance: !!pendingHandover,
     pending_handover: pendingHandover,
     opening_cash: openingCash,
     expected_closing_cash: expectedClosing,
@@ -6895,7 +6895,6 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
   if (!id || !hid) throw new Error("Të dhëna të pavlefshme për pranimin e ndërrimit.");
   const staff = sqlite.prepare("SELECT id, name FROM staff WHERE id = ? AND active = 1").get(id);
   if (!staff) throw new Error("Kamarieri nuk u gjet.");
-  if (getOpenShift(id)) throw new Error("Keni tashmë një nderrim aktiv.");
 
   const handover = sqlite.prepare(`
     SELECT * FROM shift_handovers WHERE id = ? AND to_staff_id = ? AND status = 'pending'
@@ -6906,13 +6905,28 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
   const handoverCash = Number(handover.handover_cash) || 0;
   const openingDiscrepancy = Math.round((acceptedAmount - handoverCash) * 100) / 100;
   const now = new Date().toISOString();
+  const openShift = getOpenShift(id);
+  const activeLabels = activeTableLabelsForWaiter(staff.name);
+  const activeDetails = activeTableDetailsForWaiter(staff.name);
 
   return sqlite.transaction(() => {
-    const r = sqlite.prepare(`
-      INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash, handover_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, staff.name, now, acceptedAmount, hid);
-    const newShiftId = r.lastInsertRowid;
+    let targetShiftId;
+
+    if (openShift) {
+      const baseOpening =
+        openShift.opening_cash != null ? Number(openShift.opening_cash) || 0 : 0;
+      const newOpening = Math.round((baseOpening + acceptedAmount) * 100) / 100;
+      sqlite.prepare(`
+        UPDATE waiter_shifts SET opening_cash = ? WHERE id = ?
+      `).run(newOpening, openShift.id);
+      targetShiftId = openShift.id;
+    } else {
+      const r = sqlite.prepare(`
+        INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash, handover_id)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(id, staff.name, now, acceptedAmount, hid);
+      targetShiftId = r.lastInsertRowid;
+    }
 
     sqlite.prepare(`
       UPDATE shift_handovers SET
@@ -6922,18 +6936,19 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
         opening_discrepancy = ?,
         to_shift_id = ?
       WHERE id = ?
-    `).run(now, acceptedAmount, openingDiscrepancy, newShiftId, hid);
+    `).run(now, acceptedAmount, openingDiscrepancy, targetShiftId, hid);
 
-    const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(newShiftId);
-    return enrichShiftSummary(shift, {
-      order_count: 0, total_sales: 0, card_total: 0, cash_total: 0, discount_total: 0, active_tables: 0,
-    }, staff, {
-      active_table_labels: [],
+    const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(targetShiftId);
+    const totals = computeShiftTotals(shift.id, staff.id, staff.name);
+    return enrichShiftSummary(shift, { ...totals, active_tables: activeLabels.length }, staff, {
+      active_table_labels: activeLabels,
+      active_table_details: activeDetails,
       handover_peers_count: listHandoverPeers(id).length,
       accepted_handover: {
         ...handover,
         opening_cash_accepted: acceptedAmount,
         opening_discrepancy: openingDiscrepancy,
+        merged_into_open_shift: !!openShift,
       },
     });
   })();
@@ -7045,9 +7060,6 @@ function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId) {
   if (toStaffId) {
     toStaff = sqlite.prepare("SELECT id, name FROM staff WHERE id = ? AND active = 1").get(toStaffId);
     if (!toStaff) throw new Error("Kamarieri që merr ndërrimin nuk u gjet.");
-    if (getOpenShift(toStaffId)) {
-      throw new Error(`${toStaff.name} ka ende nderrim aktiv — mbylleni fillimisht.`);
-    }
     if (getPendingHandoverForStaff(toStaffId)) {
       throw new Error(`${toStaff.name} ka tashmë një ndërrim për pranim.`);
     }

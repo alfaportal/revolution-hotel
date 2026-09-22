@@ -282,6 +282,14 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+#ekrani-tavolina .waiter-zone-head {
+  display: block;
+}
+
+#ekrani-tavolina .waiter-mobile-dil-btn {
+  display: none;
+}
+
 #ekrani-tavolina .waiter-zone-title {
   margin: 0 0 0.65rem;
   font-size: 0.85rem;
@@ -400,4 +408,109 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
 
 #ekrani-tavolina .cloud-status-pill {
   border-radius: 999px;
+}
+
+/* Telefon: vetëm tavolinat — pa sidebar, KPI, header, toolbar */
+@media (max-width: 767px) {
+  #ekrani-tavolina .waiter-sidebar {
+    display: none !important;
+  }
+
+  #ekrani-tavolina .waiter-topbar,
+  #ekrani-tavolina .waiter-kpi-row,
+  #ekrani-tavolina .waiter-table-toolbar {
+    display: none !important;
+  }
+
+  #ekrani-tavolina.waiter-shell {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  #ekrani-tavolina .waiter-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem 0.65rem 0.75rem;
+  }
+
+  #ekrani-tavolina .waiter-zones-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 0.45rem 0.65rem;
+  }
+
+  #ekrani-tavolina .waiter-zone-section {
+    margin-bottom: 0.75rem;
+    padding: 0.55rem 0.5rem;
+  }
+
+  #ekrani-tavolina .waiter-zone-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+  }
+
+  #ekrani-tavolina .waiter-zone-head .waiter-zone-title {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    font-size: 0.78rem;
+  }
+
+  #ekrani-tavolina .waiter-mobile-dil-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: 0.35rem 0.85rem;
+    border: none;
+    border-radius: 10px;
+    background: #e11d48;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 0 4px 12px rgba(225, 29, 72, 0.35);
+  }
+
+  #ekrani-tavolina .waiter-mobile-dil-btn:active {
+    transform: scale(0.97);
+    opacity: 0.92;
+  }
+
+  #ekrani-tavolina .table-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(72px, auto);
+    gap: 0.45rem;
+  }
+
+  #ekrani-tavolina .table-card {
+    min-height: 72px !important;
+    padding: 0.45rem 0.4rem !important;
+    border-radius: 12px !important;
+  }
+
+  #ekrani-tavolina .table-card-name,
+  #ekrani-tavolina .table-card .table-num {
+    font-size: 0.82rem !important;
+    line-height: 1.15;
+  }
+
+  #ekrani-tavolina .table-card-status,
+  #ekrani-tavolina .table-card .table-status-free {
+    font-size: 0.68rem !important;
+  }
 }
