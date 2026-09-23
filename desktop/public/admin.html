@@ -1068,6 +1068,58 @@
       flex-wrap: wrap;
     }
     #modal-fiscal-receipts .frl-count { color: #a0a0b8; font-size: 0.8rem; }
+    #modal-fiscal-receipts .frl-ops {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+      margin: 0 0 0.75rem;
+      padding: 0.65rem 0.75rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+    }
+    #modal-fiscal-receipts .frl-ops input[type="text"] {
+      flex: 1 1 160px;
+      min-width: 140px;
+      padding: 0.4rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.25);
+      color: #fff;
+      font-size: 0.85rem;
+    }
+    #modal-fiscal-receipts .frl-ops-msg {
+      flex: 1 1 100%;
+      font-size: 0.8rem;
+      color: #a0a0b8;
+      min-height: 1.1rem;
+      white-space: pre-wrap;
+    }
+    #modal-fiscal-receipts .frl-ops-msg.ok { color: #4ade80; }
+    #modal-fiscal-receipts .frl-ops-msg.err { color: #f87171; }
+    #modal-fiscal-receipts .frl-subpanel {
+      margin: 0 0 0.75rem;
+      padding: 0.65rem 0.75rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 107, 53, 0.25);
+    }
+    #modal-fiscal-receipts .frl-subpanel[hidden] { display: none !important; }
+    #modal-fiscal-receipts .frl-subpanel table { width: 100%; font-size: 0.8rem; border-collapse: collapse; }
+    #modal-fiscal-receipts .frl-subpanel th,
+    #modal-fiscal-receipts .frl-subpanel td {
+      padding: 0.35rem 0.4rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      text-align: left;
+    }
+    #modal-fiscal-receipts .frl-subpanel input[type="number"] {
+      width: 4.5rem;
+      padding: 0.25rem;
+    }
+    #modal-fiscal-receipts .frl-subpanel input[type="text"].frl-new-prod {
+      width: 5rem;
+    }
     #modal-fiscal-receipt-view.table-modal .table-modal-content {
       background: #1a1a2e;
       color: #e8e8ef;
@@ -4193,7 +4245,29 @@
       <div class="table-modal-backdrop" id="frl-backdrop"></div>
       <div class="table-modal-content">
         <h2 data-fi18n="fiscal_receipts_title">Kuponët Fiskalë</h2>
-        <p class="frl-sub" data-fi18n="fiscal_receipts_sub">Të gjitha kuponët — më i riu lart. Vetëm lexim.</p>
+        <p class="frl-sub" data-fi18n="fiscal_receipts_sub">Kuponët fiskalë — lista, kthim (storno), ndërrim, dërgim ATK.</p>
+        <div class="frl-ops">
+          <input type="text" id="frl-nuikf" placeholder="NUIKF origjinal (regular)" autocomplete="off" maxlength="16" />
+          <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-lookup">Lookup</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-return">Kthim malli</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-exchange">Ndërrim</button>
+          <button type="button" class="btn btn-warn btn-sm" id="frl-btn-send-pending">Dërgo pending te ATK</button>
+          <span class="frl-ops-msg" id="frl-ops-msg"></span>
+        </div>
+        <div class="frl-subpanel" id="frl-return-panel" hidden>
+          <p style="margin:0 0 0.5rem;font-size:0.85rem;color:#c8c8d8">Kthim malli — zgjidh sasinë dhe konfirmo.</p>
+          <div id="frl-return-table-wrap"></div>
+          <label for="frl-return-reason" style="display:block;margin:0.5rem 0 0.25rem;font-size:0.8rem;color:#a0a0b8">Arsye</label>
+          <input type="text" id="frl-return-reason" value="Kthim malli" style="width:100%;max-width:420px" />
+          <button type="button" class="btn btn-sm btn-frl-view" id="frl-btn-confirm-return" style="margin-top:0.5rem">Konfirmo kthimin (storno)</button>
+        </div>
+        <div class="frl-subpanel" id="frl-exchange-panel" hidden>
+          <p style="margin:0 0 0.5rem;font-size:0.85rem;color:#c8c8d8">Ndërrim — sasi + ID produkti i ri (menu).</p>
+          <div id="frl-exchange-table-wrap"></div>
+          <label for="frl-exchange-reason" style="display:block;margin:0.5rem 0 0.25rem;font-size:0.8rem;color:#a0a0b8">Arsye</label>
+          <input type="text" id="frl-exchange-reason" value="Ndërrim artikulli ATK" style="width:100%;max-width:420px" />
+          <button type="button" class="btn btn-sm btn-frl-view" id="frl-btn-confirm-exchange" style="margin-top:0.5rem">Konfirmo ndërrimin</button>
+        </div>
         <div class="frl-table-wrap">
           <table class="frl-table">
             <thead>
@@ -15060,9 +15134,285 @@
       return out;
     }
 
+    let frlLookupReceipt = null;
+
+    function setFrlOpsMsg(text, ok) {
+      const el = document.getElementById("frl-ops-msg");
+      if (!el) return;
+      el.textContent = text || "";
+      el.classList.remove("ok", "err");
+      if (ok === true) el.classList.add("ok");
+      if (ok === false) el.classList.add("err");
+    }
+
+    function frlNuikfValue() {
+      return String(document.getElementById("frl-nuikf")?.value || "")
+        .trim()
+        .toUpperCase();
+    }
+
+    function hideFrlSubpanels() {
+      const rp = document.getElementById("frl-return-panel");
+      const ep = document.getElementById("frl-exchange-panel");
+      if (rp) rp.hidden = true;
+      if (ep) ep.hidden = true;
+    }
+
+    async function frlLookupReceiptByNuikf() {
+      const nuikf = frlNuikfValue();
+      const inp = document.getElementById("frl-nuikf");
+      if (inp) inp.value = nuikf;
+      if (!nuikf) {
+        setFrlOpsMsg("Vendos NUIKF origjinal (regular).", false);
+        return null;
+      }
+      setFrlOpsMsg("Duke kërkuar…", null);
+      try {
+        const data = await api(
+          "/api/fiscal/receipts/lookup?nuikf=" + encodeURIComponent(nuikf)
+        );
+        frlLookupReceipt = data.receipt || null;
+        hideFrlSubpanels();
+        setFrlOpsMsg(
+          "OK · " +
+            (frlLookupReceipt?.nuikf || nuikf) +
+            " · " +
+            (frlLookupReceipt?.items?.length || 0) +
+            " artikuj",
+          true
+        );
+        return frlLookupReceipt;
+      } catch (e) {
+        frlLookupReceipt = null;
+        setFrlOpsMsg(e.message || "Lookup dështoi", false);
+        return null;
+      }
+    }
+
+    function renderFrlReturnTable(receipt) {
+      const wrap = document.getElementById("frl-return-table-wrap");
+      if (!wrap || !receipt) return;
+      const items = (receipt.items || []).filter(
+        (it) => (Number(it.remaining_quantity ?? it.quantity) || 0) > 0
+      );
+      if (!items.length) {
+        wrap.innerHTML = "<p style='color:#f87171'>Krejt artikujt janë kthyer.</p>";
+        return;
+      }
+      let html =
+        "<table><thead><tr><th>Artikull</th><th>Çmim</th><th>Mbetur</th><th>Kthe</th></tr></thead><tbody>";
+      for (const it of items) {
+        const rem = Number(it.remaining_quantity ?? it.quantity) || 0;
+        const price = Number(it.unit_price ?? it.price) || 0;
+        html +=
+          "<tr data-frl-name=\"" +
+          escHtmlFrl(it.name) +
+          "\" data-frl-price=\"" +
+          price +
+          "\"><td>" +
+          escHtmlFrl(it.name) +
+          "</td><td>" +
+          price.toFixed(2) +
+          "</td><td>" +
+          rem +
+          "</td><td><input type=\"number\" class=\"frl-return-qty\" min=\"0\" max=\"" +
+          rem +
+          "\" step=\"0.001\" value=\"0\" /></td></tr>";
+      }
+      html += "</tbody></table>";
+      wrap.innerHTML = html;
+    }
+
+    function collectFrlReturnLines() {
+      const lines = [];
+      document.querySelectorAll("#frl-return-table-wrap tbody tr").forEach((tr) => {
+        const qty = Number(tr.querySelector(".frl-return-qty")?.value) || 0;
+        if (qty <= 0) return;
+        const name = tr.getAttribute("data-frl-name") || "";
+        const price = Number(tr.getAttribute("data-frl-price")) || 0;
+        lines.push({
+          name,
+          quantity: qty,
+          qty,
+          unit_price: price,
+          price,
+        });
+      });
+      return lines;
+    }
+
+    function renderFrlExchangeTable(receipt) {
+      const wrap = document.getElementById("frl-exchange-table-wrap");
+      if (!wrap || !receipt) return;
+      const items = (receipt.items || []).filter(
+        (it) => (Number(it.remaining_quantity ?? it.quantity) || 0) > 0
+      );
+      if (!items.length) {
+        wrap.innerHTML = "<p style='color:#f87171'>Nuk ka artikuj për ndërrim.</p>";
+        return;
+      }
+      let html =
+        "<table><thead><tr><th>Artikull</th><th>Çmim</th><th>Mbetur</th><th>Sasi</th><th>ID produkt i ri</th></tr></thead><tbody>";
+      for (const it of items) {
+        const rem = Number(it.remaining_quantity ?? it.quantity) || 0;
+        const price = Number(it.unit_price ?? it.price) || 0;
+        html +=
+          "<tr data-frl-ex-name=\"" +
+          escHtmlFrl(it.name) +
+          "\" data-frl-ex-price=\"" +
+          price +
+          "\"><td>" +
+          escHtmlFrl(it.name) +
+          "</td><td>" +
+          price.toFixed(2) +
+          "</td><td>" +
+          rem +
+          "</td><td><input type=\"number\" class=\"frl-ex-qty\" min=\"0\" max=\"" +
+          rem +
+          "\" step=\"0.001\" value=\"0\" /></td><td><input type=\"text\" class=\"frl-new-prod frl-ex-prod\" placeholder=\"ID\" /></td></tr>";
+      }
+      html += "</tbody></table>";
+      wrap.innerHTML = html;
+    }
+
+    function collectFrlExchangeLines() {
+      const lines = [];
+      document.querySelectorAll("#frl-exchange-table-wrap tbody tr").forEach((tr) => {
+        const qty = Number(tr.querySelector(".frl-ex-qty")?.value) || 0;
+        const newProductId = Number(tr.querySelector(".frl-ex-prod")?.value) || 0;
+        if (qty <= 0 || !newProductId) return;
+        const name = tr.getAttribute("data-frl-ex-name") || "";
+        const price = Number(tr.getAttribute("data-frl-ex-price")) || 0;
+        lines.push({
+          name,
+          quantity: qty,
+          unit_price: price,
+          new_product_id: newProductId,
+        });
+      });
+      return lines;
+    }
+
+    async function frlOpenReturnPanel() {
+      const receipt = frlLookupReceipt || (await frlLookupReceiptByNuikf());
+      if (!receipt) return;
+      document.getElementById("frl-exchange-panel").hidden = true;
+      renderFrlReturnTable(receipt);
+      document.getElementById("frl-return-panel").hidden = false;
+    }
+
+    async function frlOpenExchangePanel() {
+      const receipt = frlLookupReceipt || (await frlLookupReceiptByNuikf());
+      if (!receipt) return;
+      document.getElementById("frl-return-panel").hidden = true;
+      renderFrlExchangeTable(receipt);
+      document.getElementById("frl-exchange-panel").hidden = false;
+    }
+
+    async function frlConfirmReturnStorno() {
+      const receipt = frlLookupReceipt;
+      if (!receipt?.nuikf) {
+        setFrlOpsMsg("Bëj lookup fillimisht.", false);
+        return;
+      }
+      const items = collectFrlReturnLines();
+      if (!items.length) {
+        setFrlOpsMsg("Zgjidh sasi > 0 për të paktën një artikull.", false);
+        return;
+      }
+      const reason = (document.getElementById("frl-return-reason")?.value || "").trim() || "Kthim malli";
+      setFrlOpsMsg("Duke procesuar kthimin…", null);
+      try {
+        const result = await api("/api/fiscal/storno", {
+          method: "POST",
+          body: JSON.stringify({
+            nuikf: receipt.nuikf,
+            type: "return",
+            reason,
+            items,
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+          }),
+        });
+        hideFrlSubpanels();
+        setFrlOpsMsg(
+          "OK · kthim · i ri: " +
+            (result.correction?.nuikf || "—") +
+            " · print: " +
+            (result.printed ? "PO" : "JO") +
+            "\n" +
+            (result.atk_message || ""),
+          true
+        );
+        await hapFiscalReceiptsModal();
+      } catch (e) {
+        setFrlOpsMsg(e.message || "Storno dështoi", false);
+      }
+    }
+
+    async function frlConfirmExchange() {
+      const receipt = frlLookupReceipt;
+      if (!receipt?.nuikf) {
+        setFrlOpsMsg("Bëj lookup fillimisht.", false);
+        return;
+      }
+      const exchange_lines = collectFrlExchangeLines();
+      if (!exchange_lines.length) {
+        setFrlOpsMsg("Për çdo rresht: sasi > 0 dhe ID produkti i ri.", false);
+        return;
+      }
+      const reason =
+        (document.getElementById("frl-exchange-reason")?.value || "").trim() ||
+        "Ndërrim artikulli ATK";
+      setFrlOpsMsg("Duke procesuar ndërrimin…", null);
+      try {
+        const data = await api("/api/fiscal/exchange", {
+          method: "POST",
+          body: JSON.stringify({
+            nuikf: receipt.nuikf,
+            exchange_lines,
+            reason,
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+            payment_method: "cash",
+          }),
+        });
+        hideFrlSubpanels();
+        setFrlOpsMsg(
+          "OK · ndërrim · kthim: " +
+            (data.return_coupon?.nuikf || "—") +
+            " · shitje: " +
+            (data.new_sale?.fiscal?.nuikf || "—"),
+          true
+        );
+        await hapFiscalReceiptsModal();
+      } catch (e) {
+        setFrlOpsMsg(e.message || "Exchange dështoi", false);
+      }
+    }
+
+    async function frlSendPendingAtk() {
+      setFrlOpsMsg("Duke dërguar radhën offline…", null);
+      try {
+        const data = await api("/api/fiscal/send-pending", { method: "POST", body: "{}" });
+        setFrlOpsMsg(
+          "OK · processed=" +
+            (data.processed ?? data.sent ?? "—") +
+            (data.errors?.length ? " · gabime: " + data.errors.length : ""),
+          true
+        );
+        await hapFiscalReceiptsModal();
+      } catch (e) {
+        setFrlOpsMsg(e.message || "Send-pending dështoi", false);
+      }
+    }
+
     function mbyllFiscalReceiptsModal() {
       const m = document.getElementById("modal-fiscal-receipts");
       if (m) m.hidden = true;
+      frlLookupReceipt = null;
+      hideFrlSubpanels();
+      setFrlOpsMsg("", null);
     }
 
     function mbyllFiscalReceiptViewModal() {
@@ -15138,6 +15488,12 @@
 
     document.getElementById("btn-kupon-korrigjues")?.addEventListener("click", hapFiscalCorrectionModal);
     document.getElementById("btn-fiscal-receipts-list")?.addEventListener("click", hapFiscalReceiptsModal);
+    document.getElementById("frl-btn-lookup")?.addEventListener("click", () => frlLookupReceiptByNuikf());
+    document.getElementById("frl-btn-return")?.addEventListener("click", () => frlOpenReturnPanel());
+    document.getElementById("frl-btn-exchange")?.addEventListener("click", () => frlOpenExchangePanel());
+    document.getElementById("frl-btn-confirm-return")?.addEventListener("click", () => frlConfirmReturnStorno());
+    document.getElementById("frl-btn-confirm-exchange")?.addEventListener("click", () => frlConfirmExchange());
+    document.getElementById("frl-btn-send-pending")?.addEventListener("click", () => frlSendPendingAtk());
     document.getElementById("fcc-backdrop")?.addEventListener("click", mbyllFiscalCorrectionModal);
     document.getElementById("fcc-close")?.addEventListener("click", mbyllFiscalCorrectionModal);
     document.getElementById("frl-backdrop")?.addEventListener("click", mbyllFiscalReceiptsModal);

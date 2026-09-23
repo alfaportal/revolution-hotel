@@ -439,11 +439,22 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   try {
   if (!id) throw new Error("orderId mungon");
 
+  if (isFiscalEnabled()) {
+    const { verifyPrivateKeyReadable } = require("./fiscal-crypto");
+    const keyCheck = verifyPrivateKeyReadable();
+    if (!keyCheck.ok && !keyCheck.skipped) {
+      throw new Error(
+        keyCheck.error ||
+          "Çelësi privat nuk lexohet — kuponi nuk krijohet. Rikthe nga backup-i."
+      );
+    }
+  }
+
   const order = sqlite.prepare(`SELECT * FROM orders WHERE id = ?`).get(id);
   if (!order) throw new Error("Porosia nuk u gjet");
 
   // Idempotencë: mos krijo kupon të dytë për të njëjtën porosi (retry/double-submit)
-  if (Number(order.is_fiscalized) === 1 && order.fiscal_receipt_id) {
+  if (Number(order.is_fiscalized) === 1 && order.fiscal_receipt_id && !memoryOnly) {
     const existing = sqlite
       .prepare(`SELECT id, nuikf, sef_id, daily_number FROM fiscal_receipts WHERE id = ?`)
       .get(Number(order.fiscal_receipt_id));
@@ -807,96 +818,104 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       console.warn("[fiscal-main] audit:", e.message);
     }
 
-    // Neni 26/5 — ONLINE: prit përgjigjen ATK PARA printimit.
-    // Në dështim: print me shënim + mbetet në radhë (sent_to_atk=0). Offline path i pandryshuar.
+    // Neni 26/5 — ONLINE: prit përgjigjen ATK PARA printimit (jo në FISCAL_MEMORY_ONLY).
     let atkSentOk = false;
     let atkSendError = "";
-    try {
-      const { sendReceiptToAtk } = require("./fiscal-offline");
-      const fullRow = sqlite
-        .prepare(`SELECT * FROM fiscal_receipts WHERE id = ?`)
-        .get(fiscalReceiptId);
-      if (fullRow) {
-        const sendResult = await sendReceiptToAtk(fullRow);
-        if (sendResult?.sent) {
-          atkSentOk = true;
-          atkSent = true;
-          const { fiscalReceiptUpdate } = require("./fiscal-db");
-          fiscalReceiptUpdate(fiscalReceiptId, {
-            sent_to_atk: 1,
-            sent_at: new Date().toISOString().replace("T", " ").slice(0, 19),
-            atk_response_json: sendResult,
-          });
-          logFiscalAction(
-            "receipt_sent",
-            {
-              nuikf,
-              fiscal_receipt_id: fiscalReceiptId,
-              transaction_id: sendResult.transaction_id,
-            },
-            operatorName,
-            operatorId
-          );
+    if (!memoryOnly) {
+      try {
+        const { sendReceiptToAtk } = require("./fiscal-offline");
+        const fullRow = sqlite
+          .prepare(`SELECT * FROM fiscal_receipts WHERE id = ?`)
+          .get(fiscalReceiptId);
+        if (fullRow) {
+          const sendResult = await sendReceiptToAtk(fullRow);
+          if (sendResult?.sent) {
+            atkSentOk = true;
+            atkSent = true;
+            const { fiscalReceiptUpdate } = require("./fiscal-db");
+            fiscalReceiptUpdate(fiscalReceiptId, {
+              sent_to_atk: 1,
+              sent_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+              atk_response_json: sendResult,
+            });
+            logFiscalAction(
+              "receipt_sent",
+              {
+                nuikf,
+                fiscal_receipt_id: fiscalReceiptId,
+                transaction_id: sendResult.transaction_id,
+              },
+              operatorName,
+              operatorId
+            );
+          } else {
+            atkSendError = String(sendResult?.error || sendResult?.status || "dështoi");
+            logFiscalAction(
+              "receipt_send_failed",
+              {
+                nuikf,
+                fiscal_receipt_id: fiscalReceiptId,
+                error: atkSendError,
+                status: sendResult?.status,
+                queued_for_retry: true,
+              },
+              operatorName,
+              operatorId
+            );
+          }
         } else {
-          atkSendError = String(sendResult?.error || sendResult?.status || "dështoi");
+          atkSendError = "Rreshti i kuponit nuk u gjet pas INSERT";
+        }
+      } catch (e) {
+        atkSendError = e.message || "ATK send exception";
+        console.warn("[fiscal-main] ATK send:", atkSendError);
+        try {
           logFiscalAction(
             "receipt_send_failed",
             {
               nuikf,
               fiscal_receipt_id: fiscalReceiptId,
               error: atkSendError,
-              status: sendResult?.status,
               queued_for_retry: true,
             },
             operatorName,
             operatorId
           );
+        } catch {
+          /* */
         }
-      } else {
-        atkSendError = "Rreshti i kuponit nuk u gjet pas INSERT";
       }
-    } catch (e) {
-      atkSendError = e.message || "ATK send exception";
-      console.warn("[fiscal-main] ATK send:", atkSendError);
-      try {
-        logFiscalAction(
-          "receipt_send_failed",
-          {
-            nuikf,
-            fiscal_receipt_id: fiscalReceiptId,
-            error: atkSendError,
-            queued_for_retry: true,
-          },
-          operatorName,
-          operatorId
-        );
-      } catch {
-        /* */
-      }
-    }
 
-    if (!atkSentOk) {
-      const note =
-        `\n^C^BATK DERGIMI DESHTOI\n` +
-        `^CNe radhe per ritransmetim\n` +
-        `^C${String(atkSendError || "gabim").slice(0, 40)}\n`;
-      printText = String(printText || "") + note;
-      console.warn(
-        "[fiscal-main] ATK fail online — print me shënim, radhë ritransmetimi. nuikf=",
-        nuikf,
-        atkSendError
-      );
+      if (!atkSentOk) {
+        const note =
+          `\n^C^BATK DERGIMI DESHTOI\n` +
+          `^CNe radhe per ritransmetim\n` +
+          `^C${String(atkSendError || "gabim").slice(0, 40)}\n`;
+        printText = String(printText || "") + note;
+        console.warn(
+          "[fiscal-main] ATK fail online — print me shënim, radhë ritransmetimi. nuikf=",
+          nuikf,
+          atkSendError
+        );
+      }
     }
   }
 
-  try {
-    sqlite
-      .prepare(
-        `UPDATE orders SET fiscal_receipt_id = ?, is_fiscalized = 1 WHERE id = ?`
-      )
-      .run(fiscalReceiptId, id);
-  } catch (e) {
-    console.warn("[fiscal-main] update orders:", e.message);
+  if (!memoryOnly) {
+    try {
+      sqlite
+        .prepare(
+          `UPDATE orders SET fiscal_receipt_id = ?, is_fiscalized = 1 WHERE id = ?`
+        )
+        .run(fiscalReceiptId, id);
+    } catch (e) {
+      console.warn("[fiscal-main] update orders:", e.message);
+    }
+  } else {
+    console.log(
+      "[fiscal-main] MEMORY_ONLY — orders.fiscal_receipt_id / is_fiscalized nuk u shkruan në SQLite. orderId=",
+      id
+    );
   }
 
   tryBackfillDailyLogReceipt(id, {

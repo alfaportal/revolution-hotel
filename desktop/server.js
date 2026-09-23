@@ -1382,6 +1382,29 @@ function logFiscalLoginAudit(req, operatorName, operatorId) {
   }
 }
 
+function fiscalSettingsAuditOperator(req) {
+  return {
+    operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+    operator_id: String(req.body?.operator_id || req.session?.userId || req.session?.id || "ADMIN"),
+  };
+}
+
+/** Audit setting_changed pas ndryshimeve fiskale (Neni 26) — parity BIZNES. */
+function auditFiscalSettingsIfChanged(req, beforeSnap, source) {
+  try {
+    const op = fiscalSettingsAuditOperator(req);
+    fiscalAudit.logFiscalSettingsChanged({
+      before: beforeSnap,
+      after: fiscalAudit.snapshotFiscalSettingsState(db),
+      operator_name: op.operator_name,
+      operator_id: op.operator_id,
+      source: source || "api",
+    });
+  } catch (e) {
+    console.warn("[fiscal-audit] setting_changed:", e.message || e);
+  }
+}
+
 function auditReq(req, action, detail = "") {
   auditActivity(req.session?.emri || "—", req.session?.role || "—", action, detail);
 }
@@ -6232,18 +6255,129 @@ app.post("/api/cloud-sync/sync-all", auth, adminOnly, async (_req, res) => {
   }
 });
 
-app.get("/api/fiscal-settings", auth, adminOnly, (_req, res) => {
+function handleGetFiscalSettingsLegacy(req, res) {
   res.json(db.getFiscalSettings());
-});
+}
 
-app.put("/api/fiscal-settings", auth, adminOnly, (req, res) => {
+function handleGetFiscalSettingsSlash(req, res) {
   try {
+    const { getSefIdentifier } = require("./fiscal/fiscal-numbering");
+    const { getAtkStatus } = require("./fiscal/fiscal-atk-api");
+    const { isAtkTestMode } = require("./fiscal/fiscal-test-mode-store");
+    const { isAtkAutoSendEnabled } = require("./fiscal/fiscal-offline");
+    const s = fiscalConfig.getFiscalSettings();
+    const atkAuto = isAtkAutoSendEnabled();
+    const atkTestMode = isAtkTestMode();
+    res.json({
+      ok: true,
+      settings: {
+        ...s,
+        sef_identifier_computed: getSefIdentifier() || "",
+        atk_auto_send: atkAuto ? "1" : "0",
+        atk_test_mode: atkTestMode ? "1" : "0",
+      },
+      atk: { ...getAtkStatus(), atk_auto_send: atkAuto, atk_test_mode: atkTestMode },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, gabim: e.message });
+  }
+}
+
+app.get("/api/fiscal-settings", auth, adminOnly, handleGetFiscalSettingsLegacy);
+app.get("/api/fiscal/settings", auth, adminOnly, handleGetFiscalSettingsSlash);
+
+function handlePutFiscalSettingsLegacy(req, res) {
+  try {
+    const beforeSnap = fiscalAudit.snapshotFiscalSettingsState(db);
     db.updateFiscalSettings(req.body);
+    auditFiscalSettingsIfChanged(req, beforeSnap, "PUT /api/fiscal-settings");
     res.json({ ok: true, ...db.getFiscalSettings() });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
-});
+}
+
+async function handlePutFiscalSettingsSlash(req, res) {
+  try {
+    const beforeSnap = fiscalAudit.snapshotFiscalSettingsState(db);
+    const body = { ...(req.body || {}) };
+    if (body.atk_auto_send !== undefined) {
+      const autoOn =
+        body.atk_auto_send === true ||
+        body.atk_auto_send === 1 ||
+        body.atk_auto_send === "1" ||
+        body.atk_auto_send === "on";
+      db.setSetting("atk_auto_send", autoOn ? "1" : "0");
+      if (autoOn) db.setSetting("atk_send_allowed", "1");
+    }
+    if (body.atk_send_allowed !== undefined) {
+      const on =
+        body.atk_send_allowed === true ||
+        body.atk_send_allowed === 1 ||
+        body.atk_send_allowed === "1" ||
+        body.atk_send_allowed === "on";
+      db.setSetting("atk_send_allowed", on ? "1" : "0");
+      if (!on) db.setSetting("atk_auto_send", "0");
+    }
+    if (body.atk_test_mode !== undefined) {
+      const on =
+        body.atk_test_mode === true ||
+        body.atk_test_mode === 1 ||
+        body.atk_test_mode === "1" ||
+        body.atk_test_mode === "on";
+      db.setSetting("atk_test_mode", on ? "1" : "0");
+    }
+    if (fiscalConfig.isFiscalReleaseLocked?.()) {
+      body.fiscal_enabled = false;
+    }
+    const saved = fiscalConfig.saveFiscalSettings(body);
+    try {
+      const { syncAtkTransmissionFromSettings } = require("./fiscal/fiscal-boot");
+      syncAtkTransmissionFromSettings(db);
+    } catch (e) {
+      console.warn("[fiscal] ATK sync pas ruajtjes:", e.message);
+    }
+    try {
+      if (saved.fiscal_enabled) {
+        fiscalOffline.startOfflineMonitor();
+      } else {
+        fiscalOffline.stopOfflineMonitor();
+      }
+    } catch (e) {
+      console.warn("[fiscal-offline] toggle:", e.message);
+    }
+    const { getAtkStatus } = require("./fiscal/fiscal-atk-api");
+    const { isAtkTestMode } = require("./fiscal/fiscal-test-mode-store");
+    const { isAtkAutoSendEnabled } = require("./fiscal/fiscal-offline");
+    const atkAuto = isAtkAutoSendEnabled();
+    const atkTestMode = isAtkTestMode();
+    let pendingFlush = null;
+    if (atkAuto && !require("./fiscal/fiscal-test-mode-store").isAtkTransmissionBlocked()) {
+      try {
+        const { processOfflineQueue } = require("./fiscal/fiscal-offline");
+        pendingFlush = await processOfflineQueue({ manual: true });
+      } catch (e) {
+        pendingFlush = { processed: 0, error: e.message };
+      }
+    }
+    auditFiscalSettingsIfChanged(req, beforeSnap, "PUT /api/fiscal/settings");
+    res.json({
+      ok: true,
+      settings: {
+        ...saved,
+        atk_auto_send: atkAuto ? "1" : "0",
+        atk_test_mode: atkTestMode ? "1" : "0",
+      },
+      atk: { ...getAtkStatus(), atk_auto_send: atkAuto, atk_test_mode: atkTestMode },
+      pending_flush: pendingFlush,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
+  }
+}
+
+app.put("/api/fiscal-settings", auth, adminOnly, handlePutFiscalSettingsLegacy);
+app.put("/api/fiscal/settings", auth, adminOnly, handlePutFiscalSettingsSlash);
 
 /* HAPI 2 — SEF fiscal_settings (vetëm pronari / admin) */
 function fiscalDevToolsForbidden(res) {
@@ -6277,6 +6411,7 @@ app.get("/api/fiscal-config", auth, adminOnly, (_req, res) => {
 
 app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
   try {
+    const beforeSnap = fiscalAudit.snapshotFiscalSettingsState(db);
     const body = { ...(req.body || {}) };
     if (fiscalConfig.isFiscalReleaseLocked?.()) {
       body.fiscal_enabled = false;
@@ -6292,6 +6427,7 @@ app.put("/api/fiscal-config", auth, adminOnly, (req, res) => {
     } catch (e) {
       console.warn("[fiscal-offline] toggle:", e.message);
     }
+    auditFiscalSettingsIfChanged(req, beforeSnap, "PUT /api/fiscal-config");
     res.json({
       ok: true,
       ...saved,
@@ -7251,7 +7387,7 @@ app.post("/api/fiscal/paper-block/checkout", auth, adminOnly, async (req, res) =
 });
 
 /* Test lokal i plotë fiskal — vetëm pronari, pa ATK (print termik opsional) */
-app.post("/api/fiscal-self-test", auth, adminOnly, async (req, res) => {
+async function handlePostFiscalSelfTest(req, res) {
   try {
     if (fiscalDevToolsForbidden(res)) return;
     if (!fiscalConfig.isFiscalEnabled()) {
@@ -7270,7 +7406,9 @@ app.post("/api/fiscal-self-test", auth, adminOnly, async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
   }
-});
+}
+app.post("/api/fiscal-self-test", auth, adminOnly, handlePostFiscalSelfTest);
+app.post("/api/fiscal/self-test", auth, adminOnly, handlePostFiscalSelfTest);
 
 /* Kupon fiskal provë — print termik, pa INSERT (vetëm kur fiscal ON) */
 app.post("/api/fiscal-print-test-coupon", auth, adminOnly, async (_req, res) => {
@@ -7479,7 +7617,7 @@ app.get("/api/fiscal-audit", auth, adminOnly, (req, res) => {
   }
 });
 
-app.post("/api/fiscal-audit/export", auth, adminOnly, (req, res) => {
+function handlePostFiscalAuditExport(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7517,7 +7655,9 @@ app.post("/api/fiscal-audit/export", auth, adminOnly, (req, res) => {
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
-});
+}
+app.post("/api/fiscal-audit/export", auth, adminOnly, handlePostFiscalAuditExport);
+app.post("/api/fiscal/audit/export", auth, adminOnly, handlePostFiscalAuditExport);
 
 function truthyFiscalApiFlag(v) {
   return v === true || v === 1 || v === "1" || v === "on" || v === "yes";
@@ -7543,7 +7683,7 @@ app.get("/api/fiscal-test-atk-discount/receipts", auth, adminOnly, (req, res) =>
   }
 });
 
-app.get("/api/fiscal-test-atk-discount", auth, adminOnly, async (req, res) => {
+async function handleGetFiscalTestAtkDiscount(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7558,9 +7698,8 @@ app.get("/api/fiscal-test-atk-discount", auth, adminOnly, async (req, res) => {
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
-});
-
-app.post("/api/fiscal-test-atk-discount", auth, adminOnly, async (req, res) => {
+}
+async function handlePostFiscalTestAtkDiscount(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7587,10 +7726,14 @@ app.post("/api/fiscal-test-atk-discount", auth, adminOnly, async (req, res) => {
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
-});
+}
+app.get("/api/fiscal-test-atk-discount", auth, adminOnly, handleGetFiscalTestAtkDiscount);
+app.get("/api/fiscal/test-atk-discount", auth, adminOnly, handleGetFiscalTestAtkDiscount);
+app.post("/api/fiscal-test-atk-discount", auth, adminOnly, handlePostFiscalTestAtkDiscount);
+app.post("/api/fiscal/test-atk-discount", auth, adminOnly, handlePostFiscalTestAtkDiscount);
 
 /** Neni 45 — bllok letër kur SEF ndalon plotësisht */
-app.get("/api/fiscal-paper-block", auth, adminOnly, (_req, res) => {
+function handleGetFiscalPaperBlock(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7604,9 +7747,8 @@ app.get("/api/fiscal-paper-block", auth, adminOnly, (_req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
   }
-});
-
-app.post("/api/fiscal-paper-block/enable", auth, adminOnly, (req, res) => {
+}
+function handlePostFiscalPaperBlockEnable(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7620,9 +7762,8 @@ app.post("/api/fiscal-paper-block/enable", auth, adminOnly, (req, res) => {
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }
-});
-
-app.post("/api/fiscal-paper-block/disable", auth, adminOnly, (req, res) => {
+}
+function handlePostFiscalPaperBlockDisable(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7635,9 +7776,8 @@ app.post("/api/fiscal-paper-block/disable", auth, adminOnly, (req, res) => {
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }
-});
-
-app.post("/api/fiscal-paper-block/issue", auth, adminOnly, (req, res) => {
+}
+function handlePostFiscalPaperBlockIssue(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7652,9 +7792,8 @@ app.post("/api/fiscal-paper-block/issue", auth, adminOnly, (req, res) => {
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }
-});
-
-app.post("/api/fiscal-paper-block/register-all", auth, adminOnly, async (req, res) => {
+}
+async function handlePostFiscalPaperBlockRegisterAll(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -7668,7 +7807,17 @@ app.post("/api/fiscal-paper-block/register-all", auth, adminOnly, async (req, re
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
   }
-});
+}
+app.get("/api/fiscal-paper-block", auth, adminOnly, handleGetFiscalPaperBlock);
+app.get("/api/fiscal/paper-block", auth, adminOnly, handleGetFiscalPaperBlock);
+app.post("/api/fiscal-paper-block/enable", auth, adminOnly, handlePostFiscalPaperBlockEnable);
+app.post("/api/fiscal/paper-block/enable", auth, adminOnly, handlePostFiscalPaperBlockEnable);
+app.post("/api/fiscal-paper-block/disable", auth, adminOnly, handlePostFiscalPaperBlockDisable);
+app.post("/api/fiscal/paper-block/disable", auth, adminOnly, handlePostFiscalPaperBlockDisable);
+app.post("/api/fiscal-paper-block/issue", auth, adminOnly, handlePostFiscalPaperBlockIssue);
+app.post("/api/fiscal/paper-block/issue", auth, adminOnly, handlePostFiscalPaperBlockIssue);
+app.post("/api/fiscal-paper-block/register-all", auth, adminOnly, handlePostFiscalPaperBlockRegisterAll);
+app.post("/api/fiscal/paper-block/register-all", auth, adminOnly, handlePostFiscalPaperBlockRegisterAll);
 
 /** Wizard riparimi SEF (48h) — kontekst + hapa */
 app.get("/api/fiscal/repair-wizard/context", auth, adminOnly, (_req, res) => {
