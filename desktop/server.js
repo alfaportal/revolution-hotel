@@ -1442,6 +1442,19 @@ function diskGuardResponse(res) {
   });
 }
 
+/** Bllokon mutacione kur DB nuk dekriptohet ose disku është plot — parity BIZNES. */
+function recordsGuardResponse(res) {
+  if (global.DB_DECRYPT_FAILED) {
+    return res.status(503).json({
+      ok: false,
+      db_decrypt_failed: true,
+      error: "Databaza nuk lexohet — duhet rikthyer nga backup-i",
+      gabim: "Databaza nuk lexohet — duhet rikthyer nga backup-i",
+    });
+  }
+  return diskGuardResponse(res);
+}
+
 const DISK_GUARD_SKIP = new Set([
   "/api/system/disk-status",
   "/api/backup/run",
@@ -6484,6 +6497,7 @@ app.post("/api/fiscal/open-keys-folder", auth, adminOnly, (_req, res) => {
 
 app.post("/api/fiscal/onboard-atk", auth, adminOnly, async (req, res) => {
   const { onboardPosAtAtk } = require("./fiscal/fiscal-onboarding");
+  const beforeOnboardSnap = fiscalAudit.snapshotFiscalSettingsState(db);
   try {
     const settings = fiscalConfig.getFiscalSettings();
     if (!settings?.taxpayer_nui || String(settings.taxpayer_nui).length !== 9) {
@@ -6573,6 +6587,11 @@ app.post("/api/fiscal/onboard-atk", auth, adminOnly, async (req, res) => {
       db.setSetting("atk_auto_send", "1");
       const { syncAtkTransmissionFromSettings } = require("./fiscal/fiscal-boot");
       syncAtkTransmissionFromSettings(db);
+      auditFiscalSettingsIfChanged(
+        req,
+        beforeOnboardSnap,
+        "POST /api/fiscal/onboard-atk (already_connected)"
+      );
       return res.json({
         success: true,
         already_connected: true,
@@ -6595,6 +6614,19 @@ app.post("/api/fiscal/onboard-atk", auth, adminOnly, async (req, res) => {
           taxpayer_legal_name: result.business_name,
         });
       }
+      auditFiscalSettingsIfChanged(req, beforeOnboardSnap, "POST /api/fiscal/onboard-atk");
+    } else if (
+      body.pos_id != null ||
+      body.business_unit_number != null ||
+      body.application_id != null ||
+      body.fiscalization_number != null ||
+      body.atk_api_url != null
+    ) {
+      auditFiscalSettingsIfChanged(
+        req,
+        beforeOnboardSnap,
+        "POST /api/fiscal/onboard-atk (settings_only)"
+      );
     }
     res.json(result);
   } catch (err) {
@@ -7171,6 +7203,8 @@ app.post("/api/fiscal/receipts/:id/print-copy", auth, adminOnly, async (req, res
 /** Storno / cancel / return kupon korrigjues */
 app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7258,6 +7292,8 @@ app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
 /** Ndërrim artikulli — kthim + shitje e re */
 app.post("/api/fiscal/exchange", auth, adminOnly, async (req, res) => {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7280,6 +7316,8 @@ app.post("/api/fiscal/exchange", auth, adminOnly, async (req, res) => {
 /** Checkout me bllok letër (Neni 45) */
 app.post("/api/fiscal/paper-block/checkout", auth, adminOnly, async (req, res) => {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7489,6 +7527,8 @@ app.get("/api/fiscal-correction/lookup/:nuikf", auth, adminOnly, (req, res) => {
 
 app.post("/api/fiscal-correction", auth, adminOnly, async (req, res) => {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7750,6 +7790,8 @@ function handleGetFiscalPaperBlock(req, res) {
 }
 function handlePostFiscalPaperBlockEnable(req, res) {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7765,6 +7807,8 @@ function handlePostFiscalPaperBlockEnable(req, res) {
 }
 function handlePostFiscalPaperBlockDisable(req, res) {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7779,6 +7823,8 @@ function handlePostFiscalPaperBlockDisable(req, res) {
 }
 function handlePostFiscalPaperBlockIssue(req, res) {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
@@ -7795,6 +7841,8 @@ function handlePostFiscalPaperBlockIssue(req, res) {
 }
 async function handlePostFiscalPaperBlockRegisterAll(req, res) {
   try {
+    const blocked = recordsGuardResponse(res);
+    if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }

@@ -1059,6 +1059,26 @@
       cursor: pointer;
     }
     #modal-fiscal-receipts .btn-frl-view:hover { background: rgba(255, 107, 53, 0.15); }
+    #modal-fiscal-receipts .frl-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      max-width: 220px;
+      white-space: normal;
+    }
+    #modal-fiscal-receipts .frl-row-actions .btn-frl-view { margin: 0; }
+    #modal-fiscal-receipt-view .frv-qr-wrap {
+      margin: 0.5rem 0;
+      text-align: center;
+    }
+    #modal-fiscal-receipt-view .frv-qr-wrap[hidden] { display: none !important; }
+    #modal-fiscal-receipt-view .frv-qr-wrap img {
+      max-width: 200px;
+      height: auto;
+      border-radius: 8px;
+      background: #fff;
+      padding: 6px;
+    }
     #modal-fiscal-receipts .frl-footer {
       margin-top: 0.75rem;
       display: flex;
@@ -4280,11 +4300,11 @@
                 <th data-fi18n="col_payment">Pagesa</th>
                 <th data-fi18n="col_operator">Operatori</th>
                 <th data-fi18n="col_status">Statusi</th>
-                <th></th>
+                <th>Veprimet</th>
               </tr>
             </thead>
             <tbody id="frl-tbody">
-              <tr><td colspan="9" style="color:#a0a0b8" data-fi18n="loading">Duke ngarkuar…</td></tr>
+              <tr><td colspan="10" style="color:#a0a0b8" data-fi18n="loading">Duke ngarkuar…</td></tr>
             </tbody>
           </table>
         </div>
@@ -4300,8 +4320,12 @@
       <div class="table-modal-content">
         <h2 data-fi18n="fiscal_receipt_view_title">Kupon Fiskal</h2>
         <p class="frv-meta" id="frv-meta"></p>
+        <div class="frv-qr-wrap" id="frv-qr-wrap" hidden>
+          <img id="frv-qr" alt="QR fiskal" width="200" height="200" />
+        </div>
         <pre class="frv-body" id="frv-body"></pre>
         <div class="frv-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="frv-print-from-preview" hidden>Printo</button>
           <button type="button" class="btn btn-ghost btn-sm" id="frv-close" data-fi18n="close">Mbyll</button>
         </div>
       </div>
@@ -15418,15 +15442,32 @@
     function mbyllFiscalReceiptViewModal() {
       const m = document.getElementById("modal-fiscal-receipt-view");
       if (m) m.hidden = true;
+      frlPreviewPrintId = null;
+      frlHideReceiptQr();
+      const printBtn = document.getElementById("frv-print-from-preview");
+      if (printBtn) printBtn.hidden = true;
+    }
+
+    let frlPreviewPrintId = null;
+
+    function frlHideReceiptQr() {
+      const wrap = document.getElementById("frv-qr-wrap");
+      const img = document.getElementById("frv-qr");
+      if (wrap) wrap.hidden = true;
+      if (img) img.removeAttribute("src");
     }
 
     async function hapFiscalReceiptView(id) {
       const modal = document.getElementById("modal-fiscal-receipt-view");
       const meta = document.getElementById("frv-meta");
       const body = document.getElementById("frv-body");
+      const printBtn = document.getElementById("frv-print-from-preview");
       if (!modal || !body) return;
+      frlPreviewPrintId = null;
+      if (printBtn) printBtn.hidden = true;
       body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
       if (meta) meta.textContent = "";
+      frlHideReceiptQr();
       modal.hidden = false;
       try {
         const res = await api("/api/fiscal-receipts/" + encodeURIComponent(id));
@@ -15441,6 +15482,80 @@
       }
     }
 
+    async function frlOpenReceiptPreview(id) {
+      const modal = document.getElementById("modal-fiscal-receipt-view");
+      const meta = document.getElementById("frv-meta");
+      const body = document.getElementById("frv-body");
+      const printBtn = document.getElementById("frv-print-from-preview");
+      const qrWrap = document.getElementById("frv-qr-wrap");
+      const qrImg = document.getElementById("frv-qr");
+      if (!modal || !body || !id) return;
+      frlPreviewPrintId = String(id);
+      if (printBtn) printBtn.hidden = false;
+      body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
+      if (meta) meta.textContent = "";
+      frlHideReceiptQr();
+      modal.hidden = false;
+      try {
+        const data = await api("/api/fiscal/receipts/" + encodeURIComponent(id) + "/preview");
+        if (meta) {
+          meta.textContent = "Preview · NUIKF " + (data.nuikf || "-");
+        }
+        body.textContent = data.text || fiscalUiT("empty", "(bosh)");
+        if (data.qr_png_base64 && qrWrap && qrImg) {
+          qrImg.src = "data:image/png;base64," + data.qr_png_base64;
+          qrWrap.hidden = false;
+        }
+        setFrlOpsMsg("Preview · NUIKF " + (data.nuikf || id), true);
+      } catch (err) {
+        body.textContent = err.message || "Gabim";
+        setFrlOpsMsg(err.message || "Preview dështoi", false);
+      }
+    }
+
+    async function frlPrintReceipt(id) {
+      if (!id) return;
+      setFrlOpsMsg("Duke printuar…", null);
+      try {
+        const data = await api("/api/fiscal/receipts/" + encodeURIComponent(id) + "/print", {
+          method: "POST",
+          body: "{}",
+        });
+        setFrlOpsMsg(
+          "Print · NUIKF " +
+            (data.nuikf || "—") +
+            " · " +
+            (data.printed ? "PO" : "JO") +
+            (data.printMessage ? " · " + data.printMessage : ""),
+          !!data.printed
+        );
+      } catch (e) {
+        setFrlOpsMsg(e.message || "Print dështoi", false);
+      }
+    }
+
+    async function frlPrintReceiptCopy(id) {
+      if (!id) return;
+      setFrlOpsMsg("Duke printuar kopjen…", null);
+      try {
+        const data = await api("/api/fiscal/receipts/" + encodeURIComponent(id) + "/print-copy", {
+          method: "POST",
+          body: "{}",
+        });
+        setFrlOpsMsg(
+          "Kopje · NUIKF " +
+            (data.nuikf || "—") +
+            " · " +
+            (data.printed ? "PO" : "JO") +
+            (data.printMessage ? " · " + data.printMessage : "") +
+            "\n(Nuk u krijua kupon i ri fiskal)",
+          !!data.printed || !data.printMessage
+        );
+      } catch (e) {
+        setFrlOpsMsg(e.message || "Kopje dështoi", false);
+      }
+    }
+
     async function hapFiscalReceiptsModal() {
       const modal = document.getElementById("modal-fiscal-receipts");
       const tbody = document.getElementById("frl-tbody");
@@ -15448,7 +15563,7 @@
       if (!modal || !tbody) return;
       modal.hidden = false;
       tbody.innerHTML =
-        '<tr><td colspan="9" style="color:#a0a0b8">' +
+        '<tr><td colspan="10" style="color:#a0a0b8">' +
         escHtmlFrl(fiscalUiT("loading", "Duke ngarkuar…")) +
         "</td></tr>";
       if (countEl) countEl.textContent = "";
@@ -15457,7 +15572,7 @@
         const rows = Array.isArray(res.receipts) ? res.receipts : [];
         if (!rows.length) {
           tbody.innerHTML =
-            '<tr><td colspan="9" style="color:#a0a0b8">Nuk ka kuponë fiskalë ende.</td></tr>';
+            '<tr><td colspan="10" style="color:#a0a0b8">Nuk ka kuponë fiskalë ende.</td></tr>';
           if (countEl) countEl.textContent = "0";
           return;
         }
@@ -15473,16 +15588,30 @@
             "<td>" + escHtmlFrl(r.payment_label || r.payment_method) + "</td>" +
             "<td>" + escHtmlFrl(r.operator_name) + "</td>" +
             "<td class=\"" + statusClassFiscalReceipt(r) + "\">" + escHtmlFrl(r.status) + "</td>" +
-            "<td><button type=\"button\" class=\"btn-frl-view\" data-frl-id=\"" + escHtmlFrl(r.id) + "\">Shiko</button></td>";
+            '<td class="frl-row-actions">' +
+            '<button type="button" class="btn-frl-view" data-frl-preview="' + escHtmlFrl(r.id) + '">Preview</button>' +
+            '<button type="button" class="btn-frl-view" data-frl-print="' + escHtmlFrl(r.id) + '">Print</button>' +
+            '<button type="button" class="btn-frl-view" data-frl-copy="' + escHtmlFrl(r.id) + '">Kopje</button>' +
+            '<button type="button" class="btn-frl-view" data-frl-id="' + escHtmlFrl(r.id) + '">Shiko</button>' +
+            "</td>";
           tbody.appendChild(tr);
         }
         if (countEl) countEl.textContent = String(rows.length) + " kuponë";
         tbody.querySelectorAll("[data-frl-id]").forEach((btn) => {
           btn.addEventListener("click", () => hapFiscalReceiptView(btn.getAttribute("data-frl-id")));
         });
+        tbody.querySelectorAll("[data-frl-preview]").forEach((btn) => {
+          btn.addEventListener("click", () => frlOpenReceiptPreview(btn.getAttribute("data-frl-preview")));
+        });
+        tbody.querySelectorAll("[data-frl-print]").forEach((btn) => {
+          btn.addEventListener("click", () => frlPrintReceipt(btn.getAttribute("data-frl-print")));
+        });
+        tbody.querySelectorAll("[data-frl-copy]").forEach((btn) => {
+          btn.addEventListener("click", () => frlPrintReceiptCopy(btn.getAttribute("data-frl-copy")));
+        });
       } catch (err) {
         tbody.innerHTML =
-          '<tr><td colspan="9" style="color:#ef4444">' + escHtmlFrl(err.message) + "</td></tr>";
+          '<tr><td colspan="10" style="color:#ef4444">' + escHtmlFrl(err.message) + "</td></tr>";
       }
     }
 
@@ -15500,6 +15629,9 @@
     document.getElementById("frl-close")?.addEventListener("click", mbyllFiscalReceiptsModal);
     document.getElementById("frv-backdrop")?.addEventListener("click", mbyllFiscalReceiptViewModal);
     document.getElementById("frv-close")?.addEventListener("click", mbyllFiscalReceiptViewModal);
+    document.getElementById("frv-print-from-preview")?.addEventListener("click", () => {
+      if (frlPreviewPrintId) frlPrintReceipt(frlPreviewPrintId);
+    });
 
     document.getElementById("fcc-type")?.addEventListener("change", () => {
       const type = document.getElementById("fcc-type").value;
