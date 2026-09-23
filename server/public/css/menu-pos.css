@@ -315,10 +315,23 @@
   color: var(--menu-muted);
 }
 
+.menu-photo-grid-inner {
+  display: grid;
+}
+
 @media (min-width: 521px) {
   .menu-photo-grid-inner {
-    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(148px, 100%), 1fr));
     gap: 0.75rem;
+  }
+
+  #screen-order.kiosk-screen .menu-group-bar,
+  #screen-order.kiosk-screen #menu-cat-bar,
+  #screen-order.kiosk-screen .menu-cat-tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    touch-action: auto;
   }
 
   .menu-item-btn .emri {

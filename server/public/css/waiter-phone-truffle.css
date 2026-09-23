@@ -487,6 +487,41 @@ body::-webkit-scrollbar,
   border: 1px solid rgba(225, 29, 72, 0.35);
 }
 
+/* Grid produktesh + kategori që mbështillen — QR/kiosk në të gjitha gjerësitë */
+@media (min-width: 415px) {
+  .menu-photo-grid-inner {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)) !important;
+    gap: 0.65rem !important;
+  }
+
+  #screen-order.kiosk-screen .menu-group-bar,
+  #screen-order.kiosk-screen #menu-cat-bar,
+  #screen-order.kiosk-screen .menu-cat-tabs {
+    flex-wrap: wrap !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    touch-action: auto;
+  }
+}
+
+#screen-order.kiosk-screen .cart-bar {
+  width: 100%;
+  max-width: min(960px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+#screen-order.kiosk-screen .cart-actions .btn,
+#screen-order.kiosk-screen #btn-send {
+  width: 100%;
+  max-width: 28rem;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
 /* Narrow phones 360–414 */
 @media (max-width: 414px) {
   .table-card {
