@@ -3676,7 +3676,7 @@
           <span class="settings-hub-icon settings-hub-icon-cyan">A</span>
           <div>
             <div class="settings-card-title">Lidhja me ATK</div>
-            <p class="settings-card-desc">URL, Application ID dhe çelësat — pa certifikatë ATK nuk lidhet me serverin. Tani: vetëm lokal (ATK i ndalur).</p>
+            <p class="settings-card-desc">Plotësoni fushat e fiskalizimit, pastaj «Lidhu me ATK» — certifikata nga ATK dhe dërgimi automatik i kuponëve (si BIZNES).</p>
           </div>
         </div>
         <div class="settings-form-grid-2">
@@ -3699,11 +3699,15 @@
             <input type="text" id="sef-keys-dir" class="sef-readonly" readonly>
             <button type="button" class="btn btn-sm" id="btn-open-keys-folder" style="margin-top:0.5rem">Hap folderin e çelësave</button>
             <p class="settings-field-hint" style="margin-top:0.5rem">
-              ATK të jep: <code>private-key.pem</code> + <code>signed-certificate.pem</code>.
-              Kopjoji në këtë folder. Pa certifikatë të nënshkruar nga ATK, dërgimi te TEST/PROD dështon.
+              Onboarding automatik ruan <code>private-key.pem</code> + <code>signed-certificate.pem</code> këtu.
+              Manual: kopjoji vetë nëse ATK i dha jashtë programit.
             </p>
           </div>
         </div>
+        <button type="button" class="btn btn-primary" id="btn-onboard-atk" style="width:100%;margin-top:0.75rem;padding:0.65rem 1rem;font-size:1rem">
+          🔗 Lidhu me ATK — Regjistro këtë POS
+        </button>
+        <div id="onboard-status" class="fiscal-save-msg" style="display:none;margin-top:0.65rem;padding:0.65rem;border-radius:8px"></div>
       </div>
 
       </div>
@@ -13811,10 +13815,113 @@
           const keysDirEl = document.getElementById("sef-keys-dir");
           if (keysDirEl) keysDirEl.value = atk.keys_dir;
         }
+        updateOnboardAtkButton(atk);
       } catch {
         /* ignore */
       }
     }
+
+    function updateOnboardAtkButton(atk) {
+      const btn = document.getElementById("btn-onboard-atk");
+      if (!btn || !atk) return;
+      const connected =
+        !!atk.ready_for_atk &&
+        !atk.certificate_is_placeholder &&
+        !!atk.settings_match_cert &&
+        !atk.atk_transmission_blocked;
+      if (connected) {
+        btn.innerHTML = "✅ I lidhur me ATK — Regjistro këtë POS";
+        btn.style.background = "#16a34a";
+        btn.style.color = "#fff";
+      } else {
+        btn.textContent = "🔗 Lidhu me ATK — Regjistro këtë POS";
+        btn.style.background = "";
+        btn.style.color = "";
+      }
+      btn.disabled = false;
+    }
+
+    async function runOnboardAtk() {
+      const statusDiv = document.getElementById("onboard-status");
+      const btn = document.getElementById("btn-onboard-atk");
+      if (!btn || btn.disabled) return;
+      const unit = document.getElementById("sef-unit-number")?.value || "—";
+      const pos = document.getElementById("sef-pos-id")?.value || "—";
+      if (
+        !confirm(
+          "Kjo do të regjistrojë këtë POS te ATK (Branch " +
+            unit +
+            ", POS " +
+            pos +
+            "). Vazhdo?"
+        )
+      ) {
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "⏳ Duke ruajtur cilësimet...";
+      if (statusDiv) {
+        statusDiv.style.display = "block";
+        statusDiv.style.background = "#fff3cd";
+        statusDiv.style.color = "#856404";
+        statusDiv.textContent = "Duke ruajtur cilësimet para onboarding...";
+      }
+      try {
+        document.getElementById("btn-fiscalizimi-save")?.click();
+        await new Promise((r) => setTimeout(r, 1200));
+      } catch {
+        /* */
+      }
+      btn.textContent = "⏳ Duke u lidhur me ATK...";
+      if (statusDiv) statusDiv.textContent = "Duke dërguar kërkesën te ATK...";
+      try {
+        sefApplicationIdField.commit?.();
+        sefFiscalizationNumberField.commit?.();
+        const payload = readFiscalFormPayload();
+        const data = await api("/api/fiscal/onboard-atk", {
+          method: "POST",
+          body: JSON.stringify({
+            force: true,
+            pos_id: payload.pos_id,
+            business_unit_number: payload.business_unit_number,
+            fiscalization_number: payload.fiscalization_number,
+            application_id: payload.application_id,
+            atk_api_url: payload.atk_api_url,
+          }),
+        });
+        if (data.success) {
+          if (statusDiv) {
+            statusDiv.style.background = "#d4edda";
+            statusDiv.style.color = "#155724";
+            statusDiv.innerHTML = data.already_connected
+              ? "✅ POS tashmë i lidhur me ATK." +
+                (data.atk_sync?.allowed ? "<br><strong>Transmetimi te ATK aktiv.</strong>" : "")
+              : "✅ U lidh me ATK!<br>Biznesi: " +
+                (data.business_name || "—") +
+                "<br>Certifikata u ruajt." +
+                (data.atk_sync?.allowed ? "<br><strong>Transmetimi te ATK u aktivizua.</strong>" : "");
+          }
+          await ngarkoFiscalizimin();
+          await loadFiscalKeysDir();
+        } else {
+          throw new Error(data.error || "Gabim i panjohur");
+        }
+      } catch (err) {
+        if (statusDiv) {
+          statusDiv.style.background = "#f8d7da";
+          statusDiv.style.color = "#721c24";
+          statusDiv.textContent = "❌ " + (err.message || String(err));
+        }
+        btn.textContent = "🔗 Lidhu me ATK — Regjistro këtë POS";
+        btn.style.background = "";
+        btn.style.color = "";
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById("btn-onboard-atk")?.addEventListener("click", () => {
+      runOnboardAtk().catch(() => {});
+    });
 
     const FISCAL_UNLOCK_CODE = "Qendresa-/-292-/-";
     const FISCAL_UNLOCK_KEY = "fiscal_ui_unlock_v1";
@@ -13941,7 +14048,7 @@
           if (profileOk && s.fiscal_enabled) {
             lockHint.hidden = false;
             lockHint.textContent = localOnly
-              ? "Print lokal aktiv. ATK i ndalur — plotësoni Application ID + certifikatë për lidhje të ardhshme."
+              ? "Print lokal aktiv. Për ATK: plotësoni fushat dhe shtypni «Lidhu me ATK»."
               : "Fiskalizimi aktiv.";
           } else if (localOnly && s.fiscal_enabled) {
             lockHint.hidden = false;
