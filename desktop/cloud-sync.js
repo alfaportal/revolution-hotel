@@ -1515,6 +1515,83 @@ async function fetchRegisterModeFromCloud(db) {
   }
 }
 
+/** Cloud → POS: fjalëkalimi i pronarit (telefon/web) → admin_password lokale. */
+async function syncOwnerAdminPasswordFromCloud(db) {
+  if (!db || !isCloudConfigured(db)) return { ok: false, skipped: true };
+  const cfg = getConfig(db);
+  if (!cfg.serverUrl || !cfg.celesi) return { ok: false, skipped: true };
+
+  const syncedAt =
+    typeof db.getAdminPasswordCloudSyncedAt === "function"
+      ? db.getAdminPasswordCloudSyncedAt()
+      : String(db.getSetting("admin_password_cloud_set_at", "") || "").trim();
+
+  try {
+    const res = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/license/owner-admin-password/pull",
+      {
+        celesi: cfg.celesi,
+        device_id: cfg.deviceId,
+        app_type: cfg.appType,
+        synced_at: syncedAt,
+      },
+      { timeoutMs: 12000 },
+    );
+    const parsed = parseCloudJson(res.data);
+    if (res.status >= 400 || parsed.ok === false) {
+      return { ok: false, message: parsed.gabim || parsed.message || "Pull password dështoi." };
+    }
+    if (parsed.changed && parsed.password_sha256 && typeof db.applyAdminPasswordFromCloudSync === "function") {
+      db.applyAdminPasswordFromCloudSync(parsed.password_sha256, parsed.password_set_at);
+      console.log("[cloud/sync] Fjalëkalimi admin u përditësua nga cloud.");
+      return { ok: true, updated: true, password_set_at: parsed.password_set_at };
+    }
+    return { ok: true, updated: false };
+  } catch (err) {
+    return { ok: false, message: err.message || String(err) };
+  }
+}
+
+/** POS → cloud: ndryshim nga Cilësimet desktop. */
+async function pushOwnerAdminPasswordAsync(db, plainPassword) {
+  if (!db || !isCloudConfigured(db)) return { ok: false, skipped: true };
+  const plain = String(plainPassword || "").trim();
+  if (!plain) return { ok: false, skipped: true };
+
+  const cfg = getConfig(db);
+  if (!cfg.serverUrl || !cfg.celesi) return { ok: false, message: "Cloud nuk është konfiguruar." };
+
+  try {
+    const res = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/license/owner-admin-password/push",
+      {
+        celesi: cfg.celesi,
+        device_id: cfg.deviceId,
+        app_type: cfg.appType,
+        admin_password: plain,
+      },
+      { timeoutMs: 15000 },
+    );
+    const parsed = parseCloudJson(res.data);
+    if (res.status >= 400 || parsed.ok === false) {
+      return { ok: false, message: parsed.gabim || parsed.message || "Push password dështoi." };
+    }
+    if (parsed.password_set_at && typeof db.applyAdminPasswordFromCloudSync === "function") {
+      db.applyAdminPasswordFromCloudSync(parsed.password_sha256, parsed.password_set_at);
+    } else if (parsed.password_set_at && typeof db.setSetting === "function") {
+      db.setSetting("admin_password_cloud_set_at", String(parsed.password_set_at));
+    }
+    console.log("[cloud/sync] Fjalëkalimi admin u dërgua te cloud (pronari).");
+    return { ok: true, password_set_at: parsed.password_set_at };
+  } catch (err) {
+    return { ok: false, message: err.message || String(err) };
+  }
+}
+
 async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "") {
   const cfg = getConfig(db);
   const { slug, key } = getKitchenAccess(db);
@@ -2636,6 +2713,8 @@ module.exports = {
   checkConnection,
   fetchReceiptFormat,
   fetchRegisterModeFromCloud,
+  syncOwnerAdminPasswordFromCloud,
+  pushOwnerAdminPasswordAsync,
   fetchOnlineOrders,
   fetchLoginOrderNotify,
   buildLoginNotifyFromOrders,

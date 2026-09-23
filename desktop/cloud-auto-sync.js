@@ -34,6 +34,7 @@ let lastStaffPushAt = 0;
 const STAFF_PUSH_MS = 60000;
 let waiterClosedSyncInFlight = false;
 let registerModeFetchInFlight = false;
+let ownerPasswordSyncInFlight = false;
 let started = false;
 let boundDb = null;
 
@@ -176,6 +177,15 @@ async function runLicenseCheck(db) {
         .catch(() => {})
         .finally(() => {
           registerModeFetchInFlight = false;
+        });
+    }
+
+    if (connected && !ownerPasswordSyncInFlight) {
+      ownerPasswordSyncInFlight = true;
+      cloudSync.syncOwnerAdminPasswordFromCloud(db)
+        .catch(err => console.warn("[cloud/sync] owner admin password:", err.message))
+        .finally(() => {
+          ownerPasswordSyncInFlight = false;
         });
     }
 

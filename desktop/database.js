@@ -875,6 +875,21 @@ function verifyAdminPassword(password) {
   return getSetting("admin_password", "") === hashPassword(password);
 }
 
+/** Cloud → POS: vendos hash-in SHA-256 të sinkronizuar (pa ri-hash). */
+function applyAdminPasswordFromCloudSync(sha256Hex, cloudSetAtIso) {
+  const hash = String(sha256Hex || "").trim().toLowerCase();
+  if (!hash || hash.length !== 64) return false;
+  setSetting("admin_password", hash);
+  if (cloudSetAtIso) {
+    setSetting("admin_password_cloud_set_at", String(cloudSetAtIso).trim());
+  }
+  return true;
+}
+
+function getAdminPasswordCloudSyncedAt() {
+  return String(getSetting("admin_password_cloud_set_at", "") || "").trim();
+}
+
 function seedMenuAndCategories() {
   const catCount = sqlite.prepare("SELECT COUNT(*) AS c FROM categories").get().c;
   if (catCount === 0) {
@@ -10890,6 +10905,8 @@ function getVersionInfo() {
     getActiveStaffToday,
     applyRestaurantNameIfEmpty,
     updateSettings,
+    applyAdminPasswordFromCloudSync,
+    getAdminPasswordCloudSyncedAt,
     getCloudSettings,
     updateCloudSettings,
     updateKitchenAccess,

@@ -5921,7 +5921,14 @@ app.delete("/api/promotions/:id", auth, adminOnly, (req, res) => {
 
 app.put("/api/settings", auth, adminOnly, (req, res) => {
   try {
+    const adminPwPlain =
+      req.body?.admin_password != null ? String(req.body.admin_password).trim() : "";
     db.updateSettings(req.body);
+    if (adminPwPlain) {
+      cloudSync.pushOwnerAdminPasswordAsync(db, adminPwPlain).catch(err => {
+        console.warn("[settings] push owner admin password:", err.message || err);
+      });
+    }
     syncCatalogToCloud();
     auditReq(req, "Ndryshim cilësimesh", "Lokal & biznesi");
     res.json({ ok: true, ...db.getSettings() });
