@@ -186,6 +186,9 @@ function validateReceiptBeforePrint(receiptText, opts = {}) {
   if (!/TOTALI NE EURO|UKUPNO U EUR|UKUPNO ZA PLA[CĆ]ANJE|\bEUR\b|\bEURO\b/i.test(text)) {
     missing.push("valuta EUR");
   }
+  if (opts.printOfflineBanner && !/\bOFFLINE\b/i.test(text)) {
+    missing.push("OFFLINE");
+  }
   // Emri biznesit: bold (^B) madhësi normale — PA ^L / GS ! 0x11
   if (/\^L/.test(rawText)) {
     violations.push("emri biznesit nuk duhet ^L (GS ! 0x11) — vetëm bold madhësi normale");

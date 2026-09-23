@@ -8637,6 +8637,14 @@ function onServerListening(server, port) {
       }
     }, 1500);
   }, 2500);
+  setImmediate(() => {
+    try {
+      const { startOfflineMonitor } = require("./fiscal/fiscal-offline");
+      startOfflineMonitor();
+    } catch (e) {
+      console.warn("[hotel] offline monitor:", e.message);
+    }
+  });
   try {
     if (typeof db.ensureDefaultRooms === "function") {
       db.ensureDefaultRooms();

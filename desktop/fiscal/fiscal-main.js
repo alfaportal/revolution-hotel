@@ -23,6 +23,7 @@ const { generateFiscalQR } = require("./fiscal-qr");
 const { generateFiscalReceipt } = require("./fiscal-print");
 const { syncLanguageFromSettings } = require("./fiscal-i18n");
 const {
+  checkAtkReachable,
   checkInternetConnection,
   queueOfflineReceipt,
 } = require("./fiscal-offline");
@@ -38,7 +39,38 @@ const {
   isAtkTransmissionBlocked,
   memGetReceiptBySaleId,
 } = require("./fiscal-test-mode-store");
-const { getFiscalTodayParts, syncClockFromNetwork } = require("./fiscal-time-sync");
+const {
+  getFiscalTodayParts,
+  getFiscalNowMs,
+  formatFiscalDateTimeLocal,
+  syncClockFromNetwork,
+} = require("./fiscal-time-sync");
+
+/** ATK ktheu HTTP error (4xx/5xx) — operatori e sheh; kuponi printohet me QR + OFFLINE (Neni 28). */
+const ATK_REFUSED_PRINT_MSG =
+  "ATK refuzoi kuponin — kontrolloni të dhënat dhe provoni përsëri.";
+
+function isAtkHttpError(sendResult) {
+  if (!sendResult || sendResult.sent || sendResult.test_mode) return false;
+  const status = Number(sendResult.status);
+  return Number.isFinite(status) && status >= 400;
+}
+
+function applyOfflinePrintBanner(orderData, fiscalData) {
+  fiscalData.is_offline = true;
+  fiscalData.print_offline_banner = true;
+  return generateFiscalReceipt(orderData, fiscalData);
+}
+
+function markReceiptOfflineQueued(fiscalReceiptId) {
+  if (!fiscalReceiptId) return;
+  try {
+    const { fiscalReceiptUpdate } = require("./fiscal-db");
+    fiscalReceiptUpdate(fiscalReceiptId, { is_offline: 1 });
+  } catch (e) {
+    console.warn("[fiscal-main] markReceiptOfflineQueued:", e.message);
+  }
+}
 
 const PRINT_MODE_KEY = "sef_print_mode"; // addon | replace
 
@@ -324,11 +356,27 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
     const guard = validateReceiptBeforePrint(printText, {
       qrAttached: isRecovery ? true : qrAttached,
       logoAttached: isRecovery ? true : logoAttached,
+      printOfflineBanner: !!printOpts.printOfflineBanner,
     });
     if (!guard.ok) {
+      let printMsg = guard.gabim || "Validimi i kuponit fiskal dështoi";
+      if ((guard.missing || []).includes("QR")) {
+        try {
+          const { verifyPrivateKeyReadable } = require("./fiscal-crypto");
+          const kc = verifyPrivateKeyReadable();
+          if (!kc.ok && !kc.skipped) {
+            printMsg = kc.error || printMsg;
+          } else {
+            printMsg =
+              "QR fiskal mungon — kontrolloni çelësin privat dhe printerin. " + printMsg;
+          }
+        } catch {
+          /* */
+        }
+      }
       return {
         printed: false,
-        printMessage: guard.gabim || "Validimi i kuponit fiskal dështoi",
+        printMessage: printMsg,
       };
     }
 
@@ -393,6 +441,25 @@ function insertOnlineReceipt(row) {
     currency: row.currency || "EUR",
     is_offline: 0,
     sent_to_atk: 0,
+  });
+}
+
+/** Kupon vetëm lokal — pa radhë ATK (FISCAL_LOCAL_RUN). */
+function insertLocalOnlyReceipt(row) {
+  const sentAt = formatFiscalDateTimeLocal(getFiscalNowMs());
+  return insertFiscalReceipt({
+    ...row,
+    receipt_type: row.receipt_type || "regular",
+    original_nuikf: row.original_nuikf || null,
+    currency: row.currency || "EUR",
+    is_offline: 0,
+    sent_to_atk: 1,
+    sent_at: sentAt,
+    atk_response_json: JSON.stringify({
+      local_only: true,
+      skipped: "FISCAL_LOCAL_RUN",
+      note: "Kupon vetëm lokal — pa transmetim ATK",
+    }),
   });
 }
 
@@ -697,15 +764,101 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     language: receiptLang,
   };
 
-  const online = await checkInternetConnection();
+  let hasInternet = true;
+  if (!atkBlocked) {
+    hasInternet = (await checkInternetConnection()) !== false;
+  }
+  const atkReachable = !atkBlocked && (await checkAtkReachable());
+  const online = atkReachable;
   let fiscalReceiptId = null;
   let isOffline = false;
+  let isLocalOnly = false;
+  let printOfflineBanner = false;
   let printText = null;
   let atkSent = false;
+  let atkError = "";
+  let atkAuto = false;
+  let atkTestMode = atkBlocked;
+  let atkAllowRetryPrint = false;
+  let atkRefused = false;
 
-  if (!online) {
+  const qrPayload = JSON.stringify({
+    placeholder: !qrResult,
+    hapi: 8,
+    verify_url: qrResult?.verify_url || null,
+    signature: signature || qrResult?.signature || null,
+  });
+
+  const insertRow = {
+    sale_id: id,
+    nuikf,
+    sef_id: sefId,
+    daily_number: dailyNumber,
+    total_number: totalNumber,
+    fiscal_date,
+    fiscal_time,
+    operator_name: operatorName,
+    operator_id: operatorId,
+    taxpayer_nui: taxpayerNui,
+    taxpayer_vat: taxpayerVat || null,
+    taxpayer_name: taxpayerName,
+    taxpayer_address: taxpayerAddress,
+    items_json: JSON.stringify(items),
+    subtotal,
+    discount_amount: discount,
+    total_amount: totalAmount,
+    total_without_tax: totalWithoutTax,
+    vat_breakdown_json: JSON.stringify(vatTax),
+    payment_method: payment,
+    payment_splits_json:
+      paymentSplits.length > 0 ? JSON.stringify(paymentSplits) : null,
+    qr_code_data: qrPayload,
+    digital_signature: signature || null,
+  };
+
+  if (atkBlocked) {
+    isLocalOnly = true;
+    fiscalData.local_only = true;
+    fiscalData.print_offline_banner = false;
+    console.log("[fiscal-main] Modalitet LOKAL — kupon pa ATK. orderId=", id);
+    const preCheck = validateFiscalReceiptInsert(insertRow);
+    if (!preCheck.ok) {
+      throw new Error("Validimi para INSERT dështoi: " + preCheck.error);
+    }
+    fiscalReceiptId = insertLocalOnlyReceipt(insertRow);
+    const chainRow = getFiscalReceiptById(fiscalReceiptId);
+    attachChainToFiscalData(fiscalData, chainRow);
+    printText = generateFiscalReceipt(orderData, fiscalData);
+    try {
+      logFiscalAction(
+        "receipt_created",
+        {
+          nuikf,
+          order_id: id,
+          total: totalAmount,
+          offline: false,
+          local_only: true,
+          fiscal_receipt_id: fiscalReceiptId,
+          daily_number: dailyNumber,
+          payment_method: payment,
+        },
+        operatorName,
+        operatorId
+      );
+    } catch (e) {
+      console.warn("[fiscal-main] audit:", e.message);
+    }
+  } else if (!online) {
     isOffline = true;
+    printOfflineBanner = !hasInternet;
     fiscalData.is_offline = true;
+    fiscalData.print_offline_banner = printOfflineBanner;
+    console.log(
+      "[fiscal-main] ATK i paarritshëm — kupon në radhë. orderId=",
+      id,
+      "no_internet=",
+      !hasInternet
+    );
     const queued = queueOfflineReceipt({
       sale_id: id,
       nuikf,
@@ -731,6 +884,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       payment_method: payment,
       payment_splits_json:
         paymentSplits.length > 0 ? JSON.stringify(paymentSplits) : null,
+      print_offline_banner: printOfflineBanner,
     });
     fiscalReceiptId = queued?.id || null;
     console.log(
@@ -743,44 +897,8 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       "nuikf=",
       nuikf
     );
-    if (fiscalReceiptId) {
-      attachChainToFiscalData(fiscalData, getFiscalReceiptById(fiscalReceiptId));
-    }
     printText = queued?.print_text || generateFiscalReceipt(orderData, fiscalData);
   } else {
-    const qrPayload = JSON.stringify({
-      placeholder: !qrResult,
-      hapi: 8,
-      verify_url: qrResult?.verify_url || null,
-      signature: signature || qrResult?.signature || null,
-    });
-
-    const insertRow = {
-      sale_id: id,
-      nuikf,
-      sef_id: sefId,
-      daily_number: dailyNumber,
-      total_number: totalNumber,
-      fiscal_date,
-      fiscal_time,
-      operator_name: operatorName,
-      operator_id: operatorId,
-      taxpayer_nui: taxpayerNui,
-      taxpayer_vat: taxpayerVat || null,
-      taxpayer_name: taxpayerName,
-      taxpayer_address: taxpayerAddress,
-      items_json: JSON.stringify(items),
-      subtotal,
-      discount_amount: discount,
-      total_amount: totalAmount,
-      total_without_tax: totalWithoutTax,
-      vat_breakdown_json: JSON.stringify(vatTax),
-      payment_method: payment,
-      payment_splits_json:
-        paymentSplits.length > 0 ? JSON.stringify(paymentSplits) : null,
-      qr_code_data: qrPayload,
-      digital_signature: signature || null,
-    };
     const preCheck = validateFiscalReceiptInsert(insertRow);
     if (!preCheck.ok) {
       throw new Error("Validimi para INSERT dështoi: " + preCheck.error);
@@ -797,7 +915,8 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       totalAmount
     );
 
-    attachChainToFiscalData(fiscalData, getFiscalReceiptById(fiscalReceiptId));
+    const chainRow = getFiscalReceiptById(fiscalReceiptId);
+    attachChainToFiscalData(fiscalData, chainRow);
 
     printText = generateFiscalReceipt(orderData, fiscalData);
 
@@ -810,6 +929,11 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
           total: totalAmount,
           offline: false,
           fiscal_receipt_id: fiscalReceiptId,
+          daily_number: dailyNumber,
+          payment_method: payment,
+          chain_current_hash: chainRow?.chain_current_hash || null,
+          chain_previous_hash: chainRow?.chain_previous_hash || null,
+          chain_integrity_ok: chainRow?.chain_integrity_ok ?? null,
         },
         operatorName,
         operatorId
@@ -818,87 +942,8 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       console.warn("[fiscal-main] audit:", e.message);
     }
 
-    // Neni 26/5 — ONLINE: prit përgjigjen ATK PARA printimit (jo në FISCAL_MEMORY_ONLY).
-    let atkSentOk = false;
-    let atkSendError = "";
-    if (!memoryOnly) {
-      try {
-        const { sendReceiptToAtk } = require("./fiscal-offline");
-        const fullRow = sqlite
-          .prepare(`SELECT * FROM fiscal_receipts WHERE id = ?`)
-          .get(fiscalReceiptId);
-        if (fullRow) {
-          const sendResult = await sendReceiptToAtk(fullRow);
-          if (sendResult?.sent) {
-            atkSentOk = true;
-            atkSent = true;
-            const { fiscalReceiptUpdate } = require("./fiscal-db");
-            fiscalReceiptUpdate(fiscalReceiptId, {
-              sent_to_atk: 1,
-              sent_at: new Date().toISOString().replace("T", " ").slice(0, 19),
-              atk_response_json: sendResult,
-            });
-            logFiscalAction(
-              "receipt_sent",
-              {
-                nuikf,
-                fiscal_receipt_id: fiscalReceiptId,
-                transaction_id: sendResult.transaction_id,
-              },
-              operatorName,
-              operatorId
-            );
-          } else {
-            atkSendError = String(sendResult?.error || sendResult?.status || "dështoi");
-            logFiscalAction(
-              "receipt_send_failed",
-              {
-                nuikf,
-                fiscal_receipt_id: fiscalReceiptId,
-                error: atkSendError,
-                status: sendResult?.status,
-                queued_for_retry: true,
-              },
-              operatorName,
-              operatorId
-            );
-          }
-        } else {
-          atkSendError = "Rreshti i kuponit nuk u gjet pas INSERT";
-        }
-      } catch (e) {
-        atkSendError = e.message || "ATK send exception";
-        console.warn("[fiscal-main] ATK send:", atkSendError);
-        try {
-          logFiscalAction(
-            "receipt_send_failed",
-            {
-              nuikf,
-              fiscal_receipt_id: fiscalReceiptId,
-              error: atkSendError,
-              queued_for_retry: true,
-            },
-            operatorName,
-            operatorId
-          );
-        } catch {
-          /* */
-        }
-      }
-
-      if (!atkSentOk) {
-        const note =
-          `\n^C^BATK DERGIMI DESHTOI\n` +
-          `^CNe radhe per ritransmetim\n` +
-          `^C${String(atkSendError || "gabim").slice(0, 40)}\n`;
-        printText = String(printText || "") + note;
-        console.warn(
-          "[fiscal-main] ATK fail online — print me shënim, radhë ritransmetimi. nuikf=",
-          nuikf,
-          atkSendError
-        );
-      }
-    }
+    const { isAtkAutoSendEnabled } = require("./fiscal-offline");
+    atkAuto = isAtkAutoSendEnabled();
   }
 
   if (!memoryOnly) {
@@ -935,14 +980,117 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     console.warn("[fiscal-main] markCouponReady:", e.message);
   }
 
+  if (!isOffline && !atkBlocked && fiscalReceiptId && !memoryOnly) {
+    const { sendReceiptToAtk } = require("./fiscal-offline");
+    try {
+      const fullRow = getFiscalReceiptById(fiscalReceiptId);
+      if (fullRow) {
+        const sendResult = await sendReceiptToAtk(fullRow);
+        if (sendResult?.sent) {
+          atkSent = true;
+          atkError = "";
+          const { fiscalReceiptUpdate } = require("./fiscal-db");
+          fiscalReceiptUpdate(fiscalReceiptId, {
+            sent_to_atk: 1,
+            sent_at: formatFiscalDateTimeLocal(getFiscalNowMs()),
+            atk_response_json: sendResult,
+          });
+          logFiscalAction(
+            "receipt_sent",
+            {
+              nuikf,
+              fiscal_receipt_id: fiscalReceiptId,
+              transaction_id: sendResult.transaction_id,
+            },
+            operatorName,
+            operatorId
+          );
+        } else if (sendResult?.test_mode) {
+          atkTestMode = true;
+          atkError = "";
+        } else {
+          atkRefused = hasInternet && isAtkHttpError(sendResult);
+          atkError = atkRefused
+            ? String(
+                sendResult?.atk_message_sq ||
+                  sendResult?.error ||
+                  ATK_REFUSED_PRINT_MSG
+              )
+            : String(sendResult?.error || sendResult?.status || "dështoi");
+          printOfflineBanner = true;
+          atkAllowRetryPrint = true;
+          printText = applyOfflinePrintBanner(orderData, fiscalData);
+          markReceiptOfflineQueued(fiscalReceiptId);
+          if (!sendResult?.atk_error_audited) {
+            logFiscalAction(
+              "receipt_send_failed",
+              {
+                nuikf,
+                fiscal_receipt_id: fiscalReceiptId,
+                error: atkError,
+                status: sendResult?.status,
+                atk_refused: atkRefused,
+                queued_for_retry: true,
+                print_blocked: false,
+              },
+              operatorName,
+              operatorId
+            );
+          }
+          console.warn(
+            "[fiscal-main] ATK fail — print OFFLINE + radhë. nuikf=",
+            nuikf,
+            sendResult?.status,
+            atkError
+          );
+        }
+      }
+    } catch (e) {
+      atkError = e.message || "ATK send exception";
+      printOfflineBanner = true;
+      atkAllowRetryPrint = true;
+      printText = applyOfflinePrintBanner(orderData, fiscalData);
+      markReceiptOfflineQueued(fiscalReceiptId);
+      console.warn("[fiscal-main] ATK send:", atkError);
+      try {
+        logFiscalAction(
+          "receipt_send_failed",
+          {
+            nuikf,
+            fiscal_receipt_id: fiscalReceiptId,
+            error: atkError,
+            atk_refused: false,
+            queued_for_retry: true,
+            print_blocked: false,
+          },
+          operatorName,
+          operatorId
+        );
+      } catch {
+        /* */
+      }
+    }
+  }
+
+  const mayPrintFiscal =
+    !opts.skip_print &&
+    (isLocalOnly ||
+      atkTestMode ||
+      atkBlocked ||
+      atkSent ||
+      (isOffline && !hasInternet) ||
+      atkAllowRetryPrint);
+
   let printResult = { printed: false, printMessage: "" };
-  if (!opts.skip_print) {
+  if (mayPrintFiscal) {
     try {
       if (pendingId) recovery.markPrinting(pendingId);
     } catch {
       /* */
     }
-    printResult = await printFiscalBundle(printText, qrResult);
+    printResult = await printFiscalBundle(printText, qrResult, {
+      printOfflineBanner,
+    });
     if (printResult.printed && pendingId) {
       try {
         recovery.markDone(pendingId, { printed: true });
@@ -956,6 +1104,12 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     } catch {
       /* */
     }
+  } else if (!opts.skip_print && isOffline && hasInternet) {
+    printResult = {
+      printed: false,
+      printMessage:
+        "Kuponi në radhë — ATK i paarritshëm (ka internet, pa printim offline).",
+    };
   }
 
   console.log(
@@ -971,6 +1125,13 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     isOffline
   );
 
+  try {
+    const { clearSefFailureStreak } = require("./fiscal-paper-block");
+    clearSefFailureStreak();
+  } catch {
+    /* ignore */
+  }
+
   return {
     ok: true,
     fiscal_receipt_id: fiscalReceiptId,
@@ -978,22 +1139,81 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     sef_id: sefId,
     daily_number: dailyNumber,
     is_offline: isOffline,
+    is_local_only: isLocalOnly,
     print_mode: getFiscalPrintMode(),
     printed: printResult.printed,
     printMessage: printResult.printMessage,
+    printMethod: printResult.printMethod || "",
+    fiscal_date,
+    taxpayer_nui: taxpayerNui,
     print_text: printText,
     pending_txn_id: pendingId,
     signature,
     atk_sent: atkSent,
+    sent_to_atk: atkSent ? 1 : 0,
+    atk_auto: atkAuto,
+    atk_test_mode: atkTestMode,
+    atk_error: atkError || null,
+    atk_status: atkSent
+      ? "sent_ok"
+      : isLocalOnly
+        ? "local_only"
+        : atkTestMode
+          ? "test_mode"
+          : isOffline
+            ? !hasInternet
+              ? "offline_queued"
+              : "offline_no_print"
+            : !atkSent && !isOffline && !atkBlocked && fiscalReceiptId && !memoryOnly
+              ? atkAllowRetryPrint
+                ? atkRefused
+                  ? "atk_refused"
+                  : "send_failed"
+                : "send_failed"
+              : "pending_manual",
+    atk_message: atkSent
+      ? "ATK: SUKSES — kuponi u pranua"
+      : isLocalOnly
+        ? "LOKAL — kuponi u ruajt vetëm në këtë PC (pa ATK, pa radhë)"
+        : atkTestMode
+          ? "ATK: TEST_MODE — kuponi u ruajt lokalisht, pa dërgim te API"
+          : isOffline
+            ? !hasInternet
+              ? "OFFLINE — kuponi në radhë (dërgohet kur rikthehet interneti)"
+              : "Kuponi në radhë — ATK i paarritshëm (ka internet, pa printim)"
+            : !atkSent && !isOffline && !atkBlocked && fiscalReceiptId && !memoryOnly
+              ? atkAllowRetryPrint
+                ? atkRefused
+                  ? `${ATK_REFUSED_PRINT_MSG} (printuar OFFLINE, në radhë)`
+                  : `ATK: DËSHTOI — ${atkError || "gabim"} (printuar OFFLINE, në radhë)`
+                : `ATK: DËSHTOI — ${atkError || "gabim"}`
+              : "ATK: në pritje — nuk je i lidhur me ATK",
+    atk_refused: atkRefused,
+    print_blocked: false,
     qr: qrResult
       ? {
           verify_url: qrResult.verify_url,
           escpos_base64: qrResult.escpos_base64,
         }
       : null,
+    offline_queue: (() => {
+      try {
+        const { getOfflineStatus } = require("./fiscal-offline");
+        const st = getOfflineStatus();
+        return Number(st?.offline_queue_count ?? st?.pending_count) || 0;
+      } catch {
+        return 0;
+      }
+    })(),
   };
   } catch (err) {
     console.error("[fiscal-main] ERROR:", err.message || err, "orderId=", id);
+    try {
+      const { recordSefCriticalFailure } = require("./fiscal-paper-block");
+      recordSefCriticalFailure(err, { source: "processFiscalReceipt", orderId: id });
+    } catch {
+      /* ignore */
+    }
     throw err;
   }
 }

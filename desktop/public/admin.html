@@ -3880,6 +3880,19 @@
             <div class="fiscal-save-msg" id="msg-fiscal-audit"></div>
           </div>
         </div>
+        <div class="sef-audit-box" id="sef-fiscal-reports-box">
+          <div class="sef-audit-title">Raportet X / Z (SEF direkt)</div>
+          <p class="sef-field8-desc" style="margin:0 0 0.75rem">
+            POST direkt te <code>/api/fiscal/x-report</code>, <code>z-report</code>, <code>z-report/send-atk</code> — si BIZNES.
+          </p>
+          <div class="sef-audit-actions">
+            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-fiscal-x-report">Printo / shiko Raportin X</button>
+            <button type="button" class="btn btn-sm btn-warning" id="btn-fiscal-z-report">Printo Raportin Z</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-fiscal-z-send-atk">Dërgo Z te ATK</button>
+          </div>
+          <div class="fiscal-save-msg" id="msg-fiscal-x-report"></div>
+          <div class="fiscal-save-msg" id="msg-fiscal-z-report"></div>
+        </div>
       </div>
 
       </div>
@@ -4269,6 +4282,7 @@
         <div class="frl-ops">
           <input type="text" id="frl-nuikf" placeholder="NUIKF origjinal (regular)" autocomplete="off" maxlength="16" />
           <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-lookup">Lookup</button>
+          <button type="button" class="btn btn-danger btn-sm" id="frl-btn-cancel">Storno/Anulim</button>
           <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-return">Kthim malli</button>
           <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-exchange">Ndërrim</button>
           <button type="button" class="btn btn-warn btn-sm" id="frl-btn-send-pending">Dërgo pending te ATK</button>
@@ -14556,6 +14570,111 @@
     document.getElementById("btn-audit-csv")?.addEventListener("click", () => exportFiscalAudit("csv"));
     document.getElementById("btn-audit-pdf")?.addEventListener("click", () => exportFiscalAudit("pdf"));
 
+    function setFiscalSefReportMsg(elId, text, ok) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      el.textContent = text || "";
+      if (ok === true) el.style.color = "#FF6B35";
+      else if (ok === false) el.style.color = "#ef4444";
+      else el.style.color = "#a0a0b8";
+    }
+
+    function formatZDeliveryStatus(delivery) {
+      if (!delivery) return "";
+      const parts = [];
+      if (delivery.atk_sent) {
+        parts.push("ATK: Raporti Z u dërgua.");
+      } else if (delivery.unsupported || !delivery.atk_supported) {
+        parts.push(
+          "ATK nuk pranon raporte Z përmes sistemit — raporti është ruajtur lokalisht."
+        );
+      } else if (delivery.atk_message) {
+        parts.push(`ATK: ${delivery.atk_message}`);
+      }
+      if (delivery.pdf_path) {
+        parts.push(`PDF lokal: ${delivery.pdf_path}`);
+      }
+      return parts.length ? `\n\n---\n${parts.join("\n")}` : "";
+    }
+
+    async function runFiscalXReportDirect() {
+      const msgId = "msg-fiscal-x-report";
+      setFiscalSefReportMsg(msgId, "Duke gjeneruar Raportin X…", null);
+      try {
+        const data = await api("/api/fiscal/x-report", {
+          method: "POST",
+          body: JSON.stringify({
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+          }),
+        });
+        setFiscalSefReportMsg(
+          msgId,
+          (data.text || "") +
+            `\n\n---\nPrint: ${data.printed ? "PO" : "JO"} ${data.printMessage || ""}`,
+          true
+        );
+      } catch (e) {
+        setFiscalSefReportMsg(msgId, e.message || "Raporti X dështoi", false);
+      }
+    }
+
+    async function runFiscalZReportDirect() {
+      const msgId = "msg-fiscal-z-report";
+      setFiscalSefReportMsg(msgId, "Duke gjeneruar Raportin Z…", null);
+      try {
+        const data = await api("/api/fiscal/z-report", {
+          method: "POST",
+          body: JSON.stringify({
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+          }),
+        });
+        setFiscalSefReportMsg(
+          msgId,
+          (data.text || "") +
+            `\n\n---\nPrint: ${data.printed ? "PO" : "JO"} ${data.printMessage || ""}` +
+            formatZDeliveryStatus(data.delivery),
+          true
+        );
+      } catch (e) {
+        setFiscalSefReportMsg(msgId, e.message || "Raporti Z dështoi", false);
+      }
+    }
+
+    async function runFiscalZSendAtkDirect() {
+      const msgId = "msg-fiscal-z-report";
+      setFiscalSefReportMsg(msgId, "Duke dërguar Raportin Z te ATK…", null);
+      try {
+        const data = await api("/api/fiscal/z-report/send-atk", {
+          method: "POST",
+          body: JSON.stringify({
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+          }),
+        });
+        const delivery = data.delivery || {};
+        const text =
+          delivery.atk_sent
+            ? "Raporti Z u dërgua te ATK."
+            : delivery.unsupported || !delivery.atk_supported
+              ? "ATK nuk pranon raporte Z përmes sistemit — raporti është ruajtur lokalisht."
+              : data.message || delivery.atk_message || "Statusi i dërgimit u përditësua.";
+        const pdfLine = delivery.pdf_path ? `\nPDF: ${delivery.pdf_path}` : "";
+        setFiscalSefReportMsg(
+          msgId,
+          text + pdfLine,
+          delivery.atk_sent || !!delivery.pdf_path
+        );
+      } catch (e) {
+        setFiscalSefReportMsg(msgId, e.message || "Dërgimi Z te ATK dështoi", false);
+      }
+    }
+
+    document.getElementById("btn-fiscal-x-report")?.addEventListener("click", runFiscalXReportDirect);
+    document.getElementById("btn-fiscal-z-report")?.addEventListener("click", runFiscalZReportDirect);
+    document.getElementById("btn-fiscal-z-send-atk")?.addEventListener("click", runFiscalZSendAtkDirect);
+
     const repairWizardState = { step: 1, results: {}, context: null, running: false };
     const REPAIR_WIZARD_STEPS = [
       {
@@ -15333,6 +15452,60 @@
       document.getElementById("frl-exchange-panel").hidden = false;
     }
 
+    async function frlConfirmFullCancel() {
+      const nuikf =
+        (document.getElementById("frl-nuikf")?.value || "").trim().toUpperCase() ||
+        frlLookupReceipt?.nuikf;
+      if (!nuikf) {
+        setFrlOpsMsg("Vendos NUIKF ose bëj lookup fillimisht.", false);
+        return;
+      }
+      const reason =
+        prompt(
+          "Arsye e anulimit të plotë (Storno/CANCEL):",
+          "Anulim i plotë i kuponit"
+        ) || "";
+      if (!String(reason).trim()) {
+        setFrlOpsMsg("Anulimi kërkon arsye.", false);
+        return;
+      }
+      if (
+        !confirm(
+          "Anulim i plotë (CANCEL) për NUIKF " +
+            nuikf +
+            "?\nKjo nuk është kthim i pjesshëm i mallit."
+        )
+      ) {
+        return;
+      }
+      hideFrlSubpanels();
+      setFrlOpsMsg("Duke procesuar anulimin…", null);
+      try {
+        const result = await api("/api/fiscal/storno", {
+          method: "POST",
+          body: JSON.stringify({
+            nuikf,
+            type: "cancel",
+            reason: String(reason).trim(),
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+          }),
+        });
+        setFrlOpsMsg(
+          "OK · anulim · korrigjim: " +
+            (result.correction?.nuikf || "—") +
+            " · print: " +
+            (result.printed ? "PO" : "JO") +
+            "\n" +
+            (result.atk_message || ""),
+          true
+        );
+        await hapFiscalReceiptsModal();
+      } catch (e) {
+        setFrlOpsMsg(e.message || "Anulimi dështoi", false);
+      }
+    }
+
     async function frlConfirmReturnStorno() {
       const receipt = frlLookupReceipt;
       if (!receipt?.nuikf) {
@@ -15618,6 +15791,7 @@
     document.getElementById("btn-kupon-korrigjues")?.addEventListener("click", hapFiscalCorrectionModal);
     document.getElementById("btn-fiscal-receipts-list")?.addEventListener("click", hapFiscalReceiptsModal);
     document.getElementById("frl-btn-lookup")?.addEventListener("click", () => frlLookupReceiptByNuikf());
+    document.getElementById("frl-btn-cancel")?.addEventListener("click", () => frlConfirmFullCancel());
     document.getElementById("frl-btn-return")?.addEventListener("click", () => frlOpenReturnPanel());
     document.getElementById("frl-btn-exchange")?.addEventListener("click", () => frlOpenExchangePanel());
     document.getElementById("frl-btn-confirm-return")?.addEventListener("click", () => frlConfirmReturnStorno());
