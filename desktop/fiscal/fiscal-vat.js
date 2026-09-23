@@ -7,6 +7,11 @@
  */
 const { isFiscalEnabled } = require("./fiscal-config");
 
+function netLineAmountSafe(item) {
+  const { netLineAmount } = require("./fiscal-line-discount");
+  return netLineAmount(item);
+}
+
 /** Valuta fiskale — gjithmonë EUR */
 const CURRENCY = "EUR";
 
@@ -55,6 +60,15 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/** Rrumbullakim në cent (€0.01) — shpërndarje karroce, ATK line totals. */
+function round2Money(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function isZeroDelta(delta) {
+  return Math.abs(Number(delta) || 0) < 0.00005;
+}
+
 function emptyBreakdown() {
   return { A: 0, B: 0, C: 0, D: 0, E: 0 };
 }
@@ -67,12 +81,12 @@ function emptyBreakdown() {
 function applyResidualRounding(breakdown, targetTotal) {
   const out = emptyBreakdown();
   for (const L of VAT_LETTERS) {
-    out[L] = round2(breakdown[L]);
+    out[L] = round4(breakdown[L]);
   }
-  const target = round2(targetTotal);
-  let sum = round2(VAT_LETTERS.reduce((s, L) => s + out[L], 0));
-  const delta = round2(target - sum);
-  if (delta === 0) return out;
+  const target = round4(targetTotal);
+  let sum = round4(VAT_LETTERS.reduce((s, L) => s + out[L], 0));
+  const delta = round4(target - sum);
+  if (isZeroDelta(delta)) return out;
 
   let adjustKey = "E";
   let best = -1;
@@ -92,7 +106,7 @@ function applyResidualRounding(breakdown, targetTotal) {
       }
     }
   }
-  out[adjustKey] = round2(out[adjustKey] + delta);
+  out[adjustKey] = round4(out[adjustKey] + delta);
   if (out[adjustKey] < 0) out[adjustKey] = 0;
   return out;
 }
@@ -150,17 +164,111 @@ function resolveItemLetter(item) {
 }
 
 function lineAmount(item) {
-  const qty = Number(item.qty ?? item.quantity ?? 1) || 0;
-  const price = Number(
-    item.unit_price ?? item.unitPrice ?? item.price ?? item.cmimi ?? 0
+  const qty = normalizeQty(item?.qty ?? item?.quantity ?? 1);
+  const price = normalizeUnitPrice(item);
+  return lineTotalAmount(qty, price);
+}
+
+/**
+ * Vlera e rreshtit me TVSH pas zbritjes/shtesës së rreshtit dhe pjesës së karrocës.
+ */
+function lineAmountAfterCart(item) {
+  if (!item || typeof item !== "object") return 0;
+  if (item.fiscal_line_total != null && Number.isFinite(Number(item.fiscal_line_total))) {
+    return round4(Number(item.fiscal_line_total));
+  }
+  const gross = netLineAmountSafe(item);
+  const cartDisc = round4(Number(item.cart_discount_share ?? item.cartDiscountShare ?? 0) || 0);
+  const cartSur = round4(Number(item.cart_surcharge_share ?? item.cartSurchargeShare ?? 0) || 0);
+  if (cartDisc > 0 || cartSur > 0) {
+    return round4(Math.max(0, gross - cartDisc + cartSur));
+  }
+  return gross;
+}
+
+/**
+ * Shpërndan zbritjen/shtesën e karrocës proporcionalisht te artikujt (penny rounding në rreshtin e fundit).
+ */
+function distributeCartAdjustment(items, cartDiscount = 0, cartSurcharge = 0) {
+  const list = Array.isArray(items) ? items : [];
+  const disc = round4(Math.max(0, Number(cartDiscount) || 0));
+  const sur = round4(Math.max(0, Number(cartSurcharge) || 0));
+  if (disc <= 0 && sur <= 0) {
+    return list.map((it) => ({
+      ...it,
+      cart_discount_share: 0,
+      cart_surcharge_share: 0,
+      fiscal_line_total: round2Money(netLineAmountSafe(it)),
+    }));
+  }
+
+  const bases = list.map((it) => netLineAmountSafe(it));
+  const baseSum = round4(bases.reduce((s, v) => s + v, 0));
+  if (baseSum <= 0) {
+    return list.map((it) => ({
+      ...it,
+      cart_discount_share: 0,
+      cart_surcharge_share: 0,
+      fiscal_line_total: 0,
+    }));
+  }
+
+  const targetTotal = round2Money(baseSum - disc + sur);
+  const n = list.length;
+
+  if (n === 1) {
+    const surShare = round2Money(sur);
+    const discShare = round2Money(Math.max(0, bases[0] - targetTotal + surShare));
+    return [
+      {
+        ...list[0],
+        cart_discount_share: discShare,
+        cart_surcharge_share: surShare,
+        fiscal_line_total: targetTotal,
+      },
+    ];
+  }
+
+  let discAssigned = 0;
+  let surAssigned = 0;
+  let lineSum = 0;
+  const result = [];
+
+  for (let i = 0; i < n - 1; i++) {
+    const weight = bases[i] / baseSum;
+    const discShare = round2Money(disc * weight);
+    const surShare = round2Money(sur * weight);
+    discAssigned = round2Money(discAssigned + discShare);
+    surAssigned = round2Money(surAssigned + surShare);
+    const fiscalLineTotal = round2Money(Math.max(0, bases[i] - discShare + surShare));
+    lineSum = round2Money(lineSum + fiscalLineTotal);
+    result.push({
+      ...list[i],
+      cart_discount_share: discShare,
+      cart_surcharge_share: surShare,
+      fiscal_line_total: fiscalLineTotal,
+    });
+  }
+
+  const lastIdx = n - 1;
+  const lastSurShare = round2Money(sur - surAssigned);
+  const lastFiscalTotal = round2Money(Math.max(0, targetTotal - lineSum));
+  const lastDiscShare = round2Money(
+    Math.max(0, bases[lastIdx] - lastFiscalTotal + lastSurShare)
   );
-  return qty * (Number.isFinite(price) ? price : 0);
+
+  result.push({
+    ...list[lastIdx],
+    cart_discount_share: lastDiscShare,
+    cart_surcharge_share: lastSurShare,
+    fiscal_line_total: lastFiscalTotal,
+  });
+
+  return result;
 }
 
 /**
  * Merr listën e artikujve, kthen { A, B, C, D, E } — shuma e rreshtave (turnover/gross) për çdo normë.
- * Artikulli: { qty, unit_price|price, vat_norm|vat_letter|vat_rate }
- * Residual: shuma e grupeve = totali i rrumbullakuar i artikujve.
  */
 function calculateVatBreakdown(items) {
   if (!assertFiscalOn()) return null;
@@ -169,15 +277,15 @@ function calculateVatBreakdown(items) {
   let grossTotal = 0;
   for (const item of items) {
     const letter = resolveItemLetter(item);
-    const gross = lineAmount(item);
+    const gross = lineAmountAfterCart(item);
     grossTotal += gross;
     raw[letter] = (raw[letter] || 0) + gross;
   }
   const rounded = emptyBreakdown();
   for (const L of VAT_LETTERS) {
-    rounded[L] = round2(raw[L]);
+    rounded[L] = round4(raw[L]);
   }
-  return applyResidualRounding(rounded, round2(grossTotal));
+  return applyResidualRounding(rounded, round4(grossTotal));
 }
 
 /**
@@ -193,39 +301,57 @@ function calculateVatBreakdown(items) {
  */
 function calculateVatTaxBreakdown(items, opts = {}) {
   if (!assertFiscalOn()) return null;
-  const list = Array.isArray(items) ? items : [];
+  let list = Array.isArray(items) ? items : [];
+  const cartDisc = round4(
+    Number(opts.cartDiscount ?? opts.cart_discount ?? 0) || 0
+  );
+  const cartSur = round4(
+    Number(opts.cartSurcharge ?? opts.cart_surcharge ?? 0) || 0
+  );
+  const hasCartShares = list.some(
+    (it) =>
+      Number(it?.cart_discount_share ?? it?.cartDiscountShare ?? 0) > 0 ||
+      Number(it?.cart_surcharge_share ?? it?.cartSurchargeShare ?? 0) > 0
+  );
+  if ((cartDisc > 0 || cartSur > 0) && !hasCartShares) {
+    list = distributeCartAdjustment(list, cartDisc, cartSur);
+  }
+
   const raw = emptyBreakdown();
   let grossTotal = 0;
 
   for (const item of list) {
     const letter = resolveItemLetter(item);
     const key = VAT_LETTERS.includes(letter) ? letter : "E";
-    const gross = lineAmount(item);
+    const gross = lineAmountAfterCart(item);
     grossTotal += gross;
     const r = Number(VAT_RATES[key]) || 0;
     const tax = r > 0 ? (gross * r) / (100 + r) : 0;
     raw[key] = (raw[key] || 0) + tax;
   }
 
+  grossTotal = round4(grossTotal);
   if (opts.totalAmount != null && Number.isFinite(Number(opts.totalAmount))) {
-    grossTotal = Number(opts.totalAmount);
+    const target = round4(Number(opts.totalAmount));
+    if (Math.abs(target - grossTotal) > 0.0001) {
+      grossTotal = target;
+    }
   }
-  grossTotal = round2(grossTotal);
 
   const rounded = emptyBreakdown();
   for (const L of VAT_LETTERS) {
-    rounded[L] = round2(raw[L]);
+    rounded[L] = round4(raw[L]);
   }
 
-  const exactTaxSum = round2(VAT_LETTERS.reduce((s, L) => s + Number(raw[L] || 0), 0));
+  const exactTaxSum = round4(VAT_LETTERS.reduce((s, L) => s + Number(raw[L] || 0), 0));
   let targetTax = exactTaxSum;
   if (opts.totalWithoutTax != null && Number.isFinite(Number(opts.totalWithoutTax))) {
-    targetTax = round2(grossTotal - round2(opts.totalWithoutTax));
+    targetTax = round4(grossTotal - round4(opts.totalWithoutTax));
   }
 
   const tax = applyResidualRounding(rounded, targetTax);
-  const totalTax = round2(VAT_LETTERS.reduce((s, L) => s + tax[L], 0));
-  const totalWithoutTax = round2(grossTotal - totalTax);
+  const totalTax = round4(VAT_LETTERS.reduce((s, L) => s + tax[L], 0));
+  const totalWithoutTax = round4(grossTotal - totalTax);
 
   return {
     tax,
@@ -276,6 +402,9 @@ module.exports = {
   normalizeQty,
   normalizeUnitPrice,
   lineTotalAmount,
+  lineAmountAfterCart,
+  distributeCartAdjustment,
+  round2Money,
   applyResidualRounding,
   calculateVatBreakdown,
   calculateVatTaxBreakdown,

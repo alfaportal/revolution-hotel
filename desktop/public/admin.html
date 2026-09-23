@@ -1118,6 +1118,90 @@
     }
     #modal-fiscal-receipts .frl-ops-msg.ok { color: #4ade80; }
     #modal-fiscal-receipts .frl-ops-msg.err { color: #f87171; }
+    #modal-fiscal-receipts .frl-storno-reason-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin: 0 0 0.75rem;
+      padding: 0.55rem 0.75rem;
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #modal-fiscal-receipts .frl-storno-reason-row label {
+      font-size: 0.8rem;
+      color: #a0a0b8;
+      flex: 0 0 auto;
+    }
+    #modal-fiscal-receipts .frl-reason-picker {
+      position: relative;
+      flex: 0 1 220px;
+    }
+    #modal-fiscal-receipts .frl-reason-picker-btn {
+      width: 100%;
+      text-align: left;
+      padding: 0.4rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.25);
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    #modal-fiscal-receipts .frl-reason-picker-btn.open {
+      border-color: rgba(255, 107, 53, 0.5);
+    }
+    #modal-fiscal-receipts .frl-reason-picker-menu {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      right: 0;
+      top: calc(100% + 4px);
+      max-height: 220px;
+      overflow: auto;
+      background: #1e1e2e;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    #modal-fiscal-receipts .frl-reason-picker-menu.hidden { display: none !important; }
+    #modal-fiscal-receipts .frl-reason-picker-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.45rem 0.65rem;
+      border: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      background: transparent;
+      color: #e8e8f0;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    #modal-fiscal-receipts .frl-reason-picker-menu button:hover,
+    #modal-fiscal-receipts .frl-reason-picker-menu button.selected {
+      background: rgba(255, 107, 53, 0.12);
+    }
+    #modal-fiscal-receipts #frl-storno-reason-custom {
+      flex: 1 1 200px;
+      min-width: 160px;
+      padding: 0.4rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.25);
+      color: #fff;
+      font-size: 0.85rem;
+    }
+    #card-fiscalizimi .sef-periodic-dates {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin: 0 0 0.65rem;
+    }
+    #card-fiscalizimi .sef-periodic-dates .settings-field {
+      margin: 0;
+      min-width: 140px;
+    }
     #modal-fiscal-receipts .frl-subpanel {
       margin: 0 0 0.75rem;
       padding: 0.65rem 0.75rem;
@@ -3893,6 +3977,28 @@
           <div class="fiscal-save-msg" id="msg-fiscal-x-report"></div>
           <div class="fiscal-save-msg" id="msg-fiscal-z-report"></div>
         </div>
+        <div class="sef-audit-box" id="sef-fiscal-periodic-box">
+          <div class="sef-audit-title">Raportet periodike (SEF direkt)</div>
+          <p class="sef-field8-desc" style="margin:0 0 0.65rem">
+            POST direkt — Periodik, i shkurtër, mujor memorie ATK (si BIZNES).
+          </p>
+          <div class="sef-periodic-dates">
+            <div class="settings-field">
+              <label for="fiscal-per-from">Nga</label>
+              <input type="date" id="fiscal-per-from" />
+            </div>
+            <div class="settings-field">
+              <label for="fiscal-per-to">Deri</label>
+              <input type="date" id="fiscal-per-to" />
+            </div>
+          </div>
+          <div class="sef-audit-actions">
+            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-fiscal-periodic-report">Raporti Periodik</button>
+            <button type="button" class="btn btn-sm btn-warning" id="btn-fiscal-short-periodic">Raport i shkurtër periodik</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-fiscal-monthly-memory">Raporti mujor (memoria ATK)</button>
+          </div>
+          <div class="fiscal-save-msg" id="msg-fiscal-periodic-report"></div>
+        </div>
       </div>
 
       </div>
@@ -4287,6 +4393,15 @@
           <button type="button" class="btn btn-ghost btn-sm" id="frl-btn-exchange">Ndërrim</button>
           <button type="button" class="btn btn-warn btn-sm" id="frl-btn-send-pending">Dërgo pending te ATK</button>
           <span class="frl-ops-msg" id="frl-ops-msg"></span>
+        </div>
+        <div class="frl-storno-reason-row" id="frl-storno-reason-wrap">
+          <label for="frl-storno-reason-btn">Arsye (Storno/Anulim)</label>
+          <div class="frl-reason-picker" id="frl-storno-reason-picker">
+            <button type="button" class="frl-reason-picker-btn" id="frl-storno-reason-btn" aria-haspopup="listbox" aria-expanded="false">— Zgjidh arsyen —</button>
+            <div class="frl-reason-picker-menu hidden" id="frl-storno-reason-menu" role="listbox" aria-label="Arsyeja e korrigjimit"></div>
+            <input type="hidden" id="frl-storno-reason-preset" value="" />
+          </div>
+          <input type="text" id="frl-storno-reason-custom" placeholder="Ose shkruani arsyen këtu…" autocomplete="off" />
         </div>
         <div class="frl-subpanel" id="frl-return-panel" hidden>
           <p style="margin:0 0 0.5rem;font-size:0.85rem;color:#c8c8d8">Kthim malli — zgjidh sasinë dhe konfirmo.</p>
@@ -14305,8 +14420,13 @@
           const now = new Date();
           const y = now.getFullYear();
           const m = String(now.getMonth() + 1).padStart(2, "0");
+          const today = `${y}-${m}-${String(now.getDate()).padStart(2, "0")}`;
           fromEl.value = `${y}-${m}-01`;
-          toEl.value = `${y}-${m}-${String(now.getDate()).padStart(2, "0")}`;
+          toEl.value = today;
+          const perFrom = document.getElementById("fiscal-per-from");
+          const perTo = document.getElementById("fiscal-per-to");
+          if (perFrom && !perFrom.value) perFrom.value = `${y}-${m}-01`;
+          if (perTo && !perTo.value) perTo.value = today;
         }
         await applyFiscalI18n(s.language === "sr" ? "sr" : "sq");
       } catch (err) {
@@ -14674,6 +14794,46 @@
     document.getElementById("btn-fiscal-x-report")?.addEventListener("click", runFiscalXReportDirect);
     document.getElementById("btn-fiscal-z-report")?.addEventListener("click", runFiscalZReportDirect);
     document.getElementById("btn-fiscal-z-send-atk")?.addEventListener("click", runFiscalZSendAtkDirect);
+
+    async function runFiscalPeriodicReportDirect(endpoint) {
+      const msgId = "msg-fiscal-periodic-report";
+      const from = document.getElementById("fiscal-per-from")?.value || "";
+      const to = document.getElementById("fiscal-per-to")?.value || "";
+      if (!from || !to) {
+        setFiscalSefReportMsg(msgId, "Zgjidhni datat Nga / Deri.", false);
+        return;
+      }
+      setFiscalSefReportMsg(msgId, "Duke gjeneruar raportin…", null);
+      try {
+        const data = await api(endpoint, {
+          method: "POST",
+          body: JSON.stringify({
+            from,
+            to,
+            operator_name: "Admin",
+            operator_id: "ADMIN",
+          }),
+        });
+        setFiscalSefReportMsg(
+          msgId,
+          (data.text || "") +
+            `\n\n---\nPrint: ${data.printed ? "PO" : "JO"} ${data.printMessage || ""}`,
+          true
+        );
+      } catch (e) {
+        setFiscalSefReportMsg(msgId, e.message || "Raporti periodik dështoi", false);
+      }
+    }
+
+    document.getElementById("btn-fiscal-periodic-report")?.addEventListener("click", () =>
+      runFiscalPeriodicReportDirect("/api/fiscal/periodic-report")
+    );
+    document.getElementById("btn-fiscal-short-periodic")?.addEventListener("click", () =>
+      runFiscalPeriodicReportDirect("/api/fiscal/short-periodic-report")
+    );
+    document.getElementById("btn-fiscal-monthly-memory")?.addEventListener("click", () =>
+      runFiscalPeriodicReportDirect("/api/fiscal/monthly-memory-report")
+    );
 
     const repairWizardState = { step: 1, results: {}, context: null, running: false };
     const REPAIR_WIZARD_STEPS = [
@@ -15279,6 +15439,115 @@
 
     let frlLookupReceipt = null;
 
+    const FRL_CORRECTION_REASON_PRESETS = [
+      { id: "operator_error", sq: "Gabim operatori", sr: "Greška operatera" },
+      { id: "customer_changed_mind", sq: "Klienti u pendua", sr: "Kupac se predomislio" },
+      { id: "wrong_price", sq: "Çmim i gabuar", sr: "Pogrešna cena" },
+      { id: "wrong_item", sq: "Artikull i gabuar", sr: "Pogrešan artikal" },
+      { id: "duplicate_order", sq: "Porosi e dyfishtë", sr: "Dvostruka narudžba" },
+      { id: "goods_return", sq: "Kthim malli", sr: "Povrat robe" },
+      { id: "other", sq: "Tjetër...", sr: "Drugo..." },
+    ];
+
+    function frlCorrectionReasonLang() {
+      return _fiscalUiLang === "sr" ? "sr" : "sq";
+    }
+
+    function frlCorrectionReasonLabel(preset) {
+      return preset[frlCorrectionReasonLang()] || preset.sq;
+    }
+
+    function frlReasonPickerLabel(presetId) {
+      if (!presetId) return "— Zgjidh arsyen —";
+      const preset = FRL_CORRECTION_REASON_PRESETS.find((p) => p.id === presetId);
+      return preset ? frlCorrectionReasonLabel(preset) : "— Zgjidh arsyen —";
+    }
+
+    function frlCloseReasonPicker() {
+      const menu = document.getElementById("frl-storno-reason-menu");
+      const btn = document.getElementById("frl-storno-reason-btn");
+      menu?.classList.add("hidden");
+      btn?.classList.remove("open");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+
+    function frlToggleReasonPicker(forceOpen) {
+      const menu = document.getElementById("frl-storno-reason-menu");
+      const btn = document.getElementById("frl-storno-reason-btn");
+      if (!menu || !btn) return;
+      const open =
+        forceOpen === true ? true : forceOpen === false ? false : menu.classList.contains("hidden");
+      if (open) {
+        menu.classList.remove("hidden");
+        btn.classList.add("open");
+        btn.setAttribute("aria-expanded", "true");
+      } else {
+        frlCloseReasonPicker();
+      }
+    }
+
+    function frlPopulateCorrectionReasonSelect() {
+      const hidden = document.getElementById("frl-storno-reason-preset");
+      const menu = document.getElementById("frl-storno-reason-menu");
+      const btn = document.getElementById("frl-storno-reason-btn");
+      if (!hidden || !menu || !btn) return;
+      const cur = hidden.value;
+      menu.innerHTML = FRL_CORRECTION_REASON_PRESETS.map(
+        (p) =>
+          `<button type="button" role="option" data-reason-id="${escHtmlFrl(p.id)}" class="${cur === p.id ? "selected" : ""}">${escHtmlFrl(frlCorrectionReasonLabel(p))}</button>`
+      ).join("");
+      menu.querySelectorAll("button[data-reason-id]").forEach((el) => {
+        el.addEventListener("click", () => {
+          frlSelectCorrectionReason(el.getAttribute("data-reason-id") || "");
+          frlCloseReasonPicker();
+        });
+      });
+      btn.textContent = frlReasonPickerLabel(cur);
+    }
+
+    function frlSelectCorrectionReason(presetId) {
+      const hidden = document.getElementById("frl-storno-reason-preset");
+      const btn = document.getElementById("frl-storno-reason-btn");
+      if (hidden) hidden.value = presetId || "";
+      if (btn) btn.textContent = frlReasonPickerLabel(presetId);
+      frlPopulateCorrectionReasonSelect();
+      frlOnCorrectionReasonPresetChange();
+    }
+
+    function frlOnCorrectionReasonPresetChange() {
+      const hidden = document.getElementById("frl-storno-reason-preset");
+      const custom = document.getElementById("frl-storno-reason-custom");
+      if (!hidden || !custom) return;
+      const presetId = hidden.value;
+      if (!presetId) return;
+      if (presetId === "other") {
+        custom.value = "";
+        custom.placeholder =
+          frlCorrectionReasonLang() === "sr"
+            ? "Unesite razlog ručno…"
+            : "Shkruani arsyen manualisht…";
+        custom.focus();
+        return;
+      }
+      const preset = FRL_CORRECTION_REASON_PRESETS.find((p) => p.id === presetId);
+      if (preset) {
+        custom.value = frlCorrectionReasonLabel(preset);
+        custom.placeholder =
+          frlCorrectionReasonLang() === "sr"
+            ? "Možete izmeniti tekst…"
+            : "Mund ta ndryshoni tekstin…";
+      }
+    }
+
+    function getFrlCorrectionReason() {
+      const custom = String(document.getElementById("frl-storno-reason-custom")?.value || "").trim();
+      if (custom) return custom;
+      const hidden = document.getElementById("frl-storno-reason-preset");
+      if (!hidden || !hidden.value || hidden.value === "other") return "";
+      const preset = FRL_CORRECTION_REASON_PRESETS.find((p) => p.id === hidden.value);
+      return preset ? frlCorrectionReasonLabel(preset) : "";
+    }
+
     function setFrlOpsMsg(text, ok) {
       const el = document.getElementById("frl-ops-msg");
       if (!el) return;
@@ -15460,13 +15729,13 @@
         setFrlOpsMsg("Vendos NUIKF ose bëj lookup fillimisht.", false);
         return;
       }
-      const reason =
-        prompt(
-          "Arsye e anulimit të plotë (Storno/CANCEL):",
-          "Anulim i plotë i kuponit"
-        ) || "";
-      if (!String(reason).trim()) {
-        setFrlOpsMsg("Anulimi kërkon arsye.", false);
+      const reason = getFrlCorrectionReason();
+      if (!reason) {
+        setFrlOpsMsg(
+          "Zgjidhni arsyen nga lista ose shkruajeni te fusha «Ose shkruani arsyen këtu…».",
+          false
+        );
+        document.getElementById("frl-storno-reason-custom")?.focus();
         return;
       }
       if (
@@ -15486,7 +15755,7 @@
           body: JSON.stringify({
             nuikf,
             type: "cancel",
-            reason: String(reason).trim(),
+            reason,
             operator_name: "Admin",
             operator_id: "ADMIN",
           }),
@@ -15734,6 +16003,7 @@
       const tbody = document.getElementById("frl-tbody");
       const countEl = document.getElementById("frl-count");
       if (!modal || !tbody) return;
+      frlPopulateCorrectionReasonSelect();
       modal.hidden = false;
       tbody.innerHTML =
         '<tr><td colspan="10" style="color:#a0a0b8">' +
@@ -15792,6 +16062,14 @@
     document.getElementById("btn-fiscal-receipts-list")?.addEventListener("click", hapFiscalReceiptsModal);
     document.getElementById("frl-btn-lookup")?.addEventListener("click", () => frlLookupReceiptByNuikf());
     document.getElementById("frl-btn-cancel")?.addEventListener("click", () => frlConfirmFullCancel());
+    document.getElementById("frl-storno-reason-btn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      frlToggleReasonPicker();
+    });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("#frl-storno-reason-picker")) frlCloseReasonPicker();
+    });
+    frlPopulateCorrectionReasonSelect();
     document.getElementById("frl-btn-return")?.addEventListener("click", () => frlOpenReturnPanel());
     document.getElementById("frl-btn-exchange")?.addEventListener("click", () => frlOpenExchangePanel());
     document.getElementById("frl-btn-confirm-return")?.addEventListener("click", () => frlConfirmReturnStorno());

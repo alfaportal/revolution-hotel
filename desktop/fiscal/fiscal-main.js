@@ -12,16 +12,18 @@ const {
 const {
   calculateVatBreakdown,
   calculateVatTaxBreakdown,
+  distributeCartAdjustment,
   getVatRate,
   getVatNormLetter,
   round4,
+  lineTotalAmount,
   normalizeQty,
   normalizeUnitPrice,
 } = require("./fiscal-vat");
 const { signReceipt } = require("./fiscal-crypto");
 const { generateFiscalQR } = require("./fiscal-qr");
 const { generateFiscalReceipt } = require("./fiscal-print");
-const { syncLanguageFromSettings } = require("./fiscal-i18n");
+const { syncLanguageFromSettings, normalizeLang } = require("./fiscal-i18n");
 const {
   checkAtkReachable,
   checkInternetConnection,
@@ -148,9 +150,50 @@ function parseItems(raw) {
   if (Array.isArray(raw)) return raw;
   try {
     const p = JSON.parse(raw || "[]");
-    return Array.isArray(p) ? p : [];
+    if (Array.isArray(p)) return p;
+    if (p && Array.isArray(p.items)) return p.items;
+    return [];
   } catch {
     return [];
+  }
+}
+
+function parseOrderPayload(raw) {
+  if (Array.isArray(raw)) {
+    return {
+      items: raw,
+      cart_surcharge_amount: 0,
+      cart_discount_amount: 0,
+      cart_discount: null,
+      payment_splits: [],
+    };
+  }
+  try {
+    const p = typeof raw === "string" ? JSON.parse(raw || "{}") : raw || {};
+    if (Array.isArray(p)) {
+      return {
+        items: p,
+        cart_surcharge_amount: 0,
+        cart_discount_amount: 0,
+        cart_discount: null,
+        payment_splits: [],
+      };
+    }
+    return {
+      items: Array.isArray(p.items) ? p.items : [],
+      cart_surcharge_amount: Number(p.cart_surcharge_amount) || 0,
+      cart_discount_amount: Number(p.cart_discount_amount) || 0,
+      cart_discount: normalizeDiscountMeta(p.cart_discount),
+      payment_splits: Array.isArray(p.payment_splits) ? p.payment_splits : [],
+    };
+  } catch {
+    return {
+      items: [],
+      cart_surcharge_amount: 0,
+      cart_discount_amount: 0,
+      cart_discount: null,
+      payment_splits: [],
+    };
   }
 }
 
@@ -607,23 +650,25 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   }
 
   const settings = getFiscalSettings();
-  // Gjuha e kuponit = fiscal_settings.language (duhet para generateFiscalReceipt)
   const receiptLang = syncLanguageFromSettings(
-    settings && settings.language === "sr" ? "sr" : "sq"
+    opts.language != null && String(opts.language).trim() !== ""
+      ? normalizeLang(opts.language)
+      : settings && settings.language === "sr"
+        ? "sr"
+        : "sq"
   );
   console.log("[fiscal-main] processFiscalReceipt language=", receiptLang);
-  const items = normalizeItems(
-    opts.items || parseItems(order.items_json)
-  );
+  const orderPayload = parseOrderPayload(order.items_json);
+  const items = normalizeItems(opts.items || orderPayload.items);
   if (!items.length) {
     throw new Error("Porosia nuk ka artikuj për fiskalizim");
   }
 
   const payment = paymentMethod || order.payment_method || "cash";
-  const paymentSplits =
+  let paymentSplits =
     (Array.isArray(opts.payment_splits) && opts.payment_splits.length
       ? opts.payment_splits
-      : null) || [];
+      : orderPayload.payment_splits) || [];
   const operatorName =
     String(opts.operator_name || order.waiter_name || "Operator").trim() ||
     "Operator";
@@ -652,33 +697,39 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
 
   const subtotal =
     opts.subtotal != null
-      ? Number(opts.subtotal)
-      : Math.round(
+      ? round4(opts.subtotal)
+      : round4(
           items.reduce(
-            (s, it) =>
-              s +
-              (Number(it.quantity || it.qty) || 0) *
-                (Number(it.unit_price || it.price) || 0),
+            (s, it) => s + lineTotalAmount(it.quantity || it.qty, it.unit_price || it.price),
             0
-          ) * 100
-        ) / 100;
-  const discount = Number(opts.discount_amount ?? order.discount_total ?? 0) || 0;
+          )
+        );
+  const discount = round4(Number(opts.discount_amount ?? order.discount_total ?? 0) || 0);
+  const surcharge = round4(
+    Number(opts.surcharge_amount ?? orderPayload.cart_surcharge_amount ?? 0) || 0
+  );
   const totalAmount =
     opts.total_amount != null
-      ? Number(opts.total_amount)
-      : Number(order.total) || Math.round((subtotal - discount) * 100) / 100;
+      ? round4(opts.total_amount)
+      : round4(Number(order.total) || subtotal - discount + surcharge);
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     throw new Error("total_amount duhet > 0 para INSERT fiskal");
   }
 
-  const turnoverBreak = calculateVatBreakdown(items) || {
+  if (!paymentSplits.length && payment && String(payment).toLowerCase() !== "mixed") {
+    paymentSplits = [{ method: payment, amount: totalAmount }];
+  }
+
+  const fiscalItems = distributeCartAdjustment(items, discount, surcharge);
+
+  const turnoverBreak = calculateVatBreakdown(fiscalItems) || {
     A: 0,
     B: 0,
     C: 0,
     D: 0,
     E: 0,
   };
-  const taxResult = taxFromBreakdown(items, turnoverBreak, {
+  const taxResult = taxFromBreakdown(fiscalItems, turnoverBreak, {
     totalAmount,
   });
   const vatTax = taxResult.tax;
@@ -732,17 +783,29 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     console.warn("[fiscal-main] generateFiscalQR:", e.message);
   }
 
+  const cartDiscountMeta =
+    normalizeDiscountMeta(opts.cart_discount) ||
+    orderPayload.cart_discount ||
+    null;
+
   const orderData = {
     items,
+    fiscal_items: fiscalItems,
     operator_name: operatorName,
     operator_id: operatorId,
     payment_method: payment,
     payment_splits: paymentSplits,
     subtotal,
     discount_amount: discount,
+    cart_discount: cartDiscountMeta,
+    surcharge_amount: surcharge,
     total_amount: totalAmount,
     total_without_tax: totalWithoutTax,
-    amount_paid: totalAmount,
+    language: receiptLang,
+    amount_paid:
+      opts.amount_paid != null && Number.isFinite(Number(opts.amount_paid))
+        ? round4(Number(opts.amount_paid))
+        : totalAmount,
   };
 
   const fiscalData = {
@@ -803,7 +866,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     taxpayer_vat: taxpayerVat || null,
     taxpayer_name: taxpayerName,
     taxpayer_address: taxpayerAddress,
-    items_json: JSON.stringify(items),
+    items_json: JSON.stringify(fiscalItems),
     subtotal,
     discount_amount: discount,
     total_amount: totalAmount,
