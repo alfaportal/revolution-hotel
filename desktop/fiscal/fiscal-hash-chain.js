@@ -4,10 +4,10 @@
  * Çdo kupon: Payload, Current Hash, Previous Hash, Integrity Check.
  * Previous Hash = hash-i i kuponit të menjëhershëm paraprak (zinxhir auditimi ATK).
  *
- * HOTEL: pa fiscal-test-mode-store — gjithmonë SQLite.
  */
 const crypto = require("crypto");
 const { round4, normalizeQty, normalizeUnitPrice } = require("./fiscal-vat");
+const { isFiscalMemoryOnly } = require("./fiscal-test-mode-store");
 
 const GENESIS_HASH = crypto
   .createHash("sha256")
@@ -118,6 +118,10 @@ function computeChainHash(previousHash, payloadObj) {
 }
 
 function getPreviousChainHash(sqlite) {
+  if (isFiscalMemoryOnly()) {
+    const { memGetLastChainHash } = require("./fiscal-test-mode-store");
+    return memGetLastChainHash();
+  }
   const db = sqlite || getSqlite();
   ensureChainColumns(db);
   const row = db
@@ -176,6 +180,12 @@ function applyHashChainToReceipt(row, sqlite) {
   };
 }
 
+function recordChainHashAfterInsert(currentHash) {
+  if (!isFiscalMemoryOnly()) return;
+  const { memSetLastChainHash } = require("./fiscal-test-mode-store");
+  memSetLastChainHash(currentHash);
+}
+
 function attachChainToFiscalData(fiscalData, receiptRow) {
   if (!fiscalData || typeof fiscalData !== "object" || !receiptRow) return fiscalData;
   fiscalData.chain_payload = parseJsonField(receiptRow.chain_payload_json, null);
@@ -189,6 +199,11 @@ function attachChainToFiscalData(fiscalData, receiptRow) {
 }
 
 function verifyFullChain(limit = 5000) {
+  if (isFiscalMemoryOnly()) {
+    const { memGetAllReceiptsForChainVerify } = require("./fiscal-test-mode-store");
+    const rows = memGetAllReceiptsForChainVerify();
+    return _verifyRowsChain(rows);
+  }
   const sqlite = getSqlite();
   ensureChainColumns(sqlite);
   const rows = sqlite
@@ -253,6 +268,7 @@ module.exports = {
   buildReceiptChainPayload,
   computeChainHash,
   applyHashChainToReceipt,
+  recordChainHashAfterInsert,
   verifyReceiptChainIntegrity,
   verifyFullChain,
   attachChainToFiscalData,

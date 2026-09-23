@@ -5,47 +5,74 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { isFiscalEnabled } = require("./fiscal-config");
+const { isFiscalEnabled, EDITABLE_KEYS } = require("./fiscal-config");
+const { isFiscalMemoryOnly, memLogAudit, memGetAuditLog } = require("./fiscal-test-mode-store");
 
 const ALLOWED_ACTIONS = Object.freeze([
   "receipt_created",
   "receipt_sent",
   "receipt_send_failed",
+  "receipt_emailed",
   "z_report",
+  "z_report_generated",
   "x_report",
   "periodic_report",
+  "short_periodic_report",
+  "monthly_memory_report",
   "power_recovery",
+  "repair_wizard",
   "setting_changed",
   "correction_created",
   "offline_start",
   "offline_end",
+  "offline_deadline_48h",
+  "offline_deadline_day10",
+  "atk_notification_ack",
+  "paper_block_mode_on",
+  "paper_block_mode_off",
+  "paper_block_issued",
+  "paper_block_registered",
   "login",
   "error",
   "self_test",
   "write_once_violation",
   "backup_created",
-  "paper_block_mode_on",
-  "paper_block_mode_off",
-  "paper_block_issued",
-  "paper_block_registered",
+  "backup_restored",
+  "disk_space_warning",
+  "disk_space_critical",
 ]);
 
-const SYSTEM_ACTIONS = Object.freeze(new Set(["backup_created"]));
+const SYSTEM_ACTIONS = Object.freeze(
+  new Set(["backup_created", "backup_restored", "disk_space_warning", "disk_space_critical"])
+);
 
-/** Veprimet që shfaqen në eksport/UI audit (ATK Neni 26). */
-const FISCAL_AUDIT_EXPORT_ACTIONS = Object.freeze([
-  "receipt_created",
-  "receipt_sent",
-  "correction_created",
-  "z_report",
-  "x_report",
-  "offline_start",
-  "offline_end",
-  "backup_created",
-  "power_recovery",
-]);
+/** Veprimet që shfaqen në eksport/UI audit (ATK Neni 26) — krejt veprimet e lejuara. */
+const FISCAL_AUDIT_EXPORT_ACTIONS = Object.freeze([...ALLOWED_ACTIONS]);
 
 const AUDIT_PURGE_FLAG = "audit_legacy_noise_purged_v2";
+
+const FISCAL_APP_SETTING_KEYS = Object.freeze([
+  "atk_auto_send",
+  "atk_send_allowed",
+  "atk_test_mode",
+  "sef_code",
+  "developer_nui",
+  "sef_identifier",
+  "certificate_path",
+  "private_key_path",
+]);
+
+const SENSITIVE_SETTING_KEY_RE =
+  /password|pin|passphrase|secret|token|credential|private.?key|certificate|signed.?cert|\.pem|\.key/i;
+
+const FISCAL_SETTING_AUDIT_KEYS = Object.freeze([
+  ...EDITABLE_KEYS,
+  ...FISCAL_APP_SETTING_KEYS,
+]);
+
+const SETTING_AUDIT_IGNORE_KEYS = Object.freeze(
+  new Set(["id", "created_at", "updated_at"])
+);
 
 function getSqlite() {
   const database = require("../database");
@@ -74,6 +101,98 @@ function normalizeDateBound(value, endOfDay) {
   return s;
 }
 
+function isSensitiveSettingKey(key) {
+  return SENSITIVE_SETTING_KEY_RE.test(String(key || ""));
+}
+
+function normalizeSettingAuditValue(key, value) {
+  if (key === "fiscal_enabled") {
+    return value === true || value === 1 || value === "1" ? "1" : "0";
+  }
+  if (value == null) return null;
+  if (typeof value === "boolean") return value ? "1" : "0";
+  return String(value);
+}
+
+function settingsAuditValuesEqual(key, a, b) {
+  return normalizeSettingAuditValue(key, a) === normalizeSettingAuditValue(key, b);
+}
+
+function buildSettingChangeEntries(before, after, keys) {
+  const list = Array.isArray(keys) && keys.length ? keys : FISCAL_SETTING_AUDIT_KEYS;
+  const changes = [];
+  for (const key of list) {
+    const oldVal = before?.[key];
+    const newVal = after?.[key];
+    if (settingsAuditValuesEqual(key, oldVal, newVal)) continue;
+    if (isSensitiveSettingKey(key)) {
+      changes.push({ field: key, old: "ndryshuar", new: "ndryshuar", redacted: true });
+    } else {
+      changes.push({
+        field: key,
+        old: normalizeSettingAuditValue(key, oldVal),
+        new: normalizeSettingAuditValue(key, newVal),
+      });
+    }
+  }
+  return changes;
+}
+
+function snapshotFiscalSettingsState(database) {
+  const dbMod = database || require("../database");
+  let row = {};
+  if (typeof dbMod.getFiscalSettingsRow === "function") {
+    row = dbMod.getFiscalSettingsRow() || {};
+  } else {
+    row = require("./fiscal-config").getFiscalSettings() || {};
+  }
+  const snap = { ...row };
+  snap.fiscal_enabled = !!row.fiscal_enabled;
+  if (typeof dbMod.getSetting === "function") {
+    snap.atk_auto_send = dbMod.getSetting("atk_auto_send", "0");
+    snap.atk_send_allowed = dbMod.getSetting("atk_send_allowed", "0");
+    snap.atk_test_mode = dbMod.getSetting("atk_test_mode", "0");
+  }
+  return snap;
+}
+
+function logFiscalSettingsChanged(opts = {}) {
+  const before = opts.before && typeof opts.before === "object" ? opts.before : {};
+  const after = opts.after && typeof opts.after === "object" ? opts.after : {};
+  const keys =
+    opts.keys ||
+    [
+      ...new Set([
+        ...FISCAL_SETTING_AUDIT_KEYS,
+        ...Object.keys(before),
+        ...Object.keys(after),
+      ]),
+    ].filter((k) => !SETTING_AUDIT_IGNORE_KEYS.has(k));
+  const changes = buildSettingChangeEntries(before, after, keys);
+  if (!changes.length) return null;
+
+  const operatorName = String(opts.operator_name || "Operator").trim() || "Operator";
+  const operatorId = String(opts.operator_id || "POS").trim() || "POS";
+  const at = new Date().toISOString();
+
+  try {
+    return logFiscalAction(
+      "setting_changed",
+      {
+        source: opts.source || "api",
+        changes,
+        changed_count: changes.length,
+        at,
+      },
+      operatorName,
+      operatorId
+    );
+  } catch (e) {
+    console.warn("[fiscal-audit] setting_changed:", e.message || e);
+    return null;
+  }
+}
+
 /**
  * INSERT write-once në fiscal_audit_log.
  */
@@ -88,6 +207,10 @@ function logFiscalAction(action, details, operatorName, operatorId) {
   }
   // Login audit: gjithmonë (edhe kur SEF UI është OFF) — gati për certifikim.
   if (act !== "login" && !SYSTEM_ACTIONS.has(act) && !isFiscalEnabled()) return null;
+
+  if (isFiscalMemoryOnly()) {
+    return memLogAudit(act, details, operatorName, operatorId);
+  }
 
   const sqlite = getSqlite();
   const detailsJson = JSON.stringify(
@@ -147,6 +270,12 @@ function reinstallAuditWriteOnceTriggers(sqlite) {
  * Fshin një herë rreshtat test/debug — mbaj vetëm veprime fiskale reale.
  */
 function purgeLegacyAuditNoise() {
+  if (isFiscalMemoryOnly()) {
+    const { memPurgeNonFiscalAudit } = require("./fiscal-test-mode-store");
+    const { deleted } = memPurgeNonFiscalAudit(FISCAL_AUDIT_EXPORT_ACTIONS);
+    return { skipped: false, deleted };
+  }
+
   const database = require("../database");
   if (database.getSetting(AUDIT_PURGE_FLAG) === "1") {
     return { skipped: true, deleted: 0 };
@@ -176,6 +305,10 @@ function purgeLegacyAuditNoise() {
  */
 function getAuditLog(fromDate, toDate) {
   if (!isFiscalEnabled()) return null;
+
+  if (isFiscalMemoryOnly()) {
+    return filterFiscalExportRows(memGetAuditLog(fromDate, toDate));
+  }
 
   const sqlite = getSqlite();
   const from = normalizeDateBound(fromDate, false);
@@ -304,12 +437,16 @@ const PDF_FONT_SIZE = 8;
 const PDF_LINE_HEIGHT = 11;
 const PDF_CHARS_PER_LINE = 105;
 
-const PDF_COL = Object.freeze({
-  id: 5,
-  date: 19,
-  action: 20,
-  operator: 14,
-  gap: 2,
+/** Kolona fikse tabelë audit (PDF) — Neni 26 / eksport ATK. */
+const PDF_EXPORT_COL = Object.freeze({
+  data: 10,
+  ora: 8,
+  veprimi: 14,
+  nuikf: 16,
+  shuma: 9,
+  status: 14,
+  operator: 12,
+  gap: 1,
 });
 
 function padEndText(value, width) {
@@ -324,28 +461,8 @@ function padStartText(value, width) {
   return " ".repeat(width - s.length) + s;
 }
 
-function pdfDetailColumnWidth() {
-  return (
-    PDF_CHARS_PER_LINE -
-    PDF_COL.id -
-    PDF_COL.date -
-    PDF_COL.action -
-    PDF_COL.operator -
-    4 * PDF_COL.gap
-  );
-}
-
-function pdfDetailIndent() {
-  return " ".repeat(
-    PDF_COL.id +
-      PDF_COL.gap +
-      PDF_COL.date +
-      PDF_COL.gap +
-      PDF_COL.action +
-      PDF_COL.gap +
-      PDF_COL.operator +
-      PDF_COL.gap
-  );
+function pdfExportDetajeIndent() {
+  return "  Detaje: ";
 }
 
 function wrapText(text, maxWidth) {
@@ -407,11 +524,18 @@ function formatAuditActionLabel(action) {
   const labels = {
     receipt_created: "Kupon i krijuar",
     receipt_sent: "Dërguar te ATK",
+    receipt_emailed: "Kupon me email",
     correction_created: "Korrigjim",
     z_report: "Raporti Z",
     x_report: "Raporti X",
+    periodic_report: "Raport periodik",
+    short_periodic_report: "Raport periodik i shkurtër",
+    monthly_memory_report: "Raport mujor memory",
     offline_start: "Offline filloi",
     offline_end: "Offline mbaroi",
+    offline_deadline_48h: "Afat 48h offline",
+    offline_deadline_day10: "Afat ditë 10 offline",
+    atk_notification_ack: "Konfirmim njoftim ATK",
     backup_created: "Backup",
     power_recovery: "Rikuperim energjie",
   };
@@ -478,6 +602,14 @@ function formatAuditDetailText(row) {
     return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
   }
 
+  if (action === "receipt_emailed") {
+    const parts = [
+      d.nuikf ? `NUIKF: ${d.nuikf}` : null,
+      d.email ? `Email: ${d.email}` : null,
+    ].filter(Boolean);
+    return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
+  }
+
   if (action === "offline_start" || action === "offline_end") {
     return d.at ? `Koha: ${String(d.at).replace("T", " ").slice(0, 19)}` : formatAuditDetailFallback(d);
   }
@@ -503,40 +635,125 @@ function formatAuditDetailText(row) {
   return formatAuditDetailFallback(d);
 }
 
-function formatAuditTableRow(id, createdAt, actionLabel, operatorName, detailLine) {
-  const g = PDF_COL.gap;
+const RECEIPT_AUDIT_ACTIONS = Object.freeze(
+  new Set(["receipt_created", "receipt_sent", "receipt_send_failed"])
+);
+
+function splitAuditDateTime(createdAt) {
+  const raw = String(createdAt || "").trim();
+  if (!raw) return { data: "", ora: "" };
+  const normalized = raw.replace("T", " ");
+  const [datePart, timePart] = normalized.split(/\s+/);
+  const data = datePart || "";
+  let ora = timePart || "";
+  if (ora.length > 8) ora = ora.slice(0, 8);
+  return { data, ora };
+}
+
+function extractReceiptNuikf(action, details) {
+  if (!RECEIPT_AUDIT_ACTIONS.has(String(action || "").toLowerCase())) return "";
+  return String(details?.nuikf || "").trim();
+}
+
+function extractReceiptTotal(action, details) {
+  if (!RECEIPT_AUDIT_ACTIONS.has(String(action || "").toLowerCase())) return "";
+  const d = details || {};
+  const val = d.total != null && d.total !== "" ? d.total : d.total_amount;
+  if (val == null || val === "") return "";
+  const n = Number(val);
+  return Number.isFinite(n) ? n.toFixed(2) : String(val);
+}
+
+function extractAuditAtkStatus(action, details) {
+  const act = String(action || "").toLowerCase();
+  const d = details || {};
+  if (act === "receipt_sent") {
+    const tx = d.transaction_id ? String(d.transaction_id).trim() : "";
+    return tx ? `Sukses (${tx})` : "Sukses";
+  }
+  if (act === "receipt_send_failed") {
+    if (d.atk_refused || d.print_blocked) return "Refuzuar";
+    const err = String(d.error || "").trim();
+    if (d.status != null && d.status !== "") {
+      return err ? `HTTP ${d.status}: ${err.slice(0, 60)}` : `HTTP ${d.status}`;
+    }
+    return err ? `Dështoi: ${err.slice(0, 72)}` : "Dështoi";
+  }
+  if (act === "receipt_created") {
+    if (d.local_only) return "Lokal";
+    if (d.offline) return "Offline";
+    return "";
+  }
+  return "";
+}
+
+function mapAuditRowToExport(row) {
+  const d = row?.details && typeof row.details === "object" ? row.details : {};
+  const { data, ora } = splitAuditDateTime(row?.created_at);
+  const operatori =
+    [row?.operator_name, row?.operator_id].filter((x) => String(x || "").trim()).join(" / ") || "";
+  return {
+    data,
+    ora,
+    veprimi: formatAuditActionLabel(row?.action),
+    nuikf: extractReceiptNuikf(row?.action, d),
+    shuma_totale: extractReceiptTotal(row?.action, d),
+    status_atk: extractAuditAtkStatus(row?.action, d),
+    operatori,
+    detaje: formatAuditDetailText(row),
+  };
+}
+
+function formatAuditExportTableRow(cols) {
+  const c = PDF_EXPORT_COL;
+  const g = c.gap;
   return (
-    padStartText(id, PDF_COL.id) +
+    padEndText(cols.data, c.data) +
     " ".repeat(g) +
-    padEndText(String(createdAt || "").slice(0, 19), PDF_COL.date) +
+    padEndText(cols.ora, c.ora) +
     " ".repeat(g) +
-    padEndText(actionLabel, PDF_COL.action) +
+    padEndText(cols.veprimi, c.veprimi) +
     " ".repeat(g) +
-    padEndText(operatorName || "-", PDF_COL.operator) +
+    padEndText(cols.nuikf, c.nuikf) +
     " ".repeat(g) +
-    detailLine
+    padEndText(cols.shuma_totale, c.shuma) +
+    " ".repeat(g) +
+    padEndText(cols.status_atk, c.status) +
+    " ".repeat(g) +
+    padEndText(cols.operatori, c.operator)
   );
 }
 
+function formatAuditExportTableHeader() {
+  return formatAuditExportTableRow({
+    data: "Data",
+    ora: "Ora",
+    veprimi: "Veprimi",
+    nuikf: "NUIKF",
+    shuma_totale: "Shuma",
+    status_atk: "Status ATK",
+    operatori: "Operatori",
+  });
+}
+
 function buildAuditPdfLines(rows, fromDate, toDate) {
-  const detailWidth = pdfDetailColumnWidth();
-  const indent = pdfDetailIndent();
   const rule = "-".repeat(Math.min(PDF_CHARS_PER_LINE, 105));
+  const detajePrefix = pdfExportDetajeIndent();
+  const detajeWidth = Math.max(40, PDF_CHARS_PER_LINE - detajePrefix.length);
   const lines = [
     `Audit Log Fiskal — ${fromDate || "..."} deri ${toDate || "..."}`,
     "=".repeat(Math.min(PDF_CHARS_PER_LINE, 105)),
-    formatAuditTableRow("#", "Data/Ora", "Veprimi", "Operatori", "Detaje"),
+    formatAuditExportTableHeader(),
     rule,
   ];
 
   for (const r of rows) {
-    const actionLabel = formatAuditActionLabel(r.action);
-    const detailLines = wrapText(formatAuditDetailText(r), detailWidth);
-    lines.push(
-      formatAuditTableRow(r.id, r.created_at, actionLabel, r.operator_name, detailLines[0] || "—")
-    );
-    for (let i = 1; i < detailLines.length; i++) {
-      lines.push(indent + detailLines[i]);
+    const mapped = mapAuditRowToExport(r);
+    lines.push(formatAuditExportTableRow(mapped));
+    const detailLines = wrapText(mapped.detaje || "—", detajeWidth);
+    for (let i = 0; i < detailLines.length; i++) {
+      const prefix = i === 0 ? detajePrefix : " ".repeat(detajePrefix.length);
+      lines.push(prefix + detailLines[i]);
     }
   }
 
@@ -651,6 +868,10 @@ module.exports = {
   ALLOWED_ACTIONS,
   FISCAL_AUDIT_EXPORT_ACTIONS,
   logFiscalAction,
+  logFiscalSettingsChanged,
+  snapshotFiscalSettingsState,
+  buildSettingChangeEntries,
+  mapAuditRowToExport,
   getAuditLog,
   exportAuditCSV,
   exportAuditPDF,

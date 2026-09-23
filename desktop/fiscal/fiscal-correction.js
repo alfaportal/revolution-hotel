@@ -11,7 +11,7 @@ const {
 } = require("./fiscal-numbering");
 const { generateFiscalReceipt } = require("./fiscal-print");
 const { syncLanguageFromSettings } = require("./fiscal-i18n");
-const { calculateVatBreakdown, calculateVatTaxBreakdown } = require("./fiscal-vat");
+const { calculateVatBreakdown, calculateVatTaxBreakdown, round4 } = require("./fiscal-vat");
 const { logFiscalAction } = require("./fiscal-audit");
 const { insertFiscalReceipt, getFiscalReceiptById } = require("./fiscal-db");
 const { attachChainToFiscalData } = require("./fiscal-hash-chain");
@@ -82,6 +82,49 @@ function normalizeItem(item) {
     vat_percent: rate,
     menu_item_id: item.menu_item_id ?? item.id ?? null,
   };
+}
+
+function itemMatchKey(item) {
+  const it = normalizeItem(item);
+  return `${it.name}\0${round4(it.price)}`;
+}
+
+function getReturnedQuantitiesByItem(nuikf) {
+  const history = getCorrectionHistory(nuikf);
+  const map = {};
+  for (const corr of history) {
+    if (String(corr.receipt_type || "").toLowerCase() !== "return") continue;
+    for (const it of (corr.items || []).map(normalizeItem)) {
+      const key = itemMatchKey(it);
+      map[key] = round4((map[key] || 0) + (Number(it.quantity) || 0));
+    }
+  }
+  return map;
+}
+
+function getRemainingQuantityForItem(originalItem, returnedMap) {
+  const it = normalizeItem(originalItem);
+  const origQty = Number(it.quantity) || 0;
+  const alreadyReturned = Number(returnedMap[itemMatchKey(it)]) || 0;
+  return Math.max(0, round4(origQty - alreadyReturned));
+}
+
+function getReturnableItemsForReceipt(nuikf) {
+  const original = getOriginalReceipt(nuikf);
+  if (!original) return null;
+  const returnedMap = getReturnedQuantitiesByItem(original.nuikf);
+  return (original.items || []).map(normalizeItem).map((it) => {
+    const origQty = Number(it.quantity) || 0;
+    const alreadyReturned = Number(returnedMap[itemMatchKey(it)]) || 0;
+    const remaining = getRemainingQuantityForItem(it, returnedMap);
+    return {
+      ...it,
+      original_quantity: origQty,
+      already_returned: alreadyReturned,
+      remaining_quantity: remaining,
+      quantity: remaining,
+    };
+  });
 }
 
 function lineGross(item) {
@@ -444,10 +487,40 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   };
 }
 
+function buildExchangeCorrectionReason(selectedOld, saleItems) {
+  const uniq = (items, key = "name") => {
+    const seen = new Set();
+    const out = [];
+    for (const it of items || []) {
+      const n = String(it[key] || "").trim();
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      out.push(n);
+    }
+    return out;
+  };
+
+  const oldNames = uniq(selectedOld);
+  const newNames = uniq(saleItems);
+
+  if (oldNames.length === 1 && newNames.length === 1) {
+    return `Nderrim i artikullit (${oldNames[0]} - ${newNames[0]})`;
+  }
+  if (oldNames.length && newNames.length) {
+    return `Nderrim i artikullit (${oldNames.join(", ")} - ${newNames.join(", ")})`;
+  }
+  if (oldNames.length) {
+    return `Nderrim i artikullit (${oldNames.join(", ")})`;
+  }
+  return "Nderrim artikulli ATK";
+}
+
 module.exports = {
   CORRECTION_TYPES,
   getOriginalReceipt,
   hasCorrection,
   getCorrectionHistory,
   createCorrectionReceipt,
+  getReturnableItemsForReceipt,
+  buildExchangeCorrectionReason,
 };

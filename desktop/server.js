@@ -127,6 +127,123 @@ function buildXReportText(details, settings) {
   return buildFiscalDayReportText(details, settings, "X");
 }
 
+function money(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function reportLayoutHelpers() {
+  const w = 42;
+  const line = (ch = "=") => ch.repeat(w);
+  const row = (label, val) => {
+    const v = String(val ?? "");
+    const gap = Math.max(1, w - label.length - v.length);
+    return `${label}${" ".repeat(gap)}${v}`;
+  };
+  const center = (s) => {
+    const t = String(s || "");
+    if (t.length >= w) return t.slice(0, w);
+    const pad = Math.floor((w - t.length) / 2);
+    return `${" ".repeat(pad)}${t}`;
+  };
+  return { w, line, row, center };
+}
+
+/** Neni 13 / 7 — Raport fiskal periodik i përmbledhur (i shkurtër). */
+function buildShortPeriodicReportText(details, settings) {
+  syncReportLanguage(settings);
+  const t = fiscalI18n.t;
+  const { line, row, center } = reportLayoutHelpers();
+  const turnover = details.vat_turnover || {};
+  const tax = details.vat_breakdown || {};
+  const lines = [
+    line("="),
+    center(settings.taxpayer_legal_name || t("business_fallback")),
+    row(t("nui_label"), settings.taxpayer_nui || "-"),
+    row(t("report_nf_vat"), settings.taxpayer_vat_number || settings.taxpayer_vat || "-"),
+    row(t("report_unit"), settings.unit_name || "-"),
+    row(t("report_sef_id"), fiscalNumbering.getSefIdentifier() || "-"),
+    line("-"),
+    center(details.report_name || t("report_short_periodic_title")),
+    line("-"),
+    row(t("report_from_date"), details.from_date || "-"),
+    row(t("report_to_date"), details.to_date || "-"),
+    row(t("report_fiscalization"), details.fiscalization_datetime || "-"),
+    line("-"),
+    row(t("report_rfd_coupons"), details.rfd_count ?? details.coupon_count ?? 0),
+    row(t("report_turnover_with_vat"), money(details.total_amount).toFixed(2)),
+    row(t("report_total_vat_tax"), money(details.total_tax).toFixed(2)),
+    line("-"),
+    t("report_turnover_by_rate"),
+    row(t("report_rate_a_0"), money(turnover.A).toFixed(2)),
+    row(t("report_rate_c_0"), money(turnover.C).toFixed(2)),
+    row(t("report_rate_d_8"), money(turnover.D).toFixed(2)),
+    row(t("report_rate_e_18"), money(turnover.E).toFixed(2)),
+    t("report_tax_by_rate"),
+    row(t("report_tax_a"), money(tax.A).toFixed(2)),
+    row(t("report_tax_c"), money(tax.C).toFixed(2)),
+    row(t("report_tax_d"), money(tax.D).toFixed(2)),
+    row(t("report_tax_e"), money(tax.E).toFixed(2)),
+    line("="),
+    center(t("report_end")),
+    "",
+  ];
+  return lines.join("\n");
+}
+
+/** Neni 11 / 9 — Raporti mujor i memories fiskale të transferuar në ATK. */
+function buildMonthlyMemoryReportText(details, settings) {
+  syncReportLanguage(settings);
+  const t = fiscalI18n.t;
+  const { line, row, center } = reportLayoutHelpers();
+  const payLabel = (key) => {
+    const map = {
+      cash: t("payment_mode_cash"),
+      card: t("payment_mode_pos"),
+      debit: t("pay_debit"),
+      credit: t("pay_credit"),
+      voucher: t("payment_mode_voucher"),
+      mixed: t("mixed_payment"),
+      other: t("payment_mode_other"),
+    };
+    return map[key] || String(key || "").toUpperCase();
+  };
+  const payments = details.payments || {};
+  const payLines = Object.keys(payments).length
+    ? Object.entries(payments).map(([k, v]) => row(`  ${payLabel(k)}:`, money(v).toFixed(2)))
+    : [row(t("report_no_payments"), "0.00")];
+
+  const lines = [
+    line("="),
+    center(settings.taxpayer_legal_name || t("business_fallback")),
+    row(t("nui_label"), settings.taxpayer_nui || "-"),
+    row(t("report_unit"), settings.unit_name || "-"),
+    row(t("report_sef_id"), fiscalNumbering.getSefIdentifier() || "-"),
+    line("-"),
+    center(details.report_name || t("report_monthly_memory")),
+    center(t("report_transferred_atk")),
+    line("-"),
+    row(t("report_from_date"), details.from_date || "-"),
+    row(t("report_to_date"), details.to_date || "-"),
+    row(t("report_fiscalization_date"), details.fiscalization_date || "-"),
+    row(t("report_fiscalization_time"), details.fiscalization_time || "-"),
+    line("-"),
+    row(t("report_rfd_in_period"), details.rfd_count ?? details.coupon_count ?? 0),
+    row(t("report_turnover_with_vat"), money(details.total_amount).toFixed(2)),
+    row(t("report_total_vat_tax"), money(details.total_tax).toFixed(2)),
+    row(t("report_total_without_vat"), money(details.total_without_tax).toFixed(2)),
+    row(t("report_ram_resets"), details.ram_resets ?? 0),
+    line("-"),
+    t("report_payment_methods"),
+    ...payLines,
+    line("-"),
+    center(details.transmission_ok ? t("report_transmission_ok") : t("report_transmission_fail")),
+    line("="),
+    center(t("report_end")),
+    "",
+  ];
+  return lines.join("\n");
+}
+
 function roundPaymentMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
@@ -6488,19 +6605,176 @@ app.post("/api/fiscal/z-report/send-atk", auth, adminOnly, async (req, res) => {
   }
 });
 
-/* Lista e kuponëve fiskalë — vetëm pronari */
-app.get("/api/fiscal-receipts", auth, adminOnly, (req, res) => {
+/** Raport periodik (mes dy datave) */
+app.post("/api/fiscal/periodic-report", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const settings = fiscalConfig.getFiscalSettings();
+    const operatorName = req.body?.operator_name || req.session?.emri || "Admin";
+    const operatorId = resolveBodyOperatorId(req);
+    const details = fiscalNumbering.getPeriodicFiscalReport(
+      req.body?.from || req.body?.from_date,
+      req.body?.to || req.body?.to_date,
+      operatorName,
+      operatorId
+    );
+    if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+    const text = buildFiscalDayReportText(details, settings, "PERIODIC");
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print) {
+      try {
+        const pr = await getFiscalMain().printFiscalReportText(text, {
+          reportDetails: details,
+          reportMode: "PERIODIC",
+          operatorId,
+        });
+        printed = !!pr.printed;
+        if (!pr.printed) printMessage = pr.printMessage || "Printimi periodik dështoi";
+      } catch (pe) {
+        printMessage = pe.message || "Printimi periodik dështoi";
+      }
+    }
+    res.json({
+      ok: true,
+      details: { ...details, sef_id: fiscalNumbering.getSefIdentifier() || "" },
+      text,
+      printed,
+      printMessage,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, error: e.message });
+  }
+});
+
+/** Raport i shkurtër periodik (Neni 13 / 7) */
+app.post("/api/fiscal/short-periodic-report", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const settings = fiscalConfig.getFiscalSettings();
+    const operatorName = req.body?.operator_name || req.session?.emri || "Admin";
+    const operatorId = resolveBodyOperatorId(req);
+    const details = fiscalNumbering.getShortPeriodicFiscalReport(
+      req.body?.from || req.body?.from_date,
+      req.body?.to || req.body?.to_date,
+      operatorName,
+      operatorId
+    );
+    if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+    const text = buildShortPeriodicReportText(details, settings);
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print) {
+      try {
+        const pr = await getFiscalMain().printFiscalReportText(text);
+        printed = !!pr.printed;
+        if (!pr.printed) printMessage = pr.printMessage || "Printimi i raportit të shkurtër dështoi";
+      } catch (pe) {
+        printMessage = pe.message || "Printimi i raportit të shkurtër dështoi";
+      }
+    }
+    res.json({
+      ok: true,
+      details: { ...details, sef_id: fiscalNumbering.getSefIdentifier() || "" },
+      text,
+      printed,
+      printMessage,
+    });
+  } catch (e) {
+    console.error("[short-periodic]", e);
+    res.status(400).json({ ok: false, gabim: e.message, error: e.message });
+  }
+});
+
+/** Raporti mujor i memories fiskale → ATK (Neni 11 / 9) */
+app.post("/api/fiscal/monthly-memory-report", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const from = req.body?.from || req.body?.from_date;
+    const to = req.body?.to || req.body?.to_date;
+    const { from: periodFrom, to: periodTo } = fiscalNumbering.resolveMonthlyReportPeriod(from, to);
+
+    const transmission_flush = await fiscalOffline.processPendingForPeriod(periodFrom, periodTo, {
+      manual: true,
+    });
+
+    const settings = fiscalConfig.getFiscalSettings();
+    const operatorName = req.body?.operator_name || req.session?.emri || "Admin";
+    const operatorId = resolveBodyOperatorId(req);
+    const details = fiscalNumbering.getMonthlyFiscalMemoryReport(from, to, operatorName, operatorId);
+    if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+    const text = buildMonthlyMemoryReportText(details, settings);
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print) {
+      try {
+        const pr = await getFiscalMain().printFiscalReportText(text);
+        printed = !!pr.printed;
+        if (!pr.printed) printMessage = pr.printMessage || "Printimi i raportit mujor dështoi";
+      } catch (pe) {
+        printMessage = pe.message || "Printimi i raportit mujor dështoi";
+      }
+    }
+    res.json({
+      ok: true,
+      details: {
+        ...details,
+        sef_id: fiscalNumbering.getSefIdentifier() || "",
+        transmission_flush,
+      },
+      text,
+      printed,
+      printMessage,
+    });
+  } catch (e) {
+    console.error("[monthly-memory]", e);
+    res.status(400).json({ ok: false, gabim: e.message, error: e.message });
+  }
+});
+
+function enrichFiscalReceiptRowsForApi(rows) {
+  const { isAtkTransmissionBlocked } = require("./fiscal/fiscal-test-mode-store");
+  const atkBlocked = isAtkTransmissionBlocked();
+  return (rows || []).map((r) => ({
+    ...r,
+    sent_to_atk: r.sent_to_atk ? 1 : 0,
+    is_offline: r.is_offline ? 1 : 0,
+    atk_label: atkBlocked
+      ? Number(r.sent_to_atk) === 1
+        ? "ATK OK"
+        : "LOKAL"
+      : Number(r.sent_to_atk) === 1
+        ? "ATK OK"
+        : Number(r.is_offline) === 1
+          ? "OFFLINE"
+          : "Në pritje",
+    atk_ok: Number(r.sent_to_atk) === 1,
+  }));
+}
+
+function handleGetFiscalReceiptsList(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
     const limit = Number(req.query.limit) || 500;
-    const receipts = getFiscalReceiptsList().listFiscalReceipts(limit) || [];
+    const raw = getFiscalReceiptsList().listFiscalReceipts(limit) || [];
+    const receipts = enrichFiscalReceiptRowsForApi(raw);
     res.json({ ok: true, count: receipts.length, receipts });
   } catch (e) {
-    res.status(500).json({ gabim: e.message });
+    res.status(500).json({ gabim: e.message, error: e.message });
   }
-});
+}
+
+/* Lista e kuponëve fiskalë — vetëm pronari (+ alias path BIZNES) */
+app.get("/api/fiscal-receipts", auth, adminOnly, handleGetFiscalReceiptsList);
+app.get("/api/fiscal/receipts", auth, adminOnly, handleGetFiscalReceiptsList);
 
 app.get("/api/fiscal-receipts/:id", auth, adminOnly, (req, res) => {
   try {
@@ -6518,42 +6792,461 @@ app.get("/api/fiscal-receipts/:id", auth, adminOnly, (req, res) => {
   }
 });
 
-/** Print nga Print Preview — reprint origjinal, pa INSERT të ri. */
-app.post("/api/fiscal-receipts/:id/print", auth, adminOnly, async (req, res) => {
+/** Dërgim elektronik i kuponit te konsumatori (email via revolution-restaurant-server). */
+async function postFiscalReceiptEmailHandler(req, res) {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const { emailFiscalReceiptToConsumer } = require("./fiscal/fiscal-receipt-email");
+    const email = String(req.body?.email || "").trim();
+    const result = await emailFiscalReceiptToConsumer({
+      receipt_id: req.params.id,
+      email,
+      operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+      operator_id: req.body?.operator_id || "ADMIN",
+    });
+    if (!result.ok) {
+      return res.status(400).json({
+        ok: false,
+        gabim: result.error,
+        error: result.error,
+        nuikf: result.nuikf,
+      });
+    }
+    res.json({
+      ok: true,
+      nuikf: result.nuikf,
+      email: result.email,
+      message: result.message || "Kuponi u dërgua me email.",
+    });
+  } catch (e) {
+    console.error("[receipt/email]", e);
+    res.status(400).json({ ok: false, gabim: e.message || "Dërgimi i emailit dështoi" });
+  }
+}
+
+app.post("/api/fiscal/receipts/:id/email", auth, adminOnly, postFiscalReceiptEmailHandler);
+app.post("/api/fiscal-receipts/:id/email", auth, adminOnly, postFiscalReceiptEmailHandler);
+
+/** Reprint origjinal (pas Preview) — pa INSERT të ri; mbështet print_text nga preview si BIZNES. */
+async function postFiscalReceiptPrintHandler(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
-    const reprint = getFiscalReceiptsList().prepareFiscalReceiptReprint(req.params.id);
+    let reprint;
+    if (req.body?.print_text && req.body?.nuikf) {
+      reprint = {
+        id: Number(req.params.id) || 0,
+        print_text: String(req.body.print_text),
+        nuikf: String(req.body.nuikf).trim().toUpperCase(),
+        total_amount: Number(req.body.total_amount) || 0,
+        fiscal_date: String(req.body.fiscal_date || ""),
+        taxpayer_nui: String(req.body.taxpayer_nui || ""),
+      };
+    } else {
+      reprint = getFiscalReceiptsList().prepareFiscalReceiptReprint(req.params.id);
+    }
     const { generateFiscalQR } = require("./fiscal/fiscal-qr");
+    const settings = fiscalConfig.getFiscalSettings();
     let qrResult = null;
     try {
       qrResult = await generateFiscalQR({
         nuikf: reprint.nuikf,
         total_amount: reprint.total_amount,
         fiscal_date: reprint.fiscal_date,
-        taxpayer_nui: reprint.taxpayer_nui,
+        taxpayer_nui: reprint.taxpayer_nui || settings?.taxpayer_nui || "",
       });
     } catch (qe) {
       console.warn("[fiscal-receipts print] QR:", qe.message);
     }
     let printed = false;
     let printMessage = "";
+    let printMethod = "";
     if (!req.body?.skip_print) {
       const pr = await getFiscalMain().printFiscalBundle(reprint.print_text, qrResult);
       printed = !!pr?.printed;
       printMessage = pr?.printMessage || "";
+      printMethod = pr?.printMethod || "";
     }
     res.json({
       ok: true,
       receipt_id: reprint.id,
       nuikf: reprint.nuikf,
+      text: reprint.print_text,
+      printed,
+      printMessage,
+      printMethod,
+    });
+  } catch (e) {
+    const code = /nuk u gjet|pavlefshëm/i.test(e.message) ? 404 : 400;
+    res.status(code).json({ ok: false, gabim: e.message, error: e.message });
+  }
+}
+
+app.post("/api/fiscal-receipts/:id/print", auth, adminOnly, postFiscalReceiptPrintHandler);
+app.post("/api/fiscal/receipts/:id/print", auth, adminOnly, postFiscalReceiptPrintHandler);
+
+/** Dërgim manual i radhës offline te ATK (BIZNES: POST /api/fiscal/send-pending) */
+app.post("/api/fiscal/send-pending", auth, adminOnly, async (_req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const { isAtkTransmissionBlocked } = require("./fiscal/fiscal-test-mode-store");
+    if (isAtkTransmissionBlocked()) {
+      return res.status(403).json({
+        ok: false,
+        error: "Modalitet LOKAL — dërgimi te ATK është i çaktivizuar",
+        gabim: "Modalitet LOKAL — dërgimi te ATK është i çaktivizuar",
+      });
+    }
+    const { processOfflineQueue } = require("./fiscal/fiscal-offline");
+    const result = await processOfflineQueue({ manual: true });
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Rikuperim — pending të hapura (alias BIZNES GET /api/fiscal/pending) */
+app.get("/api/fiscal/pending", auth, adminOnly, (_req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const fiscalRecovery = require("./fiscal/fiscal-recovery");
+    res.json({ ok: true, pending: fiscalRecovery.listOpenPending() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Lookup artikujsh për kthim / ndërrim */
+app.get("/api/fiscal/receipts/lookup", auth, adminOnly, (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const nuikf = String(req.query.nuikf || "")
+      .trim()
+      .toUpperCase();
+    if (!nuikf) throw new Error("NUIKF mungon");
+    const { getOriginalReceipt, getReturnableItemsForReceipt } = require("./fiscal/fiscal-correction");
+    const items = getReturnableItemsForReceipt(nuikf);
+    if (!items) {
+      return res.status(404).json({
+        ok: false,
+        error: "Kuponi origjinal (regular) nuk u gjet për këtë NUIKF",
+        gabim: "Kuponi origjinal (regular) nuk u gjet për këtë NUIKF",
+      });
+    }
+    const receipt = getOriginalReceipt(nuikf);
+    res.json({
+      ok: true,
+      receipt: {
+        id: receipt.id,
+        nuikf: receipt.nuikf,
+        receipt_type: receipt.receipt_type,
+        total_amount: receipt.total_amount,
+        fiscal_date: receipt.fiscal_date,
+        fiscal_time: receipt.fiscal_time,
+        items: items.map((it) => ({
+          name: it.name,
+          quantity: it.remaining_quantity,
+          original_quantity: it.original_quantity,
+          already_returned: it.already_returned,
+          remaining_quantity: it.remaining_quantity,
+          price: it.unit_price,
+          unit_price: it.unit_price,
+          vat_norm: it.vat_norm,
+          vat_letter: it.vat_norm,
+        })),
+      },
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Print preview + QR (pa printim letre) */
+app.get("/api/fiscal/receipts/:id/preview", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const preview = await getFiscalReceiptsList().getFiscalReceiptPreviewWithQr(req.params.id);
+    if (!preview) throw new Error("Fiskalizimi nuk është aktiv");
+    res.json({
+      ok: true,
+      receipt_id: preview.id,
+      nuikf: preview.nuikf,
+      text: preview.print_text,
+      qr_png_base64: preview.qr_png_base64,
+      qr_verify_url: preview.qr_verify_url,
+      qr_error: preview.qr_error,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Kopje kuponi — print me shënimin KOPJE E KUPONIT */
+app.post("/api/fiscal/receipts/:id/print-copy", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const copy = getFiscalReceiptsList().prepareFiscalReceiptCopy(req.params.id);
+    const { generateFiscalQR } = require("./fiscal/fiscal-qr");
+    let qrResult = null;
+    try {
+      qrResult = await generateFiscalQR({
+        nuikf: copy.nuikf,
+        total_amount: copy.total_amount,
+        fiscal_date: copy.fiscal_date,
+        taxpayer_nui: copy.taxpayer_nui,
+      });
+    } catch (qe) {
+      console.warn("[print-copy] QR:", qe.message);
+    }
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print) {
+      const pr = await getFiscalMain().printFiscalBundle(copy.print_text, qrResult);
+      printed = !!pr?.printed;
+      printMessage = pr?.printMessage || "";
+    }
+    res.json({
+      ok: true,
+      is_copy: true,
+      receipt_id: copy.id,
+      nuikf: copy.nuikf,
+      text: copy.print_text,
       printed,
       printMessage,
     });
   } catch (e) {
-    const code = /nuk u gjet|pavlefshëm/i.test(e.message) ? 404 : 400;
-    res.status(code).json({ ok: false, gabim: e.message });
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Storno / cancel / return kupon korrigjues */
+app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const nuikf = String(req.body?.nuikf || "")
+      .trim()
+      .toUpperCase();
+    if (!nuikf) throw new Error("NUIKF mungon");
+    const type = String(req.body?.type || "storno").toLowerCase();
+    const correctionType =
+      type === "cancel" ? "cancel" : type === "return" ? "return" : "storno";
+    const { createCorrectionReceipt } = require("./fiscal/fiscal-correction");
+    const { generateFiscalQR } = require("./fiscal/fiscal-qr");
+    const { isAtkTransmissionBlocked } = require("./fiscal/fiscal-test-mode-store");
+    const op = {
+      operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+      operator_id: req.body?.operator_id || "ADMIN",
+    };
+
+    const result = createCorrectionReceipt(
+      nuikf,
+      correctionType,
+      correctionType === "return" ? req.body?.items || null : null,
+      req.body?.reason || `${correctionType} ATK`,
+      op
+    );
+
+    let qrResult = null;
+    try {
+      const settings = fiscalConfig.getFiscalSettings();
+      qrResult = await generateFiscalQR({
+        nuikf: result.nuikf,
+        total_amount: result.total_amount,
+        fiscal_date: result.fiscal_date,
+        taxpayer_nui: settings.taxpayer_nui,
+      });
+    } catch (qe) {
+      console.warn("[storno] QR:", qe.message);
+    }
+
+    let atk = { atk_sent: false, atk_message: "LOKAL — pa dërgim te ATK" };
+    let printOfflineBanner = false;
+    if (!isAtkTransmissionBlocked()) {
+      const { tryAutoSendFiscalReceiptById } = require("./fiscal/fiscal-offline");
+      atk = await tryAutoSendFiscalReceiptById(result.id);
+      if (
+        !atk.atk_sent &&
+        !atk.atk_test_mode &&
+        atk.atk_status === "send_failed"
+      ) {
+        printOfflineBanner = true;
+      }
+    }
+
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print && result.print_text) {
+      const pr = await getFiscalMain().printFiscalBundle(result.print_text, qrResult, {
+        printOfflineBanner,
+      });
+      printed = !!pr?.printed;
+      printMessage = pr?.printMessage || "";
+    }
+
+    res.json({
+      ok: true,
+      correction: {
+        id: result.id,
+        nuikf: result.nuikf,
+        original_nuikf: result.original_nuikf,
+        receipt_type: result.receipt_type,
+        total_amount: result.total_amount,
+      },
+      printed,
+      printMessage,
+      atk,
+      atk_sent: !!atk.atk_sent,
+      atk_message: atk.atk_message,
+    });
+  } catch (e) {
+    console.error("[storno]", e);
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Ndërrim artikulli — kthim + shitje e re */
+app.post("/api/fiscal/exchange", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const { runFiscalExchange } = require("./fiscal/fiscal-exchange");
+    const op = {
+      operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+      operator_id: req.body?.operator_id || "ADMIN",
+    };
+    const payload = await runFiscalExchange(db, req.body || {}, op, {
+      processFiscalReceipt: getFiscalMain().processFiscalReceipt,
+      printFiscalBundle: getFiscalMain().printFiscalBundle,
+    });
+    res.json({ ok: true, ...payload });
+  } catch (e) {
+    console.error("[exchange]", e);
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
+  }
+});
+
+/** Checkout me bllok letër (Neni 45) */
+app.post("/api/fiscal/paper-block/checkout", auth, adminOnly, async (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    }
+    const {
+      isPaperBlockModeActive,
+      issuePaperBlockCoupon,
+    } = require("./fiscal/fiscal-paper-block");
+
+    if (!isPaperBlockModeActive()) {
+      return res.status(409).json({
+        ok: false,
+        error: "Modaliteti bllok letër nuk është aktiv",
+        gabim: "Modaliteti bllok letër nuk është aktiv",
+      });
+    }
+
+    const serial = String(req.body?.paper_serial || req.body?.serial_no || "").trim();
+    if (!serial) {
+      return res.status(400).json({
+        ok: false,
+        error: "Numri serik i bllokut letër mungon",
+        gabim: "Numri serik i bllokut letër mungon",
+      });
+    }
+
+    const items = req.body?.items || [];
+    let preview = { total: 0, subtotal: 0, discount_total: 0 };
+    if (typeof db.previewSaleTotals === "function") {
+      preview = db.previewSaleTotals({
+        items,
+        cart_discount: req.body?.cart_discount || null,
+        cart_surcharge: req.body?.cart_surcharge || null,
+      });
+    } else {
+      preview.total = items.reduce(
+        (s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0),
+        0
+      );
+      preview.subtotal = preview.total;
+    }
+
+    if (preview.total > 1000 && !req.body?.confirmed_over_1000) {
+      return res.status(409).json({
+        ok: false,
+        needs_confirm_over_1000: true,
+        total: preview.total,
+        error: "Transaksioni mbi 1000€ kërkon konfirmim shtesë para finalizimit",
+        gabim: "Transaksioni mbi 1000€ kërkon konfirmim shtesë para finalizimit",
+      });
+    }
+
+    let orderId = null;
+    let saleItems = items;
+    if (typeof db.createSale === "function") {
+      const sale = db.createSale({
+        items,
+        payment_method: req.body?.payment_method || "cash",
+        operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+        cart_discount: req.body?.cart_discount || null,
+        cart_surcharge: req.body?.cart_surcharge || null,
+        payment_splits: req.body?.payment_splits || null,
+      });
+      orderId = sale.id;
+      saleItems = sale.items;
+      preview.subtotal = sale.subtotal;
+      preview.total = sale.total;
+      preview.discount_total = sale.discount_total;
+    }
+
+    const paper = issuePaperBlockCoupon({
+      serial_no: serial,
+      items: saleItems,
+      subtotal: preview.subtotal,
+      discount_amount: preview.discount_total || 0,
+      total_amount: preview.total,
+      payment_method: req.body?.payment_method || "cash",
+      operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+      operator_id: req.body?.operator_id || "ADMIN",
+    });
+
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print && paper.slip_text) {
+      try {
+        const printer = require("./printer");
+        await printer.printPlainTextReceipt(paper.slip_text, db);
+        printed = true;
+      } catch (e) {
+        printMessage = e.message || "print dështoi";
+      }
+    }
+
+    res.json({
+      ok: true,
+      order_id: orderId,
+      total: preview.total,
+      paper_block: true,
+      paper,
+      printed,
+      printMessage,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message, gabim: e.message });
   }
 });
 
@@ -6711,6 +7404,40 @@ app.post("/api/fiscal-correction", auth, adminOnly, async (req, res) => {
   }
 });
 
+/** Pajtueshmëria offline (Neni 44.5 / 44.6) — gjendje + raporte ATK */
+app.get("/api/fiscal/offline-compliance", auth, adminOnly, (_req, res) => {
+  try {
+    const { evaluateOfflineCompliance } = require("./fiscal/fiscal-offline-compliance");
+    res.json({ ok: true, compliance: evaluateOfflineCompliance() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/fiscal/offline-compliance/ack", auth, adminOnly, (req, res) => {
+  try {
+    const { acknowledgeOfflineCompliance } = require("./fiscal/fiscal-offline-compliance");
+    const compliance = acknowledgeOfflineCompliance(
+      req.body?.type,
+      req.body?.operator_name || req.session?.emri || "Admin",
+      req.body?.notes || ""
+    );
+    res.json({ ok: true, compliance });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/fiscal/offline-compliance/export", auth, adminOnly, (req, res) => {
+  try {
+    const { exportOfflineComplianceReport } = require("./fiscal/fiscal-offline-compliance");
+    const result = exportOfflineComplianceReport(req.body?.type || "48h");
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 /* HAPI 9 — status offline / internet për indikatorin e header-it */
 app.get("/api/fiscal-offline/status", auth, async (_req, res) => {
   try {
@@ -6730,6 +7457,7 @@ app.get("/api/fiscal-offline/status", auth, async (_req, res) => {
       within_48h: status?.within_48h !== false,
       warning: warning?.message || null,
       warning_level: warning?.level || "ok",
+      compliance: warning?.compliance || status?.compliance || null,
     });
   } catch (e) {
     res.json({ enabled: false, online: false, gabim: e.message });
@@ -6942,6 +7670,35 @@ app.post("/api/fiscal-paper-block/register-all", auth, adminOnly, async (req, re
   }
 });
 
+/** Wizard riparimi SEF (48h) — kontekst + hapa */
+app.get("/api/fiscal/repair-wizard/context", auth, adminOnly, (_req, res) => {
+  try {
+    const { getRepairWizardContext } = require("./fiscal/fiscal-repair-wizard");
+    const ctx = getRepairWizardContext();
+    if (!ctx.ok) {
+      return res.status(400).json({ ok: false, gabim: ctx.error || "Wizard i padisponueshëm" });
+    }
+    res.json({ ok: true, ...ctx });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/fiscal/repair-wizard/step/:step", auth, adminOnly, async (req, res) => {
+  try {
+    const { runRepairWizardStep } = require("./fiscal/fiscal-repair-wizard");
+    const step = Number(req.params.step);
+    const result = await runRepairWizardStep(step, {
+      operator_name: req.body?.operator_name || req.session?.emri || "Admin",
+      operator_id: req.body?.operator_id || "ADMIN",
+      step_results: req.body?.step_results || null,
+    });
+    res.json({ ok: result.ok !== false, result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 /** Verifikim zinxhiri hash (Neni 26) — kopjuar nga biznes */
 app.get("/api/fiscal/hash-chain/verify", auth, adminOnly, (_req, res) => {
   try {
@@ -6969,12 +7726,21 @@ app.get("/api/fiscal-recovery/pending", auth, adminOnly, (_req, res) => {
   }
 });
 
-app.post("/api/fiscal-recovery/resume", auth, adminOnly, async (req, res) => {
+async function postFiscalRecoveryResumeHandler(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
     const fiscalRecovery = require("./fiscal/fiscal-recovery");
+    if (req.body?.pending_id) {
+      const all = fiscalRecovery.listOpenPending();
+      const p = all.find((x) => Number(x.id) === Number(req.body.pending_id));
+      if (!p) throw new Error("Pending nuk u gjet");
+      const result = await fiscalRecovery.resumePendingPrint(p, {
+        skip_print: !!req.body?.skip_print,
+      });
+      return res.json({ ok: true, result });
+    }
     const result = await fiscalRecovery.resumeAllPendingOnBoot({
       skip_print: !!req.body?.skip_print,
     });
@@ -6985,9 +7751,12 @@ app.post("/api/fiscal-recovery/resume", auth, adminOnly, async (req, res) => {
     );
     res.json({ ok: true, ...result });
   } catch (e) {
-    res.status(400).json({ gabim: e.message });
+    res.status(400).json({ gabim: e.message, error: e.message });
   }
-});
+}
+
+app.post("/api/fiscal-recovery/resume", auth, adminOnly, postFiscalRecoveryResumeHandler);
+app.post("/api/fiscal/recovery/resume", auth, adminOnly, postFiscalRecoveryResumeHandler);
 
 /* HAPI 11 — përkthime SEF (vetëm moduli fiskal) */
 app.get("/api/fiscal-i18n", auth, adminOnly, (req, res) => {
@@ -7636,6 +8405,40 @@ function onServerListening(server, port) {
     } catch (e) {
       console.warn("[hotel] fiscal-boot:", e.message);
     }
+    try {
+      const { isAtkAutoSendEnabled, processOfflineQueue } = require("./fiscal/fiscal-offline");
+      const { isFiscalLocalRun } = require("./fiscal/fiscal-local-env");
+      if (isAtkAutoSendEnabled() && !isFiscalLocalRun()) {
+        setTimeout(() => {
+          processOfflineQueue({ manual: false })
+            .then((r) => {
+              const n = Number(r?.processed) || 0;
+              if (n > 0) {
+                console.log(`[hotel] ATK — u dërguan ${n} kupon(ë) në pritje (nisje)`);
+              }
+            })
+            .catch((e) => console.warn("[hotel] ATK boot flush:", e.message));
+        }, 4000);
+      }
+    } catch (e) {
+      console.warn("[hotel] offline queue schedule:", e.message);
+    }
+    setTimeout(() => {
+      try {
+        const { resumeAllPendingOnBoot } = require("./fiscal/fiscal-recovery");
+        resumeAllPendingOnBoot({ skip_print: false })
+          .then((r) => {
+            if ((r.resumed && r.resumed.length) || (r.abandoned && r.abandoned.length)) {
+              console.log(
+                `[hotel] recovery: resumed=${r.resumed?.length || 0} abandoned=${r.abandoned?.length || 0}`
+              );
+            }
+          })
+          .catch((e) => console.warn("[hotel] recovery:", e.message));
+      } catch (e) {
+        console.warn("[hotel] recovery boot:", e.message);
+      }
+    }, 1500);
   }, 2500);
   try {
     if (typeof db.ensureDefaultRooms === "function") {

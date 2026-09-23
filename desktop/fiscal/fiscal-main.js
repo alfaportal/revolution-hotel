@@ -36,6 +36,7 @@ const { attachChainToFiscalData } = require("./fiscal-hash-chain");
 const {
   isFiscalMemoryOnly,
   isAtkTransmissionBlocked,
+  memGetReceiptBySaleId,
 } = require("./fiscal-test-mode-store");
 const { getFiscalTodayParts, syncClockFromNetwork } = require("./fiscal-time-sync");
 
@@ -500,6 +501,29 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
         daily_number: existing.daily_number,
         printed: false,
         printMessage: "Porosia është tashmë e fiskalizuar",
+      };
+    }
+  }
+
+  if (memoryOnly) {
+    const memExisting = memGetReceiptBySaleId(id);
+    if (memExisting) {
+      console.log(
+        "[fiscal-main] FISCAL_MEMORY_ONLY — kupon in-memory ekziston për orderId=",
+        id,
+        "nuikf=",
+        memExisting.nuikf
+      );
+      return {
+        ok: true,
+        already_fiscalized: true,
+        fiscal_local: true,
+        fiscal_receipt_id: memExisting.id,
+        nuikf: memExisting.nuikf,
+        sef_id: memExisting.sef_id,
+        daily_number: memExisting.daily_number,
+        printed: false,
+        printMessage: "FISCAL_MEMORY_ONLY — kuponi mbetet vetëm në memorie (session)",
       };
     }
   }

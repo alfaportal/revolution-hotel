@@ -139,6 +139,7 @@ const NEVER_OBFUSCATE = new Set([
   "hotel-backup.js",
   "disk-monitor.js",
   "main.js",
+  "app-paths.js",
   "license-boot.js",
 ]);
 

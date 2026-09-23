@@ -11,7 +11,16 @@
  */
 const fs = require("fs");
 const path = require("path");
-const { applyHashChainToReceipt } = require("./fiscal-hash-chain");
+const {
+  isFiscalMemoryOnly,
+  memInsertReceipt,
+  memUpdateReceipt,
+  memGetReceipt,
+} = require("./fiscal-test-mode-store");
+const {
+  applyHashChainToReceipt,
+  recordChainHashAfterInsert,
+} = require("./fiscal-hash-chain");
 
 /** Fushat e vetme që lejohen me UPDATE në fiscal_receipts. */
 const RECEIPT_UPDATE_ALLOWED_MAP = {
@@ -76,6 +85,9 @@ function logWriteOnceViolation(details) {
  * UPDATE i mbrojtur për fiscal_receipts — VETËM sent_to_atk, sent_at, atk_response_json.
  */
 function fiscalReceiptUpdate(id, data) {
+  if (isFiscalMemoryOnly()) {
+    return memUpdateReceipt(id, data);
+  }
   const rid = Number(id);
   if (!Number.isFinite(rid) || rid < 1) {
     throw new Error("fiscalReceiptUpdate: id i pavlefshëm");
@@ -192,6 +204,13 @@ function insertFiscalReceipt(row) {
     throw new Error("fiscal INSERT invalid: " + check.error);
   }
 
+  if (isFiscalMemoryOnly()) {
+    const chained = applyHashChainToReceipt(row);
+    const id = memInsertReceipt(chained);
+    recordChainHashAfterInsert(chained.chain_current_hash);
+    return id;
+  }
+
   const sqlite = getSqlite();
   const nuikf = check.nuikf;
   sqlite.exec("BEGIN IMMEDIATE");
@@ -283,6 +302,9 @@ function insertFiscalReceipt(row) {
 }
 
 function getFiscalReceiptById(id) {
+  if (isFiscalMemoryOnly()) {
+    return memGetReceipt(id);
+  }
   const sqlite = getSqlite();
   return sqlite.prepare(`SELECT * FROM fiscal_receipts WHERE id = ?`).get(Number(id)) || null;
 }

@@ -31,6 +31,10 @@
       ".fiscal-net-pill.fiscal-net-online .fiscal-net-dot{background:#22c55e!important;box-shadow:0 0 6px #22c55e}" +
       ".fiscal-net-pill.fiscal-net-offline{border-color:rgba(239,68,68,0.55)!important;color:#fca5a5!important}" +
       ".fiscal-net-pill.fiscal-net-offline .fiscal-net-dot{background:#ef4444!important;box-shadow:0 0 6px #ef4444}" +
+      ".fiscal-net-pill.fiscal-net-warn{border-color:rgba(251,191,36,0.65)!important;color:#fde68a!important}" +
+      ".fiscal-net-pill.fiscal-net-warn .fiscal-net-dot{background:#fbbf24!important;box-shadow:0 0 6px #fbbf24}" +
+      ".fiscal-net-pill.fiscal-net-urgent{border-color:rgba(249,115,22,0.7)!important;color:#fdba74!important}" +
+      ".fiscal-net-pill.fiscal-net-urgent .fiscal-net-dot{background:#f97316!important;box-shadow:0 0 6px #f97316}" +
       ".fiscal-net-pill .fiscal-net-label{white-space:nowrap}";
     document.head.appendChild(style);
   }
@@ -65,7 +69,9 @@
       return;
     }
     pill.hidden = false;
-    pill.classList.remove("fiscal-net-online", "fiscal-net-offline", "fiscal-net-warn");
+    pill.classList.remove("fiscal-net-online", "fiscal-net-offline", "fiscal-net-warn", "fiscal-net-urgent");
+
+    var warnLevel = String(data.warning_level || data.compliance?.level || "").toLowerCase();
 
     // online: true nga server = jeshile; false = kuqe
     // Nëse mungon fusha, përdor navigator.onLine
@@ -86,8 +92,19 @@
       if (label) label.textContent = fisNum ? "FIS OFF · " + fisNum : "FIS OFF";
       pill.title = data.warning || "Pa internet — kuponët ruhen offline";
       pill.setAttribute("aria-label", "Fiskal offline");
+    } else if (warnLevel === "critical" || warnLevel === "urgent") {
+      pill.classList.add("fiscal-net-urgent");
+      if (label) label.textContent = pending ? "FIS ! · " + pending : "FIS !";
+      pill.title = data.warning || "Afat offline — veprim i nevojshëm";
+      pill.setAttribute("aria-label", "Fiskal — afat offline");
+    } else if (warnLevel === "warning" || warnLevel === "info") {
+      pill.classList.add(warnLevel === "warning" ? "fiscal-net-warn" : "fiscal-net-online");
+      if (label) {
+        label.textContent = pending ? "FIS · " + pending : warnLevel === "warning" ? "FIS ~24h" : "FIS ON";
+      }
+      pill.title = data.warning || (pending ? pending + " kupon(ë) në pritje" : "Fiskal aktiv");
+      pill.setAttribute("aria-label", "Fiskal — kuponë në pritje");
     } else {
-      // Internet OK → gjithmonë jeshile (pending/warning vetëm në title)
       pill.classList.add("fiscal-net-online");
       if (label) label.textContent = fisNum ? "FIS · " + fisNum : "FIS ON";
       pill.title =

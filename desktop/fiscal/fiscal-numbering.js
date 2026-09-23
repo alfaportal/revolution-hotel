@@ -4,6 +4,13 @@
  */
 const crypto = require("crypto");
 const { isFiscalEnabled } = require("./fiscal-config");
+const { getFiscalNow } = require("./fiscal-time-sync");
+const {
+  isFiscalMemoryOnly,
+  memGetNextDailyNumber,
+  memGetNextTotalNumber,
+  memResetDailyCounter,
+} = require("./fiscal-test-mode-store");
 
 const ALPHANUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const NUIKF_LEN = 16;
@@ -50,6 +57,7 @@ function assertFiscalOn() {
  */
 function getNextDailyNumber() {
   if (!assertFiscalOn()) return null;
+  if (isFiscalMemoryOnly()) return memGetNextDailyNumber();
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
@@ -94,6 +102,7 @@ function getNextDailyNumber() {
  */
 function resetDailyCounter() {
   if (!assertFiscalOn()) return false;
+  if (isFiscalMemoryOnly()) return memResetDailyCounter();
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
@@ -117,6 +126,7 @@ function resetDailyCounter() {
  */
 function getNextTotalNumber() {
   if (!assertFiscalOn()) return null;
+  if (isFiscalMemoryOnly()) return memGetNextTotalNumber();
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
@@ -328,41 +338,79 @@ function getDailyFiscalAccumulated(dateYmd) {
   };
 }
 
-/**
- * Raport periodik — akumulim mes dy datave (YYYY-MM-DD), pa reset / pa mbyllje.
- */
-function getPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
-  if (!assertFiscalOn()) return null;
-
+function parseDateRange(fromDate, toDate) {
   const from = String(fromDate || "").slice(0, 10);
   const to = String(toDate || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
     throw new Error("Datat duhet YYYY-MM-DD");
   }
   if (from > to) throw new Error("Data Nga duhet ≤ Deri");
+  return { from, to };
+}
 
+/** Periudha e raportit mujor — muaji aktual nëse mungon Nga/Deri. */
+function resolveMonthlyReportPeriod(fromDate, toDate) {
+  if (fromDate && toDate) {
+    return parseDateRange(fromDate, toDate);
+  }
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const pad = (n) => String(n).padStart(2, "0");
+  const from = `${y}-${pad(m)}-01`;
+  const last = new Date(y, m, 0).getDate();
+  const to = `${y}-${pad(m)}-${pad(last)}`;
+  return { from, to };
+}
+
+function emptyVatMap() {
+  return { A: 0, B: 0, C: 0, D: 0, E: 0 };
+}
+
+function nowFiscalStamp() {
+  const d = isFiscalEnabled() ? getFiscalNow() : new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    fiscalization_date: `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`,
+    fiscalization_time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    fiscalization_datetime: `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
+
+/**
+ * Akumulim i plotë për raportet periodike (qarkullim + tatim + pagesa).
+ */
+function accumulateReceiptsInRange(from, to) {
   const sqlite = getSqlite();
-  ensureSettingsRow(sqlite);
-
   const rows = sqlite
     .prepare(
-      `SELECT total_amount, total_without_tax, vat_breakdown_json, is_offline
+      `SELECT total_amount, total_without_tax, vat_breakdown_json, items_json,
+              payment_method, is_offline, sent_to_atk, created_at
        FROM fiscal_receipts
        WHERE date(created_at) >= date(?) AND date(created_at) <= date(?)`
     )
     .all(from, to);
 
-  const vat_breakdown = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+  const { calculateVatBreakdown } = require("./fiscal-vat");
+  const vat_tax = emptyVatMap();
+  const vat_turnover = emptyVatMap();
+  const payments = Object.create(null);
   let coupon_count = 0;
   let total_amount = 0;
   let total_without_tax = 0;
   let offline_count = 0;
+  let unsent_count = 0;
 
   for (const r of rows) {
     coupon_count += 1;
     total_amount += Number(r.total_amount) || 0;
     total_without_tax += Number(r.total_without_tax) || 0;
     if (Number(r.is_offline) === 1) offline_count += 1;
+    if (Number(r.sent_to_atk) !== 1) unsent_count += 1;
+
+    const pay = String(r.payment_method || "cash").toLowerCase();
+    payments[pay] = round2((payments[pay] || 0) + (Number(r.total_amount) || 0));
+
     let vb = {};
     try {
       vb =
@@ -373,12 +421,74 @@ function getPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
       vb = {};
     }
     for (const L of ["A", "B", "C", "D", "E"]) {
-      vat_breakdown[L] += Number(vb[L] ?? vb[L.toLowerCase()] ?? 0) || 0;
+      vat_tax[L] += Number(vb[L] ?? vb[L.toLowerCase()] ?? 0) || 0;
+    }
+
+    let items = [];
+    try {
+      items =
+        typeof r.items_json === "string"
+          ? JSON.parse(r.items_json || "[]")
+          : r.items_json || [];
+    } catch {
+      items = [];
+    }
+    const turnover = calculateVatBreakdown(Array.isArray(items) ? items : []) || emptyVatMap();
+    for (const L of ["A", "B", "C", "D", "E"]) {
+      vat_turnover[L] += Number(turnover[L]) || 0;
     }
   }
+
   for (const L of ["A", "B", "C", "D", "E"]) {
-    vat_breakdown[L] = round2(vat_breakdown[L]);
+    vat_tax[L] = round2(vat_tax[L]);
+    vat_turnover[L] = round2(vat_turnover[L]);
   }
+
+  const total_tax = round2(
+    ["A", "B", "C", "D", "E"].reduce((s, L) => s + vat_tax[L], 0)
+  );
+
+  return {
+    coupon_count,
+    rfd_count: coupon_count,
+    total_amount: round2(total_amount),
+    total_without_tax: round2(total_without_tax),
+    total_tax,
+    vat_breakdown: vat_tax,
+    vat_turnover,
+    payments,
+    offline_count,
+    unsent_count,
+  };
+}
+
+function countRamResetsInRange(from, to) {
+  const sqlite = getSqlite();
+  try {
+    const row = sqlite
+      .prepare(
+        `SELECT COUNT(*) AS c FROM fiscal_audit_log
+         WHERE action = 'z_report'
+           AND date(created_at) >= date(?)
+           AND date(created_at) <= date(?)`
+      )
+      .get(from, to);
+    return Number(row?.c) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Raport periodik — akumulim mes dy datave (YYYY-MM-DD), pa reset / pa mbyllje.
+ */
+function getPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
+  if (!assertFiscalOn()) return null;
+
+  const { from, to } = parseDateRange(fromDate, toDate);
+  ensureSettingsRow(getSqlite());
+
+  const acc = accumulateReceiptsInRange(from, to);
 
   const details = {
     source: "periodic_report",
@@ -386,11 +496,11 @@ function getPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
     from_date: from,
     to_date: to,
     date: `${from} → ${to}`,
-    coupon_count,
-    total_amount: round2(total_amount),
-    total_without_tax: round2(total_without_tax),
-    vat_breakdown,
-    offline_count,
+    coupon_count: acc.coupon_count,
+    total_amount: acc.total_amount,
+    total_without_tax: acc.total_without_tax,
+    vat_breakdown: acc.vat_breakdown,
+    offline_count: acc.offline_count,
     reset_applied: false,
     official_close: false,
   };
@@ -399,6 +509,105 @@ function getPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
     const { logFiscalAction } = require("./fiscal-audit");
     logFiscalAction(
       "periodic_report",
+      details,
+      operatorName != null ? String(operatorName) : "Admin",
+      operatorId != null ? String(operatorId) : "ADMIN"
+    );
+  } catch {
+    /* */
+  }
+
+  return details;
+}
+
+/**
+ * Raporti i shkurtër periodik (Neni 13 / 7) — përmbledhje totale, jo rresht-për-rresht.
+ */
+function getShortPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
+  if (!assertFiscalOn()) return null;
+
+  const { from, to } = parseDateRange(fromDate, toDate);
+  ensureSettingsRow(getSqlite());
+  const acc = accumulateReceiptsInRange(from, to);
+  const stamp = nowFiscalStamp();
+
+  const details = {
+    source: "short_periodic_report",
+    mode: "SHORT_PERIODIC",
+    report_name: "RAPORT FISKAL PERIODIK I PËRMBLEDHUR",
+    from_date: from,
+    to_date: to,
+    date: `${from} → ${to}`,
+    ...stamp,
+    coupon_count: acc.coupon_count,
+    rfd_count: acc.rfd_count,
+    total_amount: acc.total_amount,
+    total_without_tax: acc.total_without_tax,
+    total_tax: acc.total_tax,
+    vat_turnover: acc.vat_turnover,
+    vat_breakdown: acc.vat_breakdown,
+    offline_count: acc.offline_count,
+    reset_applied: false,
+    official_close: false,
+  };
+
+  try {
+    const { logFiscalAction } = require("./fiscal-audit");
+    logFiscalAction(
+      "short_periodic_report",
+      details,
+      operatorName != null ? String(operatorName) : "Admin",
+      operatorId != null ? String(operatorId) : "ADMIN"
+    );
+  } catch {
+    /* */
+  }
+
+  return details;
+}
+
+/**
+ * Raporti mujor i memories fiskale të transferuar në ATK (Neni 11 / 9).
+ */
+function getMonthlyFiscalMemoryReport(fromDate, toDate, operatorName, operatorId) {
+  if (!assertFiscalOn()) return null;
+
+  const { from, to } = resolveMonthlyReportPeriod(fromDate, toDate);
+
+  ensureSettingsRow(getSqlite());
+  const acc = accumulateReceiptsInRange(from, to);
+  const stamp = nowFiscalStamp();
+  const ram_resets = countRamResetsInRange(from, to);
+
+  const transmission_ok = acc.unsent_count === 0;
+
+  const details = {
+    source: "monthly_memory_report",
+    mode: "MONTHLY_MEMORY",
+    report_name: "RAPORTI MUJOR I MEMORIES FISKALE",
+    from_date: from,
+    to_date: to,
+    date: `${from} → ${to}`,
+    ...stamp,
+    coupon_count: acc.coupon_count,
+    rfd_count: acc.rfd_count,
+    total_amount: acc.total_amount,
+    total_without_tax: acc.total_without_tax,
+    total_tax: acc.total_tax,
+    vat_breakdown: acc.vat_breakdown,
+    payments: acc.payments,
+    ram_resets,
+    transmission_ok,
+    unsent_count: acc.unsent_count,
+    offline_count: acc.offline_count,
+    reset_applied: false,
+    official_close: false,
+  };
+
+  try {
+    const { logFiscalAction } = require("./fiscal-audit");
+    logFiscalAction(
+      "monthly_memory_report",
       details,
       operatorName != null ? String(operatorName) : "Admin",
       operatorId != null ? String(operatorId) : "ADMIN"
@@ -510,5 +719,8 @@ module.exports = {
   getDailyFiscalAccumulated,
   getXReportSnapshot,
   getPeriodicFiscalReport,
+  getShortPeriodicFiscalReport,
+  getMonthlyFiscalMemoryReport,
+  resolveMonthlyReportPeriod,
   onDailySummaryPrinted,
 };

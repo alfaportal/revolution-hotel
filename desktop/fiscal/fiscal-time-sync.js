@@ -615,7 +615,86 @@ function formatFiscalParts(d) {
 
 }
 
+/** Ora lokale fiskale — YYYY-MM-DD HH:mm:ss (jo UTC). Për sent_at / UI ATK. */
+function formatFiscalDateTimeLocal(ms) {
+  const n = Number(ms);
+  const d = Number.isFinite(n) ? new Date(n) : getFiscalNow();
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
 
+function fiscalRowLocalMs(fiscalDate, fiscalTime) {
+  const date = String(fiscalDate || "").trim();
+  const time = String(fiscalTime || "00:00").trim();
+  const dmy = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!dmy) return null;
+  const hhmmss =
+    time.length === 5 ? `${time}:00` : time.length >= 8 ? time.slice(0, 8) : "00:00:00";
+  const parts = hhmmss.split(":").map((x) => Number(x) || 0);
+  return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]), parts[0], parts[1], parts[2]).getTime();
+}
+
+function parseSentAtStringMs(raw, asUtc) {
+  const m = String(raw || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  const hh = Number(m[4]);
+  const mi = Number(m[5]);
+  const ss = Number(m[6]);
+  return asUtc ? Date.UTC(y, mo, d, hh, mi, ss) : new Date(y, mo, d, hh, mi, ss).getTime();
+}
+
+/**
+ * Shfaq sent_at në orën lokale — konverton legacy UTC (toISOString) pa prekur fiscal_time.
+ */
+function formatSentAtForDisplay(sentAt, fiscalDate, fiscalTime) {
+  const raw = String(sentAt || "").trim();
+  if (!raw) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    const isoMs = Date.parse(raw);
+    if (Number.isFinite(isoMs)) {
+      return formatFiscalDateTimeLocal(isoMs);
+    }
+  }
+
+  const asLocalMs = parseSentAtStringMs(raw, false);
+  const asUtcMs = parseSentAtStringMs(raw, true);
+  if (asLocalMs == null || asUtcMs == null) return raw;
+
+  const fiscalMs = fiscalRowLocalMs(fiscalDate, fiscalTime);
+  const tzOffsetMs = asUtcMs - asLocalMs;
+
+  if (fiscalMs != null) {
+    const deltaLocal = asLocalMs - fiscalMs;
+
+    if (deltaLocal >= -2 * 60 * 1000 && deltaLocal <= 48 * 3600 * 1000) {
+      return raw;
+    }
+
+    if (deltaLocal < 0 && Math.abs(deltaLocal + tzOffsetMs) <= 5 * 60 * 1000) {
+      return formatFiscalDateTimeLocal(asUtcMs);
+    }
+
+    if (Math.abs(asUtcMs - fiscalMs) <= 30 * 60 * 1000) {
+      return formatFiscalDateTimeLocal(asUtcMs);
+    }
+  }
+
+  if (tzOffsetMs !== 0) {
+    return formatFiscalDateTimeLocal(asUtcMs);
+  }
+  return raw;
+}
 
 function getFiscalTodayParts() {
 
@@ -882,6 +961,10 @@ module.exports = {
   getFiscalLocalYmd,
 
   formatFiscalParts,
+
+  formatFiscalDateTimeLocal,
+
+  formatSentAtForDisplay,
 
   syncClockFromNetwork,
 

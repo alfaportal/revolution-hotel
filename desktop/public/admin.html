@@ -881,6 +881,28 @@
       border-color: #219a52;
       color: #fff;
     }
+    #offline-compliance-box {
+      margin-top: 12px;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid #2e2e45;
+      white-space: pre-wrap;
+      line-height: 1.45;
+      font-size: 0.88rem;
+      color: #a0a0b8;
+    }
+    #offline-compliance-box[hidden] { display: none !important; }
+    #offline-compliance-box.level-warning { border-color: #fbbf24; color: #fde68a; }
+    #offline-compliance-box.level-urgent { border-color: #f97316; color: #fed7aa; }
+    #offline-compliance-box.level-critical { border-color: #ef4444; color: #fecaca; }
+    #offline-compliance-box.level-info { border-color: #38bdf8; color: #bae6fd; }
+    #offline-compliance-actions {
+      display: none;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    #offline-compliance-actions:not([hidden]) { display: flex; }
     #panel-paper-block #paper-block-list,
     #card-fiscalizimi #paper-block-list {
       margin: 0.65rem 0 0;
@@ -1079,6 +1101,42 @@
       border-color: #FF6B35;
       color: #fff;
       margin-top: 0.75rem;
+    }
+    #modal-repair-wizard.table-modal .table-modal-content {
+      max-width: 560px;
+      text-align: left;
+    }
+    #modal-repair-wizard .repair-wizard-deadline {
+      margin: 0 0 10px;
+      line-height: 1.45;
+      color: var(--ngjyr-muted, #888);
+      font-size: 0.88rem;
+    }
+    #modal-repair-wizard .repair-wizard-steps {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 0 0 12px;
+      font-size: 0.78rem;
+    }
+    #repair-wizard-step-result {
+      white-space: pre-wrap;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      min-height: 48px;
+      margin: 0 0 10px;
+      padding: 0.65rem;
+      border-radius: 8px;
+      background: var(--ngjyr-panel2, rgba(255, 255, 255, 0.04));
+      border: 1px solid var(--ngjyr-border, #2e2e45);
+    }
+    #repair-wizard-step-result.repair-wizard-ok {
+      border-color: #27ae60;
+      color: #a7f3d0;
+    }
+    #repair-wizard-step-result.repair-wizard-err {
+      border-color: #ef4444;
+      color: #fecaca;
     }
     #modal-fiscal-correction.table-modal .table-modal-content {
       background: #1a1a2e;
@@ -3746,6 +3804,7 @@
           <div class="sef-audit-actions">
             <button type="button" class="btn btn-sm btn-sef-audit" id="btn-audit-csv" data-fi18n="export_audit_csv">Eksporto Audit Log (CSV)</button>
             <button type="button" class="btn btn-sm btn-sef-audit" id="btn-audit-pdf" data-fi18n="export_audit_pdf">Eksporto Audit Log (PDF)</button>
+            <button type="button" class="btn btn-sm btn-warning" id="btn-repair-wizard-open-settings" style="min-width:220px">Riparim SEF (48h)</button>
             <div class="fiscal-save-msg" id="msg-fiscal-audit"></div>
           </div>
         </div>
@@ -3768,8 +3827,16 @@
             <button type="button" class="btn btn-sm btn-paper-enable" id="btn-paper-enable">Aktivizo bllokimin e letrës</button>
             <button type="button" class="btn btn-sm btn-ghost" id="btn-paper-disable">Çaktivizo</button>
             <button type="button" class="btn btn-sm btn-paper-register" id="btn-paper-register-all">Regjistro të gjithë në SEF</button>
+            <button type="button" class="btn btn-sm btn-warning" id="btn-repair-wizard-open">Riparim SEF (48h)</button>
           </div>
           <ul id="paper-block-list"></ul>
+          <div id="offline-compliance-box" hidden></div>
+          <div id="offline-compliance-actions" hidden>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-comp-export-48h">Eksporto raport 48h</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-comp-export-day10">Eksporto raport ditë 10</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-comp-ack-48h">Konfirmo — e njoftova ATK-në</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-comp-ack-day10">Konfirmo — i dorëzova ATK-së</button>
+          </div>
           <div class="sef-paper-issue-form" id="paper-block-issue-wrap" hidden>
             <div class="settings-field">
               <label for="paper-serial-no">Nr. serik (blloku fizik)</label>
@@ -4196,6 +4263,28 @@
           </div>
         </div>
         <div class="fcc-msg" id="fcc-msg"></div>
+      </div>
+    </div>
+
+    <div id="modal-repair-wizard" class="table-modal" hidden role="dialog" aria-modal="true" aria-labelledby="repair-wizard-title">
+      <div class="table-modal-backdrop" id="repair-wizard-backdrop"></div>
+      <div class="table-modal-content">
+        <h2 id="repair-wizard-title">Riparim SEF (48h)</h2>
+        <p id="repair-wizard-deadline" class="repair-wizard-deadline"></p>
+        <div id="repair-wizard-steps" class="repair-wizard-steps"></div>
+        <h3 id="repair-wizard-step-title" style="margin:0 0 8px;font-size:1rem"></h3>
+        <p id="repair-wizard-step-desc" style="margin:0 0 8px;color:var(--ngjyr-muted,#888);font-size:0.88rem;line-height:1.45"></p>
+        <pre id="repair-wizard-step-result"></pre>
+        <div id="repair-wizard-step4-actions" hidden style="margin:0 0 10px">
+          <button type="button" class="btn btn-warning btn-sm" id="btn-repair-wizard-restore">Backup në USB / folder</button>
+          <p class="settings-field-hint" style="margin:0.35rem 0 0">HOTEL nuk ka rikthim automatik DB — krijoni backup, pastaj riktheni manualisht nëse duhet.</p>
+        </div>
+        <div class="table-modal-actions" style="justify-content:flex-end;flex-wrap:wrap;gap:8px">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-repair-wizard-retry">Provë përsëri</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-repair-wizard-skip">Kalo te hapi tjetër</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-repair-wizard-next">Vazhdo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-repair-wizard-close">Mbyll</button>
+        </div>
       </div>
     </div>
 
@@ -14369,11 +14458,337 @@
     document.getElementById("btn-audit-csv")?.addEventListener("click", () => exportFiscalAudit("csv"));
     document.getElementById("btn-audit-pdf")?.addEventListener("click", () => exportFiscalAudit("pdf"));
 
+    const repairWizardState = { step: 1, results: {}, context: null, running: false };
+    const REPAIR_WIZARD_STEPS = [
+      {
+        id: 1,
+        title: "Hapi 1: Kontrollo lidhjen me ATK",
+        desc: "Verifikon internetin dhe arritshmërinë e serverit ATK (self-test fiskal).",
+      },
+      {
+        id: 2,
+        title: "Hapi 2: Kontrollo databazën",
+        desc: "Kontrollon tabelat fiskale, zinxhirin hash dhe fiscal_settings.",
+      },
+      {
+        id: 3,
+        title: "Hapi 3: Dërgo kuponët offline",
+        desc: "Dërgon kuponët në radhë që nuk janë dërguar te ATK.",
+      },
+      {
+        id: 4,
+        title: "Hapi 4: Kthe nga backup",
+        desc: "Nëse hapat e mëparshëm dështojnë, krijoni backup dhe riktheni të dhënat sipas udhëzimeve.",
+      },
+      {
+        id: 5,
+        title: "Hapi 5: Konfirmo riparimin",
+        desc: "Përmbledhje e riparimit dhe afatit 48 orë.",
+      },
+    ];
+
+    function repairWizardOperatorName() {
+      const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+      return String(u?.emri || u?.username || "Admin").trim() || "Admin";
+    }
+
+    function showRepairWizardModal(show) {
+      const modal = document.getElementById("modal-repair-wizard");
+      if (!modal) return;
+      modal.hidden = !show;
+    }
+
+    function renderRepairWizardChrome() {
+      const d = repairWizardState.context?.deadline;
+      const el = document.getElementById("repair-wizard-deadline");
+      if (!el) return;
+      if (!d) {
+        el.textContent = "";
+        return;
+      }
+      const remain = Number(d.hours_remaining);
+      const past = !!d.past_deadline;
+      el.textContent = past
+        ? `KUJDES: Afati 48h i rikthimit SEF është tejkaluar (${d.hours_total}h).`
+        : `Afati rikthimit SEF: ~${Number.isFinite(remain) ? remain : d.hours_total}h mbeten (nga ${d.hours_total}h).`;
+      el.style.color = past ? "#fecaca" : "";
+      const stepsEl = document.getElementById("repair-wizard-steps");
+      if (stepsEl) {
+        stepsEl.innerHTML = REPAIR_WIZARD_STEPS.map((s) => {
+          const cur = s.id === repairWizardState.step;
+          const done = s.id < repairWizardState.step;
+          const mark = done ? "✓" : cur ? "●" : "○";
+          return `<span style="padding:2px 6px;border-radius:4px;border:1px solid var(--ngjyr-border,#2e2e45);${cur ? "font-weight:600;background:rgba(255,255,255,0.06)" : ""}">${mark} ${s.id}</span>`;
+        }).join("");
+      }
+    }
+
+    function renderRepairWizardStepView() {
+      const step = REPAIR_WIZARD_STEPS.find((s) => s.id === repairWizardState.step) || REPAIR_WIZARD_STEPS[0];
+      const titleEl = document.getElementById("repair-wizard-step-title");
+      const descEl = document.getElementById("repair-wizard-step-desc");
+      if (titleEl) titleEl.textContent = step.title;
+      if (descEl) descEl.textContent = step.desc;
+      const res = repairWizardState.results[repairWizardState.step];
+      const box = document.getElementById("repair-wizard-step-result");
+      if (box) {
+        if (res) {
+          const st = res.status || (res.ok ? "OK" : "Problem");
+          box.textContent = `Status: ${st}\n${res.detail || ""}`;
+          box.classList.toggle("repair-wizard-ok", res.ok === true);
+          box.classList.toggle("repair-wizard-err", res.ok === false);
+        } else {
+          box.textContent = repairWizardState.running ? "Duke ekzekutuar…" : "Kliko «Provë përsëri» ose «Vazhdo».";
+          box.classList.remove("repair-wizard-ok", "repair-wizard-err");
+        }
+      }
+      const step4 = document.getElementById("repair-wizard-step4-actions");
+      if (step4) step4.hidden = step.id !== 4;
+      const skipBtn = document.getElementById("btn-repair-wizard-skip");
+      const retryBtn = document.getElementById("btn-repair-wizard-retry");
+      const nextBtn = document.getElementById("btn-repair-wizard-next");
+      if (skipBtn) skipBtn.style.display = step.id >= 5 ? "none" : "";
+      if (retryBtn) retryBtn.style.display = step.id >= 5 ? "none" : "";
+      if (nextBtn) nextBtn.textContent = step.id >= 5 ? "Mbyll" : "Vazhdo";
+      renderRepairWizardChrome();
+    }
+
+    async function refreshRepairWizardContext() {
+      const data = await api("/api/fiscal/repair-wizard/context");
+      repairWizardState.context = data;
+      renderRepairWizardChrome();
+    }
+
+    async function runRepairWizardStepApi(stepNum) {
+      repairWizardState.running = true;
+      renderRepairWizardStepView();
+      try {
+        const data = await api("/api/fiscal/repair-wizard/step/" + stepNum, {
+          method: "POST",
+          body: JSON.stringify({
+            operator_name: repairWizardOperatorName(),
+            operator_id: "ADMIN",
+            step_results: repairWizardState.results,
+          }),
+        });
+        repairWizardState.results[stepNum] = data.result || data;
+        return repairWizardState.results[stepNum];
+      } finally {
+        repairWizardState.running = false;
+        renderRepairWizardStepView();
+      }
+    }
+
+    async function openRepairWizard() {
+      repairWizardState.step = 1;
+      repairWizardState.results = {};
+      showRepairWizardModal(true);
+      try {
+        await refreshRepairWizardContext();
+        await runRepairWizardStepApi(1);
+      } catch (e) {
+        const box = document.getElementById("repair-wizard-step-result");
+        if (box) {
+          box.textContent = e.message || "Gabim";
+          box.classList.add("repair-wizard-err");
+        }
+      }
+      renderRepairWizardStepView();
+    }
+
+    function closeRepairWizard() {
+      showRepairWizardModal(false);
+    }
+
+    function bindRepairWizardOpen(btnId) {
+      document.getElementById(btnId)?.addEventListener("click", () => {
+        openRepairWizard().catch((e) => alert(e.message || "Wizard dështoi"));
+      });
+    }
+    bindRepairWizardOpen("btn-repair-wizard-open");
+    bindRepairWizardOpen("btn-repair-wizard-open-settings");
+    document.getElementById("repair-wizard-backdrop")?.addEventListener("click", closeRepairWizard);
+    document.getElementById("btn-repair-wizard-close")?.addEventListener("click", closeRepairWizard);
+    document.getElementById("btn-repair-wizard-retry")?.addEventListener("click", async () => {
+      if (repairWizardState.step >= 5) return;
+      try {
+        if (repairWizardState.step <= 3) {
+          await runRepairWizardStepApi(repairWizardState.step);
+        } else if (repairWizardState.step === 5) {
+          await runRepairWizardStepApi(5);
+        } else {
+          renderRepairWizardStepView();
+        }
+      } catch (e) {
+        alert(e.message || "Gabim");
+      }
+    });
+    document.getElementById("btn-repair-wizard-skip")?.addEventListener("click", async () => {
+      if (repairWizardState.step >= 5) return;
+      repairWizardState.step += 1;
+      renderRepairWizardStepView();
+      if (repairWizardState.step <= 3) {
+        try {
+          await runRepairWizardStepApi(repairWizardState.step);
+        } catch (e) {
+          alert(e.message || "Gabim");
+        }
+      } else if (repairWizardState.step === 5) {
+        try {
+          await runRepairWizardStepApi(5);
+        } catch (e) {
+          alert(e.message || "Gabim");
+        }
+      }
+    });
+    document.getElementById("btn-repair-wizard-next")?.addEventListener("click", async () => {
+      if (repairWizardState.step >= 5) {
+        closeRepairWizard();
+        return;
+      }
+      repairWizardState.step += 1;
+      renderRepairWizardStepView();
+      try {
+        if (repairWizardState.step <= 3) {
+          await runRepairWizardStepApi(repairWizardState.step);
+        } else if (repairWizardState.step === 5) {
+          await runRepairWizardStepApi(5);
+        }
+      } catch (e) {
+        alert(e.message || "Gabim");
+      }
+    });
+    document.getElementById("btn-repair-wizard-restore")?.addEventListener("click", async () => {
+      closeRepairWizard();
+      const backupBtn = document.getElementById("btn-hotel-backup");
+      if (backupBtn) {
+        backupBtn.click();
+        repairWizardState.results[4] = {
+          ok: true,
+          status: "Manual",
+          restore_done: true,
+          detail: "Backup u nis nga Siguri & backup.",
+        };
+      } else {
+        repairWizardState.results[4] = {
+          ok: null,
+          status: "Manual",
+          restore_done: false,
+          detail: "Hapni Cilësimet → Siguri & backup për të kopjuar DB-në.",
+        };
+      }
+    });
+
     function setPaperBlockMsg(text, ok) {
       const msg = document.getElementById("paper-block-msg");
       if (!msg) return;
       msg.textContent = text || "";
       msg.style.color = ok ? "#27ae60" : ok === false ? "#ef4444" : "#a0a0b8";
+    }
+
+    function renderOfflineCompliance(warning) {
+      const box = document.getElementById("offline-compliance-box");
+      const actions = document.getElementById("offline-compliance-actions");
+      if (!box) return;
+      const comp = warning?.compliance || warning;
+      box.classList.remove("level-info", "level-warning", "level-urgent", "level-critical");
+      if (!comp || comp.level === "ok" || !comp.pending_count) {
+        box.hidden = true;
+        box.textContent = "";
+        if (actions) actions.hidden = true;
+        return;
+      }
+
+      const lines = [];
+      if (comp.message) lines.push(comp.message);
+
+      if (comp.deadline_48h?.active) {
+        lines.push("");
+        lines.push("— Afat 48 orë —");
+        if (comp.deadline_48h.report_path) lines.push(`Raporti: ${comp.deadline_48h.report_path}`);
+        if (comp.deadline_48h.acknowledged_at) {
+          lines.push(
+            `Njoftuar: ${comp.deadline_48h.acknowledged_at} (${comp.deadline_48h.acknowledged_by || "—"})`
+          );
+        } else {
+          lines.push("Veprim: njoftoni ATK-në, pastaj konfirmoni këtu.");
+        }
+      }
+
+      if (comp.deadline_day10?.active) {
+        lines.push("");
+        lines.push("— Afati ditë 10 muajit vijues —");
+        if (comp.deadline_day10.report_path) lines.push(`Raporti: ${comp.deadline_day10.report_path}`);
+        if (comp.deadline_day10.acknowledged_at) {
+          lines.push(
+            `Dorëzuar: ${comp.deadline_day10.acknowledged_at} (${comp.deadline_day10.acknowledged_by || "—"})`
+          );
+        } else {
+          lines.push("Veprim: paraqitni kuponët te ATK, pastaj konfirmoni këtu.");
+        }
+      }
+
+      if (comp.level && comp.level !== "ok") {
+        box.classList.add("level-" + comp.level);
+      }
+      box.textContent = lines.join("\n");
+      box.hidden = false;
+
+      if (actions) {
+        const showActions =
+          comp.deadline_48h?.needs_ack ||
+          comp.deadline_day10?.needs_ack ||
+          comp.level === "urgent" ||
+          comp.level === "critical" ||
+          comp.level === "warning";
+        actions.hidden = !showActions;
+        const b48 = document.getElementById("btn-comp-ack-48h");
+        const b10 = document.getElementById("btn-comp-ack-day10");
+        if (b48) b48.hidden = !comp.deadline_48h?.needs_ack;
+        if (b10) b10.hidden = !comp.deadline_day10?.needs_ack;
+      }
+    }
+
+    async function refreshOfflineComplianceUi() {
+      try {
+        const data = await api("/api/fiscal/atk-status");
+        renderOfflineCompliance(data.offline_warning || data.offline?.compliance);
+      } catch {
+        try {
+          const data = await api("/api/fiscal/offline-compliance");
+          renderOfflineCompliance(data.compliance);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    async function exportOfflineComplianceReport(type) {
+      const data = await api("/api/fiscal/offline-compliance/export", {
+        method: "POST",
+        body: JSON.stringify({ type }),
+      });
+      setPaperBlockMsg(`Raporti u ruajt:\n${data.report_path}`, true);
+      await refreshOfflineComplianceUi();
+    }
+
+    async function ackOfflineCompliance(type) {
+      const promptText =
+        type === "day10"
+          ? "Shënim opsional (p.sh. data/zyra ATK ku dorëzuat):"
+          : "Shënim opsional (p.sh. si e njoftuat ATK-në):";
+      const notes = window.prompt(promptText, "");
+      if (notes === null) return;
+      const data = await api("/api/fiscal/offline-compliance/ack", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          operator_name: repairWizardOperatorName?.() || "Admin",
+          notes: notes || "",
+        }),
+      });
+      setPaperBlockMsg("U regjistrua konfirmimi për ATK.", true);
+      renderOfflineCompliance(data.compliance);
     }
 
     function renderPaperBlockStatus(status) {
@@ -14445,6 +14860,31 @@
       } catch (e) {
         renderPaperBlockStatus(null);
       }
+      await refreshOfflineComplianceUi();
+    }
+
+    document.getElementById("btn-comp-export-48h")?.addEventListener("click", () => {
+      exportOfflineComplianceReport("48h").catch((e) => setPaperBlockMsg(e.message, false));
+    });
+    document.getElementById("btn-comp-export-day10")?.addEventListener("click", () => {
+      exportOfflineComplianceReport("day10").catch((e) => setPaperBlockMsg(e.message, false));
+    });
+    document.getElementById("btn-comp-ack-48h")?.addEventListener("click", () => {
+      ackOfflineCompliance("48h").catch((e) => setPaperBlockMsg(e.message, false));
+    });
+    document.getElementById("btn-comp-ack-day10")?.addEventListener("click", () => {
+      ackOfflineCompliance("day10").catch((e) => setPaperBlockMsg(e.message, false));
+    });
+
+    if (!window.__hotelOfflineCompliancePoll) {
+      window.__hotelOfflineCompliancePoll = setInterval(() => {
+        if (document.getElementById("panel-paper-block")?.classList.contains("active")) {
+          refreshOfflineComplianceUi().catch(() => {});
+        }
+        if (typeof globalThis.refreshFiscalNetIndicator === "function") {
+          globalThis.refreshFiscalNetIndicator();
+        }
+      }, 60000);
     }
 
     document.getElementById("btn-paper-enable")?.addEventListener("click", async () => {

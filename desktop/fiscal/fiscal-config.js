@@ -358,6 +358,7 @@ function saveFiscalSettings(data) {
 }
 
 module.exports = {
+  EDITABLE_KEYS,
   getFiscalSettings,
   saveFiscalSettings,
   isFiscalEnabled,

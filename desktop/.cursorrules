@@ -13,8 +13,10 @@ NUK GUXON me bë ASNJË ndryshim në këto zona pa lejen KONKRETE dhe DYHERE të
 - Herë e dytë: Naser konfirmon përsëri "po, vazhdo"
 Pa këto dy konfirmime — MOS PREK. Edhe nëse mendon se duhet ndryshim. Edhe nëse bug-u është aty. Pyet, mos prek.
 
-### 3. MOS BO BUILD PA LEJE
+### 3. MOS BO BUILD PA LEJE — VETËM NJË SETUP.EXE
 Nuk guxon me bo build përveç nëse Naser thotë qartë "build" ose "bëje build".
+
+Lexo `.cursor/rules/06-nje-setup-build-naseri.mdc`. Default HOTEL: `node build-packages.js 4` (një Setup). Mos `npm run build:packages` pa urdhër «të gjitha pakot».
 
 ### 4. MOS PREK LINKAT, CLOUD, SINKRONIZIMIN DHE TELEFONIN
 Linkat e telefonit, sinkronizimi cloud, URL-të e serverave, bridge-at, secrets, dhe çdo lidhje mes projekteve janë ZONA TË MBROJTURA ABSOLUTISHT.
