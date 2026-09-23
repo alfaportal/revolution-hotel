@@ -4333,6 +4333,21 @@
           <input type="checkbox" id="public-enabled" checked>
           <span>Faqja publike është aktive</span>
         </label>
+        <div class="purchases-table-wrap" style="margin:0.75rem 0 1rem">
+          <table class="dashboard-top-table table-qr-table">
+            <thead>
+              <tr>
+                <th>Lloji</th>
+                <th>URL</th>
+                <th>QR</th>
+                <th class="col-actions">Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="public-page-qr-links-body">
+              <tr><td colspan="4" class="purchases-empty">Duke ngarkuar QR…</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="public-page-form">
           <div class="public-logo-row">
             <div class="public-logo-preview-wrap">
@@ -4403,17 +4418,6 @@
             <div class="fiscal-field-actions" style="flex-wrap:wrap">
               <input type="text" id="public-page-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-public-copy-url">Kopjo</button>
-            </div>
-          </div>
-          <div class="public-page-qr-block">
-            <div class="card-title" style="font-size:0.95rem">QR kodi i faqes publike</div>
-            <div class="public-page-qr-actions" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.5rem 0">
-              <button type="button" class="btn btn-primary btn-sm" id="btn-public-generate-qr">Gjenero QR Kod</button>
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-public-download-qr" disabled>Shkarko QR</button>
-            </div>
-            <div id="public-page-qr-preview" class="public-page-qr-preview hidden" hidden>
-              <div id="public-page-qr-canvas" class="public-page-qr-canvas"></div>
-              <p id="public-page-qr-url" style="word-break:break-all;font-size:0.75rem;color:var(--ngjyr-muted)"></p>
             </div>
           </div>
           <button type="button" class="btn btn-primary" id="btn-public-save" style="margin-top:1rem">Ruaj faqen publike</button>
@@ -14991,7 +14995,7 @@
     let adminPublicGalleryDirty = false;
     let adminPublicReviews = [];
     let adminPublicPageUrlPrefix = "/hotel/";
-    let adminPublicPageQrData = null;
+    let adminPublicPageAutoQrCache = { takeaway: null, public: null };
 
     function setAdminPublicPageMsg(text, ok) {
       const msg = document.getElementById("public-page-msg");
@@ -15005,6 +15009,8 @@
       adminPublicCloud.server = String(s.public_server || s.cloud_server_url || "https://revolution-pos.com").replace(/\/+$/, "");
       adminPublicCloud.slug = String(s.kitchen_slug || s.client_id || "").trim();
       adminPublicCloud.key = String(s.kitchen_key || "").trim();
+      adminPublicCloud.tipi = String(s.client_tipi || "").trim();
+      adminPublicCloud.takeaway_url = String(s.takeaway_url || s.public_order_url || "").trim();
       if (!adminPublicCloud.slug || !adminPublicCloud.key) {
         throw new Error("Mungon kitchen_slug ose kitchen_key. Ruani licencën dhe «Testo lidhjen» te Linke stafi.");
       }
@@ -15179,21 +15185,165 @@
     function adminPublicPageTargetUrl() {
       const saved = document.getElementById("public-page-url")?.value?.trim();
       if (saved) return saved;
-      const slug = adminValidatePublicSlug(document.getElementById("public-page-slug")?.value);
-      const origin = adminPublicCloud.server || "https://revolution-pos.com";
-      const prefix = adminPublicPageUrlPrefix.replace(/\/+$/, "");
-      return `${origin}${prefix}/${encodeURIComponent(slug)}`;
+      const slug = adminSanitizePublicSlug(document.getElementById("public-page-slug")?.value);
+      if (!slug || slug.length < 3) return "";
+      const origin = (adminPublicCloud.server || "https://revolution-pos.com").replace(/\/+$/, "");
+      const prefix = adminPublicPageUrlPrefix || "/hotel/";
+      const pathPrefix = prefix.startsWith("/") ? prefix : `/${prefix}`;
+      return `${origin}${pathPrefix}${slug}`;
     }
 
-    function adminResetPublicQr() {
-      adminPublicPageQrData = null;
-      const wrap = document.getElementById("public-page-qr-preview");
-      wrap?.classList.add("hidden");
-      if (wrap) wrap.hidden = true;
-      const canvasWrap = document.getElementById("public-page-qr-canvas");
-      if (canvasWrap) canvasWrap.innerHTML = "";
-      const dl = document.getElementById("btn-public-download-qr");
-      if (dl) dl.disabled = true;
+    function adminUrlTipiSegment(tipi) {
+      const map = {
+        restorant: "restorant", kafene: "kafene", bar: "bar", lounge_bar: "bar", pub: "pub", pub_lounge: "pub",
+        fast_food: "fastfood", piceri: "piceri", doner_kebab: "fastfood", kebab: "fastfood", gjelltore: "restorant",
+        fish_restaurant: "restorant", sushi_bar: "bar", klub_nate: "klub", klub: "klub", diskoteke: "klub",
+        bar_nate: "klub", dyqan_pijesh: "bar", pasticeri: "pasticeri", furre_buke: "furra", akullore: "market",
+        gjeltore: "restorant", hotel: "hotel", motel: "motel", hostel: "hotel", resort: "resort",
+        ville_me_qira: "ville", ville: "ville", bujtine: "bujtine", hotel_restorant: "hotel",
+        minimarket: "market", mini_market: "market", market: "market", pilar: "market", supermarket: "supermarket",
+        dyqan_ushqimor: "dyqan", dyqan: "dyqan", manav: "dyqan", bulmetore: "dyqan", kasap: "dyqan",
+        dyqan_peshku: "dyqan", peshkore: "dyqan", farmaci: "barnatore", furra: "furra",
+      };
+      const normalized = String(tipi || "hotel").toLowerCase().trim();
+      if (map[normalized]) return map[normalized];
+      return String(normalized || "hotel").replace(/_/g, "").replace(/[^a-z0-9-]/g, "") || "hotel";
+    }
+
+    function adminBuildTakeawayUrl() {
+      if (adminPublicCloud.takeaway_url) return adminPublicCloud.takeaway_url;
+      const base = (adminPublicCloud.server || "https://revolution-pos.com").replace(/\/+$/, "");
+      const slug = String(adminPublicCloud.slug || "").trim();
+      if (!slug) return "";
+      const t = adminUrlTipiSegment(adminPublicCloud.tipi);
+      return `${base}/${t}/${encodeURIComponent(slug)}/takeaway`;
+    }
+
+    function adminMakeQrDataUrl(text, size = 96) {
+      const url = String(text || "").trim();
+      if (!url || typeof QRCode === "undefined") return "";
+      const wrap = document.createElement("div");
+      wrap.setAttribute("aria-hidden", "true");
+      wrap.style.cssText = "position:fixed;left:-9999px;top:0;width:0;height:0;overflow:hidden;pointer-events:none;";
+      document.body.appendChild(wrap);
+      try {
+        // eslint-disable-next-line no-new
+        new QRCode(wrap, {
+          text: url,
+          width: size,
+          height: size,
+          colorDark: "#0f172a",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+        const canvas = wrap.querySelector("canvas");
+        return canvas ? canvas.toDataURL("image/png") : "";
+      } catch {
+        return "";
+      } finally {
+        wrap.remove();
+      }
+    }
+
+    function bindPublicPageAutoQrActions() {
+      document.querySelectorAll("[data-public-copy-qr-url]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const url = btn.dataset.publicCopyQrUrl;
+          if (!url) return;
+          try {
+            await navigator.clipboard.writeText(url);
+            setAdminPublicPageMsg("URL u kopjua.", true);
+          } catch {
+            setAdminPublicPageMsg("Nuk u kopjua URL.", false);
+          }
+        });
+      });
+      document.querySelectorAll("[data-public-download-qr]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const kind = btn.dataset.publicDownloadQr;
+          const entry = adminPublicPageAutoQrCache[kind];
+          if (!entry?.data_url) {
+            setAdminPublicPageMsg("QR nuk është gati.", false);
+            return;
+          }
+          const a = document.createElement("a");
+          a.href = entry.data_url;
+          a.download = kind === "takeaway" ? `qr-takeaway-${adminPublicCloud.slug || "lokal"}.png` : `qr-faqe-${adminSanitizePublicSlug(document.getElementById("public-page-slug")?.value) || "faqja"}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setAdminPublicPageMsg("QR u shkarkua (PNG).", true);
+        });
+      });
+      document.querySelectorAll("[data-public-print-qr]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const kind = btn.dataset.publicPrintQr;
+          const entry = adminPublicPageAutoQrCache[kind];
+          if (!entry?.data_url || !entry?.url) {
+            setAdminPublicPageMsg("QR nuk është gati.", false);
+            return;
+          }
+          const label = kind === "takeaway" ? "Takeaway" : "Faqja publike";
+          const w = window.open("", "_blank", "noopener");
+          if (!w) {
+            setAdminPublicPageMsg("Lejoni dritaren e re për printim.", false);
+            return;
+          }
+          w.document.write(`<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"><title>QR ${label}</title>
+<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:16px;text-align:center;color:#111}
+.qr-print-card{border:1px solid #ddd;border-radius:12px;padding:16px;max-width:420px;margin:0 auto}
+.qr-print-label{font-size:1.35rem;font-weight:800;margin:12px 0 6px}
+.qr-print-url{font-size:9px;color:#666;word-break:break-all;line-height:1.3}
+@media print{body{padding:0}.qr-print-card{border:none;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}}</style></head>
+<body><section class="qr-print-card"><img src="${escAttr(entry.data_url)}" alt="QR" width="280" height="280">
+<div class="qr-print-label">${escHtml(label)}</div><div class="qr-print-url">${escHtml(entry.url)}</div></section>
+<script>window.onload=function(){window.print();}<\/script></body></html>`);
+          w.document.close();
+        });
+      });
+    }
+
+    function renderPublicPageAutoQrRow(kind, label, url) {
+      if (!url) {
+        return `<tr data-public-qr-kind="${escAttr(kind)}">
+          <td><strong>${escHtml(label)}</strong></td>
+          <td colspan="3" class="purchases-empty">URL mungon — kontrolloni licencën / slug-un e lokali.</td>
+        </tr>`;
+      }
+      const dataUrl = adminMakeQrDataUrl(url, 96);
+      adminPublicPageAutoQrCache[kind] = { url, data_url: dataUrl };
+      const qrCell = dataUrl
+        ? `<img src="${escAttr(dataUrl)}" alt="QR ${escAttr(label)}" class="table-qr-preview-img" width="96" height="96">`
+        : `<span class="purchases-empty">qrcode.js</span>`;
+      return `<tr data-public-qr-kind="${escAttr(kind)}">
+        <td><strong>${escHtml(label)}</strong></td>
+        <td>
+          <code class="table-qr-url">${escHtml(url)}</code>
+          <button type="button" class="btn btn-ghost btn-sm" data-public-copy-qr-url="${escAttr(url)}">Kopjo</button>
+        </td>
+        <td>${qrCell}</td>
+        <td class="purchases-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-public-download-qr="${escAttr(kind)}" ${dataUrl ? "" : "disabled"}>${tt("Shkarko QR")}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-public-print-qr="${escAttr(kind)}" ${dataUrl ? "" : "disabled"}>Printo</button>
+        </td>
+      </tr>`;
+    }
+
+    async function renderPublicPageAutoQrs() {
+      const body = document.getElementById("public-page-qr-links-body");
+      if (!body) return;
+      adminPublicPageAutoQrCache = { takeaway: null, public: null };
+      try {
+        await refreshAdminPublicCloudCreds();
+        const takeawayUrl = adminBuildTakeawayUrl();
+        const publicUrl = adminPublicPageTargetUrl();
+        body.innerHTML =
+          renderPublicPageAutoQrRow("takeaway", "Takeaway", takeawayUrl) +
+          renderPublicPageAutoQrRow("public", "Faqja publike", publicUrl);
+        bindPublicPageAutoQrActions();
+      } catch (err) {
+        body.innerHTML = `<tr><td colspan="4" class="purchases-empty">${escHtml(err.message || "QR nuk u ngarkuan.")}</td></tr>`;
+      }
     }
 
     async function loadAdminPublicPage() {
@@ -15218,9 +15368,9 @@
       document.getElementById("public-page-url").value = data.public_url || "";
       document.getElementById("public-page-slug").value = data.slug || "";
       adminUpdatePublicSlugPreview(data.slug || "");
-      adminResetPublicQr();
       const preview = document.getElementById("btn-public-preview");
       if (preview && data.public_url) preview.href = data.public_url;
+      await renderPublicPageAutoQrs();
       adminPublicPageLogo = data.logo_preview || null;
       adminPublicPageLogoDirty = false;
       adminUpdatePublicLogoPreview(adminPublicPageLogo);
@@ -15273,6 +15423,7 @@
       adminRenderPublicGallery();
       document.getElementById("public-page-url").value = data.public_url || "";
       setAdminPublicPageMsg("Faqja publike u ruajt.", true);
+      await renderPublicPageAutoQrs();
     }
 
     function adminReadImageFile(file, maxBytes, onDone) {
@@ -15330,10 +15481,13 @@
       adminPublicReviews.push({ name: "", stars: 5, text: "" });
       adminRenderPublicReviews();
     });
+    let adminPublicQrRenderTimer = null;
     document.getElementById("public-page-slug")?.addEventListener("input", (e) => {
       const cleaned = adminSanitizePublicSlug(e.target.value);
       if (e.target.value !== cleaned) e.target.value = cleaned;
       adminUpdatePublicSlugPreview(cleaned);
+      clearTimeout(adminPublicQrRenderTimer);
+      adminPublicQrRenderTimer = setTimeout(() => { renderPublicPageAutoQrs().catch(() => {}); }, 350);
     });
     document.getElementById("btn-public-save-slug")?.addEventListener("click", async () => {
       const btn = document.getElementById("btn-public-save-slug");
@@ -15346,9 +15500,9 @@
         document.getElementById("public-page-slug").value = data.slug || slug;
         document.getElementById("public-page-url").value = data.public_url || "";
         adminUpdatePublicSlugPreview(data.slug || slug);
-        adminResetPublicQr();
         const preview = document.getElementById("btn-public-preview");
         if (preview && data.public_url) preview.href = data.public_url;
+        await renderPublicPageAutoQrs();
         setAdminPublicPageMsg("Slug u ruajt.", true);
       } catch (err) {
         setAdminPublicPageMsg(err.message, false);
@@ -15366,50 +15520,6 @@
         setAdminPublicPageMsg("Nuk u kopjua.", false);
       }
     });
-    document.getElementById("btn-public-generate-qr")?.addEventListener("click", async () => {
-      try {
-        await refreshAdminPublicCloudCreds();
-        const url = adminPublicPageTargetUrl();
-        if (typeof QRCode === "undefined") throw new Error("qrcode.js nuk u ngarkua.");
-        const canvasWrap = document.getElementById("public-page-qr-canvas");
-        canvasWrap.innerHTML = "";
-        // eslint-disable-next-line no-new
-        new QRCode(canvasWrap, {
-          text: url,
-          width: 200,
-          height: 200,
-          colorDark: "#0f172a",
-          colorLight: "#ffffff",
-          correctLevel: QRCode.CorrectLevel.M,
-        });
-        adminPublicPageQrData = { url };
-        const wrap = document.getElementById("public-page-qr-preview");
-        wrap?.classList.remove("hidden");
-        if (wrap) wrap.hidden = false;
-        document.getElementById("public-page-qr-url").textContent = url;
-        document.getElementById("btn-public-download-qr").disabled = false;
-        setAdminPublicPageMsg("QR u gjenerua.", true);
-      } catch (err) {
-        setAdminPublicPageMsg(err.message, false);
-      }
-    });
-    document.getElementById("btn-public-download-qr")?.addEventListener("click", () => {
-      try {
-        const canvas = document.querySelector("#public-page-qr-canvas canvas");
-        if (!canvas) throw new Error("Gjeneroni QR fillimisht.");
-        const slug = adminSanitizePublicSlug(document.getElementById("public-page-slug")?.value) || "faqja";
-        const a = document.createElement("a");
-        a.href = canvas.toDataURL("image/png");
-        a.download = `qr-faqe-${slug}.png`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setAdminPublicPageMsg("QR u shkarkua.", true);
-      } catch (err) {
-        setAdminPublicPageMsg(err.message, false);
-      }
-    });
-
     function formatLicenseKey(raw) {
       // Pa kufizim — vetëm trim / uppercase; lejon paste dhe ndryshim kurdo
       return String(raw || "").trim().toUpperCase();
