@@ -1456,6 +1456,35 @@ function initSchema() {
   } catch (e) {
     console.warn("[fiscal-db] initFiscalDB:", e.message);
   }
+
+  runSchemaMigration(
+    "qr-table-waiter-v1",
+    backupCtx,
+    () => !tableExists("qr_table_waiter"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS qr_table_waiter (
+          table_number INTEGER PRIMARY KEY,
+          staff_id INTEGER,
+          waiter_name TEXT NOT NULL,
+          claimed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+      `);
+    },
+  );
+  try {
+    sqlExec(`
+      CREATE TRIGGER IF NOT EXISTS qr_table_waiter_clear_on_free
+      AFTER UPDATE OF status ON tables
+      FOR EACH ROW
+      WHEN NEW.status = 'free' AND IFNULL(OLD.status, '') != 'free'
+      BEGIN
+        DELETE FROM qr_table_waiter WHERE table_number = NEW.number;
+      END;
+    `);
+  } catch (e) {
+    console.warn("[schema] qr_table_waiter_clear_on_free:", e.message);
+  }
 }
 
 

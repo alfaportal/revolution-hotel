@@ -475,9 +475,19 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     );
   }
 
+  const waiterName = String(staff.name || "").trim();
+  for (const o of ordersBefore) {
+    const access = db.qrOrderAccessForWaiter(o, waiterName);
+    if (!access.allowed) {
+      throw Object.assign(
+        new Error(`Porosia QR e tavolinës T${access.tableNumber} i përket kamarierit: ${access.owner}`),
+        { status: 403 },
+      );
+    }
+  }
+
   db.ensureTablesForPendingCloudOrders(ordersBefore);
 
-  const waiterName = String(staff.name || "").trim();
   const ackPin = pinTrim || String(staff.pin || "").trim();
 
   let cloudResult = { ok: false, message: "", accepted_by: "" };
@@ -537,15 +547,14 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       continue;
     }
     const slotNum = onlineSlotForOrder(order.id);
+    const isQr = typeof db.isCloudQrTableOrder === "function" && db.isCloudQrTableOrder(order);
     const enriched = {
       ...order,
-      table_number: db.isCloudQrTableOrder(order)
-        ? db.parseQrTableNumberFromCloudOrder(order)
-        : 0,
-      ...(slotNum ? { online_slot: slotNum } : {}),
+      table_number: isQr ? db.parseQrTableNumberFromCloudOrder(order) : 0,
+      ...(slotNum && !isQr ? { online_slot: slotNum } : {}),
     };
     try {
-      imported.push(db.importCloudOrderToLocal(enriched, waiterName));
+      imported.push(db.importCloudOrderToLocal(enriched, waiterName, { fromAcceptFlow: true }));
     } catch (e) {
       imported.push({ ok: false, cloud_id: order.id, error: e.message });
     }
@@ -617,6 +626,19 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
   }
 
   ensureOnlineOrdersWatcher();
+
+  const waiterName = String(staff?.name || "").trim();
+  for (const id of ids) {
+    const found = findCloudOrderForQrGuard(id);
+    if (!found) continue;
+    const access = db.qrOrderAccessForWaiter(found, waiterName);
+    if (!access.allowed) {
+      throw Object.assign(
+        new Error(`Porosia QR e tavolinës T${access.tableNumber} i përket kamarierit: ${access.owner}`),
+        { status: 403 },
+      );
+    }
+  }
 
   const pendingLocal = db.listPendingCloudOrders().find((o) => String(o?.id) === String(orderId));
   const isLocalGuestOrder = !!(
@@ -769,8 +791,13 @@ async function acceptAllPendingForStaff(staff, pin, seedOrders = []) {
       snap = onlineOrdersWatcher.getOnlineOrdersSnapshot();
     }
     let pending = (snap.orders || []).filter(o => o?.id && !db.isCloudOrderHandledLocally(o.id));
+    pending = pending.filter(o => db.qrOrderAccessForWaiter(o, staff?.name).allowed);
     if (!pending.length && seedOrders.length) {
-      pending = seedOrders.filter(o => o?.id && !db.isCloudOrderHandledLocally(o.id));
+      pending = seedOrders.filter(o =>
+        o?.id
+        && !db.isCloudOrderHandledLocally(o.id)
+        && db.qrOrderAccessForWaiter(o, staff?.name).allowed,
+      );
     }
     if (!pending.length) break;
 
@@ -2280,6 +2307,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOnly, async (req, res) 
     if (staffId) {
       orders = orders.filter(o => !onlineOrdersWatcher.isStaffRefusedOrder(db, staffId, o.id));
     }
+    orders = filterQrOrdersForWaiterName(orders, req.session?.emri);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const hasPending = orders.length > 0;
     res.json({
@@ -2311,6 +2339,11 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
         return { ...slot, status: "free", order: null };
       }
       return slot;
+    }).map(slot => {
+      if (!slot?.order) return slot;
+      const access = db.qrOrderAccessForWaiter(slot.order, req.session?.emri);
+      if (access.allowed) return slot;
+      return { ...slot, status: "free", order: null };
     });
     const fallback = Array.from({ length: 6 }, (_, i) => ({
       slot: i + 1,
@@ -2427,6 +2460,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOnly, async (req, res) 
       { fallbackOrders, trustedStaff },
     );
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
+    const visibleOrders = filterQrOrdersForWaiterName(flow.snapshot?.orders || [], req.session?.emri);
     res.json({
       ok: true,
       acknowledged: flow.acknowledged,
@@ -2434,9 +2468,9 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOnly, async (req, res) 
       imported: flow.imported,
       my_external: myOrders.length,
       my_orders: myOrders,
-      pending: flow.snapshot?.pending || 0,
-      has_pending: !!flow.snapshot?.has_pending,
-      orders: flow.snapshot?.orders || [],
+      pending: visibleOrders.length,
+      has_pending: visibleOrders.length > 0,
+      orders: visibleOrders,
       cloud_ok: !!flow.cloud_ok,
       cloud_message: flow.cloud_message || "",
     });
@@ -2481,6 +2515,7 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOnly, async (req, res) 
     const reason = String(req.body?.reason || req.body?.refuse_reason || "").trim();
     const flow = await refusePendingOnlineOrdersFlow(ids, { pin, trustedStaff, reason });
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
+    const visibleOrders = filterQrOrdersForWaiterName(flow.snapshot?.orders || [], req.session?.emri);
     res.json({
       ok: true,
       refused: flow.refused,
@@ -2489,9 +2524,9 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOnly, async (req, res) 
       grace_minutes: flow.grace_minutes,
       refuse_mode: flow.refuse_mode,
       refuse_reason: reason || flow.refuse_reason || "",
-      pending: flow.snapshot?.pending || 0,
-      has_pending: !!flow.snapshot?.has_pending,
-      orders: flow.snapshot?.orders || [],
+      pending: visibleOrders.length,
+      has_pending: visibleOrders.length > 0,
+      orders: visibleOrders,
       my_external: myOrders.length,
       my_orders: myOrders,
       cloud_ok: !!flow.cloud_ok,
@@ -2513,15 +2548,27 @@ app.post("/api/waiter/online-orders/cancel", auth, waiterOnly, async (req, res) 
       return res.status(400).json({ ok: false, gabim: "Zgjidhni porosinë." });
     }
 
+    for (const id of ids) {
+      const found = findCloudOrderForQrGuard(id);
+      if (!found) continue;
+      const access = db.qrOrderAccessForWaiter(found, req.session?.emri);
+      if (!access.allowed) {
+        return res.status(403).json({
+          ok: false,
+          gabim: `Porosia QR e tavolinës T${access.tableNumber} i përket kamarierit: ${access.owner}`,
+        });
+      }
+    }
     const flow = await cancelPendingOnlineOrdersFlow(ids);
     const staffId = resolveWaiterStaffId(req.session);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
+    const visibleOrders = filterQrOrdersForWaiterName(flow.snapshot?.orders || [], req.session?.emri);
     res.json({
       ok: true,
       cancelled: flow.cancelled,
-      pending: flow.snapshot?.pending || 0,
-      has_pending: !!flow.snapshot?.has_pending,
-      orders: flow.snapshot?.orders || [],
+      pending: visibleOrders.length,
+      has_pending: visibleOrders.length > 0,
+      orders: visibleOrders,
       my_external: myOrders.length,
       my_orders: myOrders,
       cloud_ok: !!flow.cloud_ok,
@@ -2556,6 +2603,28 @@ app.get("/api/waiter/active-register-mode", auth, (req, res) => {
     res.status(500).json({ ok: false, gabim: e.message });
   }
 });
+
+function filterQrOrdersForWaiterName(orders, waiterName) {
+  return (orders || []).filter(o => db.qrOrderAccessForWaiter(o, waiterName).allowed);
+}
+
+function findCloudOrderForQrGuard(orderId) {
+  const id = String(orderId || "").trim();
+  if (!id) return null;
+  const norm = onlineOrdersWatcher.normalizePendingOrder;
+  const sources = [
+    onlineOrdersWatcher.getOnlineOrdersSnapshot()?.orders,
+    db.listPendingCloudOrders(),
+    onlineOrdersWatcher.getLastKnownOrders(),
+  ];
+  for (const source of sources) {
+    for (const raw of source || []) {
+      const o = typeof norm === "function" ? norm(raw) : raw;
+      if (o?.id && String(o.id) === id) return o;
+    }
+  }
+  return null;
+}
 
 function resolveWaiterStaffId(session) {
   if (session.staff_id) return Number(session.staff_id);

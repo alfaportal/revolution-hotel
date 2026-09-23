@@ -5407,29 +5407,57 @@ function resolveTableForCloudOrder(cloudOrder, waiterName = "") {
   return findFreeOnlinePickupTable();
 }
 
-function importCloudOrderToLocal(cloudOrder, waiterName) {
+function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   const cloudId = String(cloudOrder?.id || "").trim();
   if (!cloudId) throw new Error("Porosia nuk ka ID cloud.");
 
   const name = String(waiterName || "").trim();
   if (!name) throw new Error("Mungon emri i kamarierit që pranon porosinë.");
 
+  assertCloudQrOrderForWaiter(cloudOrder, name);
+
+  const fromAcceptFlow = !!options.fromAcceptFlow;
   const activeExisting = getActiveOrderByCloudId(cloudId);
+  if (
+    !fromAcceptFlow
+    && !activeExisting
+    && isQrTableOrderSubjectToAcceptGate(cloudOrder)
+    && !isCloudOrderAcceptedForImport(cloudOrder)
+  ) {
+    return { ok: false, needs_accept: true, cloud_id: cloudId };
+  }
+
   if (activeExisting) {
     const table = getTableById(activeExisting.table_id);
-    if (String(activeExisting.waiter_name || "").trim() !== name) {
-      sqlite.prepare("UPDATE orders SET waiter_name = ? WHERE id = ?").run(name, activeExisting.id);
-    }
+    const keepWaiter = String(activeExisting.waiter_name || name).trim();
     linkCloudOrderId(activeExisting.id, cloudId);
     sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(activeExisting.table_id);
+    const tableNum = table?.number || 0;
+    const rawItems = cloudOrder.items || cloudOrder.items_json || [];
+    const cloudItems = mapCloudItemsToLocal(rawItems);
+    if (cloudItems.length > 0) {
+      const cloudTotal = cloudItems.reduce((s, i) => s + i.price * i.quantity, 0);
+      let localMapped = [];
+      try {
+        localMapped = mapCloudItemsToLocal(JSON.parse(activeExisting.items_json || "[]"));
+      } catch {
+        localMapped = [];
+      }
+      const nextJson = JSON.stringify(cloudItems);
+      if (nextJson !== JSON.stringify(localMapped)) {
+        sqlite.prepare("UPDATE orders SET items_json = ?, total = ? WHERE id = ?")
+          .run(nextJson, cloudTotal, activeExisting.id);
+        console.log("[sync] T" + tableNum + " artikujt u përditësuan nga cloud");
+      }
+    }
     return {
       ok: true,
       already: true,
       order_id: activeExisting.id,
       table_id: activeExisting.table_id,
-      table_number: table?.number || 0,
+      table_number: tableNum,
       table_label: table ? tableLabel(table) : "",
-      waiter_name: name,
+      waiter_name: keepWaiter,
     };
   }
 
@@ -5481,15 +5509,34 @@ function importCloudOrderToLocal(cloudOrder, waiterName) {
     table = findFreeOnlinePickupTable();
     activeOnTable = getActiveOrderForTable(table.id);
   }
+  const duplicateActive = getActiveOrderByCloudId(cloudId);
+  if (duplicateActive) {
+    const dupTable = getTableById(duplicateActive.table_id);
+    sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(duplicateActive.table_id);
+    return {
+      ok: true,
+      already: true,
+      order_id: duplicateActive.id,
+      table_id: duplicateActive.table_id,
+      table_number: dupTable?.number || 0,
+      table_label: dupTable ? tableLabel(dupTable) : "",
+      waiter_name: duplicateActive.waiter_name || name,
+    };
+  }
+
   if (activeOnTable && cloudTableNum > 0) {
+    const keepWaiter = String(activeOnTable.waiter_name || name).trim();
+    if (!sameWaiterName(keepWaiter, name)) {
+      throw new Error(`Kjo tavolinë është e kamarierit: ${keepWaiter}`);
+    }
     const merged = mergeOrderItemsLocal(parseOrderItems(activeOnTable.items_json), items);
     const mergedTotal = merged.reduce((s, i) => s + i.price * i.quantity, 0);
     const label = sourceLabel || String(activeOnTable.source_label || "").trim();
     sqlite.prepare(`
-      UPDATE orders SET waiter_name = ?, items_json = ?, total = ?, source_label = ?,
-        cloud_order_id = COALESCE(NULLIF(cloud_order_id, ''), ?)
+      UPDATE orders SET cloud_order_id = ?, items_json = ?, total = ?, source_label = ?
       WHERE id = ?
-    `).run(name, JSON.stringify(merged), mergedTotal, label, cloudId, activeOnTable.id);
+    `).run(cloudId, JSON.stringify(merged), mergedTotal, label, activeOnTable.id);
+    console.log("[sync] T" + table.number + " cloud_order_id u përditësua: " + cloudId);
     linkCloudOrderId(activeOnTable.id, cloudId);
     sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
     return {
@@ -5500,17 +5547,21 @@ function importCloudOrderToLocal(cloudOrder, waiterName) {
       table_id: table.id,
       table_number: table.number,
       table_label: tableLabel(table),
-      waiter_name: name,
+      waiter_name: keepWaiter,
       total: mergedTotal,
       batch_items: items,
       total,
     };
   }
 
+  const insertWaiter = cloudTableNum > 0
+    ? (qrTableServingWaiterName(cloudTableNum) || name)
+    : name;
+
   const r = sqlite.prepare(`
     INSERT INTO orders (table_id, waiter_name, items_json, total, status, cloud_order_id, source_label)
     VALUES (?, ?, ?, ?, 'active', ?, ?)
-  `).run(table.id, name, itemsJson, total, cloudId, sourceLabel);
+  `).run(table.id, insertWaiter, itemsJson, total, cloudId, sourceLabel);
 
   linkCloudOrderId(r.lastInsertRowid, cloudId);
   sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
@@ -5522,7 +5573,7 @@ function importCloudOrderToLocal(cloudOrder, waiterName) {
     table_id: table.id,
     table_number: table.number,
     table_label: tableLabel(table),
-    waiter_name: name,
+    waiter_name: insertWaiter,
     total,
     batch_items: items,
   };
@@ -5617,6 +5668,91 @@ function listActiveOnlineOrdersForWaiter(waiterName) {
   );
 }
 
+function sameWaiterName(a, b) {
+  const x = String(a || "").trim().toLowerCase();
+  const y = String(b || "").trim().toLowerCase();
+  return !!x && x === y;
+}
+
+/** Ruaj që kjo tavolinë i përket kamarierit që e shërbeu i pari. Nuk e mbishkruan. */
+function claimQrTableWaiter(tableNumber, waiterName) {
+  const n = Number(tableNumber);
+  const name = String(waiterName || "").trim();
+  if (!n || n < 1 || !name) return;
+  const existing = sqlite.prepare(
+    "SELECT waiter_name FROM qr_table_waiter WHERE table_number = ?",
+  ).get(n);
+  if (existing) return;
+  const staff = findStaffByName(name) || findStaffByNameInsensitive(name);
+  const storedName = String(staff?.name || name).trim();
+  sqlite.prepare(`
+    INSERT INTO qr_table_waiter (table_number, staff_id, waiter_name)
+    VALUES (?, ?, ?)
+  `).run(n, staff?.id ?? null, storedName);
+}
+
+/** Kamarieri që e ka shërbyer tavolinën (porosia e parë aktive). Bosh nëse tavolina është e lirë. */
+function qrTableServingWaiterName(tableNumber) {
+  const n = Number(tableNumber);
+  if (!n || n < 1) return "";
+  const table = getTableByNumber(n);
+  const active = table ? getActiveOrderForTable(table.id) : null;
+  if (!table || !active) {
+    try {
+      sqlite.prepare("DELETE FROM qr_table_waiter WHERE table_number = ?").run(n);
+    } catch {
+      /* ignore */
+    }
+    return "";
+  }
+  const fromOrder = String(active.waiter_name || "").trim();
+  if (!fromOrder) return "";
+  let claim = null;
+  try {
+    claim = sqlite.prepare(
+      "SELECT waiter_name FROM qr_table_waiter WHERE table_number = ?",
+    ).get(n);
+  } catch {
+    return fromOrder;
+  }
+  if (claim?.waiter_name) {
+    const claimed = String(claim.waiter_name).trim();
+    if (sameWaiterName(claimed, fromOrder)) return claimed;
+    return fromOrder;
+  }
+  try {
+    claimQrTableWaiter(n, fromOrder);
+  } catch {
+    /* ignore */
+  }
+  return fromOrder;
+}
+
+function assertCloudQrOrderForWaiter(cloudOrder, waiterName) {
+  if (!isCloudQrTableOrder(cloudOrder)) return;
+  const tableNumber = parseQrTableNumberFromCloudOrder(cloudOrder);
+  const owner = qrTableServingWaiterName(tableNumber);
+  const who = String(waiterName || "").trim();
+  if (owner && !sameWaiterName(owner, who)) {
+    throw new Error(`Porosia QR e tavolinës T${tableNumber} i përket kamarierit: ${owner}`);
+  }
+}
+
+/** Porosi jo-QR kalojnë. QR e tavolinës së shërbyer shkon vetëm te ai kamarier. */
+function qrOrderAccessForWaiter(cloudOrder, waiterName) {
+  if (!isCloudQrTableOrder(cloudOrder)) {
+    return { allowed: true, owner: "", tableNumber: 0 };
+  }
+  const tableNumber = parseQrTableNumberFromCloudOrder(cloudOrder);
+  const owner = qrTableServingWaiterName(tableNumber);
+  if (!owner) return { allowed: true, owner: "", tableNumber };
+  return {
+    allowed: sameWaiterName(owner, waiterName),
+    owner,
+    tableNumber,
+  };
+}
+
 function sendOrder({ table_id, waiter_name, items }) {
   const table = sqlite.prepare("SELECT * FROM tables WHERE id = ?").get(table_id);
   if (!table) throw new Error("Tavolina nuk u gjet");
@@ -5634,6 +5770,11 @@ function sendOrder({ table_id, waiter_name, items }) {
       sqlite.prepare("UPDATE orders SET items_json = ?, total = ? WHERE id = ?")
         .run(itemsJson, total, existing.id);
       sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table_id);
+      try {
+        claimQrTableWaiter(table.number, existing.waiter_name);
+      } catch {
+        /* ignore */
+      }
       return existing.id;
     }
     const r = sqlite.prepare(`
@@ -5641,6 +5782,11 @@ function sendOrder({ table_id, waiter_name, items }) {
       VALUES (?, ?, ?, ?, 'active')
     `).run(table_id, waiter_name, itemsJson, total);
     sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table_id);
+    try {
+      claimQrTableWaiter(table.number, waiter_name);
+    } catch (err) {
+      console.warn("[qr-table] claim:", err.message);
+    }
     return r.lastInsertRowid;
   })();
 }
@@ -10824,6 +10970,7 @@ function getVersionInfo() {
     isQrTableOrderSubjectToAcceptGate,
     isCloudOrderAcceptedForImport,
     parseQrTableNumberFromCloudOrder,
+    qrOrderAccessForWaiter,
     isPhysicalVenueTable,
     isTableInOnlinePickupZone,
     findOnlinePickupTableBySlotIndex,
