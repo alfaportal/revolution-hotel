@@ -1,6 +1,7 @@
 /** Dërgim email transaksional (Resend). */
 
 const DEFAULT_EMAIL_FROM = "Revolution POS <noreply@ketujemi.com>";
+const DEFAULT_INVOICE_FROM_ADDRESS = "noreply@ketujemi.com";
 const { getPublicAppOrigin, getSupportPhone } = require("../lib/publicOrigin");
 
 function resolveEmailFrom() {
@@ -9,11 +10,35 @@ function resolveEmailFrom() {
   return raw.replace(/@revolutioninvest\.com/gi, "@ketujemi.com");
 }
 
+function invoiceFromAddressFromEnv() {
+  const raw = String(process.env.EMAIL_FROM || "").trim();
+  if (!raw) return DEFAULT_INVOICE_FROM_ADDRESS;
+  const inBrackets = raw.match(/<([^>]+)>/);
+  let addr = inBrackets ? inBrackets[1].trim() : raw;
+  if (!addr.includes("@")) return DEFAULT_INVOICE_FROM_ADDRESS;
+  return addr.replace(/@revolutioninvest\.com/gi, "@ketujemi.com");
+}
+
+function formatRFC5322DisplayName(name) {
+  const n = String(name || "").trim();
+  if (!n) return "";
+  if (/[\x00-\x1f"\\]/.test(n) || n.includes("@")) {
+    return `"${n.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return n;
+}
+
+function buildInvoiceA4From(displayName, nameFallback = "Hotel") {
+  const label = formatRFC5322DisplayName(displayName) || String(nameFallback || "Hotel").trim();
+  const addr = invoiceFromAddressFromEnv();
+  return `${label} <${addr}>`;
+}
+
 function isEmailConfigured() {
   return Boolean(process.env.RESEND_API_KEY?.trim());
 }
 
-async function deliverEmail({ to, subject, text, html, attachments }) {
+async function deliverEmail({ to, subject, text, html, attachments, from }) {
   if (!isEmailConfigured()) {
     throw new Error(
       "Emaili nuk është i konfiguruar. Vendosni RESEND_API_KEY në Railway.",
@@ -21,7 +46,7 @@ async function deliverEmail({ to, subject, text, html, attachments }) {
   }
 
   const payload = {
-    from: resolveEmailFrom(),
+    from: from || resolveEmailFrom(),
     to: [String(to).trim().toLowerCase()],
     subject,
     text,
@@ -649,6 +674,7 @@ async function sendKafeneSecurityAlertEmail({
 module.exports = {
   isEmailConfigured,
   deliverEmail,
+  buildInvoiceA4From,
   resolveSupportPhone,
   resolveAdminNotifyEmail,
   sendOwnerPasswordResetEmail,

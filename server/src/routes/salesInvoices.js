@@ -2,7 +2,7 @@
  * Fatura A4 shitje — panel pronari (JWT). Numri Supabase, logo Storage, email Resend.
  */
 const express = require("express");
-const { deliverEmail, isEmailConfigured } = require("../services/emailService");
+const { deliverEmail, isEmailConfigured, buildInvoiceA4From } = require("../services/emailService");
 const { renderInvoicePdf } = require("../services/salesInvoicePdfService");
 const {
   getSellerSnapshot,
@@ -84,6 +84,7 @@ router.post("/send-email", async (req, res) => {
     const text = `Faturë shitje nr. ${invoice.number} nga ${sellerName}.`;
     const data = await deliverEmail({
       to,
+      from: buildInvoiceA4From(sellerName, "Hotel"),
       subject,
       text,
       html: `<p>${text}</p>`,
