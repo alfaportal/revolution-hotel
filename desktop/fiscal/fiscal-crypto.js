@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const dbCrypto = require("../db-crypto");
 const { isFiscalEnabled } = require("./fiscal-config");
 
 /** Emra lokalë (ekzistues) */
@@ -272,6 +273,87 @@ function verifyReceiptSignature(receiptData, signatureBase64) {
   }
 }
 
+function normalizeRegId(raw) {
+  const n = parseInt(String(raw ?? "").trim(), 10);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+function parseCertRegistrationIds(certPath) {
+  try {
+    if (!certPath || !fs.existsSync(certPath)) return null;
+    const pem = fs.readFileSync(certPath, "utf8");
+    if (!/BEGIN\s+CERTIFICATE/i.test(pem)) return null;
+    const { X509Certificate } = crypto;
+    const cert = new X509Certificate(pem);
+    const fields = {};
+    for (const line of String(cert.subject || "").split(/\n/)) {
+      const m = line.match(/^([^=]+)=(.*)$/);
+      if (m) fields[m[1].trim()] = m[2].trim();
+    }
+    const posRaw = fields.OU ?? fields.ou ?? "";
+    const branchRaw = fields.L ?? fields.l ?? fields.localityName ?? "";
+    return {
+      pos_id: normalizeRegId(posRaw),
+      branch_id: normalizeRegId(branchRaw),
+      raw_subject: cert.subject,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function compareCertWithSettings(settings, certPath) {
+  const certIds = parseCertRegistrationIds(certPath);
+  if (!certIds) {
+    return {
+      match: false,
+      reason: "no_cert",
+      cert_ids: null,
+      settings_ids: null,
+    };
+  }
+  const settingsIds = {
+    pos_id: normalizeRegId(settings?.pos_id),
+    branch_id: normalizeRegId(
+      settings?.business_unit_number ?? settings?.unit_number
+    ),
+  };
+  if (!settingsIds.pos_id || !settingsIds.branch_id) {
+    return {
+      match: false,
+      reason: "settings_incomplete",
+      cert_ids: certIds,
+      settings_ids: settingsIds,
+    };
+  }
+  const match =
+    settingsIds.pos_id === certIds.pos_id &&
+    settingsIds.branch_id === certIds.branch_id;
+  return {
+    match,
+    reason: match ? "ok" : "mismatch",
+    cert_ids: certIds,
+    settings_ids: settingsIds,
+  };
+}
+
+/** Ruaj çelësat pas onboarding ATK (CSR + signcsr). */
+function saveAtkKeysFromOnboarding(privateKeyPem, signedCertificatePem) {
+  const dir = getKeysDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const privateAtkPath = path.join(dir, PRIVATE_FILE_ATK);
+  const certAtkPath = path.join(dir, CERT_FILE_ATK);
+  const privatePath = path.join(dir, PRIVATE_FILE);
+  const certPath = path.join(dir, CERT_FILE);
+
+  dbCrypto.writePrivatePem(privateAtkPath, privateKeyPem);
+  dbCrypto.writePrivatePem(privatePath, privateKeyPem);
+  fs.writeFileSync(certAtkPath, signedCertificatePem, { encoding: "utf8", mode: 0o600 });
+  fs.writeFileSync(certPath, signedCertificatePem, { encoding: "utf8", mode: 0o600 });
+  saveKeyPaths(certAtkPath, privateAtkPath);
+  return { certificate_path: certAtkPath, private_key_path: privateAtkPath };
+}
+
 module.exports = {
   getKeysDir,
   generateKeyPair,
@@ -280,5 +362,9 @@ module.exports = {
   signReceipt,
   verifyReceiptSignature,
   canonicalizeReceiptData,
+  saveAtkKeysFromOnboarding,
+  parseCertRegistrationIds,
+  compareCertWithSettings,
+  normalizeRegId,
   EC_CURVE,
 };

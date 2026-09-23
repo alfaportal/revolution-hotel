@@ -1,31 +1,47 @@
 /**
- * HOTEL — ndalim absolut i komunikimit me ATK (HTTP kuponë / PosCoupon).
- * Nuk anashkalohet me env, settings, FISCAL_LOCAL_RUN, paper-block, E2E, etj.
+ * HOTEL — bllokon HTTP te ATK derisa onboarding të përfundojë (si BIZNES).
+ * Pas «Lidhu me ATK» + atk_send_allowed → lejo dërgimin (fiscal-boot / fiscal-test-mode-store).
  */
-const ATK_COMMUNICATION_FORBIDDEN = true;
+const { isAtkTransmissionBlocked, isAtkSendAllowedByOwner } = require("./fiscal-test-mode-store");
 
 function isAtkCommunicationForbidden() {
-  return ATK_COMMUNICATION_FORBIDDEN === true;
+  return isAtkTransmissionBlocked();
 }
 
-/** Gjithmonë false te HOTEL — vetëm moduli SEF (jashtë ky program) dërgon te ATK. */
+/** Auto-dërgim offline queue — vetëm pas onboarding (atk_send_allowed + FISCAL_LOCAL_RUN=0). */
 function isAtkAutoSendEnabled() {
-  return false;
+  if (isAtkTransmissionBlocked()) return false;
+  try {
+    const database = require("../database");
+    const dbVal = database.getSetting("atk_auto_send");
+    if (dbVal != null) {
+      return dbVal === "1" || dbVal === 1 || dbVal === true || dbVal === "true";
+    }
+  } catch {
+    /* */
+  }
+  const env = process.env.ATK_AUTO_SEND;
+  if (env !== undefined && env !== null && String(env).trim() !== "") {
+    const s = String(env).trim().toLowerCase();
+    if (s === "0" || s === "false" || s === "no" || s === "off") return false;
+    if (s === "1" || s === "true" || s === "yes" || s === "on") return true;
+  }
+  return isAtkSendAllowedByOwner();
 }
 
 function blockAtkCommunicationResult(context) {
   return {
     sent: false,
-    forbidden: true,
+    forbidden: isAtkCommunicationForbidden(),
     blocked: true,
     skipped: true,
-    error: "HOTEL: komunikimi me ATK i ndaluar — asnjë kupon nuk dërgohet te ATK",
+    error:
+      "ATK i bllokuar — plotësoni fushat e fiskalizimit dhe shtypni «Lidhu me ATK» para dërgimit të kuponëve.",
     context: context || "atk",
   };
 }
 
 module.exports = {
-  ATK_COMMUNICATION_FORBIDDEN,
   isAtkCommunicationForbidden,
   isAtkAutoSendEnabled,
   blockAtkCommunicationResult,

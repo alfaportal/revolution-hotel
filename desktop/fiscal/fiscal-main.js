@@ -33,6 +33,10 @@ const {
   getFiscalReceiptById,
 } = require("./fiscal-db");
 const { attachChainToFiscalData } = require("./fiscal-hash-chain");
+const {
+  isFiscalMemoryOnly,
+  isAtkTransmissionBlocked,
+} = require("./fiscal-test-mode-store");
 const { getFiscalTodayParts, syncClockFromNetwork } = require("./fiscal-time-sync");
 
 const PRINT_MODE_KEY = "sef_print_mode"; // addon | replace
@@ -414,9 +418,23 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     return null;
   }
 
+  const { getAtkStatus } = require("./fiscal-atk-api");
+  if (!getAtkStatus().ready_for_atk) {
+    throw new Error("Bëni onboarding (Lidhu me ATK) para se të shtypni kupon fiskal.");
+  }
+
   const sqlite = getSqlite();
   const id = Number(orderId);
-  console.log("[fiscal-main] START processFiscalReceipt orderId=", id);
+  const memoryOnly = isFiscalMemoryOnly();
+  const atkBlocked = isAtkTransmissionBlocked();
+  console.log(
+    "[fiscal-main] START processFiscalReceipt orderId=",
+    id,
+    "memory_only=",
+    memoryOnly,
+    "atk_blocked=",
+    atkBlocked
+  );
   try {
   if (!id) throw new Error("orderId mungon");
 

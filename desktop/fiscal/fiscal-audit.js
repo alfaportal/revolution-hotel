@@ -635,6 +635,18 @@ function exportAuditPDF(fromDate, toDate, targetPath) {
   return filePath;
 }
 
+function writeTextReportPdf(plainText, targetPath) {
+  const filePath = String(targetPath || "").trim();
+  if (!filePath) throw new Error("Shtegu PDF mungon");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, buildSimplePdf(String(plainText || "").split(/\r?\n/)));
+  return filePath;
+}
+
+function buildTextReportPdfBuffer(plainText) {
+  return buildSimplePdf(String(plainText || "").split(/\r?\n/));
+}
+
 module.exports = {
   ALLOWED_ACTIONS,
   FISCAL_AUDIT_EXPORT_ACTIONS,
@@ -642,6 +654,8 @@ module.exports = {
   getAuditLog,
   exportAuditCSV,
   exportAuditPDF,
+  writeTextReportPdf,
+  buildTextReportPdfBuffer,
   pickAuditSaveDialog,
   purgeLegacyAuditNoise,
   getDocumentsDir,

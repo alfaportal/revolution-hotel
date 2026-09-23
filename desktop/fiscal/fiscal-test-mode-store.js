@@ -43,10 +43,15 @@ function isAtkTestMode() {
 
 function isAtkTransmissionBlocked() {
   if (!isAtkSendAllowedByOwner()) return true;
-  return isFiscalLocalRun() || isLocalPrintOnly();
+  return isFiscalLocalRun();
 }
 
 function isFiscalMemoryOnly() {
+  const v = process.env.FISCAL_MEMORY_ONLY;
+  if (v !== undefined && v !== null && String(v).trim() !== "") {
+    const s = String(v).trim().toLowerCase();
+    return s === "1" || s === "true" || s === "yes" || s === "on";
+  }
   return false;
 }
 

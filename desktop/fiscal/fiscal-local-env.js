@@ -1,7 +1,6 @@
 /**
  * fiscal/fiscal-local-env.js — profil ekzekutimi lokal për Revolution HOTEL.
- * HOTEL nuk dërgon kuponë te ATK (ATK_COMMUNICATION_FORBIDDEN); ky modul
- * dokumenton dhe vendos env për testim lokal / self-test.
+ * Profil lokal vs live ATK — FISCAL_LOCAL_RUN=1 derisa onboarding (fiscal-boot).
  */
 const ATK_HOST_RE =
   /(?:^|\.)((?:fi|e)?fiskalizimi(?:-test)?\.atk-ks\.org)$/i;
@@ -52,7 +51,7 @@ function getLocalRunStatus() {
   const {
     isAtkAutoSendEnabled,
     isAtkCommunicationForbidden,
-  } = require("./fiscal-offline");
+  } = require("./fiscal-atk-guard");
   let fiscalEnabled = false;
   let settings = null;
   try {
@@ -67,7 +66,7 @@ function getLocalRunStatus() {
     atk_transmission_blocked: isAtkCommunicationForbidden(),
     fiscal_enabled: fiscalEnabled,
     fiscal_persistence: "sqlite",
-    atk_http: "BLOCKED (HOTEL — vetëm moduli SEF dërgon te ATK)",
+    atk_http: isAtkCommunicationForbidden() ? "BLOCKED" : "ALLOWED",
     settings_summary: settings
       ? {
           nui: settings.taxpayer_nui,

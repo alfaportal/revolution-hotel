@@ -4,10 +4,13 @@ const fs = require("fs");
 const { joinContent } = require("./app-paths");
 const os = require("os");
 const crypto = require("crypto");
-/** Urdhër pronari: asgjë te ATK deri HOTEL_ATK_SEND_ALLOWED=1 */
-if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
-  process.env.FISCAL_LOCAL_RUN = "1";
-  process.env.ATK_AUTO_SEND = "0";
+process.env.FISCAL_LOCAL_RUN = process.env.FISCAL_LOCAL_RUN || "1";
+process.env.ATK_AUTO_SEND = process.env.ATK_AUTO_SEND || "0";
+try {
+  const { applyStartupFiscalProfile } = require("./fiscal/fiscal-boot");
+  applyStartupFiscalProfile();
+} catch (e) {
+  console.warn("[hotel] fiscal-boot:", e.message);
 }
 const db = require("./database");
 const { registerSalesInvoiceRoutes } = require("./sales-invoices-routes");
@@ -27,6 +30,101 @@ let _fiscalMain = null;
 function getFiscalMain() {
   if (!_fiscalMain) _fiscalMain = require("./fiscal/fiscal-main");
   return _fiscalMain;
+}
+
+function resolveBodyOperatorId(req) {
+  return String(req.body?.operator_id || "POS").trim() || "POS";
+}
+
+function syncReportLanguage(settings) {
+  fiscalI18n.syncLanguageFromSettings(settings?.language);
+}
+
+/** Tekst i përbashkët për Modin X dhe Raportin Z (parity BIZNES). */
+function buildFiscalDayReportText(details, settings, mode) {
+  syncReportLanguage(settings);
+  const m = String(mode || details.mode || "Z").toUpperCase();
+  const isX = m === "X";
+  const isPeriodic = m === "PERIODIC" || m === "P";
+  const w = 42;
+  const line = (ch = "=") => ch.repeat(w);
+  const row = (label, val) => {
+    const v = String(val ?? "");
+    const gap = Math.max(1, w - label.length - v.length);
+    return `${label}${" ".repeat(gap)}${v}`;
+  };
+  const vat = details.vat_breakdown || {};
+  const t = fiscalI18n.t;
+  const title = isPeriodic
+    ? t("report_periodic")
+    : isX
+      ? t("report_x")
+      : t("report_z");
+  const subtitle = isPeriodic
+    ? t("report_subtitle_periodic")
+    : isX
+      ? t("report_subtitle_x")
+      : t("report_subtitle_z");
+  const lines = [
+    line("="),
+    title,
+    subtitle,
+    line("-"),
+    row(t("report_business"), settings.taxpayer_legal_name || "-"),
+    row(t("nui_label"), settings.taxpayer_nui || "-"),
+    row(t("report_unit"), settings.unit_name || "-"),
+    row(t("report_sef_id"), fiscalNumbering.getSefIdentifier() || "-"),
+    row(t("date_label"), details.date || "-"),
+    line("-"),
+    row(t("report_coupon_count"), details.coupon_count ?? 0),
+    row(t("report_total_eur"), roundPaymentMoney(details.total_amount).toFixed(2)),
+    row(t("report_total_without_vat"), roundPaymentMoney(details.total_without_tax).toFixed(2)),
+    row(t("report_vat_a"), roundPaymentMoney(vat.A).toFixed(2)),
+    row(t("report_vat_b"), roundPaymentMoney(vat.B).toFixed(2)),
+    row(t("report_vat_c"), roundPaymentMoney(vat.C).toFixed(2)),
+    row(t("report_vat_d"), roundPaymentMoney(vat.D).toFixed(2)),
+    row(t("report_vat_e"), roundPaymentMoney(vat.E).toFixed(2)),
+    row(t("report_offline"), details.offline_count ?? 0),
+  ];
+  if (isX || isPeriodic) {
+    lines.push(
+      row(
+        t("report_daily_reset"),
+        isPeriodic ? t("report_no_periodic") : t("report_no_mod_x")
+      )
+    );
+    lines.push(line("="));
+    lines.push(t("report_print_many"));
+  } else {
+    const closureStatus = details.reset_applied
+      ? t("report_z_closure_done")
+      : details.day_already_closed
+        ? t("report_z_closure_earlier")
+        : t("report_z_closure_done");
+    lines.push(row(t("report_daily_closure"), closureStatus));
+    lines.push(line("="));
+    if (details.reset_applied) {
+      lines.push(t("report_pef_cleared"));
+    } else if (details.day_already_closed) {
+      lines.push(t("report_pef_cleared_earlier"));
+    }
+    const rfdCreated =
+      details.rfd_created_count != null
+        ? Number(details.rfd_created_count) || 0
+        : Number(details.coupon_count) || 0;
+    lines.push(row(t("report_rfd_created"), String(rfdCreated)));
+    lines.push(t("report_end_z"));
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function buildZReportText(details, settings) {
+  return buildFiscalDayReportText(details, settings, "Z");
+}
+
+function buildXReportText(details, settings) {
+  return buildFiscalDayReportText(details, settings, "X");
 }
 
 function roundPaymentMoney(n) {
@@ -6131,6 +6229,265 @@ app.post("/api/fiscal/open-keys-folder", auth, adminOnly, (_req, res) => {
   }
 });
 
+app.post("/api/fiscal/onboard-atk", auth, adminOnly, async (req, res) => {
+  const { onboardPosAtAtk } = require("./fiscal/fiscal-onboarding");
+  try {
+    const settings = fiscalConfig.getFiscalSettings();
+    if (!settings?.taxpayer_nui || String(settings.taxpayer_nui).length !== 9) {
+      return res.status(400).json({
+        success: false,
+        error: "Plotëso NUI (9 shifra) te Fiskalizimi para onboarding.",
+      });
+    }
+    if (!settings.fiscalization_number) {
+      return res.status(400).json({
+        success: false,
+        error: "Plotëso Numrin e Fiskalizimit te Fiskalizimi.",
+      });
+    }
+    if (!settings.pos_id) {
+      return res.status(400).json({ success: false, error: "Plotëso POS ID te Fiskalizimi." });
+    }
+    if (!settings.application_id) {
+      return res.status(400).json({
+        success: false,
+        error: "Plotëso Application ID te Lidhja me ATK.",
+      });
+    }
+    if (!settings.business_unit_number && !settings.unit_number) {
+      return res.status(400).json({
+        success: false,
+        error: "Plotëso Numrin e Njësisë ARBK te Fiskalizimi.",
+      });
+    }
+
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const onboardSettings = {
+      ...settings,
+      ...(body.pos_id != null && String(body.pos_id).trim() !== ""
+        ? { pos_id: String(body.pos_id).trim() }
+        : {}),
+      ...(body.business_unit_number != null &&
+      String(body.business_unit_number).trim() !== ""
+        ? {
+            business_unit_number: String(body.business_unit_number).trim(),
+            unit_number: String(body.business_unit_number).trim(),
+          }
+        : {}),
+      ...(body.fiscalization_number != null &&
+      String(body.fiscalization_number).trim() !== ""
+        ? { fiscalization_number: String(body.fiscalization_number).trim() }
+        : {}),
+      ...(body.application_id != null && String(body.application_id).trim() !== ""
+        ? { application_id: String(body.application_id).trim() }
+        : {}),
+      ...(body.atk_api_url != null && String(body.atk_api_url).trim() !== ""
+        ? { atk_api_url: String(body.atk_api_url).trim() }
+        : {}),
+    };
+
+    if (
+      body.pos_id != null ||
+      body.business_unit_number != null ||
+      body.application_id != null ||
+      body.fiscalization_number != null ||
+      body.atk_api_url != null
+    ) {
+      fiscalConfig.saveFiscalSettings({
+        pos_id: onboardSettings.pos_id,
+        business_unit_number: onboardSettings.business_unit_number,
+        unit_number: onboardSettings.unit_number,
+        fiscalization_number: onboardSettings.fiscalization_number,
+        application_id: onboardSettings.application_id,
+        atk_api_url: onboardSettings.atk_api_url,
+        fiscal_enabled: true,
+      });
+    }
+
+    const atkNow = getAtkStatus();
+    const { compareCertWithSettings } = require("./fiscal/fiscal-crypto");
+    const certMatch = compareCertWithSettings(
+      onboardSettings,
+      atkNow.certificate_path || ""
+    );
+    if (
+      atkNow.ready_for_atk &&
+      !atkNow.certificate_is_placeholder &&
+      certMatch.match &&
+      req.body?.force !== true
+    ) {
+      db.setSetting("atk_send_allowed", "1");
+      db.setSetting("atk_auto_send", "1");
+      const { syncAtkTransmissionFromSettings } = require("./fiscal/fiscal-boot");
+      syncAtkTransmissionFromSettings(db);
+      return res.json({
+        success: true,
+        already_connected: true,
+        business_name: onboardSettings.taxpayer_legal_name || "—",
+        certificate_path: atkNow.certificate_path || "",
+        message: "Ky POS është tashmë i lidhur me ATK.",
+        atk_sync: { allowed: true, auto_send: true },
+      });
+    }
+
+    const result = await onboardPosAtAtk(onboardSettings);
+    if (result && result.success !== false) {
+      db.setSetting("atk_send_allowed", "1");
+      db.setSetting("atk_auto_send", "1");
+      const { syncAtkTransmissionFromSettings } = require("./fiscal/fiscal-boot");
+      syncAtkTransmissionFromSettings(db);
+      result.atk_sync = { allowed: true, auto_send: true };
+      if (result.business_name && !onboardSettings.taxpayer_legal_name) {
+        fiscalConfig.saveFiscalSettings({
+          taxpayer_legal_name: result.business_name,
+        });
+      }
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("[ATK Onboard Error]", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/fiscal/x-report", auth, adminOnly, async (req, res) => {
+  try {
+    const settings = fiscalConfig.getFiscalSettings();
+    const operatorName = req.body?.operator_name || "Operator";
+    const operatorId = resolveBodyOperatorId(req);
+    const details = fiscalNumbering.getXReportSnapshot(operatorName, operatorId);
+    if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+
+    const text = buildXReportText(details, settings);
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print) {
+      try {
+        const pr = await getFiscalMain().printFiscalReportText(text, {
+          reportDetails: details,
+          reportMode: "X",
+          operatorId,
+        });
+        printed = pr.printed;
+        if (!pr.printed) printMessage = pr.printMessage || "Printimi X dështoi";
+      } catch (pe) {
+        printMessage = pe.message || "Printimi X dështoi";
+      }
+    }
+
+    res.json({
+      ok: true,
+      details: { ...details, sef_id: fiscalNumbering.getSefIdentifier() || "" },
+      text,
+      printed,
+      printMessage,
+    });
+  } catch (e) {
+    console.error("[x-report]", e);
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/api/fiscal/z-report", auth, adminOnly, async (req, res) => {
+  try {
+    const settings = fiscalConfig.getFiscalSettings();
+    const operatorName = req.body?.operator_name || "Operator";
+    const operatorId = resolveBodyOperatorId(req);
+    const details = fiscalNumbering.onDailySummaryPrinted(operatorName, operatorId);
+    if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+
+    const text = buildZReportText(details, settings);
+    let printed = false;
+    let printMessage = "";
+    if (!req.body?.skip_print) {
+      try {
+        const pr = await getFiscalMain().printFiscalReportText(text, {
+          reportDetails: details,
+          reportMode: "Z",
+          operatorId,
+        });
+        printed = pr.printed;
+        if (!pr.printed) printMessage = pr.printMessage || "Printimi Z dështoi";
+      } catch (pe) {
+        printMessage = pe.message || "Printimi Z dështoi";
+      }
+    }
+
+    const enrichedDetails = { ...details, sef_id: fiscalNumbering.getSefIdentifier() || "" };
+    let delivery = null;
+    try {
+      const { processZReportDelivery } = require("./fiscal/fiscal-z-report-atk");
+      delivery = await processZReportDelivery({
+        text,
+        details: enrichedDetails,
+        settings,
+        operator_name: operatorName,
+        operator_id: operatorId,
+        manual: false,
+      });
+    } catch (de) {
+      console.warn("[z-report] delivery:", de.message || de);
+    }
+
+    res.json({
+      ok: true,
+      details: enrichedDetails,
+      text,
+      printed,
+      printMessage,
+      delivery,
+    });
+  } catch (e) {
+    console.error("[z-report]", e);
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/api/fiscal/z-report/send-atk", auth, adminOnly, async (req, res) => {
+  try {
+    const {
+      processZReportDelivery,
+      getLatestZReportForSend,
+      ATK_Z_UNSUPPORTED_MSG,
+    } = require("./fiscal/fiscal-z-report-atk");
+    const settings = fiscalConfig.getFiscalSettings();
+    const operatorName = req.body?.operator_name || "Operator";
+    const operatorId = resolveBodyOperatorId(req);
+
+    const latest = getLatestZReportForSend();
+    if (!latest) {
+      return res.status(400).json({
+        ok: false,
+        error: "Nuk ka Raport Z — gjeneroni Raportin Z së pari.",
+      });
+    }
+
+    let text = String(latest.text || "").trim();
+    const details = { ...(latest.details || {}), sef_id: fiscalNumbering.getSefIdentifier() || "" };
+    if (!text) {
+      text = buildZReportText(details, settings);
+    }
+
+    const delivery = await processZReportDelivery({
+      text,
+      details,
+      settings,
+      operator_name: operatorName,
+      operator_id: operatorId,
+      manual: true,
+    });
+
+    res.json({
+      ok: true,
+      delivery,
+      message: delivery.atk_message || ATK_Z_UNSUPPORTED_MSG,
+    });
+  } catch (e) {
+    console.error("[z-report/send-atk]", e);
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
 /* Lista e kuponëve fiskalë — vetëm pronari */
 app.get("/api/fiscal-receipts", auth, adminOnly, (req, res) => {
   try {
@@ -7267,6 +7624,18 @@ function onServerListening(server, port) {
     try {
       cloudAutoSync.startCloudAutoSync(db);
     } catch (_) {}
+    try {
+      const {
+        applyLocalRunDatabaseLockdown,
+        scheduleStartupSelfTest,
+        logStartupFiscalStatus,
+      } = require("./fiscal/fiscal-boot");
+      applyLocalRunDatabaseLockdown();
+      scheduleStartupSelfTest(3500);
+      logStartupFiscalStatus();
+    } catch (e) {
+      console.warn("[hotel] fiscal-boot:", e.message);
+    }
   }, 2500);
   try {
     if (typeof db.ensureDefaultRooms === "function") {

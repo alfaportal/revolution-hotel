@@ -10,6 +10,7 @@ const {
   netLineAmount,
   computeCouponTotalDiscount,
 } = require("./fiscal-line-discount");
+const { lineAmountAfterCart } = require("./fiscal-vat");
 
 const PROTO_PATH = path.join(__dirname, "atk-models.proto");
 
@@ -55,7 +56,10 @@ function toPriceUnits(eur) {
 }
 
 function resolvePaymentSplits(row, opts = {}) {
-  const sources = [opts && opts.payment_splits, row && row.payment_splits];
+  const sources = [
+    opts && opts.payment_splits,
+    row && row.payment_splits,
+  ];
   for (const src of sources) {
     if (Array.isArray(src) && src.length) return src;
   }
@@ -149,6 +153,7 @@ function fiscalUnixTime(row) {
   const time = String(row.fiscal_time || "00:00").trim();
   if (!date) return Math.floor(Date.now() / 1000);
   const hhmmss = time.length === 5 ? `${time}:00` : time.length === 8 ? time : "00:00:00";
+  // ATK / lokal: dd.mm.yyyy
   const dmy = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   let ms = NaN;
   if (dmy) {
@@ -171,22 +176,28 @@ function resolveSettings(opts) {
   }
 }
 
+function couponLineNet(item) {
+  return lineAmountAfterCart(item);
+}
+
 function buildCouponItems(items) {
-  const list = Array.isArray(items) ? items : [];
+  const { enrichItemsUnitCategory } = require("./fiscal-item-meta");
+  const list = enrichItemsUnitCategory(Array.isArray(items) ? items : []);
   return list.map((item) => {
     const qty = normalizeQty(item.quantity ?? item.qty ?? 1);
     const lineDiscount = resolveLineDiscountAmount(item);
-    const net = netLineAmount(item);
+    const net = couponLineNet(item);
     const netUnit = qty > 0 ? round4(net / qty) : 0;
     const letter = itemLetter(item);
     return {
       name: String(item.name || item.emri || item.title || "").slice(0, 128),
+      // ATK: price/total = neto pas zbritjes së rreshtit DHE pjesës së karrocës
       price: toPriceUnits(netUnit),
-      unit: String(item.unit || item.njesi || item.uom || "cope").slice(0, 32),
+      unit: String(item.unit_code || item.unit || item.njesi || item.uom || "EA").slice(0, 32),
       quantity: qty,
       total: toCents(net),
       taxRate: letter,
-      type: String(item.item_type || item.type || "TT").slice(0, 16),
+      type: String(item.category_code || item.item_type || item.category || "TT").slice(0, 16),
       discount: toCents(lineDiscount),
     };
   });
@@ -201,7 +212,7 @@ function buildTaxGroups(items, vatBreakdown) {
   const list = Array.isArray(items) ? items : [];
   for (const item of list) {
     const letter = itemLetter(item);
-    const gross = netLineAmount(item);
+    const gross = couponLineNet(item);
     const r = vatRatePct(letter);
     const tax = r > 0 ? (gross * r) / (100 + r) : 0;
     const net = gross - tax;
@@ -250,6 +261,7 @@ function buildPayments(row, opts = {}) {
 }
 
 function resolveIds(row, settings, opts) {
+  // Prefero NUI aktual nga settings (regjistruar te ATK) — receipt mund të ketë NUI të vjetër/demo.
   const businessId = parseUint64(
     opts.businessId ?? settings.taxpayer_nui ?? row.taxpayer_nui,
     0
@@ -258,8 +270,9 @@ function resolveIds(row, settings, opts) {
     opts.posId ?? settings.pos_id ?? parsePosIdFromSef(row.sef_id),
     0
   );
+  // ATK spec: CouponId unik biznesi = total_number (i njëjtë QR Citizen + POST Pos).
   const couponId = parseUint64(
-    opts.couponId ?? row.daily_number ?? row.id ?? row.sale_id,
+    opts.couponId ?? row.total_number ?? row.id ?? row.sale_id,
     0
   );
   const branchId = parseUint64(
@@ -270,7 +283,9 @@ function resolveIds(row, settings, opts) {
     opts.applicationId ?? settings.application_id ?? 0,
     0
   );
-  const verificationNo = String(opts.verificationNo ?? row.nuikf ?? "")
+  const verificationNo = String(
+    opts.verificationNo ?? row.nuikf ?? ""
+  )
     .trim()
     .toUpperCase()
     .slice(0, 16);
@@ -284,6 +299,9 @@ function resolveIds(row, settings, opts) {
   };
 }
 
+/**
+ * Për CANCEL/RETURN: referenceNo = couponId (total_number) i kuponit origjinal.
+ */
 function resolveReferenceNo(receiptRow, opts = {}) {
   if (opts.referenceNo != null && opts.referenceNo !== "") {
     return parseUint64(opts.referenceNo, 0);
@@ -301,22 +319,61 @@ function resolveReferenceNo(receiptRow, opts = {}) {
     const orig = sqlite
       .prepare(
         `SELECT total_number, daily_number, id FROM fiscal_receipts
-         WHERE UPPER(nuikf) = ? ORDER BY id ASC LIMIT 1`
+         WHERE UPPER(nuikf) = ? ORDER BY id ASC LIMIT 1`,
       )
       .get(origNuikf);
     if (!orig) return 0;
-    return parseUint64(orig.total_number ?? orig.daily_number ?? orig.id, 0);
+    return parseUint64(orig.total_number, 0);
   } catch {
     return 0;
   }
 }
 
+/** Ops encode ATK — couponId = total_number (sinkron QR + POST). */
+function resolveAtkCouponBuildOpts(receiptRow, opts = {}) {
+  if (opts.couponId != null && opts.couponId !== "") {
+    return opts;
+  }
+  const row = receiptRow && typeof receiptRow === "object" ? receiptRow : {};
+  const couponId = parseUint64(row.total_number ?? row.id ?? 0, 0);
+  return couponId > 0 ? { ...opts, couponId } : { ...opts };
+}
+
+/** Hiq discount (field 8) para serializimit — spec zyrtar ATK nuk e ka. */
+function stripDiscountFromCouponItems(items) {
+  return (Array.isArray(items) ? items : []).map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const { discount, ...rest } = item;
+    return rest;
+  });
+}
+
+const ATK_CORRECTION_REF_ERROR =
+  "Nuk mund të anulohet/kthehet kuponi — mungon referenca e kuponit origjinal.";
+
+/** Bllokon dërgim CANCEL/RETURN te ATK pa ReferenceNo (total_number origjinal). */
+function validateAtkReferenceForSend(receiptRow, opts = {}) {
+  const couponType = mapCouponType(receiptRow?.receipt_type);
+  if (couponType !== "CANCEL" && couponType !== "RETURN") {
+    return { ok: true };
+  }
+  const refNo = resolveReferenceNo(receiptRow, opts);
+  if (refNo > 0) {
+    return { ok: true, referenceNo: refNo };
+  }
+  return { ok: false, error: ATK_CORRECTION_REF_ERROR };
+}
+
+/**
+ * Ndërton objekt plain PosCoupon nga rreshti fiscal_receipts (+ opts opsionale).
+ */
 function buildPosCoupon(receiptRow, opts = {}) {
   if (!receiptRow || typeof receiptRow !== "object") {
     throw new Error("buildPosCoupon: mungon receiptRow");
   }
   const settings = resolveSettings(opts);
-  const items = parseJson(receiptRow.items_json, []);
+  const { enrichItemsUnitCategory } = require("./fiscal-item-meta");
+  const items = enrichItemsUnitCategory(parseJson(receiptRow.items_json, []));
   const vatBreakdown = parseJson(receiptRow.vat_breakdown_json, {});
   const ids = resolveIds(receiptRow, settings, opts);
   const taxGroups = buildTaxGroups(items, vatBreakdown);
@@ -324,7 +381,9 @@ function buildPosCoupon(receiptRow, opts = {}) {
   const totalTaxFromGroups = taxGroups.reduce((s, g) => s + (g.totalTax || 0), 0);
   const totalTax =
     receiptRow.total_amount != null && receiptRow.total_without_tax != null
-      ? toCents(Number(receiptRow.total_amount) - Number(receiptRow.total_without_tax))
+      ? toCents(
+          Number(receiptRow.total_amount) - Number(receiptRow.total_without_tax)
+        )
       : totalTaxFromGroups;
   const totalNoTax =
     receiptRow.total_without_tax != null
@@ -338,7 +397,9 @@ function buildPosCoupon(receiptRow, opts = {}) {
     location: String(
       opts.location ?? receiptRow.taxpayer_address ?? settings.taxpayer_address ?? ""
     ).slice(0, 256),
-    operatorId: String(opts.operatorId ?? receiptRow.operator_id ?? "").slice(0, 64),
+    operatorId: String(
+      opts.operatorId ?? receiptRow.operator_id ?? ""
+    ).slice(0, 64),
     posId: ids.posId,
     applicationId: ids.applicationId,
     verificationNo: ids.verificationNo,
@@ -353,13 +414,17 @@ function buildPosCoupon(receiptRow, opts = {}) {
     referenceNo: resolveReferenceNo(receiptRow, opts),
     transactionNo: parseUint64(opts.transactionNo ?? receiptRow.sale_id ?? 0, 0),
     totalDiscount: toCents(
-      opts.totalDiscount ?? computeCouponTotalDiscount(receiptRow, items)
+      opts.totalDiscount ??
+        computeCouponTotalDiscount(receiptRow, items)
     ),
   };
 }
 
+/**
+ * Ndërton objekt plain CitizenCoupon (nënshkrim QR / verifikim qytetar).
+ */
 function buildCitizenCoupon(receiptRow, opts = {}) {
-  const pos = buildPosCoupon(receiptRow, opts);
+  const pos = buildPosCoupon(receiptRow, resolveAtkCouponBuildOpts(receiptRow, opts));
   return {
     businessId: pos.businessId,
     couponId: pos.couponId,
@@ -375,18 +440,24 @@ function buildCitizenCoupon(receiptRow, opts = {}) {
   };
 }
 
+/** Encode PosCoupon → Buffer (Protobuf binary). */
 function encodePosCoupon(receiptRow, opts = {}) {
   const Type = getPosCouponType();
-  const payload = buildPosCoupon(receiptRow, opts);
+  const payload = buildPosCoupon(receiptRow, resolveAtkCouponBuildOpts(receiptRow, opts));
+  payload.items = stripDiscountFromCouponItems(payload.items);
   const message = Type.fromObject(payload);
   const err = Type.verify(message);
   if (err) throw new Error("PosCoupon invalid: " + err);
   return Type.encode(message).finish();
 }
 
+/** Encode CitizenCoupon → Buffer (Protobuf binary). */
 function encodeCitizenCoupon(receiptRow, opts = {}) {
   const Type = getCitizenCouponType();
-  const payload = buildCitizenCoupon(receiptRow, opts);
+  const payload = buildCitizenCoupon(
+    receiptRow,
+    resolveAtkCouponBuildOpts(receiptRow, opts)
+  );
   const message = Type.fromObject(payload);
   const err = Type.verify(message);
   if (err) throw new Error("CitizenCoupon invalid: " + err);
@@ -407,6 +478,11 @@ module.exports = {
   mapPaymentType,
   buildPayments,
   resolvePaymentSplits,
+  resolveAtkCouponBuildOpts,
+  stripDiscountFromCouponItems,
+  validateAtkReferenceForSend,
+  resolveReferenceNo,
+  ATK_CORRECTION_REF_ERROR,
   toCents,
   toPriceUnits,
   computeCouponTotalDiscount,

@@ -25,6 +25,9 @@ function formatMoney(n) {
   return Number(n || 0).toFixed(2);
 }
 
+const THERMAL_EURO_CHAR = "\u20AC";
+const THERMAL_EURO_SUFFIX = ` ${THERMAL_EURO_CHAR}`;
+
 const RECEIPT_TIMEZONE = "Europe/Belgrade";
 
 function formatReceiptDateTime(iso) {
@@ -532,4 +535,6 @@ module.exports = {
   formatMoney,
   resolveVenueLine,
   displayReceiptNumber,
+  THERMAL_EURO_CHAR,
+  THERMAL_EURO_SUFFIX,
 };

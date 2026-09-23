@@ -1,25 +1,31 @@
 /**
- * Dërgim PosCoupon te ATK (Faza e Testimit / PROD) — për E2E field 8.
+ * Dërgim PosCoupon te ATK (Faza e Testimit / PROD).
+ * Spec: https://github.com/fiskalizimi/pos-csharp
  */
 const https = require("https");
 const http = require("http");
-const fs = require("fs");
-const path = require("path");
 const { getFiscalSettings } = require("./fiscal-config");
-const { encodePosCoupon } = require("./atk-model-builder");
-const { signReceipt, loadPrivateKey, getKeysDir } = require("./fiscal-crypto");
+const {
+  encodePosCoupon,
+  resolveAtkCouponBuildOpts,
+  validateAtkReferenceForSend,
+} = require("./atk-model-builder");
+const {
+  signReceipt,
+  loadPrivateKey,
+  getKeysDir,
+  compareCertWithSettings,
+} = require("./fiscal-crypto");
 const dbCrypto = require("../db-crypto");
 const { atkDnsLookup } = require("./atk-dns");
+const fs = require("fs");
+const path = require("path");
 const {
   isAtkTestMode,
   isAtkTransmissionBlocked,
   isFiscalMemoryOnly,
 } = require("./fiscal-test-mode-store");
 const { isAtkHost } = require("./fiscal-local-env");
-const {
-  isAtkCommunicationForbidden,
-  blockAtkCommunicationResult,
-} = require("./fiscal-atk-guard");
 
 const TEST_BASE = "https://fiskalizimi-test.atk-ks.org";
 const PROD_BASE = "https://fiskalizimi.atk-ks.org";
@@ -28,13 +34,73 @@ const ATK_HTTP_TIMEOUT_MS = Math.max(
   Number(process.env.ATK_HTTP_TIMEOUT_MS) || 25000
 );
 
+/** Mesazhe operatori (sq) sipas kodit HTTP të SIATK — Neni 31. */
+const ATK_ERROR_MESSAGES = Object.freeze({
+  400: "Të dhënat e kuponit janë të pavlefshme — kontrolloni artikujt dhe TVSH-në",
+  401: "Certifikata juaj nuk njihet nga ATK — bëni onboarding përsëri",
+  403: "Nuk keni leje për dërgim — kontrolloni Application ID dhe statusin te ATK",
+  404: "Endpoint-i ATK nuk u gjet — kontrolloni URL-në TEST/PROD",
+  409: "Ky kupon është dërguar tashmë te ATK",
+  422: "Formati i të dhënave nuk përputhet me specifikimin ATK",
+  500: "Gabim i brendshëm i serverit ATK — provoni përsëri më vonë",
+  502: "Serveri ATK nuk është i disponueshëm — provoni përsëri më vonë",
+  503: "Serveri ATK nuk është i disponueshëm — provoni përsëri më vonë",
+  504: "Serveri ATK nuk përgjigjet — kontrolloni internetin",
+});
+
+function resolveAtkHttpErrorMessage(status) {
+  const code = Number(status);
+  if (!Number.isFinite(code) || code <= 0) {
+    return "Gabim i panjohur nga ATK — kontrolloni lidhjen ose provoni përsëri";
+  }
+  if (ATK_ERROR_MESSAGES[code]) return ATK_ERROR_MESSAGES[code];
+  return `Gabim i panjohur nga ATK (HTTP ${code}) — kontaktoni mbështetjen teknike`;
+}
+
+function logAtkHttpSendFailure(receiptRow, httpStatus, operatorMessage, extras = {}) {
+  try {
+    const { logFiscalAction } = require("./fiscal-audit");
+    logFiscalAction(
+      "receipt_send_failed",
+      {
+        nuikf: receiptRow?.nuikf || "",
+        fiscal_receipt_id: receiptRow?.id ?? null,
+        status: httpStatus ?? null,
+        atk_http_status: httpStatus ?? null,
+        error: operatorMessage,
+        atk_message_sq: operatorMessage,
+        atk_error_mapped: true,
+        body: extras.body ? String(extras.body).slice(0, 500) : undefined,
+        url: extras.url || undefined,
+      },
+      String(receiptRow?.operator_name || "POS").trim() || "POS",
+      String(receiptRow?.operator_id || "POS").trim() || "POS"
+    );
+  } catch (e) {
+    console.warn("[fiscal-atk-api] audit HTTP error:", e.message || e);
+  }
+}
+
+/**
+ * ATK_TEST_MODE — mjedisi TEST ATK (URL test); HTTP bllokohet vetëm me FISCAL_LOCAL_RUN=1.
+ */
 function logAtkTestModePayload(receiptRow, payload) {
+  const summary = {
+    code: "atk_test_mode_skip",
+    nuikf: receiptRow?.nuikf || null,
+    receipt_id: receiptRow?.id ?? null,
+    total_amount: receiptRow?.total_amount ?? null,
+    url: payload.url || null,
+    details_len: payload.details ? String(payload.details).length : 0,
+    signature_len: payload.signature ? String(payload.signature).length : 0,
+  };
   console.log(
-    "[fiscal-atk-api] ATK payload (console):",
-    JSON.stringify({
-      nuikf: receiptRow?.nuikf || null,
-      url: payload.url || null,
-    })
+    "[fiscal-atk-api] ATK TEST_MODE — transmetimi i anashkaluar (pa HTTP te ATK).",
+    summary
+  );
+  console.log(
+    "[fiscal-atk-api] ATK TEST_MODE — payload (console only):",
+    JSON.stringify({ details: payload.details, signature: payload.signature })
   );
 }
 
@@ -53,27 +119,11 @@ function couponEndpoint(base) {
 }
 
 function httpJsonPost(url, bodyObj, timeoutMs = ATK_HTTP_TIMEOUT_MS) {
-  if (isAtkCommunicationForbidden()) {
-    let host = "";
-    try {
-      host = new URL(String(url || "")).hostname;
-    } catch {
-      /* ignore */
-    }
-    if (!host || isAtkHost(host)) {
-      return Promise.resolve({
-        ok: false,
-        forbidden: true,
-        blocked: true,
-        error: blockAtkCommunicationResult("httpJsonPost").error,
-      });
-    }
-  }
   if (isAtkTransmissionBlocked() && isAtkHost(url)) {
     return Promise.resolve({
       ok: false,
       blocked: true,
-      error: "ATK HTTP i bllokuar (FISCAL_LOCAL_RUN)",
+      error: "ATK HTTP i bllokuar (FISCAL_LOCAL_RUN / ATK_TEST_MODE)",
       url: String(url),
     });
   }
@@ -155,6 +205,21 @@ function getAtkStatus() {
     fs.existsSync(dbCrypto.encryptedPathFor(privAtk)) ||
     fs.existsSync(privLegacy) ||
     fs.existsSync(dbCrypto.encryptedPathFor(privLegacy));
+  let privateKeyReadable = false;
+  let privateKeyError = "";
+  if (hasPrivate) {
+    try {
+      const { verifyPrivateKeyReadable } = require("./fiscal-crypto");
+      const keyCheck = verifyPrivateKeyReadable();
+      privateKeyReadable = !!keyCheck.ok;
+      if (!keyCheck.ok) privateKeyError = keyCheck.error || "Çelësi privat nuk lexohet";
+    } catch (e) {
+      privateKeyError = e.message || String(e);
+    }
+  } else {
+    privateKeyError = "Çelësi privat mungon";
+  }
+  // Prioritet: signed-certificate.pem (ATK) para certificate.pem / path të vjetër në settings
   let certPath = "";
   if (fs.existsSync(certAtk)) certPath = certAtk;
   else if (s.certificate_path && fs.existsSync(s.certificate_path)) certPath = s.certificate_path;
@@ -169,50 +234,83 @@ function getAtkStatus() {
       /* */
     }
   }
+  const certMatch = certPath && !certIsPlaceholder
+    ? compareCertWithSettings(s, certPath)
+    : { match: false, reason: "no_cert", cert_ids: null, settings_ids: null };
   const base = resolveAtkBaseUrl(s.atk_api_url);
-  const applicationId =
-    s.application_id != null
-      ? String(s.application_id)
-      : s.application_id === undefined && s.sef_code
-        ? String(s.sef_code)
-        : "";
-  return {
+  const testMode = isAtkTestMode();
+  const blocked = isAtkTransmissionBlocked();
+  const core = {
     fiscal_enabled: !!s.fiscal_enabled,
     fiscal_local_run: require("./fiscal-local-env").isFiscalLocalRun(),
-    test_mode: isAtkTestMode(),
-    atk_transmission_blocked: isAtkTransmissionBlocked(),
+    test_mode: testMode,
+    atk_transmission_blocked: blocked,
     fiscal_persistence: isFiscalMemoryOnly() ? "memory_only" : "sqlite",
     atk_base_url: base,
     atk_pos_coupon_url: couponEndpoint(base),
     environment: /fiskalizimi-test/i.test(base) ? "TEST" : /fiskalizimi\.atk/i.test(base) ? "PROD" : "CUSTOM",
     taxpayer_nui: s.taxpayer_nui || "",
-    application_id: applicationId,
+    taxpayer_legal_name: s.taxpayer_legal_name || "",
+    unit_name: s.unit_name || "",
+    unit_number: s.unit_number || "",
+    pos_id: s.pos_id || "",
+    fiscalization_number: s.fiscalization_number || "",
+    application_id: s.application_id || "",
+    sef_identifier: s.sef_identifier || "",
     keys_dir: keysDir,
     has_private_key: !!hasPrivate,
+    private_key_readable: privateKeyReadable,
+    private_key_error: privateKeyError,
     certificate_path: certPath,
     certificate_is_placeholder: certIsPlaceholder,
+    cert_registered_pos_id: certMatch.cert_ids?.pos_id || "",
+    cert_registered_branch_id: certMatch.cert_ids?.branch_id || "",
+    settings_match_cert: !!certMatch.match,
+    cert_mismatch_reason: certMatch.reason,
     ready_for_atk:
       !!s.fiscal_enabled &&
       /^\d{9}$/.test(String(s.taxpayer_nui || "")) &&
       !!hasPrivate &&
+      privateKeyReadable &&
       !certIsPlaceholder &&
-      !!String(applicationId || "").trim(),
+      !!String(s.application_id || "").trim(),
+    ready_to_send_coupons:
+      !!s.fiscal_enabled &&
+      /^\d{9}$/.test(String(s.taxpayer_nui || "")) &&
+      !!hasPrivate &&
+      privateKeyReadable &&
+      !certIsPlaceholder &&
+      !!String(s.application_id || "").trim() &&
+      !!certMatch.match,
+  };
+  const { buildFiscalUiStatus } = require("./fiscal-ui-status");
+  return {
+    ...core,
+    ui: buildFiscalUiStatus(core),
   };
 }
 
+/**
+ * Dërgon një rresht fiscal_receipts te ATK POST /pos/coupon
+ */
 async function sendPosCouponToAtk(receiptRow) {
   if (!receiptRow) return { sent: false, error: "mungon receipt" };
-
-  if (isAtkCommunicationForbidden()) {
-    return blockAtkCommunicationResult("sendPosCouponToAtk");
-  }
 
   if (isAtkTransmissionBlocked()) {
     const settings = getFiscalSettings();
     const url = couponEndpoint(settings.atk_api_url);
+    const blockedOpts = resolveAtkCouponBuildOpts(receiptRow, {
+      settings,
+      branchId: settings.unit_number || settings.business_unit_number || 1,
+      applicationId: settings.application_id || 0,
+    });
+    const refCheck = validateAtkReferenceForSend(receiptRow, blockedOpts);
+    if (!refCheck.ok) {
+      return { sent: false, test_mode: true, blocked: true, error: refCheck.error };
+    }
     let protoBuf;
     try {
-      protoBuf = encodePosCoupon(receiptRow, { settings });
+      protoBuf = encodePosCoupon(receiptRow, blockedOpts);
     } catch (e) {
       return {
         sent: false,
@@ -226,7 +324,7 @@ async function sendPosCouponToAtk(receiptRow) {
     try {
       signature = signReceipt(details) || "";
     } catch {
-      /* */
+      /* provë lokale pa çelës */
     }
     logAtkTestModePayload(receiptRow, { details, signature, url });
     return {
@@ -234,7 +332,7 @@ async function sendPosCouponToAtk(receiptRow) {
       test_mode: true,
       blocked: true,
       skipped: true,
-      error: "ATK HTTP i bllokuar — vendosni FISCAL_LOCAL_RUN=0 për E2E",
+      error: "ATK HTTP i bllokuar — transmetimi vetëm lokal (console/memorie)",
       payload_logged: true,
       url,
     };
@@ -251,7 +349,21 @@ async function sendPosCouponToAtk(receiptRow) {
       sent: false,
       ready_to_send: false,
       error:
-        "Certifikata ATK mungon ose është placeholder — vendos signed-certificate.pem nga onboarder ATK",
+        "Certifikata ATK mungon — bëni onboarding («Lidhu me ATK») para se të dërgoni kupone te ATK",
+      atk: atkStatus,
+    };
+  }
+  if (!atkStatus.settings_match_cert) {
+    const c = atkStatus.cert_registered_branch_id || "?";
+    const p = atkStatus.cert_registered_pos_id || "?";
+    const sb =
+      settings.business_unit_number || settings.unit_number || "?";
+    const sp = settings.pos_id || "?";
+    return {
+      sent: false,
+      ready_to_send: false,
+      error:
+        `Numrat në cilësime (Branch ${sb}, POS ${sp}) nuk përputhen me certifikatën (Branch ${c}, POS ${p}). Shtyp «Lidhu me ATK» për numrin që ke futur.`,
       atk: atkStatus,
     };
   }
@@ -262,14 +374,38 @@ async function sendPosCouponToAtk(receiptRow) {
     return { sent: false, error: "Çelësi privat: " + e.message };
   }
 
-  const applicationId = settings.application_id || settings.sef_code || 0;
-  const opts = {
+  const opts = resolveAtkCouponBuildOpts(receiptRow, {
     settings,
     businessId: settings.taxpayer_nui || receiptRow.taxpayer_nui,
-    couponId: receiptRow.total_number || receiptRow.id,
     branchId: settings.unit_number || settings.business_unit_number || 1,
-    applicationId,
-  };
+    applicationId: settings.application_id || 0,
+  });
+
+  const refCheck = validateAtkReferenceForSend(receiptRow, opts);
+  if (!refCheck.ok) {
+    return { sent: false, error: refCheck.error };
+  }
+
+  try {
+    const { enrichItemsUnitCategory, findItemMetaMismatches } = require("./fiscal-item-meta");
+    let rawItems = [];
+    try {
+      rawItems = JSON.parse(receiptRow.items_json || "[]");
+    } catch {
+      rawItems = [];
+    }
+    const enriched = enrichItemsUnitCategory(rawItems);
+    const mismatches = findItemMetaMismatches(enriched);
+    if (mismatches.length) {
+      console.warn(
+        "[fiscal-atk-api] ATK meta — u korrigjuan nga katalogu:",
+        mismatches.map((m) => `${m.name}: ${m.got.unit}/${m.got.category} → ${m.expected.unit}/${m.expected.category}`)
+      );
+    }
+    receiptRow = { ...receiptRow, items_json: JSON.stringify(enriched) };
+  } catch (e) {
+    console.warn("[fiscal-atk-api] enrich items:", e.message);
+  }
 
   let protoBuf;
   try {
@@ -291,16 +427,33 @@ async function sendPosCouponToAtk(receiptRow) {
 
   const url = couponEndpoint(settings.atk_api_url);
   const body = { details, signature };
+
   const res = await httpJsonPost(url, body, ATK_HTTP_TIMEOUT_MS);
   if (!res.ok) {
-    const errDetail =
-      res.error ||
-      (res.body ? String(res.body).slice(0, 200) : "") ||
-      (res.status ? `HTTP ${res.status}` : "ATK nuk u përgjigj");
+    const httpStatus = Number(res.status) || null;
+    let operatorMessage;
+    if (httpStatus != null && httpStatus >= 400) {
+      operatorMessage = resolveAtkHttpErrorMessage(httpStatus);
+      logAtkHttpSendFailure(receiptRow, httpStatus, operatorMessage, {
+        body: res.body,
+        url,
+      });
+    } else if (res.error && /timeout|nuk u përgjigj brenda/i.test(String(res.error))) {
+      operatorMessage = ATK_ERROR_MESSAGES[504];
+    } else {
+      operatorMessage =
+        res.error ||
+        (res.body ? String(res.body).slice(0, 200) : "") ||
+        (httpStatus ? `HTTP ${httpStatus}` : "ATK nuk u përgjigj (lidhje e prerë)");
+    }
+    const httpErrorMapped = httpStatus != null && httpStatus >= 400;
     return {
       sent: false,
-      error: errDetail,
-      status: res.status,
+      error: operatorMessage,
+      atk_message_sq: httpErrorMapped ? operatorMessage : undefined,
+      atk_http_status: httpStatus,
+      atk_error_audited: httpErrorMapped,
+      status: httpStatus,
       body: res.body,
       url,
     };
@@ -319,6 +472,8 @@ async function sendPosCouponToAtk(receiptRow) {
 module.exports = {
   TEST_BASE,
   PROD_BASE,
+  ATK_ERROR_MESSAGES,
+  resolveAtkHttpErrorMessage,
   resolveAtkBaseUrl,
   couponEndpoint,
   isAtkTestMode,
