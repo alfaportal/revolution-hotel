@@ -729,92 +729,16 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   border-radius: 0;
 }
 
-/* Laptop/tablet: i njëjti rrjedhë si telefoni (menu → checkout), jo menu+checkout krah për krah */
-@media (min-width: 768px) {
-  #ekrani-porosia.active {
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
+@media (min-width: 860px) {
   #ekrani-porosia .waiter-order-body {
-    flex: 0 0 auto;
-    min-height: auto;
-    flex-direction: column !important;
-    align-items: stretch;
-    overflow: visible;
+    flex-direction: row;
   }
 
   #ekrani-porosia .menu-pos-wrap {
-    flex: 0 0 auto;
-    flex-shrink: 0;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: min(48dvh, 480px);
-    order: 0;
+    flex: 1;
+    border-right: none;
   }
 
-  #ekrani-porosia .menu-photo-grid {
-    flex: 1 1 auto;
-    min-height: 14rem;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel {
-    flex: 0 0 auto;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    overflow: visible;
-    border-left: none;
-    box-shadow: none;
-    background: #f8f9fb;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel .order-list {
-    flex: 0 0 auto;
-    min-height: min(35vh, 320px);
-    max-height: 45vh;
-    overflow-y: auto;
-    padding: 0.55rem 0.85rem;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel .action-bar {
-    flex: 0 0 auto;
-    flex-direction: column;
-    overflow: visible;
-    max-height: none;
-    padding: 0.55rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
-    background: #f3f4f6;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel .pos-pay-btn {
-    min-height: 2.85rem;
-    height: auto;
-    max-height: none;
-    font-size: 0.82rem;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel .pos-pay-btn-send,
-  #ekrani-porosia .waiter-checkout-panel .btn-primary {
-    width: 100%;
-    min-height: 3.25rem;
-    height: auto;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel .order-row {
-    flex-direction: row;
-    flex-wrap: nowrap;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel .qty-btns button {
-    min-width: 44px;
-    min-height: 44px;
-    width: 44px;
-    height: 44px;
-  }
-}
-
-@media (min-width: 860px) {
   #ekrani-porosia .menu-photo-grid-inner,
   #ekrani-porosia .menu-text-grid-inner {
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
@@ -823,6 +747,18 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 
   #ekrani-porosia .menu-item-card::before {
     height: 48px;
+  }
+
+  #ekrani-porosia .waiter-checkout-panel {
+    width: min(380px, 34vw);
+    max-width: 420px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    border-top: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    background: #f3f4f6;
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.22);
   }
 
   #ekrani-porosia .order-list {
