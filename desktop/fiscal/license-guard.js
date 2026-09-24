@@ -968,6 +968,39 @@ async function ensureHardwareLicense(app) {
         return { ok: !!activated, grace: null };
       }
       if (keyOk && isHardwareUnlocked(app, hwId)) {
+        if (rec && rec.source === "cloud") {
+          const license = require(path.join(__dirname, "..", "license"));
+          const cloudKey = license.readStoredLicense(app);
+          const validateKey = cloudKey || rec.key;
+          const promptNoLicense = () =>
+            promptHardwareActivation(app, { reason: "no_license" });
+          try {
+            const online = await license.validateLicenseOnline(validateKey);
+            if (online.valid && !online.offline) {
+              /* server OK — vazhdo hapjen */
+            } else if (online.offline) {
+              if (!cloudKey) {
+                const activated = await promptNoLicense();
+                return { ok: !!activated, grace: null };
+              }
+            } else {
+              license.wipeAllActivationData(app);
+              try {
+                const hwPath = hwLicensePath(app);
+                if (fs.existsSync(hwPath)) fs.unlinkSync(hwPath);
+              } catch {
+                /* ignore */
+              }
+              const activated = await promptNoLicense();
+              return { ok: !!activated, grace: null };
+            }
+          } catch {
+            if (!cloudKey) {
+              const activated = await promptNoLicense();
+              return { ok: !!activated, grace: null };
+            }
+          }
+        }
         clearGrace(app);
         return { ok: true, grace: null };
       }
