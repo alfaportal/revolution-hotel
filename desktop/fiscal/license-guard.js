@@ -375,10 +375,9 @@ function readDiskSerial() {
 function getHardwareId(app) {
   const board = readBoardSerial() || "NO-BOARD";
   const disk = readDiskSerial() || "NO-DISK";
-  const installSalt = ensureInstallSalt(app);
   return crypto
     .createHash("sha256")
-    .update(`${board}::${disk}::${installSalt}`)
+    .update(`${board}::${disk}`)
     .digest("hex");
 }
 
@@ -575,7 +574,7 @@ function verifyLicenseKey(key, app, hardwareId) {
 /** Çelësi hardware përputhet me rekordin e ruajtur (pa kontroll skadimi). */
 function verifyStoredHardwareKey(rec, app, hardwareId) {
   if (!rec || !rec.key) return false;
-  if (rec.source === "cloud") return true;
+  if (rec.source === "cloud") return true; /* Hapje OK; heartbeat/watchdog bllokon REVOKED/NOT_FOUND */
   const hwRaw = hardwareId || getHardwareId(app);
   const id = normalizeHardwareId(formatHardwareId(hwRaw));
   const got = normalizeLicenseKey(rec.key);
@@ -600,7 +599,7 @@ function verifyStoredHardwareKey(rec, app, hardwareId) {
 function isHardwareUnlocked(app, hardwareId) {
   const rec = readStoredLicenseRecord(app);
   if (!rec || !rec.key) return false;
-  if (rec.source === "cloud") return true;
+  if (rec.source === "cloud") return true; /* Hapje OK; heartbeat/watchdog bllokon REVOKED/NOT_FOUND */
   if (!verifyStoredHardwareKey(rec, app, hardwareId)) return false;
   if (isLicenseExpired(rec)) return false;
   return true;
@@ -890,63 +889,11 @@ function promptHardwareActivation(app, opts = {}) {
 }
 
 /**
- * Kur licenca prishet: 48h grace (programi punon) pastaj bllokim + aktivizim.
- * @returns {Promise<{ ok: boolean, grace: object|null }>}
+ * Grace u hoq — nuk përdoret më (mbetet stub për compat).
+ * @returns {Promise<{ ok: boolean, grace: null }>}
  */
-async function allowWithGraceOrBlock(app, reason, formatted) {
-  const { dialog } = require("electron");
-  const { status, startedNow } = beginGraceIfNeeded(app, reason, formatted);
-
-  if (status.active) {
-    logHwLicenseAudit(app, "grace_continue", {
-      reason,
-      hoursLeft: status.hoursLeft,
-      hardware_id: formatted,
-    });
-    // Popup vetëm herën e parë që niset grace — jo çdo hapje (nuk e shqetëson kamarierin)
-    if (startedNow) {
-      try {
-        dialog.showMessageBoxSync({
-          type: "warning",
-          title: "Licenca ka problem",
-          message: "Licenca ka problem. Kontaktoni " + CONTACT_PHONE + ".",
-          detail:
-            "Programi vazhdon me punu për 24 orë.\n\n" +
-            `Mbeten rreth ${status.hoursLeft} orë.\n` +
-            `ID i pajisjes: ${formatted}\n\n` +
-            "Dërgoni foto të ID-së në WhatsApp (" +
-            CONTACT_PHONE +
-            ") për kod të ri. Njoftimi shfaqet te Admin / Hyrja.",
-          buttons: ["OK"],
-        });
-      } catch {
-        /* ignore */
-      }
-    }
-    return { ok: true, grace: status };
-  }
-
-  // Grace skaduar — kërko kod të ri
-  logHwLicenseAudit(app, "grace_expired_block", {
-    reason,
-    hardware_id: formatted,
-  });
-  try {
-    dialog.showMessageBoxSync({
-      type: "error",
-      title: "Licenca",
-      message: "Periudha 48 orë përfundoi.",
-      detail:
-        "Programi është bllokuar derisa të futni kodin e ri.\n\n" +
-        `ID i pajisjes: ${formatted}\n` +
-        `Kontaktoni: ${CONTACT_PHONE}`,
-      buttons: ["Aktivizo tani"],
-    });
-  } catch {
-    /* ignore */
-  }
-  const activated = await promptHardwareActivation(app);
-  return { ok: !!activated, grace: null };
+async function allowWithGraceOrBlock() {
+  return { ok: false, grace: null };
 }
 
 /**
@@ -961,7 +908,8 @@ async function ensureHardwareLicense(app) {
     formatted = formatHardwareId(hwId);
   } catch (e) {
     logHwLicenseAudit(app, "hardware_id_error", { error: e.message || String(e) });
-    return allowWithGraceOrBlock(app, "hardware_id_error", "????-????-????-????");
+    const activated = await promptHardwareActivation(app, { reason: "hardware_id_error" });
+    return { ok: !!activated, grace: null };
   }
 
   let stored;
@@ -972,7 +920,8 @@ async function ensureHardwareLicense(app) {
       error: e.message || String(e),
       hardware_id: formatted,
     });
-    return allowWithGraceOrBlock(app, "license_read_error", formatted);
+    const activated = await promptHardwareActivation(app, { reason: "license_read_error" });
+    return { ok: !!activated, grace: null };
   }
 
   if (stored) {
@@ -999,26 +948,14 @@ async function ensureHardwareLicense(app) {
         error: e.message || String(e),
         hardware_id: formatted,
       });
-      return allowWithGraceOrBlock(app, "license_verify_error", formatted);
+      const activated = await promptHardwareActivation(app, { reason: "license_verify_error" });
+      return { ok: !!activated, grace: null };
     }
     logHwLicenseAudit(app, "license_mismatch", { hardware_id: formatted });
-    return allowWithGraceOrBlock(app, "license_mismatch", formatted);
+    const activated = await promptHardwareActivation(app, { reason: "license_mismatch" });
+    return { ok: !!activated, grace: null };
   }
 
-  // Pa licencë të ruajtur — nëse ka grace aktive (p.sh. pas update), lejo
-  const grace = getGraceStatus(app);
-  if (grace.active) {
-    logHwLicenseAudit(app, "grace_no_stored_key", {
-      hoursLeft: grace.hoursLeft,
-      hardware_id: formatted,
-    });
-    return { ok: true, grace };
-  }
-  if (grace.expired) {
-    return allowWithGraceOrBlock(app, "grace_expired_no_key", formatted);
-  }
-
-  // Instalim i parë — kërko aktivizim (pa grace automatike për kopjim)
   const activated = await promptHardwareActivation(app);
   return { ok: !!activated, grace: null };
 }

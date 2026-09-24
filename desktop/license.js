@@ -126,23 +126,27 @@ function restoreDeviceIdFromRecord() {
 
 /** ID unike për këtë instalim — ruhet jashtë folderit të programit. */
 function getMachineId() {
+  const board = os.hostname();
+  const user = os.userInfo().username;
+  const plat = os.platform();
+  const arch = os.arch();
+  const raw = [board, user, plat, arch].join("|");
+  const hash = crypto.createHash("sha256").update(raw).digest("hex").slice(0, 12).toUpperCase();
+  // Ruaj në skedar për konsistencë me rekordet ekzistuese
   const idFile = installDeviceIdPath();
   if (idFile) {
     try {
       if (fs.existsSync(idFile)) {
         const stored = fs.readFileSync(idFile, "utf8").trim().toUpperCase();
-        if (/^[A-F0-9]{12}$/.test(stored)) return stored;
+        if (/^[A-F0-9]{12}$/.test(stored) && stored === hash) return stored;
       }
-      const restored = restoreDeviceIdFromRecord();
-      const fresh = restored || createInstallDeviceId();
       fs.mkdirSync(path.dirname(idFile), { recursive: true });
-      fs.writeFileSync(idFile, fresh, "utf8");
-      return fresh;
+      fs.writeFileSync(idFile, hash, "utf8");
     } catch {
-      /* fallback */
+      /* ignore */
     }
   }
-  return restoreDeviceIdFromRecord() || getHardwareFingerprint();
+  return hash;
 }
 
 function _chk(secret, payload) {
@@ -235,8 +239,8 @@ function keyHash(key) {
   return crypto.createHash("sha256").update(normalizeKey(key)).digest("hex");
 }
 
-/** Offline cloud max — e njëjta kohë si trial falas (7 ditë). */
-const CLOUD_OFFLINE_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 7 ditë
+/** Pa limit kohor offline — politikë Revolution Invest (mbetet për referencë). */
+const CLOUD_OFFLINE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
 function writeActivationRecord(app, key, extra = {}) {
   const existing = readActivationRecord(app) || {};
@@ -266,13 +270,7 @@ function writeActivationRecord(app, key, extra = {}) {
 }
 
 function isWithinCloudOfflineWindow(app) {
-  const rec = readActivationRecord(app);
-  if (!rec) return false;
-  /* Instalime të vjetra pa last_online_at — lejo deri sa të lidhen një herë me cloud */
-  if (!rec.last_online_at) return true;
-  const t = new Date(rec.last_online_at).getTime();
-  if (!Number.isFinite(t)) return true;
-  return Date.now() - t <= CLOUD_OFFLINE_MAX_MS;
+  return true;
 }
 
 function offlineExpiredMessage() {
@@ -334,126 +332,39 @@ const HARD_LICENSE_FAIL_CODES = new Set([
   "DEVICE_MISMATCH",
   "DEVICE_REQUIRED",
   "TERMINAL_LIMIT_EXCEEDED",
-  "OFFLINE_EXPIRED",
 ]);
 
-/** Revokim ose licencë e fshirë — purge i plotë si instalim i ri. */
-const FULL_PURGE_LICENSE_CODES = new Set(["REVOKED", "NOT_FOUND"]);
+/** Revokim ose licencë e fshirë — vetëm skedarët e licencës. */
+const FULL_PURGE_LICENSE_CODES = new Set(["REVOKED", "NOT_FOUND", "SUSPENDED"]);
 
-function wipeDirHard(dir) {
-  if (!dir || !fs.existsSync(dir)) return;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    let left = 0;
-    for (const name of fs.readdirSync(dir)) {
-      const p = path.join(dir, name);
-      try {
-        fs.rmSync(p, { recursive: true, force: true });
-      } catch {
-        left += 1;
-      }
-    }
-    if (left === 0) return;
-    const waitUntil = Date.now() + 250;
-    while (Date.now() < waitUntil) {
-      /* retry delay for locked DB */
-    }
-  }
+const HEARTBEAT_FORCE_LOGOUT_CODES = new Set(["REVOKED", "NOT_FOUND", "SUSPENDED"]);
+
+function licenseHardFailMessage(code) {
+  return code === "NOT_FOUND"
+    ? "Licenca nuk u gjet. Kontaktoni Revolution Invest."
+    : "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
 }
 
-/**
- * Revokim licencë = PC i ri: fshi DB, settings, cache, licencë, salt, hw-lic.
- * Pas kësaj kërkohet licencë e re nga zero (HARDWARE_ID i ri).
- */
+function wipeDirHard(dir) {
+  // BLLOKUAR — nuk lejohet fshirja e folderëve të klientit
+  // Ky funksion nuk duhet me fshirë asgjë përveç skedarëve të licencës
+  return;
+}
+
 function purgeAllClientDataAfterRevoke(app) {
-  if (!app) return;
-  registerInstallContext(app);
-  try {
-    global.__restaurantHttpServer?.close();
-  } catch {
-    /* ignore */
-  }
-
-  let userData = "";
-  try {
-    userData = app.getPath("userData");
-    wipeDirHard(userData);
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    const localSibling = path.join(
-      process.env.LOCALAPPDATA || "",
-      path.basename(userData || "Revolution HOTEL"),
-    );
-    if (process.env.LOCALAPPDATA && localSibling && localSibling !== userData) {
-      wipeDirHard(localSibling);
-    }
-  } catch {
-    /* ignore */
-  }
-
-  for (const dir of legacyLicenseDirs(app)) {
-    if (userData && dir === userData) continue;
-    try {
-      wipeDirHard(dir);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  for (const extra of ["Revolution HOTEL Pako", "Revolution HOTEL Pako AI"]) {
-    try {
-      wipeDirHard(path.join(app.getPath("appData"), extra));
-    } catch {
-      /* ignore */
-    }
-    try {
-      if (process.env.LOCALAPPDATA) {
-        wipeDirHard(path.join(process.env.LOCALAPPDATA, extra));
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  try {
-    const licRoot = path.join(app.getPath("appData"), LICENSE_STORAGE_REL);
-    if (fs.existsSync(licRoot)) {
-      fs.rmSync(licRoot, { recursive: true, force: true });
-    }
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    const extFlag = path.join(
-      app.getPath("appData"),
-      "RevolutionInvest",
-      "hotel-factory-reset-pending",
-    );
-    if (fs.existsSync(extFlag)) fs.unlinkSync(extFlag);
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    if (userData) fs.mkdirSync(userData, { recursive: true });
-  } catch {
-    /* ignore */
-  }
+  // RREGULL ABSOLUT: Të dhënat e klientit (DB, produkte, settings, cache) NUK fshihen KURRË.
+  // Vetëm skedarët e licencës pastrohen — klienti riaktivizon dhe krejt mbetet si ishte.
+  wipeAllActivationData(app);
 }
 
 function handleLicenseHardFail(app, code) {
-  purgeAllClientDataAfterRevoke(app);
-  const message =
-    code === "NOT_FOUND"
-      ? "Licenca nuk u gjet. Kontaktoni Revolution Invest."
-      : "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
+  // RREGULL ABSOLUT: Asnjëherë mos fshi të dhënat e klientit.
+  // Vetëm licenca pastrohet, programi ndalet derisa klienti riaktivizon.
+  wipeAllActivationData(app);
   return {
     blocked: true,
-    message,
-    purged: true,
+    message: licenseHardFailMessage(code),
+    purged: false,
     code: code || "REVOKED",
   };
 }
@@ -595,13 +506,17 @@ async function validateLicenseHeartbeat(key) {
     if (parsed.code === "REVOKED") {
       markLicenseRevokedLocally(_electronApp, parsed.message);
     }
-    if (parsed.code && FULL_PURGE_LICENSE_CODES.has(parsed.code)) {
-      if (_electronApp) handleLicenseHardFail(_electronApp, parsed.code);
+    let code = String(parsed.code || "").trim() || null;
+    if (!code && res.status === 404) code = "NOT_FOUND";
+    const forceLogout =
+      !!parsed.force_logout || (code && HEARTBEAT_FORCE_LOGOUT_CODES.has(code));
+    if (code && FULL_PURGE_LICENSE_CODES.has(code) && _electronApp) {
+      handleLicenseHardFail(_electronApp, code);
     }
     return {
       valid: false,
-      code: parsed.code || null,
-      force_logout: !!parsed.force_logout,
+      code,
+      force_logout: forceLogout,
       "force_factory_reset": !!parsed["force_factory_reset"],
       celesi_updated: parsed.celesi_updated || null,
       message: parsed.message || parsed.gabim || "Liçenca nuk është aktive.",
@@ -616,20 +531,7 @@ async function validateLicenseHeartbeat(key) {
         message: localRevoke.message,
       };
     }
-    /* Offline heartbeat: lejo vetëm brenda dritares 3-ditore */
-    try {
-      if (_electronApp && isWithinCloudOfflineWindow(_electronApp)) {
-        return { valid: true, offline: true, message: "Pa internet — heartbeat (brenda 3 ditëve)." };
-      }
-    } catch {
-      /* ignore */
-    }
-    return {
-      valid: false,
-      offline: true,
-      code: "OFFLINE_EXPIRED",
-      message: offlineExpiredMessage(),
-    };
+    return { valid: true, offline: true, message: "Pa internet — heartbeat." };
   }
 }
 
@@ -696,10 +598,11 @@ async function validateEmergencyUnlock({ master_pin, emergency_code } = {}) {
 
 let _watchdogTimer = null;
 let _watchdogInFlight = false;
+const LICENSE_HEARTBEAT_MS = 45000;
 
 function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
   if (_watchdogTimer) return;
-  _watchdogTimer = setInterval(async () => {
+  const runTick = async () => {
     if (_watchdogInFlight) return;
     _watchdogInFlight = true;
     try {
@@ -718,13 +621,15 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
         onFactoryReset(beat);
         return;
       }
-      if (!beat.valid && beat.code && FULL_PURGE_LICENSE_CODES.has(beat.code)) {
-        handleLicenseHardFail(app, beat.code);
-        if (typeof onForceLogout === "function") onForceLogout(beat);
-        return;
-      }
-      if (!beat.valid && beat.code && HARD_LICENSE_FAIL_CODES.has(beat.code)) {
-        clearStoredLicense(app);
+      if (
+        !beat.valid &&
+        (beat.force_logout || (beat.code && HARD_LICENSE_FAIL_CODES.has(beat.code)))
+      ) {
+        if (FULL_PURGE_LICENSE_CODES.has(beat.code)) {
+          handleLicenseHardFail(app, beat.code);
+        } else {
+          clearStoredLicense(app);
+        }
         if (typeof onForceLogout === "function") onForceLogout(beat);
         return;
       }
@@ -807,7 +712,9 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
     } finally {
       _watchdogInFlight = false;
     }
-  }, 45000);
+  };
+  runTick();
+  _watchdogTimer = setInterval(runTick, LICENSE_HEARTBEAT_MS);
 }
 
 async function validateLicenseAsync(key, app, { requireOnline = false } = {}) {
@@ -837,33 +744,19 @@ async function validateLicenseAsync(key, app, { requireOnline = false } = {}) {
       };
     }
     if (!requireOnline && app && isDeviceRegistered(app, key)) {
-      if (!isWithinCloudOfflineWindow(app)) {
-        return {
-          valid: false,
-          code: "OFFLINE_EXPIRED",
-          message: offlineExpiredMessage(),
-        };
-      }
       return {
         valid: true,
         source: "stored",
         message: online.offline
-          ? "Pajisja e regjistruar (pa internet — max 3 ditë)."
+          ? "Pajisja e regjistruar (pa internet)."
           : "Pajisja e regjistruar.",
       };
     }
     if (online.offline && app && hasOnlineMarker(app, key)) {
-      if (!isWithinCloudOfflineWindow(app)) {
-        return {
-          valid: false,
-          code: "OFFLINE_EXPIRED",
-          message: offlineExpiredMessage(),
-        };
-      }
       return {
         valid: true,
         source: "online-offline",
-        message: "Licencë online (pa internet — max 3 ditë).",
+        message: "Licencë online (pa internet).",
       };
     }
     return {
@@ -1351,25 +1244,9 @@ async function ensureActivated(app) {
     const stillRevoked = !!readLocalRevokeBlock(app)?.blocked;
     if (key && !stillRevoked) {
       if (isDeviceRegistered(app, key) || hasOnlineMarker(app, key)) {
-        if (!isWithinCloudOfflineWindow(app)) {
-          /* Provo online — nëse dështon, blloko (offline skaduar) */
-          const vOnline = await validateLicenseAsync(key, app, { requireOnline: true });
-          if (vOnline.valid) {
-            writeStoredLicense(app, key);
-            refreshLicenseOnline(key, app);
-            return true;
-          }
-          if (FULL_PURGE_LICENSE_CODES.has(vOnline.code)) {
-            const fail = handleLicenseHardFail(app, vOnline.code);
-            lastError = vOnline.message || fail.message;
-          } else {
-            lastError = offlineExpiredMessage();
-          }
-        } else {
-          if (!readActivationRecord(app)) writeActivationRecord(app, key, {});
-          refreshLicenseOnline(key, app);
-          return true;
-        }
+        if (!readActivationRecord(app)) writeActivationRecord(app, key, {});
+        refreshLicenseOnline(key, app);
+        return true;
       } else {
         const v = await validateLicenseAsync(key, app, { requireOnline: false });
         if (v.valid) {
@@ -1395,31 +1272,8 @@ async function ensureActivated(app) {
       }
     }
 
-    while (true) {
-      const result = await promptForLicense(
-        app,
-        async (k, opts = {}) => {
-          const online = await validateLicenseOnline(k, opts);
-          if (online.valid) {
-            clearLicenseRevokedLocally(app);
-            return { valid: true, message: online.message, online };
-          }
-          return validateLicenseAsync(k, app, { requireOnline: true });
-        },
-        lastError,
-      );
-      if (!result) {
-        return false;
-      }
-      writeStoredLicense(app, result.key);
-      const meta = result.validation?.online
-        ? activationMetaFromOnline(result.validation.online)
-        : {};
-      writeActivationRecord(app, result.key, meta);
-      return true;
-    }
-  } catch (err) {
-    dialog.showErrorBox("Gabim licencë", err.message || String(err));
+    return false;
+  } catch {
     return false;
   }
 }
