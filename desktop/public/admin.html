@@ -803,8 +803,7 @@
     #panel-test-atk .sef-field8-receipt-row .settings-field,
     #card-fiscalizimi .sef-field8-receipt-row .settings-field {
       margin: 0;
-      min-width: 0;
-      flex: 1 1 8.75rem;
+      min-width: 140px;
     }
     #panel-test-atk .sef-field8-receipt-row input,
     #panel-test-atk .sef-field8-receipt-row select,
@@ -1102,7 +1101,7 @@
     }
     #modal-fiscal-receipts .frl-ops input[type="text"] {
       flex: 1 1 160px;
-      min-width: 0;
+      min-width: 140px;
       padding: 0.4rem 0.55rem;
       border-radius: 6px;
       border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1185,7 +1184,7 @@
     }
     #modal-fiscal-receipts #frl-storno-reason-custom {
       flex: 1 1 200px;
-      min-width: 0;
+      min-width: 160px;
       padding: 0.4rem 0.55rem;
       border-radius: 6px;
       border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1201,8 +1200,7 @@
     }
     #card-fiscalizimi .sef-periodic-dates .settings-field {
       margin: 0;
-      min-width: 0;
-      flex: 1 1 8.75rem;
+      min-width: 140px;
     }
     #modal-fiscal-receipts .frl-subpanel {
       margin: 0 0 0.75rem;
@@ -4680,7 +4678,7 @@
               <label class="btn btn-primary btn-sm" for="public-logo-input">Ngarko logo</label>
               <input type="file" id="public-logo-input" accept="image/png,image/jpeg,image/jpg" hidden>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-public-logo-remove">Hiq logon</button>
-              <p class="public-logo-hint">PNG ose JPG, Maksimumi 2 MB.</p>
+              <p class="public-logo-hint">PNG ose JPG, max 500 KB.</p>
             </div>
           </div>
           <div class="public-cover-row">
@@ -4692,7 +4690,7 @@
               <label class="btn btn-primary btn-sm" for="public-cover-input">Ngarko foto cover</label>
               <input type="file" id="public-cover-input" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-public-cover-remove">Hiq cover-in</button>
-              <p class="public-logo-hint">PNG/JPG, Maksimumi 2 MB.</p>
+              <p class="public-logo-hint">PNG/JPG, max 800 KB.</p>
             </div>
           </div>
           <div class="fiscal-field-row">
@@ -4700,7 +4698,7 @@
             <input type="text" id="public-daily-offer" maxlength="500" placeholder="p.sh. Sot: spa + mëngjes">
           </div>
           <div class="fiscal-field-row">
-            <label>Galeri foto (max 10)</label>
+            <label>Galeri foto (max 5)</label>
             <div id="public-gallery-grid" class="public-gallery-grid"></div>
             <label class="btn btn-ghost btn-sm" for="public-gallery-input">+ Shto foto</label>
             <input type="file" id="public-gallery-input" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
@@ -9252,42 +9250,6 @@
     }
 
     /** Kompreso foton e faturës — shmang "request entity too large". */
-    const ADMIN_MAX_LOGO_BYTES = 2 * 1024 * 1024;
-    const ADMIN_MAX_COVER_BYTES = 2 * 1024 * 1024;
-    const ADMIN_MAX_GALLERY_UPLOAD_BYTES = 5 * 1024 * 1024;
-    const ADMIN_PUBLIC_GALLERY_MAX = 10;
-    const ADMIN_PRODUCT_PHOTO_MAX_UPLOAD = 5 * 1024 * 1024;
-
-    function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          let w = img.width;
-          let h = img.height;
-          if (w > maxWidth) {
-            h = Math.round(h * maxWidth / w);
-            w = maxWidth;
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL("image/jpeg", quality));
-        };
-        img.src = dataUrl;
-      });
-    }
-
-    async function compressProductPhotoFile(file) {
-      if (!file) return null;
-      if (file.size > ADMIN_PRODUCT_PHOTO_MAX_UPLOAD) {
-        throw new Error("Maksimumi 5 MB para kompresimit.");
-      }
-      const raw = await readImageFile(file, ADMIN_PRODUCT_PHOTO_MAX_UPLOAD, "Fotoja");
-      return compressImage(raw, 800, 0.7);
-    }
-
     async function compressImageToDataUrl(file, { maxEdge = 1600, maxBytes = 850_000 } = {}) {
       if (!file) return null;
       let source;
@@ -16605,7 +16567,7 @@
           adminRenderPublicGallery();
         });
       });
-      if (input) input.disabled = adminPublicGallery.length >= ADMIN_PUBLIC_GALLERY_MAX;
+      if (input) input.disabled = adminPublicGallery.length >= 5;
     }
 
     function adminRenderPublicReviews() {
@@ -16951,15 +16913,9 @@
       await renderPublicPageAutoQrs();
     }
 
-    function adminFormatMaxBytes(maxBytes) {
-      return maxBytes >= 1024 * 1024
-        ? `${Math.round(maxBytes / (1024 * 1024))} MB`
-        : `${Math.round(maxBytes / 1024)} KB`;
-    }
-
     function adminReadImageFile(file, maxBytes, onDone) {
       if (!file || file.size > maxBytes) {
-        setAdminPublicPageMsg(`Maksimumi ${adminFormatMaxBytes(maxBytes)}.`, false);
+        setAdminPublicPageMsg(`Skedari max ${Math.round(maxBytes / 1024)} KB.`, false);
         return;
       }
       const reader = new FileReader();
@@ -16973,7 +16929,7 @@
     document.getElementById("public-logo-input")?.addEventListener("change", (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      adminReadImageFile(file, ADMIN_MAX_LOGO_BYTES, (dataUrl) => {
+      adminReadImageFile(file, 512_000, (dataUrl) => {
         adminPublicPageLogo = dataUrl;
         adminPublicPageLogoDirty = true;
         adminUpdatePublicLogoPreview(dataUrl);
@@ -16986,7 +16942,7 @@
       adminUpdatePublicLogoPreview(null);
     });
     document.getElementById("public-cover-input")?.addEventListener("change", (e) => {
-      adminReadImageFile(e.target.files?.[0], ADMIN_MAX_COVER_BYTES, (dataUrl) => {
+      adminReadImageFile(e.target.files?.[0], 800_000, (dataUrl) => {
         adminPublicCover = dataUrl;
         adminPublicCoverDirty = true;
         adminUpdatePublicCoverPreview(dataUrl);
@@ -16999,17 +16955,11 @@
       adminUpdatePublicCoverPreview(null);
     });
     document.getElementById("public-gallery-input")?.addEventListener("change", (e) => {
-      if (adminPublicGallery.length >= ADMIN_PUBLIC_GALLERY_MAX) {
-        setAdminPublicPageMsg("Maksimumi 10 foto për produkt", false);
-        e.target.value = "";
-        return;
-      }
-      adminReadImageFile(e.target.files?.[0], ADMIN_MAX_GALLERY_UPLOAD_BYTES, (dataUrl) => {
-        compressImage(dataUrl, 800, 0.7).then((compressed) => {
-          adminPublicGallery.push(compressed);
-          adminPublicGalleryDirty = true;
-          adminRenderPublicGallery();
-        }).catch((err) => setAdminPublicPageMsg(err.message || "Nuk u kompresua fotoja.", false));
+      if (adminPublicGallery.length >= 5) return;
+      adminReadImageFile(e.target.files?.[0], 512_000, (dataUrl) => {
+        adminPublicGallery.push(dataUrl);
+        adminPublicGalleryDirty = true;
+        adminRenderPublicGallery();
       });
       e.target.value = "";
     });
