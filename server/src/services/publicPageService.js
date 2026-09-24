@@ -30,13 +30,13 @@ const {
   imageMimeFromDataUrl,
 } = require("../lib/imageDataUrl");
 
-const MAX_LOGO_BYTES = 512_000;
-const MAX_LOGO_CHARS = 700_000;
-const MAX_COVER_BYTES = 800_000;
-const MAX_COVER_CHARS = 1_100_000;
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const MAX_LOGO_CHARS = 2_900_000;
+const MAX_COVER_BYTES = 2 * 1024 * 1024;
+const MAX_COVER_CHARS = 2_900_000;
 const MAX_GALLERY_BYTES = 512_000;
 const MAX_GALLERY_CHARS = 700_000;
-const MAX_GALLERY_COUNT = 5;
+const MAX_GALLERY_COUNT = 10;
 const MAX_REVIEWS = 5;
 const MAX_DAILY_OFFER = 500;
 const MAX_REVIEW_NAME = 80;
@@ -110,7 +110,7 @@ function validateGalleryInput(raw) {
   if (raw == null) return undefined;
   if (!Array.isArray(raw)) throw new Error("Galeria duhet të jetë listë.");
   if (raw.length > MAX_GALLERY_COUNT) {
-    throw new Error(`Maksimum ${MAX_GALLERY_COUNT} foto në galeri.`);
+    throw new Error("Maksimumi 10 foto për produkt");
   }
   const out = [];
   for (let i = 0; i < raw.length; i += 1) {

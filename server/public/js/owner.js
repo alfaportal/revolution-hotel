@@ -1377,7 +1377,10 @@ function renderMenuTable() {
 async function readImageFile(file, maxBytes, label) {
   if (!file) return null;
   if (file.size > maxBytes) {
-    throw new Error(`${label} max ${Math.round(maxBytes / 1024)} KB.`);
+    const maxLabel = maxBytes >= 1024 * 1024
+      ? `${Math.round(maxBytes / (1024 * 1024))} MB`
+      : `${Math.round(maxBytes / 1024)} KB`;
+    throw new Error(`${label} — Maksimumi ${maxLabel}.`);
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1387,6 +1390,37 @@ async function readImageFile(file, maxBytes, label) {
   });
 }
 
+const OWNER_MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const OWNER_MAX_COVER_BYTES = 2 * 1024 * 1024;
+const OWNER_MAX_PRODUCT_UPLOAD = 5 * 1024 * 1024;
+const PUBLIC_GALLERY_MAX = 10;
+
+function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width;
+      let h = img.height;
+      if (w > maxWidth) {
+        h = Math.round(h * maxWidth / w);
+        w = maxWidth;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
+async function compressProductPhotoFile(file) {
+  const raw = await readImageFile(file, OWNER_MAX_PRODUCT_UPLOAD, "Fotoja");
+  return compressImage(raw, 800, 0.7);
+}
+
 async function uploadMenuPhoto(input) {
   const id = input.dataset.id;
   const file = input.files?.[0];
@@ -1394,7 +1428,7 @@ async function uploadMenuPhoto(input) {
   if (!id || !file) return;
   try {
     setMenuMsg("");
-    const photo = await readImageFile(file, 512_000, "Fotoja");
+    const photo = await compressProductPhotoFile(file);
     const { item, synced_at } = await api(`/api/owner/menu/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ photo }),
@@ -1854,7 +1888,7 @@ function renderPublicGalleryGrid() {
     });
   });
   if (input) {
-    input.disabled = publicGalleryData.length >= 5;
+    input.disabled = publicGalleryData.length >= PUBLIC_GALLERY_MAX;
   }
 }
 
@@ -2166,8 +2200,8 @@ async function savePublicPage() {
 document.getElementById("public-logo-input")?.addEventListener("change", (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
-  if (file.size > 512_000) {
-    setPublicPageMsg("Logo max 500 KB.", false);
+  if (file.size > OWNER_MAX_LOGO_BYTES) {
+    setPublicPageMsg("Maksimumi 2 MB.", false);
     e.target.value = "";
     return;
   }
@@ -2188,14 +2222,17 @@ document.getElementById("btn-public-logo-remove")?.addEventListener("click", () 
   updatePublicLogoPreview(null);
 });
 
-document.getElementById("public-cover-input")?.addEventListener("change", (e) => {
+document.getElementById("public-cover-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
-  readImageFile(file, 800_000, (dataUrl) => {
+  try {
+    const dataUrl = await readImageFile(file, OWNER_MAX_COVER_BYTES, "Cover");
     publicCoverData = dataUrl;
     publicCoverDirty = true;
     updatePublicCoverPreview(publicCoverData);
     setPublicPageMsg("");
-  });
+  } catch (err) {
+    setPublicPageMsg(err.message, false);
+  }
   e.target.value = "";
 });
 
@@ -2208,17 +2245,17 @@ document.getElementById("btn-public-cover-remove")?.addEventListener("click", ()
 document.getElementById("public-gallery-input")?.addEventListener("change", (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
-  if (publicGalleryData.length >= 5) {
-    setPublicPageMsg("Maksimum 5 foto në galeri.", false);
+  if (publicGalleryData.length >= PUBLIC_GALLERY_MAX) {
+    setPublicPageMsg("Maksimumi 10 foto për produkt", false);
     e.target.value = "";
     return;
   }
-  readImageFile(file, 512_000, (dataUrl) => {
+  readImageFile(file, OWNER_MAX_PRODUCT_UPLOAD, "Fotoja").then((dataUrl) => compressImage(dataUrl, 800, 0.7)).then((dataUrl) => {
     publicGalleryData.push(dataUrl);
     publicGalleryDirty = true;
     renderPublicGalleryGrid();
     setPublicPageMsg("");
-  });
+  }).catch((err) => setPublicPageMsg(err.message, false));
   e.target.value = "";
 });
 

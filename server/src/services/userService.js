@@ -66,12 +66,37 @@ async function listOwners(baseUrl) {
   return (data || []).map(u => sanitizeOwnerForAdmin(u, baseUrl));
 }
 
+/** Email i njëjtë në projekte të ndryshme — lidhe klientin me pronarin ekzistues (jo UNIQUE error). */
+async function linkExistingOwnerToClient(db, { client_id, email }, baseUrl) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail || !client_id) return null;
+
+  const { data: existing, error: uErr } = await db
+    .from("users")
+    .select("id, emri, email, client_id")
+    .eq("email", normalizedEmail)
+    .eq("roli", "client_admin")
+    .maybeSingle();
+  if (uErr) throw uErr;
+  if (!existing) return null;
+
+  if (existing.client_id !== client_id) {
+    const { linkClientToOwnerUser } = require("./ownerGroupService");
+    await linkClientToOwnerUser(client_id, existing.id);
+  }
+  const { data } = await db.from("users").select(OWNER_SELECT).eq("id", existing.id).single();
+  return sanitizeOwnerForAdmin(data, baseUrl);
+}
+
 async function createOwner({ client_id, emri, email, password }, baseUrl) {
   if (!client_id) throw new Error("Zgjidhni klientin (restorantin/kafenen).");
   if (!emri?.trim()) throw new Error("Emri i pronarit është i detyrueshëm.");
   if (!email?.trim()) throw new Error("Email është i detyrueshëm.");
 
   const db = getSupabase();
+  const linked = await linkExistingOwnerToClient(db, { client_id, email }, baseUrl);
+  if (linked) return linked;
+
   const row = {
     client_id,
     emri: emri.trim(),
@@ -110,7 +135,10 @@ async function createOwner({ client_id, emri, email, password }, baseUrl) {
   }
 
   if (error) {
-    if (error.code === "23505") throw new Error("Ky email ekziston tashmë.");
+    if (error.code === "23505") {
+      const retry = await linkExistingOwnerToClient(db, { client_id, email: row.email }, baseUrl);
+      if (retry) return retry;
+    }
     throw error;
   }
 
@@ -318,7 +346,9 @@ async function updateOwner(id, { emri, email, password, aktiv }, baseUrl) {
   }
 
   if (error) {
-    if (error.code === "23505") throw new Error("Ky email ekziston tashmë.");
+    if (error.code === "23505") {
+      throw new Error("Emaili nuk u përditësua — përdoret nga llogari tjetër.");
+    }
     throw error;
   }
   if (!data) throw new Error("Pronari nuk u gjet.");
