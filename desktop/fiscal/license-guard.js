@@ -572,9 +572,28 @@ function verifyLicenseKey(key, app, hardwareId) {
 }
 
 /** Çelësi hardware përputhet me rekordin e ruajtur (pa kontroll skadimi). */
+function clearHardwareLicense(app) {
+  try {
+    const p = hwLicensePath(app);
+    if (p && fs.existsSync(p)) fs.unlinkSync(p);
+  } catch {
+    /* ignore */
+  }
+  clearGrace(app);
+}
+
 function verifyStoredHardwareKey(rec, app, hardwareId) {
   if (!rec || !rec.key) return false;
-  if (rec.source === "cloud") return true; /* Hapje OK; heartbeat/watchdog bllokon REVOKED/NOT_FOUND */
+  if (rec.source === "cloud") {
+    try {
+      const license = require(path.join(__dirname, "..", "license"));
+      const cloudKey = license.readStoredLicense(app);
+      if (!cloudKey) return false;
+    } catch {
+      return false;
+    }
+    return true;
+  }
   const hwRaw = hardwareId || getHardwareId(app);
   const id = normalizeHardwareId(formatHardwareId(hwRaw));
   const got = normalizeLicenseKey(rec.key);
@@ -599,7 +618,16 @@ function verifyStoredHardwareKey(rec, app, hardwareId) {
 function isHardwareUnlocked(app, hardwareId) {
   const rec = readStoredLicenseRecord(app);
   if (!rec || !rec.key) return false;
-  if (rec.source === "cloud") return true; /* Hapje OK; heartbeat/watchdog bllokon REVOKED/NOT_FOUND */
+  if (rec.source === "cloud") {
+    try {
+      const license = require(path.join(__dirname, "..", "license"));
+      const cloudKey = license.readStoredLicense(app);
+      if (!cloudKey) return false;
+    } catch {
+      return false;
+    }
+    return true;
+  }
   if (!verifyStoredHardwareKey(rec, app, hardwareId)) return false;
   if (isLicenseExpired(rec)) return false;
   return true;
@@ -970,6 +998,7 @@ module.exports = {
   expectedLicenseKey,
   matchLicenseKey,
   verifyLicenseKey,
+  clearHardwareLicense,
   isHardwareUnlocked,
   isLicenseExpired,
   writeStoredLicenseKey,

@@ -390,6 +390,23 @@ function wipeAllActivationData(app) {
       /* ignore */
     }
   }
+  try {
+    const lg = require("./fiscal/license-guard");
+    if (typeof lg.clearHardwareLicense === "function") {
+      lg.clearHardwareLicense(app);
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const root = app ? licenseStorageRoot(app) : null;
+    if (root) {
+      const guardPath = path.join(root, ".hw-lic");
+      if (fs.existsSync(guardPath)) fs.unlinkSync(guardPath);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 function listActivationFileBasenames() {
