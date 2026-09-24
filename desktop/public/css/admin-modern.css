@@ -1025,7 +1025,7 @@ body.admin-app .tabs {
   width: 100%;
   max-width: 420px;
   max-height: 90vh;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.2);
@@ -3106,4 +3106,139 @@ body.admin-app .product-card-drop-target {
     content: "";
     display: none;
   }
+}
+
+/* === Revolution admin — responsive scroll & form wrap (2026-03) === */
+body.admin-app .admin-main {
+  overflow: auto !important;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.admin-app .form-row,
+body.admin-app form.form-row,
+body.admin-app .reports-filter-row,
+body.admin-app .sef-field8-receipt-row,
+body.admin-app #card-fiscalizimi .sef-periodic-dates,
+body.admin-app #modal-fiscal-receipts .frl-ops,
+body.admin-app #modal-fiscal-receipts .frl-storno-reason-row {
+  flex-wrap: wrap !important;
+}
+
+body.admin-app .form-row > div,
+body.admin-app form[style*="display:flex"] > div,
+body.admin-app form[style*="display: flex"] > div,
+body.admin-app #card-fiscalizimi .sef-periodic-dates .settings-field,
+body.admin-app #panel-test-atk .sef-field8-receipt-row .settings-field,
+body.admin-app #card-fiscalizimi .sef-field8-receipt-row .settings-field {
+  min-width: 0 !important;
+  flex: 1 1 8.75rem;
+  max-width: 100%;
+}
+
+body.admin-app [style*="min-width:140px"],
+body.admin-app [style*="min-width: 140px"],
+body.admin-app [style*="min-width:150px"],
+body.admin-app [style*="min-width: 150px"],
+body.admin-app [style*="min-width:160px"],
+body.admin-app [style*="min-width: 160px"],
+body.admin-app [style*="min-width:180px"],
+body.admin-app [style*="min-width: 180px"] {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+body.admin-app .table-wrap,
+body.admin-app .report-table-wrap,
+body.admin-app .data-table-scroll {
+  overflow: auto !important;
+  min-height: 0;
+  max-width: 100%;
+}
+
+body.admin-app .table-modal-content.purchase-modal-content,
+#modal-purchase .table-modal-content.purchase-modal-content,
+#modal-purchase .purchase-modal-content {
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+#modal-purchase .purchase-lines-wrap {
+  overflow: auto !important;
+  max-height: min(42vh, 360px);
+  min-height: 0;
+}
+
+body.admin-app section.panel.active {
+  min-width: 0;
+}
+
+/* Kategoritë e menusë — vetëm #lista-kategorive (chip kompakt) */
+body.admin-app #lista-kategorive.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.35rem;
+  margin-top: 0.45rem;
+}
+
+body.admin-app #lista-kategorive .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: auto;
+  max-width: min(100%, 19rem);
+  padding: 0.12rem 0.32rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border: 1px solid #33334a;
+  box-sizing: border-box;
+}
+
+body.admin-app #lista-kategorive .tag-label {
+  flex: 0 1 auto;
+  max-width: 6.25rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.admin-app #lista-kategorive .tag-route {
+  width: 6.35rem !important;
+  min-width: 6.35rem !important;
+  max-width: 6.35rem !important;
+  flex: 0 0 auto;
+  min-height: 26px !important;
+  height: 26px;
+  padding: 0 0.3rem !important;
+  margin-bottom: 0 !important;
+  font-size: 0.62rem !important;
+  border-radius: 5px !important;
+  line-height: 1.1;
+}
+
+body.admin-app #lista-kategorive .tag-stop,
+body.admin-app #lista-kategorive .tag-del {
+  min-width: auto;
+  min-height: 26px;
+  height: 26px;
+  padding: 0 0.2rem;
+  font-size: 0.65rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+body.admin-app #lista-kategorive .tag-del {
+  font-size: 0.85rem;
+  min-width: 1.35rem;
+}
+
+body.admin-app #lista-kategorive .tag-drag {
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 0.6rem;
+  line-height: 1;
 }
