@@ -5951,13 +5951,16 @@
       if (name === "licenca") ngarkoLicencen();
       if (name === "stafi") ngarkoStafin();
       if (name === "stoku") {
-        ngarkoMenu()
+        ngarkoKategorite({ all: true })
+          .then(() => ngarkoMenu())
           .then(() => renderStokuGrid())
           .catch((err) => alert(err.message || "Gabim stoku"));
       }
       if (name === "menuja") {
-        ngarkoMenu();
-        applyMenuAiUiState();
+        ngarkoKategoriteUI()
+          .then(() => ngarkoMenu())
+          .then(() => applyMenuAiUiState())
+          .catch((err) => alert(err.message || "Gabim menu"));
       }
       if (name === "blerjet") ngarkoBlerjet();
       if (name === "kontabilisti") {
@@ -6560,6 +6563,7 @@
         prodAtkCatSel.innerHTML = buildMenuAtkSelectOptions(MENU_ATK_CATEGORY_OPTS, "TT");
       }
       const lista = document.getElementById("lista-kategorive");
+      if (!lista) return;
       const full = (Array.isArray(KATEGORITE_FULL) ? KATEGORITE_FULL : [])
         .slice()
         .sort((a, b) => {
