@@ -657,16 +657,14 @@ if (!gotTheLock) {
       try {
         const revokeBlock = await cloud.enforceRevokedBlock(app);
         if (revokeBlock.blocked) {
-          closeSplash();
-          dialog.showErrorBox("Licenca", revokeBlock.message);
-          app.quit();
-          return;
+          try {
+            cloud.wipeAllActivationData(app);
+          } catch {
+            /* ignore */
+          }
         }
-      } catch (e) {
-        closeSplash();
-        dialog.showErrorBox("Licenca", cloud.REVOKED_USER_MESSAGE);
-        app.quit();
-        return;
+      } catch {
+        /* vazhdo te aktivizimi HW — pa ErrorBox */
       }
 
       if (!(await bootHotelLicenseLayers())) {

@@ -999,7 +999,7 @@ async function ensureHardwareLicense(app) {
           const promptNoLicense = () =>
             promptHardwareActivation(app, { reason: "no_license" });
           try {
-            const online = await license.validateLicenseOnline(validateKey);
+            const online = await license.validateLicenseOnline(validateKey, { skipHardFail: true });
             if (online.valid && !online.offline) {
               /* server OK — vazhdo hapjen */
             } else if (online.offline) {

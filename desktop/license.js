@@ -347,6 +347,11 @@ function licenseHardFailMessage(code) {
     : "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
 }
 
+/** Pa dialog ErrorBox — vetëm ekrani i aktivizimit (HW) shpjegon hapin tjetër. */
+function isActivationNeededCode(code) {
+  return String(code || "").trim() === "NOT_FOUND";
+}
+
 function wipeDirHard(dir) {
   // BLLOKUAR — nuk lejohet fshirja e folderëve të klientit
   // Ky funksion nuk duhet me fshirë asgjë përveç skedarëve të licencës
@@ -470,7 +475,15 @@ async function validateLicenseOnline(key, opts = {}) {
       };
     }
     if (parsed.code && FULL_PURGE_LICENSE_CODES.has(parsed.code)) {
-      if (_electronApp && !opts.skipHardFail) {
+      if (isActivationNeededCode(parsed.code)) {
+        if (_electronApp && !opts.skipHardFail) {
+          try {
+            wipeAllActivationData(_electronApp);
+          } catch {
+            /* ignore */
+          }
+        }
+      } else if (_electronApp && !opts.skipHardFail) {
         markLicenseRevokedLocally(_electronApp, parsed.message || parsed.gabim);
         handleLicenseHardFail(_electronApp, parsed.code);
       }
@@ -530,7 +543,15 @@ async function validateLicenseHeartbeat(key) {
     const forceLogout =
       !!parsed.force_logout || (code && HEARTBEAT_FORCE_LOGOUT_CODES.has(code));
     if (code && FULL_PURGE_LICENSE_CODES.has(code) && _electronApp) {
-      handleLicenseHardFail(_electronApp, code);
+      if (isActivationNeededCode(code)) {
+        try {
+          wipeAllActivationData(_electronApp);
+        } catch {
+          /* ignore */
+        }
+      } else {
+        handleLicenseHardFail(_electronApp, code);
+      }
     }
     return {
       valid: false,
@@ -1011,10 +1032,19 @@ async function enforceRevokedBlock(app) {
       return { blocked: false };
     }
     if (online.code && FULL_PURGE_LICENSE_CODES.has(online.code) && !online.offline) {
+      if (isActivationNeededCode(online.code)) {
+        try {
+          wipeAllActivationData(app);
+        } catch {
+          /* ignore */
+        }
+        return { blocked: false, code: online.code };
+      }
       return {
         blocked: true,
         message: licenseHardFailMessage(online.code),
         purged: false,
+        code: online.code,
       };
     }
   } catch {
