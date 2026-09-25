@@ -1,7 +1,5 @@
 /* Truffle-inspired POS theme — only #ekrani-porosia (desktop order panel). CSS only. */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
-
 #ekrani-porosia {
   --pos-bg: #1a1a2e;
   --pos-bg-soft: #1e1e2e;
@@ -119,6 +117,7 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 }
 
 /* ─── Body layout ─── */
+/* Telefon (default): kolonë vertikale — si më parë, pa prekje */
 #ekrani-porosia .waiter-order-body {
   flex: 1;
   min-height: 0;
@@ -129,13 +128,30 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 }
 
 #ekrani-porosia .menu-pos-wrap {
-  flex: 1;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: transparent;
+  box-sizing: border-box;
+}
+
+#ekrani-porosia .waiter-orders-panel,
+#ekrani-porosia .waiter-payments-panel {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  box-sizing: border-box;
+}
+
+#ekrani-porosia .waiter-payments-panel {
+  background: #f8f9fb;
 }
 
 /* ─── Category tabs: one horizontal scrolling row ─── */
@@ -406,17 +422,130 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   text-align: center;
 }
 
-/* ─── Right checkout panel ─── */
-#ekrani-porosia .waiter-checkout-panel {
+/* TVSH badge — mos shfaq mbi kartat e menusë (llogaritja mbetet në porosi/fiskal) */
+#ekrani-porosia .menu-item-vat-flag {
+  display: none !important;
+}
+
+/* ─── Orders column (left) + payments column (right) ─── */
+#ekrani-porosia .waiter-orders-panel,
+#ekrani-porosia .waiter-payments-panel {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   background: #f8f9fb;
   color: var(--pos-text);
-  border-top: none;
   box-shadow: none;
+}
+
+#ekrani-porosia .menu-pos-wrap {
+  border-right: 1px solid var(--pos-border);
+}
+
+#ekrani-porosia .waiter-orders-panel {
+  border-right: 1px solid var(--pos-border);
+}
+
+#ekrani-porosia .waiter-payments-panel {
+  border-left: none;
+}
+
+#ekrani-porosia .waiter-payments-panel .promo-select-wrap {
+  padding: 0.45rem 0.55rem 0.35rem;
+  border-bottom: none;
+  background: transparent;
+}
+
+#ekrani-porosia .waiter-payments-panel .promo-select-wrap label {
+  font-size: 0.62rem;
+}
+
+#ekrani-porosia .waiter-payments-panel .promo-select-wrap select {
+  font-size: 0.72rem;
+  min-height: 32px;
+  padding: 0.3rem 0.45rem;
+}
+
+#ekrani-porosia .waiter-payments-panel .payments-coupon-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#ekrani-porosia .waiter-payments-panel .payments-btn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  width: 100%;
+  flex-shrink: 0;
+  align-content: start;
+}
+
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn {
+  width: 100%;
+  min-width: 0 !important;
+  flex: none !important;
+  min-height: 2.75rem;
+  height: 2.75rem;
+  max-height: 2.75rem;
+  margin: 0;
+  padding: 0.35rem 0.4rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1.15;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  cursor: pointer;
+  background: #111827;
+  color: #fff;
+  box-shadow: none;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn:hover:not(:disabled) {
+  background: #1f2937;
+  color: #fff;
+  transform: none;
+}
+
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn.active {
+  background: #16a34a !important;
+  color: #fff !important;
+}
+
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Dërgo porosinë — katror i madh, i qendruar (arka / POS) */
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn-send {
+  width: 6.75rem;
+  height: 6.75rem;
+  min-height: 6.75rem;
+  max-height: none;
+  margin: 0.2rem auto 0.55rem;
+  padding: 0.5rem;
+  font-size: 0.84rem;
+  line-height: 1.22;
+  border-radius: 14px;
+  justify-self: center;
+}
+
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn-send:hover:not(:disabled) {
+  background: #1f2937;
 }
 
 /* Fshi tekstin informativ — logjika e faturës mbetet. */
@@ -456,6 +585,50 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   margin-bottom: 0.55rem !important;
   border: none;
   padding: 0;
+}
+
+#ekrani-porosia .waiter-orders-panel .order-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #f1f4f8;
+  color: var(--pos-text);
+}
+
+#ekrani-porosia .waiter-orders-panel .order-row-main {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+#ekrani-porosia .waiter-orders-panel .order-row-name {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--pos-text);
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+#ekrani-porosia .waiter-orders-panel .order-row-meta {
+  display: block;
+  margin-top: 0.15rem;
+  white-space: nowrap;
+}
+
+#ekrani-porosia .waiter-orders-panel .order-row-right {
+  flex-shrink: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
 }
 
 #ekrani-porosia .order-row {
@@ -526,6 +699,14 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   color: var(--pos-accent);
 }
 
+#ekrani-porosia .order-totals-stack {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pos-bg-soft);
+  border-top: 1px solid var(--pos-border);
+}
+
 #ekrani-porosia .total-bar {
   position: static;
   flex-shrink: 0;
@@ -536,6 +717,44 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   color: var(--pos-text-inv);
   border-top: none;
   border-bottom: none;
+}
+
+#ekrani-porosia .waiter-orders-panel .total-bar-line {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.15;
+  min-height: 2rem;
+}
+
+#ekrani-porosia .waiter-orders-panel .total-bar-line + .total-bar-line {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#ekrani-porosia .waiter-orders-panel .total-bar-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#ekrani-porosia .waiter-orders-panel .total-bar-amount,
+#ekrani-porosia .waiter-orders-panel .total-bar #totali,
+#ekrani-porosia .waiter-orders-panel .total-bar #totali-tavoline {
+  flex: 0 0 auto;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--pos-accent);
+  letter-spacing: 0;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 #ekrani-porosia .total-bar #totali,
@@ -579,25 +798,13 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   transform: translateY(-1px);
 }
 
-#ekrani-porosia .action-bar .btn-primary {
-  background: var(--pos-accent);
-  border: none;
-  color: #fff;
-  box-shadow: 0 4px 16px rgba(255, 107, 53, 0.35);
+#ekrani-porosia .waiter-payments-panel .action-bar .btn-primary,
+#ekrani-porosia .waiter-payments-panel .action-bar .btn-ghost,
+#ekrani-porosia .waiter-payments-panel .action-bar .btn-danger,
+#ekrani-porosia .waiter-payments-panel .action-bar .btn-payment-cash,
+#ekrani-porosia .waiter-payments-panel .action-bar .btn-payment-karte,
+#ekrani-porosia .waiter-payments-panel .action-bar .btn-split-bill {
   width: 100%;
-}
-
-#ekrani-porosia .action-bar .btn-primary:hover:not(:disabled) {
-  background: var(--pos-accent-hover);
-}
-
-#ekrani-porosia .action-bar .btn-danger {
-  background: #fff;
-  color: var(--pos-red);
-  border: 1.5px solid #fecdd3;
-  box-shadow: none;
-  width: 100%;
-  border-radius: var(--pos-radius-lg);
 }
 
 #ekrani-porosia .payment-close-row {
@@ -634,22 +841,25 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   transition: transform 0.12s ease, opacity 0.12s ease, background 0.15s ease;
 }
 
-#ekrani-porosia .btn-payment-cash {
-  background: var(--pos-green);
-  color: #fff;
-  box-shadow: 0 3px 12px rgba(22, 163, 74, 0.28);
-}
-
+#ekrani-porosia .btn-payment-cash,
 #ekrani-porosia .btn-payment-karte {
-  background: var(--pos-bg);
+  background: #111827;
   color: #fff;
-  box-shadow: 0 3px 12px rgba(26, 26, 46, 0.28);
+  box-shadow: none;
 }
 
 #ekrani-porosia .btn-payment-cash:hover,
 #ekrani-porosia .btn-payment-karte:hover {
   transform: translateY(-1px);
   opacity: 0.95;
+  background: #1f2937;
+}
+
+#ekrani-porosia .btn-payment-cash:active,
+#ekrani-porosia .btn-payment-karte:active,
+#ekrani-porosia .btn-payment-cash.active,
+#ekrani-porosia .btn-payment-karte.active {
+  background: #16a34a;
 }
 
 #ekrani-porosia .coupon-type-row {
@@ -661,34 +871,24 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 
 #ekrani-porosia .btn-coupon {
   font-weight: 700;
-  border: 1.5px solid var(--pos-border);
+  border: none;
   border-radius: var(--pos-radius-sm);
   padding: 0.4rem 0.35rem;
   min-height: 34px;
   font-size: 0.72rem;
   cursor: pointer;
-  background: var(--pos-panel-muted);
-  color: var(--pos-muted);
+  background: #111827;
+  color: #fff;
   font-family: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-#ekrani-porosia .btn-coupon-thermal.active {
-  background: #fff7ed;
-  border-color: #fdba74;
-  color: #c2410c;
-}
-
-#ekrani-porosia .btn-coupon-fiscal.active {
-  background: #f5f3ff;
-  border-color: #c4b5fd;
-  color: #6d28d9;
+#ekrani-porosia .btn-coupon.active {
+  background: #16a34a;
+  color: #fff;
 }
 
 #ekrani-porosia .btn-split-bill {
-  background: #fff;
-  border: 1.5px solid var(--pos-border) !important;
-  color: var(--pos-muted) !important;
   border-radius: var(--pos-radius-sm);
   min-height: 36px !important;
   width: 100%;
@@ -729,16 +929,79 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   border-radius: 0;
 }
 
-@media (min-width: 860px) {
+#ekrani-porosia .order-list {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+/* Tablet + laptop + PC: panel 70% | 15% | 15% (telefoni mbetet kolonë — lart) */
+@media (min-width: 768px) {
   #ekrani-porosia .waiter-order-body {
     flex-direction: row;
+    align-items: stretch;
   }
 
   #ekrani-porosia .menu-pos-wrap {
-    flex: 1;
-    border-right: none;
+    flex: 0 0 70%;
+    width: 70%;
+    max-width: 70%;
+    order: 1;
   }
 
+  #ekrani-porosia .waiter-orders-panel {
+    flex: 0 0 15%;
+    width: 15%;
+    max-width: 15%;
+    order: 2;
+    height: 100%;
+  }
+
+  #ekrani-porosia .waiter-payments-panel {
+    flex: 0 0 15%;
+    width: 15%;
+    max-width: 15%;
+    order: 3;
+    height: 100%;
+    background: #f3f4f6;
+  }
+
+  #ekrani-porosia .waiter-orders-panel .order-list {
+    padding: 0.45rem 0.5rem;
+  }
+
+  #ekrani-porosia .waiter-payments-panel .action-bar {
+    flex: 0 0 auto;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    min-height: 0;
+    overflow-y: auto;
+    background: #f3f4f6;
+    padding: 0.4rem 0.45rem 0.5rem;
+    gap: 0.35rem;
+  }
+
+  #ekrani-porosia .waiter-payments-panel .payments-btn-grid {
+    gap: 0.4rem;
+  }
+
+  #ekrani-porosia .waiter-payments-panel .pos-pay-btn {
+    min-height: 3rem;
+    height: 3rem;
+    max-height: 3rem;
+    font-size: clamp(0.65rem, 0.6rem + 0.2vw, 0.78rem);
+  }
+
+  #ekrani-porosia .waiter-payments-panel .pos-pay-btn-send {
+    width: 7.25rem;
+    height: 7.25rem;
+    min-height: 7.25rem;
+    font-size: 0.9rem;
+  }
+}
+
+@media (min-width: 860px) {
   #ekrani-porosia .menu-photo-grid-inner,
   #ekrani-porosia .menu-text-grid-inner {
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
@@ -747,35 +1010,6 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 
   #ekrani-porosia .menu-item-card::before {
     height: 48px;
-  }
-
-  #ekrani-porosia .waiter-checkout-panel {
-    width: min(380px, 34vw);
-    max-width: 420px;
-    min-height: 0;
-    height: 100%;
-    overflow: hidden;
-    border-top: none;
-    border-left: 1px solid rgba(0, 0, 0, 0.08);
-    background: #f3f4f6;
-    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.22);
-  }
-
-  #ekrani-porosia .order-list {
-    flex: 1 1 0;
-    min-height: 0;
-    max-height: none;
-  }
-
-  #ekrani-porosia .action-bar {
-    flex-direction: column;
-    flex-shrink: 0;
-    background: #f3f4f6;
-  }
-
-  #ekrani-porosia .action-bar .btn-primary,
-  #ekrani-porosia .action-bar .btn-danger {
-    width: 100%;
   }
 }
 
@@ -794,30 +1028,7 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   }
 }
 
-@media (max-width: 859px) {
-  #ekrani-porosia .total-bar,
-  #ekrani-porosia .action-bar {
-    position: static;
-    bottom: auto;
-    box-shadow: none;
-  }
-
-  #ekrani-porosia .menu-photo-grid-inner,
-  #ekrani-porosia .menu-text-grid-inner {
-    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-    gap: 0.4rem;
-  }
-
-  #ekrani-porosia .menu-item-card::before {
-    height: 40px;
-  }
-
-  #ekrani-porosia .waiter-table-header h1 {
-    font-size: 1.25rem !important;
-  }
-}
-
-/* Telefon: menu lart (produkte), checkout poshtë — scroll i plotë */
+/* Telefon: menu lart (produkte), pastaj porosi + pagesa — scroll i plotë */
 @media (max-width: 767px) {
   #ekrani-porosia.active {
     overflow-x: hidden;
@@ -831,6 +1042,7 @@ body.waiter-screen:has(#ekrani-porosia.active) {
     overflow: visible;
   }
 
+  /* Mos lejo flex të “shtypë” grid-in e produkteve në 0px lartësi */
   #ekrani-porosia .menu-pos-wrap {
     flex: 0 0 auto;
     flex-shrink: 0;
@@ -843,14 +1055,12 @@ body.waiter-screen:has(#ekrani-porosia.active) {
     min-height: 12rem;
   }
 
-  #ekrani-porosia .waiter-checkout-panel,
+  /* Lista e porosisë — mos e kolaps në 0px; scroll brenda listës (25+ artikuj) */
   #ekrani-porosia .waiter-orders-panel {
     flex: 0 0 auto;
     overflow: visible;
-    width: 100%;
   }
 
-  #ekrani-porosia .waiter-checkout-panel .order-list,
   #ekrani-porosia .waiter-orders-panel .order-list {
     flex: 0 0 auto;
     flex-grow: 0;
@@ -914,6 +1124,10 @@ body.waiter-screen:has(#ekrani-porosia.active) {
     color: var(--pos-red) !important;
     border-color: rgba(225, 29, 72, 0.35);
     background: #fff5f7;
+  }
+
+  #ekrani-porosia .waiter-table-header h1 {
+    font-size: 1.25rem !important;
   }
 }
 

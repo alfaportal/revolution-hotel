@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/waiter-modern.css?v=11">
-  <link rel="stylesheet" href="/css/pos-truffle.css?v=13">
+  <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
+  <link rel="stylesheet" href="/css/pos-truffle.css?v=14">
   <style>
     #ekrani-tavolina.hidden { display: none !important; }
 
@@ -715,33 +715,52 @@
       gap: 0.45rem;
     }
 
-    .btn-payment-cash {
-      background: #0f766e;
+    #ekrani-porosia .btn-payment-cash,
+    #ekrani-porosia .btn-payment-karte {
+      background: #111827;
       color: #fff;
       font-weight: 700;
       border: none;
       border-radius: 10px;
       padding: 0.75rem 0.65rem;
       font-size: 0.88rem;
-      box-shadow: 0 2px 6px rgba(15, 118, 110, 0.2);
-      transition: opacity 0.15s ease;
+      box-shadow: none;
+      transition: background 0.15s ease, opacity 0.15s ease;
     }
 
-    .btn-payment-cash:hover { opacity: 0.92; }
+    #ekrani-porosia .btn-payment-cash:hover,
+    #ekrani-porosia .btn-payment-karte:hover { opacity: 0.92; }
 
-    .btn-payment-karte {
-      background: #1e3a5f;
-      color: #fff;
+    #ekrani-porosia .btn-payment-cash:active,
+    #ekrani-porosia .btn-payment-karte:active,
+    #ekrani-porosia .btn-payment-cash.active,
+    #ekrani-porosia .btn-payment-karte.active {
+      background: #16a34a;
+    }
+
+    .coupon-type-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.45rem;
+      margin-bottom: 0.45rem;
+    }
+
+    #ekrani-porosia .btn-coupon {
       font-weight: 700;
       border: none;
       border-radius: 10px;
-      padding: 0.75rem 0.65rem;
-      font-size: 0.88rem;
-      box-shadow: 0 2px 6px rgba(30, 58, 95, 0.2);
-      transition: opacity 0.15s ease;
+      padding: 0.65rem 0.45rem;
+      font-size: 0.76rem;
+      cursor: pointer;
+      background: #111827;
+      color: #fff;
+      transition: background 0.15s ease, opacity 0.15s ease;
     }
 
-    .btn-payment-karte:hover { opacity: 0.92; }
+    #ekrani-porosia .btn-coupon.active {
+      background: #16a34a;
+      color: #fff;
+    }
 
     .pay-mixed-wrap {
       margin-top: 0.5rem;
@@ -784,37 +803,6 @@
     .pay-mixed-status[hidden] { display: none !important; }
     .pay-mixed-box[hidden] { display: none !important; }
     .pay-mixed-wrap[hidden] { display: none !important; }
-
-    .coupon-type-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.45rem;
-      margin-bottom: 0.45rem;
-    }
-
-    .btn-coupon {
-      font-weight: 700;
-      border: 1.5px solid #e2e6ec;
-      border-radius: 10px;
-      padding: 0.65rem 0.45rem;
-      font-size: 0.76rem;
-      cursor: pointer;
-      background: #f8fafc;
-      color: #64748b;
-      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-    }
-
-    .btn-coupon-thermal.active {
-      background: #fff7ed;
-      border-color: #fdba74;
-      color: #c2410c;
-    }
-
-    .btn-coupon-fiscal.active {
-      background: #f5f3ff;
-      border-color: #c4b5fd;
-      color: #6d28d9;
-    }
 
     .btn-coupon.active {
       box-shadow: none;
@@ -1315,7 +1303,7 @@
         <div class="menu-photo-grid" id="menu-grid"></div>
       </div>
 
-      <div class="waiter-checkout-panel">
+      <aside class="waiter-orders-panel" aria-label="Porositë">
         <div class="order-list">
           <div id="lista-ne-tavoline-wrap" hidden>
             <div class="card-title" style="margin-bottom:0.35rem;border:none;padding:0;font-size:0.85rem;color:var(--ngjyr-muted)">Në tavolinë (tashmë dërguar)</div>
@@ -1327,48 +1315,51 @@
           </div>
         </div>
 
-        <div class="total-bar">
-          <span>Totali i porosisë së re</span>
-          <span id="totali">0.00 €</span>
+        <div class="order-totals-stack">
+          <div class="total-bar total-bar-line">
+            <span class="total-bar-label">Totali i porosisë së re</span>
+            <span class="total-bar-amount" id="totali">0.00 €</span>
+          </div>
+          <div class="total-bar total-bar-line" id="totali-tavoline-bar" hidden>
+            <span class="total-bar-label">Totali në tavolinë</span>
+            <span class="total-bar-amount" id="totali-tavoline">0.00 €</span>
+          </div>
         </div>
-        <div class="total-bar" id="totali-tavoline-bar" hidden style="margin-top:0;border-top:1px dashed var(--ngjyr-border);padding-top:0.5rem">
-          <span>Totali në tavolinë</span>
-          <span id="totali-tavoline">0.00 €</span>
-        </div>
+      </aside>
 
-        <div class="promo-select-wrap" id="promo-select-wrap">
-          <label for="promo-select">Promocioni / zbritja</label>
-          <select id="promo-select">
-            <option value="auto">Automatik (më i mirë)</option>
-            <option value="">Pa zbritje</option>
-          </select>
-        </div>
-        <div id="promo-pricing-bar" class="promo-pricing-bar" hidden>
-          <div class="promo-pricing-row"><span>Nëntotali</span><span id="promo-subtotal">0.00 €</span></div>
-          <div class="promo-pricing-row promo-discount-row"><span id="promo-discount-label">Zbritje</span><span id="promo-discount-amt">−0.00 €</span></div>
-          <div class="promo-pricing-row promo-net-row"><span>Për pagesë</span><span id="promo-net-total">0.00 €</span></div>
-        </div>
-
+      <aside class="waiter-payments-panel" aria-label="Pagesat">
         <div class="action-bar">
-          <button class="btn btn-primary" id="btn-dergo">Dërgo porosinë</button>
-          <button class="btn btn-danger" id="btn-anullo" hidden>Anullo porosinë</button>
-          <div class="coupon-type-row" id="coupon-type-row">
-            <button type="button" class="btn-coupon btn-coupon-fiscal" data-coupon="fiscal" id="btn-kupon-fiskal">Kuponi Fiskal</button>
-            <button type="button" class="btn-coupon btn-coupon-thermal active" data-coupon="thermal" id="btn-kupon-termik">Kuponi Termik</button>
+          <div class="promo-select-wrap" id="promo-select-wrap">
+            <label for="promo-select">Promocioni / zbritja</label>
+            <select id="promo-select">
+              <option value="auto">Automatik (më i mirë)</option>
+              <option value="">Pa zbritje</option>
+            </select>
+          </div>
+          <div id="promo-pricing-bar" class="promo-pricing-bar" hidden>
+            <div class="promo-pricing-row"><span>Nëntotali</span><span id="promo-subtotal">0.00 €</span></div>
+            <div class="promo-pricing-row promo-discount-row"><span id="promo-discount-label">Zbritje</span><span id="promo-discount-amt">−0.00 €</span></div>
+            <div class="promo-pricing-row promo-net-row"><span>Për pagesë</span><span id="promo-net-total">0.00 €</span></div>
+          </div>
+
+          <div id="gabim-porosi" class="alert alert-error" hidden></div>
+
+          <div class="payments-btn-grid">
+            <button type="button" class="btn btn-primary pos-pay-btn pos-pay-btn-send" id="btn-dergo">Dërgo porosinë</button>
+            <button type="button" class="btn btn-danger pos-pay-btn" id="btn-anullo" hidden>Anullo porosinë</button>
+            <div class="coupon-type-row payments-coupon-row" id="coupon-type-row">
+              <button type="button" class="btn-coupon btn-coupon-fiscal pos-pay-btn" data-coupon="fiscal" id="btn-kupon-fiskal">Kuponi Fiskal</button>
+              <button type="button" class="btn-coupon btn-coupon-thermal pos-pay-btn active" data-coupon="thermal" id="btn-kupon-termik">Kuponi Termik</button>
+            </div>
+            <button type="button" class="btn btn-payment-cash pos-pay-btn" id="btn-mbyll-cash">Cash</button>
+            <button type="button" class="btn btn-payment-karte pos-pay-btn" id="btn-mbyll-karte">Kartë</button>
+            <button type="button" class="btn btn-primary pos-pay-btn" id="btn-paguaj-fiskal">Paguaj Fiskal</button>
+            <button type="button" class="btn btn-ghost pos-pay-btn" id="btn-paguaj-termik">Paguaj (Termik)</button>
+            <button type="button" class="btn btn-ghost btn-split-bill pos-pay-btn" id="btn-nda-faturen">Nda faturën</button>
           </div>
           <div class="coupon-type-forced" id="coupon-type-forced" hidden></div>
-          <div class="payment-close-row">
-            <button class="btn btn-payment-cash" id="btn-mbyll-cash">Cash</button>
-            <button class="btn btn-payment-karte" id="btn-mbyll-karte">Kartë</button>
-          </div>
-          <div class="payment-checkout-actions">
-            <button type="button" class="btn btn-primary" id="btn-paguaj-fiskal">Paguaj + Kupon fiskal</button>
-            <button type="button" class="btn btn-ghost" id="btn-paguaj-termik">Paguaj (Termik)</button>
-          </div>
-          <button type="button" class="btn btn-ghost btn-split-bill" id="btn-nda-faturen">Nda faturën</button>
         </div>
-        <div id="gabim-porosi" class="alert alert-error" hidden></div>
-      </div>
+      </aside>
     </div>
   </div>
 
@@ -4497,13 +4488,26 @@
       return registerModeForced === "auto" ? checkoutCouponType : registerModeForced;
     }
 
+    function highlightPaymentsAction(btn) {
+      if (!btn?.classList?.contains("pos-pay-btn")) return;
+      document.querySelectorAll("#ekrani-porosia .waiter-payments-panel .pos-pay-btn").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+    }
+
     document.querySelectorAll("[data-coupon]").forEach(btn => {
       btn.addEventListener("click", () => {
         couponType = btn.dataset.coupon || "thermal";
         document.querySelectorAll("[data-coupon]").forEach(b => {
           b.classList.toggle("active", b.dataset.coupon === couponType);
         });
+        highlightPaymentsAction(btn);
       });
+    });
+
+    document.querySelectorAll("#ekrani-porosia .waiter-payments-panel .pos-pay-btn").forEach((btn) => {
+      if (btn.dataset.coupon) return;
+      btn.addEventListener("click", () => highlightPaymentsAction(btn));
     });
 
     document.querySelectorAll("[data-checkout-coupon]").forEach(btn => {
