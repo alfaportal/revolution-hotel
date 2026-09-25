@@ -10,6 +10,14 @@
   <style>
     #ekrani-tavolina.hidden { display: none !important; }
 
+    .waiter-shell {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body.waiter-screen:has(#ekrani-porosia.active) #ekrani-porosia {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
     .waiter-view-toggle {
       display: flex;
       gap: 0.4rem;

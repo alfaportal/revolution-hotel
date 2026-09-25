@@ -453,9 +453,9 @@ body.waiter-screen {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: #eef1f5;
-  height: 100vh;
   --pos-surface: #ffffff;
   --pos-border: #e2e6ec;
   --pos-text: #1a2332;

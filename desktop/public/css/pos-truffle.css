@@ -24,9 +24,9 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--pos-bg);
-  height: 100vh;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   color: var(--pos-text-inv);
 }
