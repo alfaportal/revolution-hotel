@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/admin-modern.css?v=20260924visualrevert">
+  <link rel="stylesheet" href="/css/admin-modern.css?v=20260925katgrid">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -6512,7 +6512,14 @@
       await ngarkoKategorite({ all: true });
       mbushSelectKategorive(selKat, KATEGORITE);
       const lista = document.getElementById("lista-kategorive");
-      const full = Array.isArray(KATEGORITE_FULL) ? KATEGORITE_FULL : [];
+      const full = (Array.isArray(KATEGORITE_FULL) ? KATEGORITE_FULL : [])
+        .slice()
+        .sort((a, b) => {
+          const sa = Number(a.sort_order) || 0;
+          const sb = Number(b.sort_order) || 0;
+          if (sa !== sb) return sa - sb;
+          return String(a.name || "").localeCompare(String(b.name || ""), "sq");
+        });
       lista.innerHTML = full.map((c) => {
         const k = c.name;
         const active = Number(c.active) !== 0;
@@ -6522,9 +6529,9 @@
         return `<span class="tag${active ? "" : " tag-inactive"}" draggable="true" data-kat-name="${enc}">
           <span class="tag-drag" title="Zvarrit për renditje" aria-hidden="true">⋮⋮</span>
           <span class="tag-label">${escMenuAttr(k)}</span>
-          <select class="tag-route" data-kat="${enc}" title="Banak ose kuzhinë" aria-label="Rruga ${escMenuAttr(k)}">
-            <option value="bar" ${route === "bar" ? "selected" : ""}>Pije (banak)</option>
-            <option value="kitchen" ${route === "kitchen" ? "selected" : ""}>Ushqim (kuzhinë)</option>
+          <select class="tag-route" data-kat="${enc}" title="Pije (banak) ose Ushqim (kuzhinë)" aria-label="Rruga ${escMenuAttr(k)}">
+            <option value="bar" ${route === "bar" ? "selected" : ""}>Banak</option>
+            <option value="kitchen" ${route === "kitchen" ? "selected" : ""}>Kuzhinë</option>
           </select>
           <button type="button" class="tag-stop" data-kat="${enc}" title="${active ? "Ndale nga menuja" : "Shfaq në meny"}">${toggleLabel}</button>
           <button type="button" class="tag-del" data-kat="${enc}" title="Fshi kategorinë">✕</button>

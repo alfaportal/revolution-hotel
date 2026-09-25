@@ -4816,8 +4816,8 @@ app.put("/api/menu/:id/photo", auth, adminOnly, (req, res) => {
     }
     // Lejo ngarkim custom edhe për emra seed — mos blloko / mos kthe te stock.
     const photo = req.body?.photo;
-    if (photo && String(photo).length > 700_000) {
-      return res.status(400).json({ gabim: "Fotoja është shumë e madhe (max ~500 KB)." });
+    if (photo && String(photo).length > 900_000) {
+      return res.status(400).json({ gabim: "Fotoja është shumë e madhe pas kompresimit." });
     }
     db.setMenuItemPhoto(id, photo ?? "");
     syncCatalogToCloud();

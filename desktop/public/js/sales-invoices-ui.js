@@ -118,6 +118,7 @@
         <label>Logo</label>
         ${settings.companyLogoUrl ? `<img src="${escAttr(settings.companyLogoUrl)}" alt="" style="max-height:48px" />` : "<span class=\"purchases-panel-sub\">Pa logo</span>"}
         <input type="file" accept="image/*" id="inv-logo-file" ${busy ? "disabled" : ""} />
+        <span class="purchases-panel-sub">Maksimumi 2 MB</span>
       </div>
       <div class="link-row" style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem">
         <label><input type="checkbox" id="inv-vat-enabled" ${settings.vatEnabled ? "checked" : ""} /> TVSH në faturë</label>
@@ -393,6 +394,11 @@
       document.getElementById("inv-logo-file")?.addEventListener("change", async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+          errorMsg = "Maksimumi 2 MB.";
+          render();
+          return;
+        }
         const buf = await file.arrayBuffer();
         const bytes = new Uint8Array(buf);
         let binary = "";
