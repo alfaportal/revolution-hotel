@@ -5,6 +5,8 @@ const os = require("os");
 const { dialog } = require("electron");
 
 const APP_SEED = "hotel-v1";
+const REVOKED_USER_MESSAGE =
+  "Licenca është çaktivizuar. Kontaktoni Revolution Invest.";
 const cloudHealth = require("./cloud-health");
 
 /** Skedarët e licencës — ruhen jashtë folderit të programit (mbijetojnë përditësimet). */
@@ -467,11 +469,11 @@ async function validateLicenseOnline(key, opts = {}) {
         valid_until: parsed.valid_until || null,
       };
     }
-    if (parsed.code === "REVOKED") {
-      markLicenseRevokedLocally(_electronApp, parsed.message);
-    }
     if (parsed.code && FULL_PURGE_LICENSE_CODES.has(parsed.code)) {
-      if (_electronApp) handleLicenseHardFail(_electronApp, parsed.code);
+      if (_electronApp && !opts.skipHardFail) {
+        markLicenseRevokedLocally(_electronApp, parsed.message || parsed.gabim);
+        handleLicenseHardFail(_electronApp, parsed.code);
+      }
     }
     return {
       valid: false,
@@ -615,7 +617,7 @@ async function validateEmergencyUnlock({ master_pin, emergency_code } = {}) {
 
 let _watchdogTimer = null;
 let _watchdogInFlight = false;
-const LICENSE_HEARTBEAT_MS = 45000;
+const LICENSE_HEARTBEAT_MS = 24 * 60 * 60 * 1000;
 
 function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
   if (_watchdogTimer) return;
@@ -883,6 +885,7 @@ function readStoredLicense(app) {
 }
 
 function writeStoredLicense(app, key) {
+  if (app) registerInstallContext(app);
   const secret = _secret();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-256-gcm", secret.slice(0, 32), iv);
@@ -890,6 +893,7 @@ function writeStoredLicense(app, key) {
   const tag = cipher.getAuthTag();
   const out = iv.toString("hex") + tag.toString("hex") + enc.toString("hex");
   fs.writeFileSync(licenseFilePath(app), out, "utf8");
+  clearLicenseRevokedLocally(app || _electronApp);
 }
 
 function clearStoredLicense(app) {
@@ -972,6 +976,52 @@ function purgeAllLicenseArtifacts(app, _message, opts = {}) {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Kontroll revokimi para boot-it — NUK mbyll programin vetëm për .lic-revoked.
+ * Riaktivizimi pastron markerin; bllokim vetëm nëse serveri konfirmon hard-fail online.
+ */
+async function enforceRevokedBlock(app) {
+  registerInstallContext(app);
+  const probe = { skipHardFail: true };
+  const local = readLocalRevokeBlock(app);
+  const key = readStoredLicense(app);
+
+  if (key) {
+    try {
+      const online = await validateLicenseOnline(key, probe);
+      if (online.valid && !online.offline) {
+        clearLicenseRevokedLocally(app);
+        return { blocked: false };
+      }
+    } catch {
+      /* offline — vazhdo te dialog aktivizimi */
+    }
+  }
+
+  if (local?.blocked || !key) {
+    return { blocked: false };
+  }
+
+  try {
+    const online = await validateLicenseOnline(key, probe);
+    if (online.valid && !online.offline) {
+      clearLicenseRevokedLocally(app);
+      return { blocked: false };
+    }
+    if (online.code && FULL_PURGE_LICENSE_CODES.has(online.code) && !online.offline) {
+      return {
+        blocked: true,
+        message: licenseHardFailMessage(online.code),
+        purged: false,
+      };
+    }
+  } catch {
+    /* offline */
+  }
+
+  return { blocked: false };
 }
 
 /** Poll — pas regjistrimit nga admini, serveri kthen çelësin për këtë Hardware ID. */
@@ -1278,6 +1328,7 @@ async function ensureActivated(app) {
       } else {
         const v = await validateLicenseAsync(key, app, { requireOnline: false });
         if (v.valid) {
+          clearLicenseRevokedLocally(app);
           writeStoredLicense(app, key);
           if (!readActivationRecord(app)) writeActivationRecord(app, key, {});
           refreshLicenseOnline(key, app);
@@ -1478,6 +1529,8 @@ async function requestEmergencyCodeToOwner(app, { waiterName } = {}) {
 
 module.exports = {
   ensureActivated,
+  enforceRevokedBlock,
+  REVOKED_USER_MESSAGE,
   registerInstallContext,
   validateLicenseKey,
   validateLicenseAsync,

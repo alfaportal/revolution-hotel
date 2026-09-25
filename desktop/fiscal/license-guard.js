@@ -566,6 +566,14 @@ function writeStoredLicenseKey(app, key, opts = {}) {
     licenseType: record.licenseType || null,
     expires_at: record.expires_at || null,
   });
+  try {
+    const license = require(path.join(__dirname, "..", "license"));
+    if (typeof license.clearLicenseRevokedLocally === "function") {
+      license.clearLicenseRevokedLocally(app);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 function verifyLicenseKey(key, app, hardwareId) {
@@ -636,6 +644,14 @@ function isHardwareUnlocked(app, hardwareId) {
 
 function promptHardwareActivation(app, opts = {}) {
   return new Promise((resolve) => {
+    try {
+      const license = require(path.join(__dirname, "..", "license"));
+      if (typeof license.clearLicenseRevokedLocally === "function") {
+        license.clearLicenseRevokedLocally(app);
+      }
+    } catch {
+      /* ignore */
+    }
     const { BrowserWindow, ipcMain } = require("electron");
     const hwFormatted = formatHardwareId(getHardwareId(app));
     const reason = String(opts.reason || "");
@@ -930,6 +946,13 @@ async function allowWithGraceOrBlock() {
  * @returns {Promise<{ ok: boolean, grace: object|null }>}
  */
 async function ensureHardwareLicense(app) {
+  try {
+    const license = require(path.join(__dirname, "..", "license"));
+    await license.enforceRevokedBlock(app);
+  } catch {
+    /* ignore */
+  }
+
   let hwId;
   let formatted;
   try {

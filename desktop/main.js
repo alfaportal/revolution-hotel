@@ -2,7 +2,7 @@
  * Revolution HOTEL — Electron entry
  * Integrity (prod) → Licencë cloud (dialog + poll) → DB ready → server → UI → security-alert
  */
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
 const { runProdLicenseDialogUntilOk, loadCloud } = require("./protection/license-boot");
 const path = require("path");
 const fs = require("fs");
@@ -247,11 +247,6 @@ function startLicenseWatchdogForApp(cloud) {
 async function bootHotelLicenseLayers() {
   const cloud = loadCloud();
   cloud.registerInstallContext(app);
-  const localRevoke = cloud.readLocalRevokeBlock(app);
-  const bootReason = localRevoke?.blocked ? "revoked" : "no_license";
-  if (localRevoke?.blocked) {
-    cloud.clearLicenseRevokedLocally(app);
-  }
 
   if (!isProd) {
     try {
@@ -273,21 +268,12 @@ async function bootHotelLicenseLayers() {
   }
 
   closeSplash();
-  const bootOk = await runProdLicenseDialogUntilOk(app, bootReason);
-  if (!bootOk) {
-    app.quit();
-    return false;
-  }
-
   const licenseGuard = require("./fiscal/license-guard");
-  const hw = await licenseGuard.ensureHardwareLicense(app);
+  let hw = await licenseGuard.ensureHardwareLicense(app, { onBeforeLicenseUi: closeSplash });
   const hwOk = typeof hw === "boolean" ? hw : hw?.ok;
   if (!hwOk) {
-    const retry = await runProdLicenseDialogUntilOk(app, "no_license");
-    if (!retry) {
-      app.quit();
-      return false;
-    }
+    app.quit();
+    return false;
   }
   global.__hwLicenseGrace = licenseGuard.getGraceBannerInfo(app);
   await pushLicenseUiFromCloud();
@@ -319,9 +305,10 @@ async function reopenLicenseDialog(beat = {}, detail) {
   const reason = licenseFailReasonFromBeat(beat);
   let activated = false;
   try {
-    activated = await runProdLicenseDialogUntilOk(app, reason);
+    const licenseGuard = require("./fiscal/license-guard");
+    activated = await licenseGuard.promptHardwareActivation(app, { reason });
   } catch (e) {
-    console.warn("[license] reopen dialog:", e.message || e);
+    console.warn("[license] reopen hardware dialog:", e.message || e);
   }
   _licenseReopenInProgress = false;
 
@@ -335,11 +322,8 @@ async function reopenLicenseDialog(beat = {}, detail) {
     const hw = await licenseGuard.ensureHardwareLicense(app);
     const hwOk = typeof hw === "boolean" ? hw : hw?.ok;
     if (!hwOk) {
-      const retry = await runProdLicenseDialogUntilOk(app, "no_license");
-      if (!retry) {
-        app.quit();
-        return;
-      }
+      app.quit();
+      return;
     }
     global.__hwLicenseGrace = licenseGuard.getGraceBannerInfo(app);
     await pushLicenseUiFromCloud();
@@ -367,7 +351,8 @@ function registerLicenseIpc() {
   }));
   ipcMain.handle("license:device-id", async () => ({ device_id: cloud.getMachineId() }));
   ipcMain.handle("license:open-dialog", async () => {
-    const activated = await runProdLicenseDialogUntilOk(app, "no_license");
+    const licenseGuard = require("./fiscal/license-guard");
+    const activated = await licenseGuard.promptHardwareActivation(app, { reason: "no_license" });
     if (activated) {
       await pushLicenseUiFromCloud();
     }
@@ -387,11 +372,16 @@ async function mountHotelMainWindow(started, userData) {
 
   const logoPath = joinContent("public", "img", "revolution-logo.png");
   const iconIco = joinContent("build", "icon.ico");
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 900,
+    width,
+    height,
+    minWidth: 800,
     minHeight: 600,
+    resizable: true,
+    maximizable: true,
+    fullscreenable: true,
     title: `${resolveWindowTitle()} v${pkg.version || "?"}`,
     backgroundColor: "#0b1220",
     show: false,
@@ -408,6 +398,7 @@ async function mountHotelMainWindow(started, userData) {
       preload: getPreloadPath(),
     },
   });
+  mainWindow.maximize();
   try {
     mainWindow.setMenuBarVisibility(false);
   } catch {
@@ -571,85 +562,63 @@ if (!gotTheLock) {
       }
 
       const resetFlag = path.join(userData, ".factory-reset-pending");
-      // Flag jashtë userData — nuk humbet nëse wipe dështon pjesërisht / DB e kyçur.
       const resetFlagExternal = path.join(
         app.getPath("appData"),
         "RevolutionInvest",
         "hotel-factory-reset-pending",
       );
 
-      const wipeDirHard = (dir) => {
-        if (!dir || !fs.existsSync(dir)) return;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          let left = 0;
-          for (const name of fs.readdirSync(dir)) {
-            const p = path.join(dir, name);
-            try {
-              fs.rmSync(p, { recursive: true, force: true });
-            } catch {
-              left += 1;
-            }
+      const clearFactoryResetFlags = () => {
+        try {
+          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
+          if (fs.existsSync(resetFlagExternal)) fs.unlinkSync(resetFlagExternal);
+        } catch {
+          /* ignore */
+        }
+        try {
+          if (fs.existsSync(resetFlag)) fs.unlinkSync(resetFlag);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const wipeLicenseOnlyForFactoryReset = () => {
+        try {
+          const licenseMod = require(path.join(__dirname, "license"));
+          licenseMod.registerInstallContext(app);
+          if (typeof licenseMod.wipeAllActivationData === "function") {
+            licenseMod.wipeAllActivationData(app);
           }
-          if (left === 0) return;
-          const waitUntil = Date.now() + 250;
-          while (Date.now() < waitUntil) {
-            /* retry delay for locked DB */
-          }
+        } catch (e) {
+          console.warn("[factory-reset] vetëm licencë:", e.message || e);
         }
       };
 
       const factoryResetRequested =
         fs.existsSync(resetFlag) || fs.existsSync(resetFlagExternal);
 
-      // Rivendos si të re: fshi KREJT të dhënat lokale (si instalim i ri).
-      // Licenca mbetet në %APPDATA%\RevolutionInvest\HotelLicense.
       if (factoryResetRequested) {
-        wipeDirHard(userData);
-        try {
-          const localSibling = path.join(
-            process.env.LOCALAPPDATA || "",
-            path.basename(userData),
-          );
-          if (
-            localSibling &&
-            process.env.LOCALAPPDATA &&
-            localSibling !== userData
-          ) {
-            wipeDirHard(localSibling);
-          }
-        } catch {
-          /* ignore */
-        }
-        try {
-          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
-          fs.unlinkSync(resetFlagExternal);
-        } catch {
-          /* ignore */
-        }
-        try {
-          fs.unlinkSync(resetFlag);
-        } catch {
-          /* ignore */
-        }
-        process.env.HOTEL_FACTORY_RESET_AT = new Date().toISOString();
-        fs.mkdirSync(userData, { recursive: true });
+        wipeLicenseOnlyForFactoryReset();
+        clearFactoryResetFlags();
       }
 
       process.env.DB_PATH = path.join(userData, "hotel.db");
 
       global["__scheduleFactoryResetRelaunch"] = () => {
         try {
-          fs.mkdirSync(userData, { recursive: true });
-          fs.writeFileSync(resetFlag, new Date().toISOString(), "utf8");
-          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
-          fs.writeFileSync(resetFlagExternal, new Date().toISOString(), "utf8");
-        } catch (e) {
-          dialog.showErrorBox(
-            APP_NAME,
-            "Nuk u shkrua flag-u i rivendosjes: " + (e.message || e),
-          );
-          return;
+          dialog.showMessageBoxSync({
+            type: "warning",
+            title: APP_NAME,
+            message: "Rivendosje licencë",
+            detail:
+              "Licenca lokale pastrohet (të dhënat e klientit mbeten). Mbyllni dhe riaktivizoni programin.",
+            buttons: ["OK"],
+          });
+        } catch {
+          /* ignore */
         }
+        wipeLicenseOnlyForFactoryReset();
+        clearFactoryResetFlags();
         try {
           httpServer?.close();
         } catch {
@@ -683,6 +652,23 @@ if (!gotTheLock) {
       }
 
       registerLicenseIpc();
+      const cloud = loadCloud();
+      cloud.registerInstallContext(app);
+      try {
+        const revokeBlock = await cloud.enforceRevokedBlock(app);
+        if (revokeBlock.blocked) {
+          closeSplash();
+          dialog.showErrorBox("Licenca", revokeBlock.message);
+          app.quit();
+          return;
+        }
+      } catch (e) {
+        closeSplash();
+        dialog.showErrorBox("Licenca", cloud.REVOKED_USER_MESSAGE);
+        app.quit();
+        return;
+      }
+
       if (!(await bootHotelLicenseLayers())) {
         return;
       }

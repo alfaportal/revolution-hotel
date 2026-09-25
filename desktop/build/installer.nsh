@@ -1,5 +1,5 @@
-; UPDATE (isUpdated): ruan DB, licencë, settings — vetëm skedarët e programit.
-; Instalim i ri / çinstalim i vërtetë: pastron app + licencë + salt (HARDWARE_ID i ri).
+; UPDATE dhe instalim i ri: MOS fshi SQLite (Revolution HOTEL) as HotelLicense / .install-salt.
+; Pastrim i të dhënave lokale VETËM me factory-reset eksplicit (flag në app), jo nga Setup.
 ; Lock script: build\hotel-lock.ps1
 ;
 ; Shortcuts point to ProgramData\...\Start.cmd (NOT $INSTDIR, NOT %LOCALAPPDATA%).
@@ -31,6 +31,7 @@
   !endif
 !macroend
 
+; LEGACY — mos thirr nga customInstall/customUnInstall. Factory wipe vetëm nga app (flag), jo Setup.
 !macro WipeHotelLocalDataDir DIR
   IfFileExists "${DIR}\*" 0 +2
     RMDir /r "${DIR}"
@@ -76,11 +77,7 @@
   !insertmacro HotelLaunchDir
   RMDir /r "$R7"
   RMDir /r "$LOCALAPPDATA\${PRODUCT_NAME}-Launch"
-  ; App + licencë: fshi VETËM në çinstalim të vërtetë (jo UPDATE).
-  ${ifNot} ${isUpdated}
-    !insertmacro WipeAllHotelLocalData
-    !insertmacro WipeHotelLicenseDir
-  ${endIf}
+  ; Çinstalim: hiq vetëm launcher — MOS fshi HotelLicense / .install-salt / DB.
 !macroend
 
 !macro customInit
@@ -107,11 +104,7 @@
   SetDetailsPrint none
   SetDetailsView hide
 
-  ; UPDATE: mos fshi DB/licencë/settings — vetëm instalim i ri pastron të dhënat.
-  ${ifNot} ${isUpdated}
-    !insertmacro WipeAllHotelLocalData
-    !insertmacro WipeHotelLicenseDir
-  ${endIf}
+  ; Instalim/update: ruaj DB (Revolution HOTEL) dhe HotelLicense (.install-salt, licencë).
   Delete "$DESKTOP\Revolution HOTEL Pako.lnk"
   Delete "$DESKTOP\Revolution HOTEL Pako AI.lnk"
   Delete "$SMPROGRAMS\Revolution HOTEL Pako.lnk"
