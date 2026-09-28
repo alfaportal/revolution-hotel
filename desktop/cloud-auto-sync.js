@@ -10,6 +10,7 @@
 const cloudSync = require("./cloud-sync");
 const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
+const hotelCloudSync = require("./hotel-cloud-sync");
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
 const CLOSED_WAITER_SALES_MS = 5 * 60 * 1000;
@@ -18,6 +19,7 @@ const STAFF_PUSH_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const REGISTER_MODE_MS = 12 * 60 * 60 * 1000;
 const CATALOG_AUTO_MS = 180000;
 const CATALOG_DEBOUNCE_MS = 5000;
+const HOTEL_PMS_SYNC_MS = 2 * 60 * 1000;
 const STARTUP_BURST_MS = 4000;
 
 let lastStatus = {
@@ -46,6 +48,8 @@ let waiterClosedSyncInFlight = false;
 let registerModeFetchInFlight = false;
 let ownerPasswordSyncInFlight = false;
 let staffPushInFlight = false;
+let hotelPmsSyncInFlight = false;
+let hotelPmsSyncTimer = null;
 let started = false;
 let boundDb = null;
 
@@ -237,11 +241,43 @@ async function runRegisterModeSync(db) {
   }
 }
 
+async function runHotelPmsSync(db) {
+  if (!canRunCloudSideJobs(db)) return;
+  if (hotelPmsSyncInFlight) return;
+  hotelPmsSyncInFlight = true;
+  try {
+    const r = await hotelCloudSync.fullHotelSync(db);
+    if (r?.ok && !r.skipped) {
+      const p = r.push || {};
+      const a = r.pull?.applied || {};
+      console.log(
+        "[cloud/hotel-pms] sync OK — push rooms/guests/charges/hk/res:",
+        p.rooms?.upserted ?? 0,
+        p.guests?.upserted ?? 0,
+        p.charges?.upserted ?? 0,
+        p.housekeeping?.upserted ?? 0,
+        p.reservations?.upserted ?? 0,
+        "| pull applied:",
+        a.rooms ?? 0,
+        a.guests ?? 0,
+        a.charges ?? 0,
+        a.housekeeping ?? 0,
+        a.reservations ?? 0,
+      );
+    }
+  } catch (err) {
+    console.warn("[cloud/hotel-pms] sync error:", err.message);
+  } finally {
+    hotelPmsSyncInFlight = false;
+  }
+}
+
 function runAllSideSyncJobs(db) {
   runClosedWaiterSalesSync(db).catch(() => {});
   runOwnerAdminPasswordSync(db).catch(() => {});
   runStaffPushSync(db).catch(() => {});
   runRegisterModeSync(db).catch(() => {});
+  runHotelPmsSync(db).catch(() => {});
 }
 
 function startPeriodicJob(db, fn, intervalMs) {
@@ -370,6 +406,10 @@ function startCloudAutoSync(db) {
   catalogTimer = setInterval(() => {
     runCatalogPush(db).catch(() => {});
   }, CATALOG_AUTO_MS);
+
+  hotelPmsSyncTimer = setInterval(() => {
+    runHotelPmsSync(db).catch(() => {});
+  }, HOTEL_PMS_SYNC_MS);
 }
 
 module.exports = {
@@ -380,6 +420,7 @@ module.exports = {
   REGISTER_MODE_MS,
   CATALOG_AUTO_MS,
   CATALOG_DEBOUNCE_MS,
+  HOTEL_PMS_SYNC_MS,
   getStatus,
   runFullSync,
   runLicenseCheck,
