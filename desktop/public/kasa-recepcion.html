@@ -136,9 +136,29 @@
       display: flex;
       flex-direction: column;
     }
-    .col-cart.is-module-open .kasa-cart-pane {
-      visibility: hidden;
-      pointer-events: none;
+    .col-cart.is-module-open .kasa-cart-pane,
+    .col-cart.is-module-open .kasa-idle-hint {
+      display: none !important;
+    }
+    .kasa-cart-pane:not(.has-lines) {
+      display: none !important;
+    }
+    .kasa-idle-hint {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: .95rem;
+      line-height: 1.45;
+    }
+    .col-cart.is-module-open .kasa-idle-hint,
+    .col-cart.has-cart-lines .kasa-idle-hint {
+      display: none !important;
     }
     .checkout-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
     .cart-header { text-align: center; flex-shrink: 0; margin-bottom: .5rem; }
@@ -779,12 +799,9 @@
       <nav class="kasa-module-nav main-cat-bar" id="main-cat-bar" aria-label="Module recepsioni"></nav>
 
       <div class="kasa-work-host">
-        <div class="kasa-cart-pane" id="kasa-cart-pane">
-          <header class="cart-header checkout-head">
-            <span class="basket-label">SHPORTA</span>
-            <span class="cart-head-meta"><strong id="cart-head-count">0</strong> shërb. · <span id="cart-head-qty">0</span> copë</span>
-          </header>
+        <p class="kasa-idle-hint" id="kasa-idle-hint">Prek <strong>Dhomat</strong>, <strong>Rezervimet</strong> ose një kategori tjetër — këtu është recepsioni, jo shporta.</p>
 
+        <div class="kasa-cart-pane" id="kasa-cart-pane">
           <div class="checkout-mid">
             <div class="cart-table-wrap">
               <table class="cart-table" id="cart-table">
@@ -817,7 +834,7 @@
 
         <div id="recep-module-overlay" class="recep-module-overlay" hidden>
           <div class="recep-module-toolbar">
-            <button type="button" class="recep-module-close" id="recep-module-close">× Shporta / arkë</button>
+            <button type="button" class="recep-module-close" id="recep-module-close">× Mbyll</button>
           </div>
           <iframe
             id="recep-module-frame"
@@ -946,8 +963,11 @@
       const tbody = document.getElementById("cart-tbody");
       const t = payable();
       document.getElementById("total").textContent = euro(t);
-      document.getElementById("cart-head-count").textContent = String(cart.length);
-      document.getElementById("cart-head-qty").textContent = String(cart.reduce((s, l) => s + l.qty, 0));
+      const col = document.getElementById("col-cart");
+      const pane = document.getElementById("kasa-cart-pane");
+      const hasLines = cart.length > 0;
+      col?.classList.toggle("has-cart-lines", hasLines);
+      pane?.classList.toggle("has-lines", hasLines);
       if (!cart.length) {
         tbody.innerHTML = '<tr class="cart-empty"><td colspan="4">Lista është bosh — zgjidh shërbim ose shto nga dhoma.</td></tr>';
         syncPayAmounts(t);

@@ -2422,6 +2422,11 @@ function buildGuestBill(guest, room, { check_out_date, services_total, extra_ser
   extra = Math.round(extra * 100) / 100;
   const services = Math.round((charges_total + extra) * 100) / 100;
   const total = Math.round((room_total + services) * 100) / 100;
+  let deposit = Number(guest.deposit);
+  if (!Number.isFinite(deposit) || deposit < 0) deposit = 0;
+  deposit = Math.round(deposit * 100) / 100;
+  if (deposit > total) deposit = total;
+  const total_due = Math.round((total - deposit) * 100) / 100;
   return {
     nights,
     price_per_night: price,
@@ -2431,6 +2436,10 @@ function buildGuestBill(guest, room, { check_out_date, services_total, extra_ser
     extra_services: extra,
     services_total: services,
     total,
+    deposit,
+    total_due,
+    deposit_line_label:
+      deposit > 0 ? `Depozitë e paguar: -${deposit.toFixed(2)} €` : null,
     check_in_date: guest.check_in_date,
     check_out_date: outDate,
   };
@@ -2476,6 +2485,14 @@ function buildCheckoutLogItems(bill, room) {
       price: extra,
     });
   }
+  const deposit = Number(bill.deposit) || 0;
+  if (deposit > 0) {
+    items.push({
+      name: bill.deposit_line_label || `Depozitë e paguar: -${deposit.toFixed(2)} €`,
+      quantity: 1,
+      price: -deposit,
+    });
+  }
   return items;
 }
 
@@ -2493,7 +2510,11 @@ function checkOutGuest(roomId, {
   });
   const { guest, room, bill } = preview;
 
-  const paidTotal = Math.round((Number(bill.total) || 0) * 100) / 100;
+  const paidTotal = Math.round(
+    (Number(bill.total_due) != null && Number.isFinite(Number(bill.total_due))
+      ? Number(bill.total_due)
+      : Number(bill.total) || 0) * 100,
+  ) / 100;
   const method = normalizePaymentMethod(payment_method, payment_splits);
   const logMeta = shiftMetaForWaiter(waiter_name);
   const logItems = buildCheckoutLogItems(bill, room);
@@ -4072,7 +4093,7 @@ function computeGuestPaidTotal(guest) {
       guest.status === "checked_out"
       && Number.isFinite(stored)
       && stored > 0
-    ) ? Math.round(stored * 100) / 100 : bill.total;
+    ) ? Math.round(stored * 100) / 100 : (bill.total_due != null ? bill.total_due : bill.total);
     return {
       nights: bill.nights,
       room_total: bill.room_total,

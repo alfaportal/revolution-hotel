@@ -3290,7 +3290,11 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
     });
-    const payInfo = resolvePaymentFromBody(body, preview.bill.total);
+    const checkoutPayTotal =
+      Number(preview.bill.total_due) != null && Number.isFinite(Number(preview.bill.total_due))
+        ? Number(preview.bill.total_due)
+        : Number(preview.bill.total) || 0;
+    const payInfo = resolvePaymentFromBody(body, checkoutPayTotal);
     const requestedCoupon = body.coupon_type
       ? String(body.coupon_type).trim().toLowerCase()
       : null;

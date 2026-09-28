@@ -3064,7 +3064,11 @@
         `<div class="checkout-bill-row"><span>Porosi &amp; shërbime</span><strong>${formatEuro(b.charges_total)}</strong></div>` +
         chargeRows +
         `<div class="checkout-bill-row"><span>Shërbime ekstra</span><strong>${formatEuro(b.extra_services)}</strong></div>` +
-        `<div class="checkout-bill-row checkout-bill-total"><span>Totali</span><strong>${formatEuro(b.total)}</strong></div>`
+        (Number(b.deposit) > 0
+          ? `<div class="checkout-bill-row"><span>Nëntotali</span><strong>${formatEuro(b.total)}</strong></div>` +
+            `<div class="checkout-bill-row"><span>Depozitë e paguar</span><strong>−${formatEuro(b.deposit).replace(" €", "")} €</strong></div>`
+          : "") +
+        `<div class="checkout-bill-row checkout-bill-total"><span>Totali i pagesës</span><strong>${formatEuro(b.total_due != null ? b.total_due : b.total)}</strong></div>`
       );
     }
 
@@ -4584,7 +4588,9 @@
     let waiterCheckoutPreview = null;
 
     function getCheckoutTotal() {
-      return Number(waiterCheckoutPreview?.bill?.total) || 0;
+      const b = waiterCheckoutPreview?.bill;
+      if (!b) return 0;
+      return Number(b.total_due != null ? b.total_due : b.total) || 0;
     }
 
     function updateCheckoutMixedPaymentBar() {
