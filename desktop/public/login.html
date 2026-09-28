@@ -16,6 +16,77 @@
     html.login-mode-staff .staff-main-head, html.login-mode-staff .login-col-title { color:#fff; }
     html.login-mode-staff .staff-brand-venue { color:#fff; font-size:1.5rem; }
     html.login-mode-staff .staff-brand-tag { color:rgba(255,255,255,.55); }
+
+    .login-staff-role-pick {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.55rem;
+      margin: 0 0 0.85rem;
+    }
+    @media (max-width: 420px) {
+      .login-staff-role-pick { grid-template-columns: 1fr; }
+    }
+    .login-role-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.2rem;
+      padding: 0.75rem 0.65rem;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    }
+    .login-role-btn:active { transform: scale(0.98); }
+    .login-role-btn .login-role-label {
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .login-role-btn .login-role-hint {
+      font-size: 0.72rem;
+      font-weight: 600;
+      opacity: 0.92;
+      line-height: 1.3;
+    }
+    .login-role-btn--restaurant {
+      background: linear-gradient(145deg, #1e3a8a 0%, #2563eb 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .login-role-btn--restaurant:not(.active) {
+      background: #eff6ff;
+      color: #1e40af;
+      box-shadow: none;
+      border-color: #93c5fd;
+    }
+    .login-role-btn--recepsion {
+      background: linear-gradient(145deg, #9a3412 0%, #ea580c 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+    }
+    .login-role-btn--recepsion:not(.active) {
+      background: #fff7ed;
+      color: #c2410c;
+      box-shadow: none;
+      border-color: #fdba74;
+    }
+    .login-role-btn.active {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
+    html.login-mode-staff .login-role-btn--restaurant:not(.active) {
+      background: rgba(255,255,255,0.08);
+      color: #93c5fd;
+      border-color: rgba(147,197,253,0.45);
+    }
+    html.login-mode-staff .login-role-btn--recepsion:not(.active) {
+      background: rgba(255,255,255,0.08);
+      color: #fdba74;
+      border-color: rgba(253,186,116,0.45);
+    }
   </style>
 </head>
 <body class="staff-login-screen">
@@ -44,7 +115,7 @@
       <div id="panel-kryesor" class="staff-panel">
         <div class="staff-main-head">
           <h1>Hyrje në sistem</h1>
-          <p>Zgjidhni rolin: pronari (fjalëkalim ose kartelë RFID) ose kamarier (PIN / RFID).</p>
+          <p>Pronari (majtas) · Restorant ose Recepsion (djathtas) — zgjidhni zonën, pastaj PIN / RFID.</p>
         </div>
 
         <div class="login-split">
@@ -84,7 +155,16 @@
               <ul class="login-online-preview" id="online-orders-preview" hidden></ul>
               <span class="login-feature-badge" id="online-orders-badge" hidden>0</span>
             </div>
-            <h2 class="login-col-title">Kamarier</h2>
+            <div class="login-staff-role-pick" id="login-staff-role-pick" role="group" aria-label="Zgjidhni zonën e punës">
+              <button type="button" class="login-role-btn login-role-btn--restaurant active" id="btn-login-role-restaurant" data-login-role="kamarier">
+                <span class="login-role-label">Restoranti</span>
+                <span class="login-role-hint">PIN hyrje → tavolina (kamarier)</span>
+              </button>
+              <button type="button" class="login-role-btn login-role-btn--recepsion" id="btn-login-role-recepsion" data-login-role="recepsion">
+                <span class="login-role-label">Recepsioni</span>
+                <span class="login-role-hint">PIN hyrje → dhomat &amp; hoteli</span>
+              </button>
+            </div>
             <div class="pin-panel-wrap pin-panel-inline" id="pin-panel">
               <p class="pin-hint" id="pin-hint-login">Shkruani PIN-in (4 shifra) ose skanoni kartelën RFID</p>
               <div class="pin-display" id="pin-display" aria-hidden="true">
@@ -593,12 +673,44 @@
         ? "kamarier"
         : (urlParams.get("mode") === "recepsion" ? "recepsion" : null));
     const isStaffOnlyLoginMode = staffLoginMode === "kamarier" || staffLoginMode === "recepsion";
+    let selectedPinLoginMode = staffLoginMode || "kamarier";
+
+    function syncLoginRoleButtons() {
+      document.querySelectorAll("[data-login-role]").forEach((btn) => {
+        const on = btn.getAttribute("data-login-role") === selectedPinLoginMode;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+
+    document.getElementById("login-staff-role-pick")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-login-role]");
+      if (!btn) return;
+      if (isStaffOnlyLoginMode && staffLoginMode) return;
+      selectedPinLoginMode = btn.getAttribute("data-login-role") === "recepsion" ? "recepsion" : "kamarier";
+      syncLoginRoleButtons();
+      shfaqGabim(gabimEl, "");
+    });
+
+    syncLoginRoleButtons();
+
     if (isStaffOnlyLoginMode) {
       document.documentElement.classList.add("login-mode-staff");
+      selectedPinLoginMode = staffLoginMode;
+      syncLoginRoleButtons();
       const head = document.querySelector(".staff-main-head h1");
       const sub = document.querySelector(".staff-main-head p");
-      if (head) head.textContent = staffLoginMode === "recepsion" ? "Recepsion" : "Kamarier";
-      if (sub) sub.textContent = "Shkruani PIN-in (4 shifra) për hyrje.";
+      if (head) head.textContent = staffLoginMode === "recepsion" ? "Recepsion" : "Restoranti";
+      if (sub) sub.textContent = "Zgjidhni zonën (nëse ka dy opsione), pastaj PIN-in (4 shifra).";
+      if (staffLoginMode) {
+        document.querySelectorAll("[data-login-role]").forEach((b) => {
+          if (b.getAttribute("data-login-role") !== staffLoginMode) {
+            b.disabled = true;
+            b.style.opacity = "0.45";
+            b.style.pointerEvents = "none";
+          }
+        });
+      }
       fetch("/api/venue-logo").then(r => r.json()).then(d => {
         if (!d?.logo) return;
         const mark = document.getElementById("brand-venue-mark");
@@ -726,7 +838,9 @@
         login_time: data.login_time,
         staff_id: data.staff_id || null,
       });
-      window.location.replace("/waiter.html");
+      window.location.replace(
+        data.roli === "recepsion" ? "/recepcion.html" : "/waiter.html",
+      );
     }
 
     async function provoPinLogin() {
@@ -744,7 +858,7 @@
             pin: pinToSend,
             staff_id: personalStaffId || (staffInjected.staff_id ? Number(staffInjected.staff_id) : undefined),
             web_token: personalWebToken || undefined,
-            login_mode: staffLoginMode || "kamarier",
+            login_mode: selectedPinLoginMode,
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -771,9 +885,7 @@
           card_uid: cardUid,
           staff_id: personalStaffId || (staffInjected.staff_id ? Number(staffInjected.staff_id) : undefined),
         };
-        if (isStaffOnlyLoginMode && staffLoginMode) {
-          cardBody.login_mode = staffLoginMode;
-        }
+        cardBody.login_mode = selectedPinLoginMode;
         const res = await fetch("/api/login/card", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -790,10 +902,10 @@
           hyrSiAdmin(data);
           return;
         }
-        if (isStaffOnlyLoginMode && staffLoginMode && data.roli !== staffLoginMode) {
-          throw new Error(staffLoginMode === "recepsion"
+        if (data.roli !== selectedPinLoginMode) {
+          throw new Error(selectedPinLoginMode === "recepsion"
             ? "Ky punonjës nuk është recepsion."
-            : "Ky punonjës nuk është kamarier.");
+            : "Ky punonjës nuk është kamarier (restorant).");
         }
         await hyrSiKamarier(data);
       } catch (err) {

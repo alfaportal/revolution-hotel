@@ -454,18 +454,31 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
-/* Të gjithë butonat e arkës — scroll kur nuk ka lartësi (laptop) */
+/* Arka: kolonë e plotë — mos përdor flex:1 global (e shtyp butonat në shirita) */
 #ekrani-porosia .waiter-payments-panel .action-bar {
-  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  align-content: flex-start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 auto;
   min-height: 0;
   overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(15, 23, 42, 0.35) transparent;
+  overflow-y: visible;
+}
+
+#ekrani-porosia .waiter-payments-panel .action-bar .btn,
+#ekrani-porosia .waiter-payments-panel .pos-pay-btn,
+#ekrani-porosia .waiter-payments-panel .btn-coupon {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
 }
 
 #ekrani-porosia .waiter-payments-panel .promo-select-wrap {
@@ -495,11 +508,14 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 
 #ekrani-porosia .waiter-payments-panel .payments-btn-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.35rem;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   flex-shrink: 0;
   align-content: start;
+  justify-items: stretch;
 }
 
 #ekrani-porosia .waiter-payments-panel .pos-pay-btn {
@@ -952,9 +968,16 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 
 /* Tablet + laptop + PC: panel 70% | 15% | 15% (telefoni mbetet kolonë — lart) */
 @media (min-width: 768px) {
+  #ekrani-porosia.active {
+    overflow: hidden;
+  }
+
   #ekrani-porosia .waiter-order-body {
+    flex: 1 1 0;
     flex-direction: row;
     align-items: stretch;
+    min-height: 0;
+    overflow: hidden;
   }
 
   #ekrani-porosia .menu-pos-wrap {
@@ -988,13 +1011,17 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   #ekrani-porosia .waiter-payments-panel .action-bar {
     flex: 1 1 0;
     flex-direction: column;
+    flex-wrap: nowrap;
     justify-content: flex-start;
     align-items: stretch;
     min-height: 0;
+    max-height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 23, 42, 0.35) transparent;
     background: #f3f4f6;
     padding: 0.4rem 0.45rem 0.5rem;
     gap: 0.35rem;
@@ -1057,8 +1084,13 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   #ekrani-porosia .waiter-payments-panel .action-bar {
     flex: 0 0 auto;
     max-height: min(58vh, 560px);
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  #ekrani-porosia .waiter-payments-panel .payments-btn-grid {
+    width: 100%;
   }
 
   #ekrani-porosia .waiter-order-body {

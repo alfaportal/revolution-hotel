@@ -6,7 +6,7 @@
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
-  <link rel="stylesheet" href="/css/pos-truffle.css?v=15">
+  <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <style>
     #ekrani-tavolina.hidden { display: none !important; }
 
@@ -868,12 +868,12 @@
       </div>
 
       <nav class="waiter-main-tabs" role="tablist" aria-label="Pamjet e recepsionit">
-        <button type="button" class="waiter-nav-btn waiter-nav-active" id="btn-nav-dhomat" data-view="rooms">Dhomat</button>
-        <button type="button" class="waiter-nav-btn" id="btn-nav-tavolina" data-view="tables">Tavolina</button>
-        <button type="button" class="waiter-nav-btn" id="btn-nav-rezervimet" data-view="reservations">Rezervimet</button>
-        <button type="button" class="waiter-nav-btn" id="btn-nav-sherbimet" data-view="services">Shërbimet</button>
-        <button type="button" class="waiter-nav-btn" id="btn-nav-housekeeping" data-view="housekeeping">Pastrimi</button>
-        <button type="button" class="waiter-nav-btn" id="btn-nav-porosi">Porositë</button>
+        <button type="button" class="waiter-nav-btn" id="btn-nav-dhomat" data-view="rooms" hidden style="display:none">Dhomat</button>
+        <button type="button" class="waiter-nav-btn waiter-nav-active" id="btn-nav-tavolina" data-view="tables">Tavolina</button>
+        <button type="button" class="waiter-nav-btn" id="btn-nav-rezervimet" data-view="reservations" hidden style="display:none">Rezervimet</button>
+        <button type="button" class="waiter-nav-btn" id="btn-nav-sherbimet" data-view="services" hidden style="display:none">Shërbimet</button>
+        <button type="button" class="waiter-nav-btn" id="btn-nav-housekeeping" data-view="housekeeping" hidden style="display:none">Pastrimi</button>
+        <button type="button" class="waiter-nav-btn" id="btn-nav-porosi" hidden style="display:none">Porositë</button>
       </nav>
 
       <div id="waiter-online-backdrop" class="waiter-online-backdrop hidden" aria-hidden="true"></div>
@@ -908,7 +908,7 @@
       <div class="waiter-table-toolbar">
         <div>
           <h1 class="waiter-main-title" id="hdr-emri">Hotel</h1>
-          <p class="waiter-main-sub" id="waiter-main-sub">Recepsioni — kliko dhomën për detaje</p>
+          <p class="waiter-main-sub" id="waiter-main-sub">Tavolina — restoranti / bari i hotelit</p>
         </div>
         <div class="waiter-toolbar-actions">
           <span class="waiter-shift-total" id="hdr-pazari" title="Pazari i nderrimit">0.00 €</span>
@@ -916,12 +916,12 @@
         </div>
       </div>
 
-      <div class="waiter-view-toggle" role="tablist" aria-label="Pamja">
+      <div class="waiter-view-toggle" role="tablist" aria-label="Pamja" hidden style="display:none">
         <button type="button" class="active" id="btn-view-rooms" data-view="rooms">Dhomat</button>
         <button type="button" id="btn-view-tables" data-view="tables">Tavolina</button>
       </div>
 
-      <div id="waiter-rooms-panel">
+      <div id="waiter-rooms-panel" hidden style="display:none">
         <div class="waiter-rooms-legend">
           <span class="w-legend-free"><i></i> E Lirë</span>
           <span class="w-legend-occ"><i></i> E Zënë</span>
@@ -937,12 +937,12 @@
         <div id="waiter-rooms-grid" class="waiter-rooms-grid"></div>
       </div>
 
-      <div id="waiter-tables-panel" hidden>
+      <div id="waiter-tables-panel">
         <div id="waiter-tables-msg" style="padding:0.35rem 1rem;font-size:0.85rem;font-weight:600;color:#fca5a5" hidden></div>
         <div class="waiter-zones-scroll" id="waiter-zones-wrap"></div>
       </div>
 
-      <div id="waiter-reservations-panel" class="waiter-hotel-panel" hidden>
+      <div id="waiter-reservations-panel" class="waiter-hotel-panel" hidden style="display:none">
         <div class="rez-toolbar">
           <h2>Rezervimet</h2>
           <button type="button" class="btn btn-primary" id="btn-rez-new">+ Rezervim i ri</button>
@@ -981,7 +981,7 @@
         </div>
       </div>
 
-      <div id="waiter-services-panel" class="waiter-hotel-panel" hidden>
+      <div id="waiter-services-panel" class="waiter-hotel-panel" hidden style="display:none">
         <div class="rez-toolbar">
           <h2>Shërbimet e hotelit</h2>
         </div>
@@ -992,7 +992,7 @@
         <div id="waiter-svc-catalog" class="waiter-svc-catalog"></div>
       </div>
 
-      <div id="waiter-housekeeping-panel" class="waiter-hotel-panel" hidden>
+      <div id="waiter-housekeeping-panel" class="waiter-hotel-panel" hidden style="display:none">
         <div class="rez-toolbar">
           <h2>Pastrimi / Housekeeping</h2>
         </div>
@@ -1016,7 +1016,7 @@
         <div id="waiter-hk-list" class="hk-board"></div>
       </div>
 
-      <div id="waiter-orders-panel" class="waiter-hotel-panel" hidden>
+      <div id="waiter-orders-panel" class="waiter-hotel-panel" hidden style="display:none">
         <div class="rez-toolbar">
           <h2>Porositë aktive</h2>
         </div>
@@ -2039,7 +2039,7 @@
     }
 
     /* ─── Dhomat (recepsioni) ─── */
-    let waiterView = "rooms";
+    let waiterView = "tables";
     let lastRoomsCache = [];
     const W_ROOM_STATUS = {
       free: "E Lirë",
@@ -2143,7 +2143,9 @@
 
     function setWaiterView(view) {
       const allowed = ["rooms", "tables", "reservations", "services", "housekeeping", "orders"];
-      waiterView = allowed.includes(view) ? view : "rooms";
+      const hotelOnlyViews = new Set(["rooms", "reservations", "services", "housekeeping", "orders"]);
+      if (hotelOnlyViews.has(view)) view = "tables";
+      waiterView = allowed.includes(view) ? view : "tables";
       const roomsPanel = document.getElementById("waiter-rooms-panel");
       const tablesPanel = document.getElementById("waiter-tables-panel");
       const rezPanel = document.getElementById("waiter-reservations-panel");
@@ -5745,7 +5747,7 @@
         await ngarkoPazarin();
         await ngarkoTavolinat();
         await ngarkoDhomatWaiter();
-        setWaiterView("rooms");
+        setWaiterView("tables");
         startWaiterPolling();
       }
       initCloudStatusIndicator("cloud-status-pill");

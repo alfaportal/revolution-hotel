@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="sq" class="waiter-root">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Recepsion — Revolution HOTEL</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
+  <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
+  <style>
+    .recepcion-shell { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+    #recep-rooms-panel[hidden],
+    #recep-services-panel[hidden],
+    #recep-reservations-panel[hidden],
+    #recep-housekeeping-panel[hidden],
+    #recep-orders-panel[hidden] { display: none !important; }
+
+    #recep-rooms-panel:not([hidden]),
+    #recep-services-panel:not([hidden]),
+    #recep-reservations-panel:not([hidden]),
+    #recep-housekeeping-panel:not([hidden]),
+    #recep-orders-panel:not([hidden]) {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .recep-main-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0 0 0.85rem;
+    }
+    .recep-main-tabs .waiter-nav-btn {
+      flex: 1 1 auto;
+      min-width: 7rem;
+    }
+    .recep-main-tabs .waiter-nav-btn.recep-nav-active {
+      background: #ff6b35;
+      border-color: #ff6b35;
+      color: #fff;
+    }
+
+    .waiter-rooms-legend {
+      display: flex; flex-wrap: wrap; gap: 0.55rem 1.1rem;
+      margin: 0 0 0.9rem; padding: 0.55rem 0.75rem;
+      border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0;
+      font-size: 0.78rem; font-weight: 700; color: #475569;
+    }
+    .waiter-rooms-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .waiter-rooms-legend i {
+      width: 0.72rem; height: 0.72rem; border-radius: 3px; display: inline-block;
+    }
+    .w-legend-free i { background: #16a34a; }
+    .w-legend-occ i { background: #dc2626; }
+    .w-legend-dirty i { background: #ca8a04; }
+    .w-legend-res i { background: #2563eb; }
+    .w-legend-maint i { background: #64748b; }
+
+    .waiter-rooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+      gap: 14px;
+      padding-bottom: 1.75rem;
+    }
+
+    .waiter-room-card {
+      position: relative;
+      min-height: 200px;
+      display: flex; flex-direction: column; align-items: stretch;
+      gap: 0.28rem; padding: 0.9rem 0.85rem 0.75rem;
+      border-radius: 12px; border: 1px solid #e2e8f0;
+      background: #fff; text-align: left;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    }
+    .waiter-room-card::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+    }
+    .waiter-room-card.free { background: #f0fdf4; border-color: #86efac; }
+    .waiter-room-card.free::before { background: #16a34a; }
+    .waiter-room-card.occupied { background: #fef2f2; border-color: #fca5a5; }
+    .waiter-room-card.occupied::before { background: #dc2626; }
+    .waiter-room-card.dirty { background: #fefce8; border-color: #fde047; }
+    .waiter-room-card.dirty::before { background: #ca8a04; }
+    .waiter-room-card.maintenance { background: #f1f5f9; border-color: #94a3b8; }
+    .waiter-room-card.maintenance::before { background: #64748b; }
+    .waiter-room-card.reserved { background: #eff6ff; border-color: #93c5fd; }
+    .waiter-room-card.reserved::before { background: #2563eb; }
+
+    .waiter-room-card-top {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 0.4rem;
+    }
+    .waiter-room-num {
+      font-size: 1.85rem; font-weight: 800; line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .waiter-room-badge {
+      font-size: 0.68rem; font-weight: 800; padding: 0.22rem 0.45rem;
+      border-radius: 999px; background: rgba(15, 23, 42, 0.08); color: #334155;
+      white-space: nowrap;
+    }
+    .waiter-room-type { font-size: 0.82rem; font-weight: 600; color: #475569; }
+    .waiter-room-floor { font-size: 0.78rem; color: #64748b; font-weight: 600; }
+    .waiter-room-guest-line { font-size: 0.85rem; font-weight: 700; color: #0f172a; margin-top: 0.15rem; }
+    .waiter-room-dates { font-size: 0.72rem; color: #64748b; font-weight: 600; }
+    .waiter-room-price { font-size: 0.88rem; font-weight: 800; color: #0f766e; margin-top: auto; }
+
+    .recep-room-actions {
+      display: flex; gap: 0.35rem; margin-top: 0.55rem; padding-top: 0.5rem;
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
+    }
+    .recep-room-actions .btn {
+      flex: 1; font-size: 0.72rem; padding: 0.45rem 0.3rem; font-weight: 800;
+    }
+    .recep-room-actions.recep-room-actions--stacked {
+      flex-direction: column;
+    }
+    #modal-rc-add-service .table-modal-content { max-width: 440px; width: min(440px, 96vw); }
+
+    #recep-rooms-msg, #recep-svc-msg {
+      font-size: 0.88rem; font-weight: 600; min-height: 1.25rem; margin-bottom: 0.5rem;
+    }
+
+    .waiter-svc-catalog {
+      display: flex; flex-direction: column; gap: 1.1rem; padding-bottom: 1.5rem;
+    }
+    .svc-cat-section {
+      border: 1px solid #e2e8f0; border-radius: 14px; background: #fff;
+      padding: 0.85rem 0.9rem 1rem; box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+    }
+    .svc-cat-head {
+      margin: 0 0 0.75rem; padding-bottom: 0.55rem; border-bottom: 1px solid #e2e8f0;
+    }
+    .svc-cat-title { margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; }
+    .svc-cat-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+      gap: 0.75rem;
+    }
+    .svc-card {
+      display: flex; flex-direction: column; align-items: stretch;
+      padding: 0; border-radius: 12px; text-align: left; overflow: hidden;
+      border: 1px solid #e2e8f0; background: #fff;
+      cursor: default; font: inherit; min-height: 120px;
+    }
+    .svc-card-body {
+      display: flex; flex-direction: column; gap: 0.2rem;
+      padding: 0.75rem 0.7rem; flex: 1;
+    }
+    .svc-card-name { font-weight: 800; color: #0f172a; font-size: 0.9rem; line-height: 1.25; }
+    .svc-card-price { font-weight: 800; color: #0f766e; font-size: 0.9rem; margin-top: auto; }
+    .svc-card-mode { font-size: 0.68rem; font-weight: 700; color: #64748b; }
+
+    .recep-hotel-panel .rez-toolbar h2 { margin: 0; font-size: 1.15rem; }
+
+    .recep-modal-placeholder {
+      margin: 0.5rem 0 1rem; color: #64748b; font-size: 0.9rem; font-weight: 600; line-height: 1.45;
+    }
+    .hotel-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+    .hotel-form-field { display: flex; flex-direction: column; gap: 0.25rem; }
+    .hotel-form-field.wide { grid-column: 1 / -1; }
+    .hotel-form-field label { font-size: 0.8rem; font-weight: 600; color: #475569; }
+    .hotel-form-field input, .hotel-form-field select {
+      padding: 0.55rem 0.65rem; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit;
+    }
+    #modal-rc-checkin .table-modal-content {
+      max-width: 520px; max-height: 90vh; overflow: auto;
+    }
+    #modal-rc-checkout .table-modal-content {
+      max-width: 520px; max-height: 92vh; overflow: auto;
+    }
+    .checkout-bill-box {
+      border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.85rem 1rem;
+      background: #f8fafc; margin-bottom: 0.75rem;
+    }
+    .checkout-bill-row {
+      display: flex; justify-content: space-between; gap: 0.75rem;
+      padding: 0.3rem 0; font-size: 0.9rem; color: #475569;
+    }
+    .checkout-bill-row strong { color: #0f172a; }
+    .checkout-bill-total {
+      margin-top: 0.3rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0;
+      font-size: 1.05rem;
+    }
+    .checkout-charge-list { margin: 0.25rem 0; }
+    .coupon-type-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;
+      margin: 0.65rem 0 0.45rem;
+    }
+    #modal-rc-checkout .btn-coupon {
+      font-weight: 700; border: none; border-radius: 10px;
+      padding: 0.65rem 0.45rem; font-size: 0.76rem; cursor: pointer;
+      background: #111827; color: #fff;
+    }
+    #modal-rc-checkout .btn-coupon.active { background: #16a34a; color: #fff; }
+    .coupon-type-forced {
+      padding: 0.4rem 0.7rem; border-radius: 8px; background: #f1f5f9;
+      color: #334155; font-size: 0.85rem; font-weight: 600; text-align: center;
+      margin-bottom: 0.45rem;
+    }
+    .pay-mixed-wrap { margin-top: 0.5rem; padding: 0.5rem 0; border-top: 1px solid #e2e8f0; }
+    .pay-mixed-wrap label {
+      font-size: 0.85rem; color: #475569;
+      display: flex; align-items: center; gap: 0.4rem; cursor: pointer;
+    }
+    .pay-mixed-box {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem; margin: 0.45rem 0;
+    }
+    .pay-mixed-box label { font-size: 0.72rem; display: block; margin-bottom: 0.15rem; color: #64748b; }
+    .pay-mixed-box input {
+      width: 100%; padding: 0.4rem; border-radius: 6px;
+      border: 1px solid #cbd5e1; background: #fff; font: inherit;
+    }
+    .pay-mixed-status { font-size: 0.78rem; color: #64748b; margin-top: 0.25rem; }
+    .pay-mixed-status.mismatch { color: #ea580c; }
+    .pay-mixed-status[hidden], .pay-mixed-box[hidden], .pay-mixed-wrap[hidden] { display: none !important; }
+
+    .rez-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.65rem; margin: 0 0 0.85rem; }
+    .rez-day-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 0 0 1rem; }
+    @media (max-width: 640px) { .rez-day-cards { grid-template-columns: 1fr; } }
+    .rez-day-card { border-radius: 12px; padding: 0.95rem 1.05rem; border: 1px solid transparent; display: flex; flex-direction: column; gap: 0.2rem; }
+    .rez-day-card.arrivals { background: linear-gradient(145deg, #ecfdf5 0%, #d1fae5 100%); border-color: #6ee7b7; }
+    .rez-day-card.departures { background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 100%); border-color: #fdba74; }
+    .rez-day-card .rez-day-label { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; color: #475569; }
+    .rez-day-card .rez-day-value { font-size: 1.85rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .rez-day-card.arrivals .rez-day-value { color: #047857; }
+    .rez-day-card.departures .rez-day-value { color: #c2410c; }
+    .rez-day-card .rez-day-sub { font-size: 0.8rem; font-weight: 600; color: #64748b; }
+    .rez-table-wrap { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: auto; max-height: min(58vh, 640px); }
+    .rez-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-width: 860px; }
+    .rez-table thead th { position: sticky; top: 0; z-index: 1; background: #0f172a; color: #f8fafc; font-weight: 700; text-align: left; padding: 0.65rem 0.7rem; }
+    .rez-table tbody td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+    .rez-status { display: inline-block; font-size: 0.72rem; font-weight: 800; padding: 0.2rem 0.5rem; border-radius: 999px; }
+    .rez-status.pending { background: #fef3c7; color: #92400e; }
+    .rez-status.confirmed { background: #dbeafe; color: #1e40af; }
+    .rez-status.cancelled { background: #fee2e2; color: #991b1b; }
+    .rez-status.checked_in { background: #dcfce7; color: #166534; }
+    .rez-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .rez-empty { padding: 1.5rem; text-align: center; color: #64748b; font-weight: 600; }
+    #modal-rc-reservation .table-modal-content { max-width: 520px; max-height: 92vh; overflow-y: auto; }
+    .rez-svc-picker { max-height: 200px; overflow: auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.5rem; background: #f8fafc; }
+    .rez-svc-cat { font-size: 0.72rem; font-weight: 800; color: #ea580c; margin: 0.55rem 0 0.35rem; text-transform: uppercase; }
+    .rez-svc-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 0.45rem; align-items: center; padding: 0.35rem 0.25rem; font-size: 0.85rem; }
+    .rez-svc-tag { display: block; font-size: 0.72rem; color: #64748b; margin-top: 0.1rem; }
+    .hk-filters { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0 0 0.75rem; }
+    .hk-filter-btn { border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: 0.4rem 0.85rem; font: inherit; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+    .hk-filter-btn.active { background: #0f172a; border-color: #0f172a; color: #fff; }
+    .hk-legend { display: flex; flex-wrap: wrap; gap: 0.55rem 1rem; margin: 0 0 0.85rem; font-size: 0.75rem; font-weight: 700; color: #64748b; }
+    .hk-legend i { width: 0.7rem; height: 0.7rem; border-radius: 3px; display: inline-block; }
+    .hk-leg.dirty i { background: #ca8a04; }
+    .hk-leg.progress i { background: #ea580c; }
+    .hk-leg.clean i { background: #16a34a; }
+    .hk-board { display: flex; flex-direction: column; gap: 0.55rem; padding-bottom: 1.5rem; }
+    .hk-card { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; border-radius: 12px; border: 1px solid #e2e8f0; padding: 0.85rem; border-left-width: 5px; }
+    .hk-card.dirty { border-left-color: #ca8a04; background: #fffbeb; }
+    .hk-card.in_progress { border-left-color: #ea580c; }
+    .hk-card.clean { border-left-color: #16a34a; background: #f0fdf4; }
+    .hk-card.maintenance { border-left-color: #64748b; }
+    .orders-board-wrap { border: 1px solid #e2e8f0; border-radius: 12px; overflow: auto; max-height: min(58vh, 640px); }
+    .orders-board { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-width: 720px; }
+    .orders-board thead th { background: #0f172a; color: #f8fafc; padding: 0.65rem 0.7rem; text-align: left; }
+    .orders-board tbody td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #e2e8f0; }
+    .ord-status.table { background: #dbeafe; color: #1e40af; font-size: 0.72rem; font-weight: 800; padding: 0.2rem 0.5rem; border-radius: 999px; }
+    .ord-status.room { background: #dcfce7; color: #166534; font-size: 0.72rem; font-weight: 800; padding: 0.2rem 0.5rem; border-radius: 999px; }
+    #recep-rez-msg, #recep-hk-msg, #recep-orders-msg { font-size: 0.88rem; font-weight: 600; min-height: 1.25rem; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body class="waiter-screen">
+  <div id="ekrani-recepcion" class="waiter-shell recepcion-shell">
+    <aside class="waiter-sidebar">
+      <div class="waiter-sidebar-top">
+        <div class="waiter-brand" id="recep-brand" title="Recepsion">R</div>
+        <button type="button" class="waiter-sync-btn" id="btn-rifresko" title="Rifresko">↻</button>
+      </div>
+      <div class="waiter-sidebar-spacer"></div>
+      <nav class="waiter-sidebar-nav waiter-sidebar-nav-bottom" aria-label="Veprime">
+        <button type="button" class="waiter-nav-btn waiter-nav-exit" onclick="dil()">DIL</button>
+      </nav>
+    </aside>
+
+    <main class="waiter-main">
+      <header class="waiter-topbar">
+        <div class="waiter-topbar-left">
+          <span class="waiter-topbar-greeting">Recepsion,</span>
+          <strong id="hdr-staff-top">—</strong>
+        </div>
+        <span class="app-version-pill" id="recep-app-version" hidden></span>
+        <button type="button" class="btn btn-shift-close btn-sm" id="btn-rc-mbyll-nderrimin">Mbyll ndërrimin</button>
+        <div class="waiter-topbar-time" id="recep-clock">--:--</div>
+      </header>
+
+      <div class="waiter-kpi-row">
+        <div class="waiter-kpi waiter-kpi-open">
+          <span class="waiter-kpi-label">TË ZËNA</span>
+          <span class="waiter-kpi-value" id="kpi-occupied">0</span>
+        </div>
+        <div class="waiter-kpi waiter-kpi-free">
+          <span class="waiter-kpi-label">TË LIRA</span>
+          <span class="waiter-kpi-value" id="kpi-free">0</span>
+        </div>
+        <div class="waiter-kpi waiter-kpi-new">
+          <span class="waiter-kpi-label">TË PAPASTRA</span>
+          <span class="waiter-kpi-value" id="kpi-dirty">0</span>
+        </div>
+        <div class="waiter-kpi waiter-kpi-cash">
+          <span class="waiter-kpi-label">GJITHSEJ</span>
+          <span class="waiter-kpi-value" id="kpi-total">0</span>
+        </div>
+      </div>
+
+      <nav class="recep-main-tabs waiter-main-tabs" role="tablist" aria-label="Recepsion">
+        <button type="button" class="waiter-nav-btn recep-nav-active" id="btn-tab-rooms" data-view="rooms">Dhomat</button>
+        <button type="button" class="waiter-nav-btn" id="btn-tab-reservations" data-view="reservations">Rezervimet</button>
+        <button type="button" class="waiter-nav-btn" id="btn-tab-services" data-view="services">Shërbimet</button>
+        <button type="button" class="waiter-nav-btn" id="btn-tab-housekeeping" data-view="housekeeping">Pastrimi</button>
+        <button type="button" class="waiter-nav-btn" id="btn-tab-orders" data-view="orders">Porositë</button>
+      </nav>
+
+      <div class="waiter-table-toolbar">
+        <div>
+          <h1 class="waiter-main-title" id="hdr-emri">Revolution HOTEL</h1>
+          <p class="waiter-main-sub" id="recep-main-sub">Dhomat dhe shërbimet — pa restorant / tavolina</p>
+        </div>
+      </div>
+
+      <div id="recep-rooms-panel">
+        <div class="waiter-rooms-legend">
+          <span class="w-legend-free"><i></i> E Lirë</span>
+          <span class="w-legend-occ"><i></i> E Zënë</span>
+          <span class="w-legend-dirty"><i></i> E Papastër</span>
+          <span class="w-legend-res"><i></i> E Rezervuar</span>
+          <span class="w-legend-maint"><i></i> Mirëmbajtje</span>
+        </div>
+        <div id="recep-rooms-msg"></div>
+        <div id="recep-rooms-grid" class="waiter-rooms-grid" aria-live="polite"></div>
+      </div>
+
+      <div id="recep-services-panel" class="waiter-hotel-panel recep-hotel-panel" hidden>
+        <div class="rez-toolbar">
+          <h2>Shërbimet e hotelit</h2>
+        </div>
+        <p style="margin:-0.35rem 0 0.85rem;color:#64748b;font-size:0.88rem;font-weight:600">
+          Bazen, parking, spa, manikyr — katalogu nga admini (shtimi në folio vjen në hapin tjetër).
+        </p>
+        <div id="recep-svc-msg"></div>
+        <div id="recep-svc-catalog" class="waiter-svc-catalog"></div>
+      </div>
+
+      <div id="recep-reservations-panel" class="waiter-hotel-panel recep-hotel-panel" hidden>
+        <div class="rez-toolbar">
+          <h2>Rezervimet</h2>
+          <button type="button" class="btn btn-primary" id="btn-rc-rez-new">+ Rezervim i ri</button>
+        </div>
+        <div id="recep-rez-msg"></div>
+        <div class="rez-day-cards">
+          <div class="rez-day-card arrivals">
+            <span class="rez-day-label">Mbërritje sot</span>
+            <span class="rez-day-value" id="rc-rez-arriving-count">0</span>
+            <span class="rez-day-sub" id="rc-rez-arriving-sub">0 mysafirë</span>
+          </div>
+          <div class="rez-day-card departures">
+            <span class="rez-day-label">Largime sot</span>
+            <span class="rez-day-value" id="rc-rez-departing-count">0</span>
+            <span class="rez-day-sub" id="rc-rez-departing-sub">0 mysafirë</span>
+          </div>
+        </div>
+        <div class="rez-table-wrap">
+          <table class="rez-table" id="rc-rez-table">
+            <thead>
+              <tr>
+                <th>Nr</th><th>Mysafiri</th><th>Telefoni</th><th>Dhoma</th>
+                <th>Check-in</th><th>Check-out</th><th>Personat</th><th>Statusi</th><th>Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="rc-rez-tbody"></tbody>
+          </table>
+          <div id="rc-rez-empty" class="rez-empty" hidden>Nuk ka rezervime aktive.</div>
+        </div>
+      </div>
+
+      <div id="recep-housekeeping-panel" class="waiter-hotel-panel recep-hotel-panel" hidden>
+        <div class="rez-toolbar"><h2>Pastrimi / Housekeeping</h2></div>
+        <p style="margin:-0.35rem 0 0.75rem;color:#64748b;font-size:0.88rem;font-weight:600">
+          Statuset · cakto pastruesin · prioritet mbërritjesh
+        </p>
+        <div id="recep-hk-msg"></div>
+        <div class="hk-filters" id="rc-hk-filters">
+          <button type="button" class="hk-filter-btn active" data-hk-filter="all">Krejt <span id="rc-hk-count-all">0</span></button>
+          <button type="button" class="hk-filter-btn" data-hk-filter="dirty">Të Papastra <span id="rc-hk-count-dirty">0</span></button>
+          <button type="button" class="hk-filter-btn" data-hk-filter="clean">Të Pastra <span id="rc-hk-count-clean">0</span></button>
+          <button type="button" class="hk-filter-btn" data-hk-filter="maintenance">Mirëmbajtje <span id="rc-hk-count-maintenance">0</span></button>
+        </div>
+        <div class="hk-legend">
+          <span class="hk-leg dirty"><i></i> E Papastër</span>
+          <span class="hk-leg progress"><i></i> Në pastrim</span>
+          <span class="hk-leg clean"><i></i> E Pastër</span>
+          <span class="hk-leg maint"><i></i> Mirëmbajtje</span>
+        </div>
+        <div id="rc-hk-list" class="hk-board"></div>
+      </div>
+
+      <div id="recep-orders-panel" class="waiter-hotel-panel recep-hotel-panel" hidden>
+        <div class="rez-toolbar"><h2>Porositë aktive</h2></div>
+        <p style="margin:-0.35rem 0 0.75rem;color:#64748b;font-size:0.88rem;font-weight:600">
+          Room Service / fatura dhome · porositë restoranti (tavolina te kamarieri)
+        </p>
+        <div id="recep-orders-msg"></div>
+        <div class="orders-board-wrap">
+          <table class="orders-board" id="rc-orders-table">
+            <thead>
+              <tr><th>Nr</th><th>Burimi</th><th>Produktet</th><th>Totali</th><th>Statusi</th><th>Ora</th></tr>
+            </thead>
+            <tbody id="rc-orders-tbody"></tbody>
+          </table>
+          <div id="rc-orders-empty" class="rez-empty" hidden>Nuk ka porosi aktive.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-rc-reservation" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-rez-backdrop"></div>
+    <div class="table-modal-content">
+      <h2 id="rc-rez-title">Rezervim i ri</h2>
+      <p class="table-modal-sub" style="margin-top:-0.5rem;margin-bottom:0.85rem;color:#64748b;font-size:0.9rem">
+        Dhoma shfaqet si E Rezervuar për datat e zgjedhura.
+      </p>
+      <input type="hidden" id="rc-rez-id" value="">
+      <div class="hotel-form-grid">
+        <div class="hotel-form-field wide">
+          <label for="rc-rez-name">Emri i mysafirit</label>
+          <input type="text" id="rc-rez-name" maxlength="120" required>
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-phone">Telefoni</label>
+          <input type="tel" id="rc-rez-phone" maxlength="40">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-email">Email</label>
+          <input type="email" id="rc-rez-email" maxlength="120">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-in">Data Check-in</label>
+          <input type="date" id="rc-rez-in">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-out">Data Check-out</label>
+          <input type="date" id="rc-rez-out">
+        </div>
+        <div class="hotel-form-field wide">
+          <label for="rc-rez-room">Dhoma (të lira në ato data)</label>
+          <select id="rc-rez-room"></select>
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-persons">Nr. personave</label>
+          <input type="number" id="rc-rez-persons" min="1" max="20" value="1">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-deposit">Depozitë (€)</label>
+          <input type="number" id="rc-rez-deposit" min="0" step="0.01" value="0">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-rez-status">Statusi</label>
+          <select id="rc-rez-status">
+            <option value="pending">Pritur</option>
+            <option value="confirmed" selected>Konfirmuar</option>
+          </select>
+        </div>
+        <div class="hotel-form-field wide">
+          <label for="rc-rez-notes">Shënime</label>
+          <input type="text" id="rc-rez-notes" maxlength="240">
+        </div>
+        <div class="hotel-form-field wide">
+          <label>Shërbime shtesë</label>
+          <div id="rc-rez-services-picker" class="rez-svc-picker"><p style="color:#64748b;font-size:0.85rem">Duke ngarkuar…</p></div>
+        </div>
+      </div>
+      <div id="rc-rez-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-ghost" id="rc-rez-cancel">Anulo</button>
+        <button type="button" class="btn btn-primary" id="rc-rez-save" style="flex:1">Ruaj rezervimin</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-checkin" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-checkin-backdrop"></div>
+    <div class="table-modal-content">
+      <h2 id="rc-checkin-title">Check-in</h2>
+      <p class="table-modal-sub" id="rc-checkin-sub" style="margin-top:-0.5rem;margin-bottom:0.85rem;color:var(--ngjyr-muted);font-size:0.9rem"></p>
+      <input type="hidden" id="rc-checkin-room-id" value="">
+      <div class="hotel-form-grid">
+        <div class="hotel-form-field wide">
+          <label for="rc-checkin-name">Emri i mysafirit</label>
+          <input type="text" id="rc-checkin-name" maxlength="120" autocomplete="name" required>
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-checkin-phone">Telefoni</label>
+          <input type="tel" id="rc-checkin-phone" maxlength="40" autocomplete="tel">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-checkin-document">Nr. dokumenti (ID / Pasaportë)</label>
+          <input type="text" id="rc-checkin-document" maxlength="80" autocomplete="off" placeholder="p.sh. P1234567">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-checkin-persons">Nr. personave</label>
+          <input type="number" id="rc-checkin-persons" min="1" max="20" value="1">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-checkin-in">Data e hyrjes</label>
+          <input type="date" id="rc-checkin-in">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-checkin-out">Data e daljes</label>
+          <input type="date" id="rc-checkin-out">
+        </div>
+        <div class="hotel-form-field wide">
+          <label for="rc-checkin-notes">Shënime</label>
+          <input type="text" id="rc-checkin-notes" maxlength="240" placeholder="p.sh. alergji, shtrat shtesë, VIP">
+        </div>
+      </div>
+      <div id="rc-checkin-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-ghost" id="rc-checkin-cancel">Anulo</button>
+        <button type="button" class="btn btn-primary" id="rc-checkin-save" style="flex:1">Check-in</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-shift-end" class="shift-overlay" hidden>
+    <div class="shift-start-card shift-close-card">
+      <h2 class="shift-start-title shift-close-title">Mbyll ndërrimin — Recepsion</h2>
+      <p class="shift-start-q shift-close-lead">Raporti i ndërrimit dhe barazimi i kuletës.</p>
+      <dl class="shift-close-summary">
+        <div><dt>Check-out / transaksione (ndërrimi)</dt><dd id="rc-shift-order-count">0</dd></div>
+        <div><dt>Totali i pagesave</dt><dd id="rc-shift-total-sales">0.00 €</dd></div>
+        <div><dt>Shitje cash</dt><dd id="rc-shift-cash-sales">0.00 €</dd></div>
+        <div><dt>Shitje kartë</dt><dd id="rc-shift-card-sales">0.00 €</dd></div>
+        <div><dt>Dhoma ende të zëna</dt><dd id="rc-shift-occupied">0</dd></div>
+        <div><dt>Paratë e nisjes</dt><dd id="rc-shift-opening">0.00 €</dd></div>
+        <div class="shift-close-expected"><dt>Paratë e pritshme në arkë</dt><dd id="rc-shift-expected">0.00 €</dd></div>
+      </dl>
+      <label class="shift-close-label" for="rc-shift-close-display">Paratë e numëruar</label>
+      <div class="shift-amount-display" id="rc-shift-close-display">€0</div>
+      <div class="shift-keypad" id="rc-shift-close-keypad">
+        <button type="button" class="shift-key" data-digit="1">1</button>
+        <button type="button" class="shift-key" data-digit="2">2</button>
+        <button type="button" class="shift-key" data-digit="3">3</button>
+        <button type="button" class="shift-key" data-digit="4">4</button>
+        <button type="button" class="shift-key" data-digit="5">5</button>
+        <button type="button" class="shift-key" data-digit="6">6</button>
+        <button type="button" class="shift-key" data-digit="7">7</button>
+        <button type="button" class="shift-key" data-digit="8">8</button>
+        <button type="button" class="shift-key" data-digit="9">9</button>
+        <button type="button" class="shift-key" data-digit=".">.</button>
+        <button type="button" class="shift-key" data-digit="0">0</button>
+        <button type="button" class="shift-key shift-key-back" data-action="back" aria-label="Fshi">⌫</button>
+      </div>
+      <div class="shift-close-diff" id="rc-shift-close-diff-wrap" hidden>
+        <span id="rc-shift-close-diff-label">Diferenca</span>
+        <strong id="rc-shift-close-diff-value">0.00 €</strong>
+      </div>
+      <div id="rc-shift-handover-wrap">
+        <label class="shift-close-label">Dorëzo te (opsionale)</label>
+        <div id="rc-shift-handover-pick" class="shift-handover-pick" role="listbox" aria-label="Dorëzo te"></div>
+        <input type="hidden" id="rc-shift-handover-to" value="">
+      </div>
+      <div id="rc-shift-close-msg" class="alert alert-error shift-close-msg" hidden></div>
+      <button type="button" class="shift-start-btn" id="btn-rc-shift-close-confirm">Mbyll ndërrimin</button>
+      <button type="button" class="btn btn-ghost shift-close-cancel" id="btn-rc-shift-close-cancel">Anulo</button>
+    </div>
+  </div>
+
+  <div id="modal-rc-add-service" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-add-svc-backdrop"></div>
+    <div class="table-modal-content">
+      <h2 id="rc-add-svc-title">Shto shërbim</h2>
+      <p id="rc-add-svc-sub" style="margin-top:-0.5rem;margin-bottom:0.85rem;color:var(--ngjyr-muted);font-size:0.9rem">
+        Shërbimi shtohet te fatura e mysafirit (room charges)
+      </p>
+      <input type="hidden" id="rc-add-svc-room-id" value="">
+      <input type="hidden" id="rc-add-svc-mode" value="fixed">
+      <div class="hotel-form-grid">
+        <div class="hotel-form-field wide">
+          <label for="rc-add-svc-service">Shërbimi (katalogu)</label>
+          <select id="rc-add-svc-service"></select>
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-add-svc-qty">Sasia</label>
+          <input type="number" id="rc-add-svc-qty" min="1" max="99" value="1">
+        </div>
+        <div class="hotel-form-field" id="rc-add-svc-amount-wrap">
+          <label for="rc-add-svc-amount">Çmimi (€)</label>
+          <input type="number" id="rc-add-svc-amount" min="0" step="0.01" value="0">
+        </div>
+        <div class="hotel-form-field wide">
+          <label for="rc-add-svc-notes">Shënime</label>
+          <input type="text" id="rc-add-svc-notes" maxlength="200" placeholder="opsionale — p.sh. ora, SPA…">
+        </div>
+      </div>
+      <div id="rc-add-svc-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-ghost" id="rc-add-svc-cancel">Anulo</button>
+        <button type="button" class="btn btn-primary" id="rc-add-svc-save" style="flex:1">Shto te fatura</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-checkout" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-checkout-backdrop"></div>
+    <div class="table-modal-content">
+      <h2 id="rc-checkout-title">Check-out</h2>
+      <p style="margin-top:-0.5rem;margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.9rem">
+        Pas pagesës dhoma bëhet E Papastër
+      </p>
+      <input type="hidden" id="rc-checkout-room-id" value="">
+      <div id="rc-checkout-bill" class="checkout-bill-box"></div>
+      <div class="hotel-form-grid">
+        <div class="hotel-form-field">
+          <label for="rc-checkout-out">Data e daljes</label>
+          <input type="date" id="rc-checkout-out">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-checkout-services">Shërbime ekstra (€)</label>
+          <input type="number" id="rc-checkout-services" min="0" step="0.01" value="0">
+        </div>
+      </div>
+      <div id="rc-checkout-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div class="coupon-type-row" id="rc-checkout-coupon-row">
+        <button type="button" class="btn-coupon btn-coupon-thermal active" data-rc-checkout-coupon="thermal">Kuponi Termik</button>
+        <button type="button" class="btn-coupon btn-coupon-fiscal" data-rc-checkout-coupon="fiscal">Kuponi Fiskal</button>
+      </div>
+      <div class="coupon-type-forced" id="rc-checkout-coupon-forced" hidden></div>
+      <div class="pay-mixed-wrap" id="rc-checkout-pay-mixed-wrap">
+        <label><input type="checkbox" id="rc-checkout-pay-mixed" /> Pagesë e përzier</label>
+        <div id="rc-checkout-pay-mixed-box" class="pay-mixed-box" hidden>
+          <div><label>Cash €</label><input id="rc-checkout-pay-cash-amt" type="number" min="0" step="0.01" value="0" /></div>
+          <div><label>POS €</label><input id="rc-checkout-pay-card-amt" type="number" min="0" step="0.01" value="0" /></div>
+          <div><label>Voucher €</label><input id="rc-checkout-pay-voucher-amt" type="number" min="0" step="0.01" value="0" /></div>
+        </div>
+        <div id="rc-checkout-pay-mixed-status" class="pay-mixed-status" hidden aria-live="polite"></div>
+      </div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-ghost" id="rc-checkout-cancel">Anulo</button>
+        <button type="button" class="btn btn-ghost" id="rc-checkout-print">Print Faturë</button>
+        <button type="button" class="btn btn-primary" id="rc-checkout-save" style="flex:1">Paguaj &amp; Check-out</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="print-fature" class="print-receipt"></div>
+
+  <script src="/js/app.js?v=6"></script>
+  <script>
+    /* Recepsion: pa kyçje pas mosveprimit — vetëm butoni DIL (app.js WAITER_LOCK_MS 30s). */
+    window.aktivizoKyçjenTerminaleKamarier = function recepNoIdleTerminalLock() {};
+    window.kyçKamarierPasPorosise = function recepNoIdleReset() {};
+  </script>
+  <script src="/js/i18n-client.js"></script>
+  <script src="/js/fiscal-payment-modal.js?v=3"></script>
+  <script src="/js/fiscal-mixed-payment.js?v=1"></script>
+  <script>
+    (function guardRecepsionSession() {
+      const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+      if (!u || u.roli !== "recepsion" || !u.token) {
+        window.location.replace("/login.html?mode=recepsion");
+        throw new Error("no session");
+      }
+      /* Pa skadim 12h lokale — recepsioni mbetet derisa stafi klikon DIL (sesioni serveri vlen). */
+      window.__recepUser = u;
+    })();
+
+    const user = window.__recepUser;
+    document.getElementById("hdr-staff-top").textContent = user.emri || "Recepsion";
+
+    const W_ROOM_STATUS = {
+      free: "E Lirë",
+      occupied: "E Zënë",
+      dirty: "E Papastër",
+      reserved: "E Rezervuar",
+      maintenance: "Mirëmbajtje",
+    };
+
+    let recepView = "rooms";
+    let lastRooms = [];
+    let recepCheckoutPreview = null;
+    let checkoutCouponType = "thermal";
+    let registerModeForced = "auto";
+    let lastSvcCatalog = { groups: [], services: [] };
+    let rcAddSvcRoom = null;
+    let recepShiftOpen = false;
+    let rcShiftClosePreview = null;
+
+    function escHtml(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function showMsg(id, text, ok) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text || "";
+      el.style.color = ok ? "#15803d" : "#dc2626";
+    }
+
+    const RECEP_VIEWS = ["rooms", "reservations", "services", "housekeeping", "orders"];
+
+    function setRecepView(view) {
+      if (!RECEP_VIEWS.includes(view)) view = "rooms";
+      recepView = view;
+      const panelIds = {
+        rooms: "recep-rooms-panel",
+        reservations: "recep-reservations-panel",
+        services: "recep-services-panel",
+        housekeeping: "recep-housekeeping-panel",
+        orders: "recep-orders-panel",
+      };
+      for (const [v, id] of Object.entries(panelIds)) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = recepView !== v;
+      }
+      const tabMap = {
+        rooms: "btn-tab-rooms",
+        reservations: "btn-tab-reservations",
+        services: "btn-tab-services",
+        housekeeping: "btn-tab-housekeeping",
+        orders: "btn-tab-orders",
+      };
+      for (const [v, id] of Object.entries(tabMap)) {
+        document.getElementById(id)?.classList.toggle("recep-nav-active", recepView === v);
+      }
+      const sub = document.getElementById("recep-main-sub");
+      if (sub) {
+        const subs = {
+          rooms: "Lista e dhomave — Check-in / Check-out / Shto shërbim",
+          reservations: "Rezervimet — konverto në Check-in ose ndrysho",
+          services: "Katalogu i shërbimeve — shtimi në folio nga dhoma e zënë",
+          housekeeping: "Pastrimi — statuset dhe pastruesi",
+          orders: "Porositë aktive — Room Service dhe restorant",
+        };
+        sub.textContent = subs[recepView] || subs.rooms;
+      }
+      if (recepView === "rooms") ngarkoDhomat().catch((e) => showMsg("recep-rooms-msg", e.message, false));
+      else if (recepView === "reservations") ngarkoRezervimetRecep().catch((e) => showMsg("recep-rez-msg", e.message, false));
+      else if (recepView === "services") ngarkoSherbimet().catch((e) => showMsg("recep-svc-msg", e.message, false));
+      else if (recepView === "housekeeping") ngarkoHousekeepingRecep().catch((e) => showMsg("recep-hk-msg", e.message, false));
+      else if (recepView === "orders") ngarkoPorositeRecep().catch((e) => showMsg("recep-orders-msg", e.message, false));
+    }
+
+    let hkFilter = "all";
+    let hkBoardCache = { rooms: [], counts: {}, staff: [] };
+    let lastRezListCache = [];
+    let rezRoomReloadTimer = null;
+    let rezAvailableRoomsCache = [];
+    let rezSvcCatalog = null;
+    let rezSvcSelected = {};
+    const HK_STATUS_LABEL = {
+      dirty: "E Papastër",
+      in_progress: "Në pastrim",
+      clean: "E Pastër",
+      occupied: "E Zënë",
+      maintenance: "Mirëmbajtje",
+    };
+
+    function formatOrderTime(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return String(iso);
+      return d.toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+
+    function rezStatusLabel(st) {
+      const m = { pending: "Pritur", confirmed: "Konfirmuar", cancelled: "Anuluar", checked_in: "Check-in" };
+      return m[String(st || "").toLowerCase()] || st || "—";
+    }
+
+    function setHkCounts(counts) {
+      const c = counts || {};
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v || 0); };
+      set("rc-hk-count-all", c.all);
+      set("rc-hk-count-dirty", c.dirty);
+      set("rc-hk-count-clean", c.clean);
+      set("rc-hk-count-maintenance", c.maintenance);
+    }
+
+    function hkMatchesFilter(row) {
+      if (hkFilter === "all") return true;
+      if (hkFilter === "dirty") return row.hk_status === "dirty" || row.hk_status === "in_progress";
+      if (hkFilter === "clean") return row.hk_status === "clean";
+      if (hkFilter === "maintenance") return row.hk_status === "maintenance";
+      return true;
+    }
+
+    async function hkActionRecep(path, body, okMsg) {
+      try {
+        await api(path, { method: "POST", body: JSON.stringify(body || {}) });
+        await ngarkoHousekeepingRecep();
+        await ngarkoDhomat().catch(() => {});
+        if (okMsg) showMsg("recep-hk-msg", okMsg, true);
+      } catch (err) {
+        showMsg("recep-hk-msg", err.message || "Gabim", false);
+      }
+    }
+
+    function renderHousekeepingRecep() {
+      const list = document.getElementById("rc-hk-list");
+      if (!list) return;
+      const staff = hkBoardCache.staff || [];
+      const rows = (hkBoardCache.rooms || []).filter(hkMatchesFilter);
+      list.innerHTML = "";
+      if (!rows.length) {
+        list.innerHTML = '<p style="color:#64748b;font-weight:600;padding:0.75rem 0">Nuk ka dhoma për këtë filtër.</p>';
+        return;
+      }
+      for (const r of rows) {
+        const st = r.hk_status || "clean";
+        const urgent = r.priority || r.arrival_today;
+        const card = document.createElement("div");
+        card.className = `hk-card ${st}` + (urgent ? " urgent" : "");
+        const staffOpts = ['<option value="">— Cakto pastruesin —</option>']
+          .concat(staff.map((s) =>
+            `<option value="${s.id}" ${Number(s.id) === Number(r.assigned_to) ? "selected" : ""}>${escHtml(s.name)}</option>`,
+          )).join("");
+        const canAssign = st === "dirty" || st === "in_progress" || st === "maintenance";
+        let actions = "";
+        if (st === "dirty") {
+          actions =
+            `<button type="button" class="btn btn-primary btn-sm" data-hk-start>Fillo Pastrimin</button>` +
+            `<button type="button" class="btn btn-ghost btn-sm" data-hk-maint>Mirëmbajtje</button>`;
+        } else if (st === "in_progress") {
+          actions =
+            `<button type="button" class="btn btn-primary btn-sm" data-hk-done>Përfundo</button>` +
+            `<button type="button" class="btn btn-ghost btn-sm" data-hk-maint>Mirëmbajtje</button>`;
+        } else if (st === "maintenance") {
+          actions = `<button type="button" class="btn btn-primary btn-sm" data-hk-ready>Gati</button>`;
+        } else if (st === "clean") {
+          actions = `<button type="button" class="btn btn-ghost btn-sm" data-hk-maint>Mirëmbajtje</button>`;
+        }
+        card.innerHTML =
+          `<div class="hk-card-num">${escHtml(String(r.room_number))}</div>` +
+          `<div class="hk-card-main">` +
+            `<div class="hk-card-top">` +
+              `<span class="hk-badge ${escHtml(st)}">${escHtml(HK_STATUS_LABEL[st] || st)}</span>` +
+              (urgent ? `<span class="hk-urgent-tag">⚠ Mbërritje sot${r.arrival_guest ? " · " + escHtml(r.arrival_guest) : ""}</span>` : "") +
+            `</div>` +
+            `<div class="hk-meta">${escHtml(r.type || "Standard")} · Kati ${Number(r.floor) || 0}` +
+              (r.assigned_name ? ` · Pastruesi: <strong>${escHtml(r.assigned_name)}</strong>` : "") +
+            `</div>` +
+            (canAssign ? `<div class="hk-assign-row"><select data-hk-assign>${staffOpts}</select></div>` : "") +
+            `<div class="hk-notes-row">` +
+              `<input type="text" data-hk-notes maxlength="240" placeholder="Shënim…" value="${escHtml(r.notes || "")}">` +
+              `<button type="button" class="btn btn-ghost btn-sm" data-hk-save-notes>Ruaj</button>` +
+            `</div>` +
+            `<div class="hk-actions">${actions}</div>` +
+          `</div>`;
+        card.querySelector("[data-hk-assign]")?.addEventListener("change", (e) => {
+          const staffId = e.target.value ? Number(e.target.value) : null;
+          hkActionRecep(
+            `/api/waiter/housekeeping/${r.room_id}/assign`,
+            { staff_id: staffId },
+            staffId ? `Pastruesi u caktua — dhoma ${r.room_number}.` : `Pastruesi u hoq — dhoma ${r.room_number}.`,
+          );
+        });
+        card.querySelector("[data-hk-save-notes]")?.addEventListener("click", () => {
+          const notes = card.querySelector("[data-hk-notes]")?.value || "";
+          hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/notes`, { notes }, "Shënimi u ruajt.");
+        });
+        card.querySelector("[data-hk-start]")?.addEventListener("click", () => {
+          hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/start`, {}, `Pastrim i nisur — dhoma ${r.room_number}.`);
+        });
+        card.querySelector("[data-hk-done]")?.addEventListener("click", () => {
+          if (!confirm(`Dhoma ${r.room_number} u pastrua?`)) return;
+          hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/complete`, {}, `Dhoma ${r.room_number} është E Pastër.`);
+        });
+        card.querySelector("[data-hk-maint]")?.addEventListener("click", () => {
+          if (!confirm(`Dhoma ${r.room_number} → Mirëmbajtje?`)) return;
+          const notes = card.querySelector("[data-hk-notes]")?.value || "";
+          hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/maintenance`, { notes }, `Dhoma ${r.room_number} në mirëmbajtje.`);
+        });
+        card.querySelector("[data-hk-ready]")?.addEventListener("click", () => {
+          hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/ready`, {}, `Dhoma ${r.room_number} është gati.`);
+        });
+        list.appendChild(card);
+      }
+    }
+
+    async function ngarkoHousekeepingRecep() {
+      const data = await api("/api/waiter/housekeeping");
+      hkBoardCache = { rooms: data.rooms || [], counts: data.counts || {}, staff: data.staff || [] };
+      setHkCounts(hkBoardCache.counts);
+      renderHousekeepingRecep();
+    }
+
+    async function convertReservationCheckinRecep(id, name, room) {
+      if (!confirm(`Check-in për ${name} — dhoma ${room}?`)) return;
+      await api(`/api/waiter/room-reservations/${id}/check-in`, { method: "POST", body: "{}" });
+      await ngarkoDhomat();
+      await ngarkoRezervimetRecep();
+      showMsg("recep-rez-msg", `Check-in: ${name} — dhoma ${room}`, true);
+    }
+
+    function renderRezDayStatsRecep(stats) {
+      const arrC = document.getElementById("rc-rez-arriving-count");
+      const arrS = document.getElementById("rc-rez-arriving-sub");
+      const depC = document.getElementById("rc-rez-departing-count");
+      const depS = document.getElementById("rc-rez-departing-sub");
+      if (arrC) arrC.textContent = String(stats.arriving_count || 0);
+      if (arrS) arrS.textContent = `${stats.arriving_persons || 0} mysafirë`;
+      if (depC) depC.textContent = String(stats.departing_count || 0);
+      if (depS) depS.textContent = `${stats.departing_persons || 0} mysafirë`;
+    }
+
+    function renderRezervimetTableRecep(rows) {
+      const tbody = document.getElementById("rc-rez-tbody");
+      const empty = document.getElementById("rc-rez-empty");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      lastRezListCache = Array.isArray(rows) ? rows : [];
+      if (!lastRezListCache.length) {
+        if (empty) empty.hidden = false;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      lastRezListCache.forEach((r, idx) => {
+        const st = String(r.status || "confirmed").toLowerCase();
+        const canAct = st === "pending" || st === "confirmed";
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${idx + 1}</td>` +
+          `<td><strong>${escHtml(r.guest_name)}</strong>` +
+          (Array.isArray(r.services) && r.services.length
+            ? `<span class="rez-svc-tag">${escHtml(r.services.map((s) => s.service_name).join(", "))}</span>`
+            : "") +
+          `</td>` +
+          `<td>${escHtml(r.phone || "—")}</td>` +
+          `<td>${escHtml(r.room_number || "—")}</td>` +
+          `<td>${escHtml(r.check_in_date)}</td>` +
+          `<td>${escHtml(r.check_out_date)}</td>` +
+          `<td>${Number(r.persons) || 1}</td>` +
+          `<td><span class="rez-status ${escHtml(st)}">${escHtml(rezStatusLabel(st))}</span></td>` +
+          `<td class="rez-actions"></td>`;
+        const actions = tr.querySelector(".rez-actions");
+        if (canAct) {
+          const btnCi = document.createElement("button");
+          btnCi.type = "button";
+          btnCi.className = "btn btn-primary btn-sm";
+          btnCi.textContent = "Konverto në Check-in";
+          btnCi.addEventListener("click", () => {
+            convertReservationCheckinRecep(r.id, r.guest_name, r.room_number).catch((e) =>
+              showMsg("recep-rez-msg", e.message, false),
+            );
+          });
+          const btnEdit = document.createElement("button");
+          btnEdit.type = "button";
+          btnEdit.className = "btn btn-ghost btn-sm";
+          btnEdit.textContent = "Ndrysho";
+          btnEdit.addEventListener("click", () => hapRezervimFormRecep(r));
+          const btnCancel = document.createElement("button");
+          btnCancel.type = "button";
+          btnCancel.className = "btn btn-ghost btn-sm";
+          btnCancel.textContent = "Anulo";
+          btnCancel.style.color = "#b91c1c";
+          btnCancel.addEventListener("click", async () => {
+            if (!confirm(`Anulo rezervimin e ${r.guest_name}?`)) return;
+            try {
+              await api(`/api/waiter/room-reservations/${r.id}/cancel`, { method: "POST", body: "{}" });
+              await ngarkoRezervimetRecep();
+              await ngarkoDhomat();
+              showMsg("recep-rez-msg", "Rezervimi u anulua.", true);
+            } catch (err) {
+              showMsg("recep-rez-msg", err.message || "Gabim", false);
+            }
+          });
+          actions.appendChild(btnCi);
+          actions.appendChild(btnEdit);
+          actions.appendChild(btnCancel);
+        }
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function ngarkoRezervimetRecep() {
+      const [listRes, statsRes] = await Promise.all([
+        api("/api/waiter/room-reservations?status=active&limit=300"),
+        api("/api/waiter/room-reservations/today-stats"),
+      ]);
+      renderRezDayStatsRecep(statsRes || {});
+      renderRezervimetTableRecep(listRes.reservations || []);
+    }
+
+    function mbyllRezervimFormRecep() {
+      document.getElementById("modal-rc-reservation").hidden = true;
+      const msg = document.getElementById("rc-rez-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    async function ensureRezSvcCatalogRecep() {
+      if (rezSvcCatalog) return rezSvcCatalog;
+      const res = await api("/api/waiter/services");
+      rezSvcCatalog = res.groups || [];
+      if (!rezSvcCatalog.length && (res.services || []).length) {
+        rezSvcCatalog = [{ name: "Shërbime", services: res.services }];
+      }
+      return rezSvcCatalog;
+    }
+
+    function getRecepRezRoomPrice() {
+      const roomId = Number(document.getElementById("rc-rez-room")?.value);
+      const room = rezAvailableRoomsCache.find((r) => Number(r.id) === roomId);
+      return Number(room?.price_per_night) || 0;
+    }
+
+    function formatRecepRezSvcPrice(s, roomPrice) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "room_rate") return `${roomPrice.toFixed(2)} € / natë`;
+      if (mode === "variable") return "Çmim i lirë";
+      return `${Number(s.price || 0).toFixed(2)} €`;
+    }
+
+    function renderRecepRezServicesPicker(existingServices) {
+      const box = document.getElementById("rc-rez-services-picker");
+      if (!box) return;
+      rezSvcSelected = {};
+      for (const line of existingServices || []) {
+        rezSvcSelected[line.service_id] = {
+          quantity: line.quantity || 1,
+          amount: line.unit_price,
+          notes: line.notes || "",
+        };
+      }
+      const groups = rezSvcCatalog || [];
+      if (!groups.length) {
+        box.innerHTML = '<p style="color:#64748b;font-size:0.85rem">Nuk ka shërbime.</p>';
+        return;
+      }
+      const roomPrice = getRecepRezRoomPrice();
+      box.innerHTML = groups.map((g) => {
+        const items = (g.services || []).filter((s) => s.active !== 0);
+        if (!items.length) return "";
+        return `<div class="rez-svc-cat">${escHtml(g.name)}</div>` +
+          items.map((s) => {
+            const sel = rezSvcSelected[s.id];
+            const checked = sel ? "checked" : "";
+            const qty = sel?.quantity || 1;
+            const showAmt = String(s.price_mode) === "variable";
+            const amtVal = sel?.amount ?? s.price ?? 0;
+            return `<label class="rez-svc-row">` +
+              `<input type="checkbox" class="rez-svc-check" data-svc-id="${s.id}" ${checked}>` +
+              `<span>${escHtml(s.name)}</span>` +
+              `<span>${escHtml(formatRecepRezSvcPrice(s, roomPrice))}</span>` +
+              `<input type="number" class="rez-svc-qty" data-svc-id="${s.id}" min="1" max="99" value="${qty}" ${sel ? "" : "disabled"}>` +
+              (showAmt ? `<input type="number" class="rez-svc-amt" data-svc-id="${s.id}" min="0" step="0.01" value="${amtVal}" ${sel ? "" : "disabled"}>` : "") +
+              `</label>`;
+          }).join("");
+      }).join("");
+      box.querySelectorAll(".rez-svc-check").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const id = Number(cb.dataset.svcId);
+          const qtyEl = box.querySelector(`.rez-svc-qty[data-svc-id="${id}"]`);
+          const amtEl = box.querySelector(`.rez-svc-amt[data-svc-id="${id}"]`);
+          if (cb.checked) {
+            rezSvcSelected[id] = { quantity: Number(qtyEl?.value) || 1, amount: amtEl ? Number(amtEl.value) : undefined, notes: "" };
+            if (qtyEl) qtyEl.disabled = false;
+            if (amtEl) amtEl.disabled = false;
+          } else {
+            delete rezSvcSelected[id];
+            if (qtyEl) qtyEl.disabled = true;
+            if (amtEl) amtEl.disabled = true;
+          }
+        });
+      });
+    }
+
+    function collectRecepRezServicesPayload() {
+      return Object.entries(rezSvcSelected).map(([service_id, v]) => ({
+        service_id: Number(service_id),
+        quantity: Number(v.quantity) || 1,
+        amount: v.amount,
+        notes: v.notes || "",
+      }));
+    }
+
+    async function refreshRezAvailableRoomsRecep(preferRoomId) {
+      const inEl = document.getElementById("rc-rez-in");
+      const outEl = document.getElementById("rc-rez-out");
+      const sel = document.getElementById("rc-rez-room");
+      const idEl = document.getElementById("rc-rez-id");
+      if (!inEl || !outEl || !sel) return;
+      const checkIn = inEl.value;
+      const checkOut = outEl.value;
+      if (!checkIn || !checkOut || checkOut <= checkIn) {
+        sel.innerHTML = '<option value="">Zgjidh datat së pari…</option>';
+        return;
+      }
+      const exclude = idEl?.value ? `&exclude_id=${encodeURIComponent(idEl.value)}` : "";
+      const res = await api(
+        `/api/waiter/room-reservations/available-rooms?check_in=${encodeURIComponent(checkIn)}&check_out=${encodeURIComponent(checkOut)}${exclude}`,
+      );
+      const rooms = res.rooms || [];
+      rezAvailableRoomsCache = rooms;
+      const prefer = preferRoomId != null ? Number(preferRoomId) : Number(sel.value || 0);
+      if (!rooms.length) {
+        sel.innerHTML = '<option value="">Nuk ka dhoma të lira</option>';
+        return;
+      }
+      sel.innerHTML = rooms.map((r) =>
+        `<option value="${r.id}">${escHtml(r.room_number)} · ${escHtml(r.type || "")} · ${formatEuro(r.price_per_night)}/natë</option>`,
+      ).join("");
+      if (prefer && rooms.some((r) => Number(r.id) === prefer)) sel.value = String(prefer);
+      renderRecepRezServicesPicker(collectRecepRezServicesPayload().map((s) => ({
+        service_id: s.service_id, quantity: s.quantity, unit_price: s.amount, notes: s.notes,
+      })));
+    }
+
+    async function hapRezervimFormRecep(existing, preselectRoomId) {
+      const modal = document.getElementById("modal-rc-reservation");
+      if (!modal) return;
+      await ensureRezSvcCatalogRecep();
+      const title = document.getElementById("rc-rez-title");
+      const idEl = document.getElementById("rc-rez-id");
+      const today = hotelTodayYmd();
+      idEl.value = existing?.id ? String(existing.id) : "";
+      if (title) title.textContent = existing?.id ? "Ndrysho rezervimin" : "Rezervim i ri";
+      document.getElementById("rc-rez-name").value = existing?.guest_name || "";
+      document.getElementById("rc-rez-phone").value = existing?.phone || "";
+      document.getElementById("rc-rez-email").value = existing?.email || "";
+      document.getElementById("rc-rez-in").value = existing?.check_in_date || today;
+      document.getElementById("rc-rez-out").value = existing?.check_out_date || hotelAddDaysYmd(today, 1);
+      document.getElementById("rc-rez-persons").value = String(existing?.persons || 1);
+      document.getElementById("rc-rez-deposit").value = String(existing?.deposit ?? 0);
+      document.getElementById("rc-rez-notes").value = existing?.notes || "";
+      const stEl = document.getElementById("rc-rez-status");
+      if (stEl) stEl.value = existing?.status === "pending" ? "pending" : "confirmed";
+      const msg = document.getElementById("rc-rez-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      modal.hidden = false;
+      await refreshRezAvailableRoomsRecep(existing?.room_id || preselectRoomId).catch(() => {});
+      if (preselectRoomId && !existing?.id) {
+        const sel = document.getElementById("rc-rez-room");
+        if (sel) sel.value = String(preselectRoomId);
+      }
+      renderRecepRezServicesPicker(existing?.services || []);
+    }
+
+    async function ngarkoPorositeRecep() {
+      const tbody = document.getElementById("rc-orders-tbody");
+      const empty = document.getElementById("rc-orders-empty");
+      showMsg("recep-orders-msg", "", true);
+      const data = await api("/api/waiter/active-orders");
+      const rows = data.orders || [];
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      if (!rows.length) {
+        if (empty) empty.hidden = false;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      for (const o of rows) {
+        const tr = document.createElement("tr");
+        const stClass = o.kind === "room" ? "room" : "table";
+        tr.innerHTML =
+          `<td>${Number(o.nr) || ""}</td>` +
+          `<td><strong>${escHtml(o.source || "—")}</strong></td>` +
+          `<td style="max-width:16rem">${escHtml(o.products || "—")}</td>` +
+          `<td>${formatEuro(o.total)}</td>` +
+          `<td><span class="ord-status ${stClass}">${escHtml(o.status || "—")}</span></td>` +
+          `<td>${escHtml(formatOrderTime(o.created_at))}</td>`;
+        if (o.kind === "table") {
+          tr.title = "Porosi restoranti — menaxhohet te kamarieri (tavolina)";
+        } else if (o.kind === "room" && o.room_id) {
+          tr.style.cursor = "pointer";
+          tr.addEventListener("click", () => {
+            setRecepView("rooms");
+            showMsg("recep-rooms-msg", `Dhoma ${o.source} — shiko nga lista e dhomave.`, true);
+          });
+        }
+        tbody.appendChild(tr);
+      }
+    }
+
+    function updateRoomKpis(rooms) {
+      const list = Array.isArray(rooms) ? rooms : [];
+      const occ = list.filter((r) => r.status === "occupied").length;
+      const free = list.filter((r) => r.status === "free").length;
+      const dirty = list.filter((r) => r.status === "dirty" || r.status === "maintenance").length;
+      const elO = document.getElementById("kpi-occupied");
+      const elF = document.getElementById("kpi-free");
+      const elD = document.getElementById("kpi-dirty");
+      const elT = document.getElementById("kpi-total");
+      if (elO) elO.textContent = String(occ);
+      if (elF) elF.textContent = String(free);
+      if (elD) elD.textContent = String(dirty);
+      if (elT) elT.textContent = String(list.length);
+    }
+
+    function displayStatus(room) {
+      const st = String(room.status || "free");
+      return W_ROOM_STATUS[st] ? st : "free";
+    }
+
+    function hotelTodayYmd() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    function hotelAddDaysYmd(ymd, days) {
+      const d = new Date(`${ymd}T12:00:00`);
+      d.setDate(d.getDate() + days);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    function mbyllRcCheckIn() {
+      document.getElementById("modal-rc-checkin").hidden = true;
+      const msg = document.getElementById("rc-checkin-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    function hapModalCheckIn(room) {
+      document.getElementById("rc-checkin-room-id").value = String(room.id);
+      document.getElementById("rc-checkin-title").textContent = `Check-in — ${room.room_number}`;
+      document.getElementById("rc-checkin-sub").textContent =
+        `${room.type || "Standard"} · ${formatEuro(room.price_per_night)} / natë`;
+      document.getElementById("rc-checkin-name").value = "";
+      document.getElementById("rc-checkin-phone").value = "";
+      document.getElementById("rc-checkin-document").value = "";
+      document.getElementById("rc-checkin-persons").value = "1";
+      document.getElementById("rc-checkin-notes").value = "";
+      const today = hotelTodayYmd();
+      document.getElementById("rc-checkin-in").value = today;
+      document.getElementById("rc-checkin-out").value = hotelAddDaysYmd(today, 1);
+      const msg = document.getElementById("rc-checkin-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      document.getElementById("modal-rc-checkin").hidden = false;
+      setTimeout(() => document.getElementById("rc-checkin-name")?.focus(), 40);
+    }
+
+    function renderHotelBillHtml(preview) {
+      const g = preview.guest || {};
+      const b = preview.bill || {};
+      const charges = Array.isArray(b.charges) ? b.charges : [];
+      const chargeRows = charges.length
+        ? `<div class="checkout-charge-list">` +
+          charges.map((c) =>
+            `<div class="checkout-bill-row"><span>${escHtml(c.description || "Charge")}</span><strong>${formatEuro(c.amount)}</strong></div>`,
+          ).join("") +
+          `</div>`
+        : `<div class="checkout-bill-row"><span>Porosi &amp; shërbime (katalog)</span><strong>${formatEuro(b.charges_total || 0)}</strong></div>`;
+      return (
+        `<div class="checkout-bill-row"><span>Mysafiri</span><strong>${escHtml(g.guest_name || "—")}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Telefoni</span><strong>${escHtml(g.phone || "—")}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Persona</span><strong>${Number(g.persons) || 1}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Netët</span><strong>${Number(b.nights) || 0} × ${formatEuro(b.price_per_night)}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Dhoma</span><strong>${formatEuro(b.room_total)}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Shërbime / room charges</span><strong>${formatEuro(b.charges_total)}</strong></div>` +
+        chargeRows +
+        `<div class="checkout-bill-row"><span>Shërbime ekstra</span><strong>${formatEuro(b.extra_services)}</strong></div>` +
+        `<div class="checkout-bill-row checkout-bill-total"><span>Totali</span><strong>${formatEuro(b.total)}</strong></div>`
+      );
+    }
+
+    function renderRcCheckoutBill(preview) {
+      const box = document.getElementById("rc-checkout-bill");
+      if (!box || !preview) return;
+      box.innerHTML = renderHotelBillHtml(preview);
+    }
+
+    function getCheckoutTotal() {
+      return Number(recepCheckoutPreview?.bill?.total) || 0;
+    }
+
+    function updateCheckoutMixedPaymentBar() {
+      if (!window.FiscalMixedPayment) return;
+      FiscalMixedPayment.updateMixedPaymentBar({
+        total: getCheckoutTotal(),
+        checkboxId: "rc-checkout-pay-mixed",
+        statusId: "rc-checkout-pay-mixed-status",
+        boxId: "rc-checkout-pay-mixed-box",
+        ids: {
+          cash: "rc-checkout-pay-cash-amt",
+          card: "rc-checkout-pay-card-amt",
+          voucher: "rc-checkout-pay-voucher-amt",
+        },
+      });
+    }
+
+    async function refreshRcCheckoutBill() {
+      const roomId = document.getElementById("rc-checkout-room-id")?.value;
+      if (!roomId) return;
+      const q = new URLSearchParams();
+      const dateOut = document.getElementById("rc-checkout-out")?.value;
+      const services = document.getElementById("rc-checkout-services")?.value || "0";
+      if (dateOut) q.set("check_out_date", dateOut);
+      q.set("services_total", services);
+      const preview = await api(`/api/waiter/rooms/${roomId}/checkout-preview?${q}`);
+      recepCheckoutPreview = preview;
+      renderRcCheckoutBill(preview);
+      updateCheckoutMixedPaymentBar();
+    }
+
+    function effectiveCheckoutCouponType() {
+      return registerModeForced === "auto" ? checkoutCouponType : registerModeForced;
+    }
+
+    function applyRegisterModeUi(state) {
+      if (!state) return;
+      registerModeForced = state.mode === "fiscal" || state.mode === "thermal" ? state.mode : "auto";
+      const checkoutRow = document.getElementById("rc-checkout-coupon-row");
+      const checkoutForced = document.getElementById("rc-checkout-coupon-forced");
+      if (checkoutRow) checkoutRow.hidden = registerModeForced !== "auto";
+      if (checkoutForced) {
+        if (registerModeForced === "auto") {
+          checkoutForced.hidden = true;
+        } else {
+          checkoutForced.hidden = false;
+          const label = registerModeForced === "fiscal" ? "Kupon Fiskal" : "Kupon Termik";
+          checkoutForced.textContent = `Modaliteti i faturës: ${label} (vendosur nga pronari)`;
+        }
+      }
+    }
+
+    async function refreshRegisterMode() {
+      try {
+        const data = await api("/api/waiter/active-register-mode");
+        if (data.ok === false) return;
+        applyRegisterModeUi(data);
+      } catch { /* offline */ }
+    }
+
+    async function resolveCheckoutPayment() {
+      const mixedOpts = {
+        total: getCheckoutTotal(),
+        checkboxId: "rc-checkout-pay-mixed",
+        ids: {
+          cash: "rc-checkout-pay-cash-amt",
+          card: "rc-checkout-pay-card-amt",
+          voucher: "rc-checkout-pay-voucher-amt",
+        },
+      };
+      if (window.FiscalMixedPayment && FiscalMixedPayment.isMixedEnabled("rc-checkout-pay-mixed")) {
+        try {
+          const mixed = FiscalMixedPayment.resolveMixedOrSinglePayment(mixedOpts);
+          if (mixed) return mixed;
+        } catch (e) {
+          alert(e.message);
+          return null;
+        }
+      }
+      if (window.FiscalPaymentModal) {
+        try {
+          await FiscalPaymentModal.fetchFiscalEnabled(api);
+        } catch { /* ignore */ }
+        const method = await FiscalPaymentModal.resolvePaymentMethod(api, "cash");
+        if (method == null) return null;
+        return { payment_method: method };
+      }
+      return { payment_method: "cash" };
+    }
+
+    function mbyllRcCheckOut() {
+      document.getElementById("modal-rc-checkout").hidden = true;
+      const msg = document.getElementById("rc-checkout-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    async function hapModalCheckOut(room) {
+      document.getElementById("rc-checkout-room-id").value = String(room.id);
+      document.getElementById("rc-checkout-title").textContent = `Check-out — ${room.room_number}`;
+      document.getElementById("rc-checkout-out").value =
+        room.active_guest?.check_out_date || hotelTodayYmd();
+      document.getElementById("rc-checkout-services").value = "0";
+      checkoutCouponType = "thermal";
+      document.querySelectorAll("[data-rc-checkout-coupon]").forEach((b) => {
+        b.classList.toggle("active", b.dataset.rcCheckoutCoupon === checkoutCouponType);
+      });
+      const mixedCb = document.getElementById("rc-checkout-pay-mixed");
+      if (mixedCb) mixedCb.checked = false;
+      ["rc-checkout-pay-cash-amt", "rc-checkout-pay-card-amt", "rc-checkout-pay-voucher-amt"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "0";
+      });
+      document.getElementById("rc-checkout-bill").innerHTML = "Duke llogaritur…";
+      const msg = document.getElementById("rc-checkout-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      document.getElementById("modal-rc-checkout").hidden = false;
+      try {
+        await refreshRcCheckoutBill();
+        updateCheckoutMixedPaymentBar();
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim preview"; }
+      }
+    }
+
+    function mbyllModal(id) {
+      const m = document.getElementById(id);
+      if (m) m.hidden = true;
+    }
+
+    function findServiceById(serviceId) {
+      const id = Number(serviceId);
+      for (const g of lastSvcCatalog.groups || []) {
+        for (const s of g.services || []) {
+          if (Number(s.id) === id) return s;
+        }
+      }
+      for (const s of lastSvcCatalog.services || []) {
+        if (Number(s.id) === id) return s;
+      }
+      return null;
+    }
+
+    async function ensureSvcCatalogLoaded() {
+      if ((lastSvcCatalog.groups || []).length) return;
+      const data = await api("/api/waiter/services");
+      lastSvcCatalog = {
+        groups: data.groups || [],
+        services: data.services || [],
+      };
+    }
+
+    function fillRcAddServiceSelect() {
+      const sel = document.getElementById("rc-add-svc-service");
+      if (!sel) return;
+      const groups = lastSvcCatalog.groups || [];
+      if (!groups.length) {
+        sel.innerHTML = '<option value="">Nuk ka shërbime në katalog</option>';
+        return;
+      }
+      let html = '<option value="">— Zgjidh shërbimin —</option>';
+      for (const g of groups) {
+        html += `<optgroup label="${escHtml(g.name)}">`;
+        for (const s of g.services || []) {
+          html += `<option value="${s.id}">${escHtml(s.name)} — ${escHtml(svcPriceLabel(s))}</option>`;
+        }
+        html += "</optgroup>";
+      }
+      sel.innerHTML = html;
+    }
+
+    function applyRcAddServicePricing(service) {
+      const mode = String(service?.price_mode || "fixed");
+      document.getElementById("rc-add-svc-mode").value = mode;
+      const amountWrap = document.getElementById("rc-add-svc-amount-wrap");
+      const amountEl = document.getElementById("rc-add-svc-amount");
+      const sub = document.getElementById("rc-add-svc-sub");
+      const room = rcAddSvcRoom;
+      if (sub && service) {
+        sub.textContent = mode === "room_rate"
+          ? "Çmimi = çmimi i dhomës / natë × sasia."
+          : mode === "variable"
+            ? "Shkruani çmimin (p.sh. minibar / artikull i veçantë)."
+            : `Çmimi bazë: ${formatEuro(service.price)} — shtohet te fatura e dhomës.`;
+      }
+      if (!amountWrap || !amountEl) return;
+      if (!service) {
+        amountWrap.hidden = true;
+        return;
+      }
+      amountWrap.hidden = false;
+      if (mode === "room_rate") {
+        amountEl.readOnly = true;
+        amountEl.value = String(Number(room?.price_per_night) || 0);
+      } else if (mode === "variable") {
+        amountEl.readOnly = false;
+        amountEl.value = String(Number(service.price) || 0);
+      } else {
+        amountEl.readOnly = true;
+        amountEl.value = String(Number(service.price) || 0);
+      }
+    }
+
+    function mbyllRcAddService() {
+      document.getElementById("modal-rc-add-service").hidden = true;
+      rcAddSvcRoom = null;
+      const msg = document.getElementById("rc-add-svc-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    async function hapRcAddService(room) {
+      if (!room || room.status !== "occupied") return;
+      rcAddSvcRoom = room;
+      document.getElementById("rc-add-svc-room-id").value = String(room.id);
+      const guest = room.active_guest?.guest_name || "Mysafir";
+      document.getElementById("rc-add-svc-title").textContent =
+        `Shto shërbim — Dhoma ${room.room_number}`;
+      document.getElementById("rc-add-svc-qty").value = "1";
+      document.getElementById("rc-add-svc-notes").value = "";
+      document.getElementById("rc-add-svc-sub").textContent =
+        `Mysafir: ${guest} — zgjidhni shërbimin nga katalogu.`;
+      const msg = document.getElementById("rc-add-svc-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      try {
+        await ensureSvcCatalogLoaded();
+        fillRcAddServiceSelect();
+        const sel = document.getElementById("rc-add-svc-service");
+        if (sel) sel.value = "";
+        applyRcAddServicePricing(null);
+        document.getElementById("modal-rc-add-service").hidden = false;
+      } catch (err) {
+        showMsg("recep-rooms-msg", err.message || "Gabim katalogu", false);
+      }
+    }
+
+    function onRcAddServicePickChange() {
+      const serviceId = document.getElementById("rc-add-svc-service")?.value;
+      const service = serviceId ? findServiceById(serviceId) : null;
+      applyRcAddServicePricing(service);
+    }
+
+    function renderRoomsGrid(rooms) {
+      const grid = document.getElementById("recep-rooms-grid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      if (!rooms.length) {
+        grid.innerHTML = '<p style="color:#64748b;font-weight:600">Nuk ka dhoma. Shtoji te Admin → Dhomat.</p>';
+        return;
+      }
+      updateRoomKpis(rooms);
+      for (const r of rooms) {
+        const st = displayStatus(r);
+        const guest = r.active_guest;
+        const card = document.createElement("article");
+        card.className = "waiter-room-card " + st;
+        card.setAttribute("data-room-id", String(r.id));
+
+        let guestLine = "";
+        let datesLine = "";
+        if (st === "occupied" && guest) {
+          guestLine = `<div class="waiter-room-guest-line">${escHtml(guest.guest_name || "Mysafir")}</div>`;
+          datesLine = `<div class="waiter-room-dates">${escHtml(guest.check_in_date || "—")} → ${escHtml(guest.check_out_date || "—")}</div>`;
+        }
+
+        const showCheckIn = st === "free";
+        const showCheckOut = st === "occupied";
+
+        card.innerHTML =
+          `<div class="waiter-room-card-top">` +
+            `<div class="waiter-room-num">${escHtml(String(r.room_number))}</div>` +
+            `<span class="waiter-room-badge">${escHtml(W_ROOM_STATUS[st] || st)}</span>` +
+          `</div>` +
+          `<div class="waiter-room-type">${escHtml(r.type || "Standard")}</div>` +
+          `<div class="waiter-room-floor">Kati ${Number(r.floor) || 0}</div>` +
+          guestLine + datesLine +
+          `<div class="waiter-room-price">${formatEuro(r.price_per_night)} <span style="font-weight:600;color:#64748b">/ natë</span></div>` +
+          `<div class="recep-room-actions${showCheckOut ? " recep-room-actions--stacked" : ""}">` +
+            (showCheckIn
+              ? `<button type="button" class="btn btn-primary recep-btn-checkin">Check-in</button>`
+              : "") +
+            (showCheckOut
+              ? `<button type="button" class="btn btn-primary recep-btn-checkout">Check-out</button>` +
+                `<button type="button" class="btn btn-ghost recep-btn-addsvc">Shto shërbim</button>`
+              : "") +
+          `</div>`;
+
+        card.querySelector(".recep-btn-checkin")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hapModalCheckIn(r);
+        });
+        card.querySelector(".recep-btn-checkout")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hapModalCheckOut(r);
+        });
+        card.querySelector(".recep-btn-addsvc")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hapRcAddService(r);
+        });
+
+        grid.appendChild(card);
+      }
+    }
+
+    async function ngarkoDhomat() {
+      const rooms = await api("/api/waiter/rooms");
+      lastRooms = Array.isArray(rooms) ? rooms : [];
+      renderRoomsGrid(lastRooms);
+      showMsg("recep-rooms-msg", "", true);
+    }
+
+    function svcPriceLabel(s) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "variable") {
+        return Number(s.price) > 0 ? `nga ${formatEuro(s.price)}` : "Sipas artikullit";
+      }
+      if (mode === "room_rate") return "Sipas çmimit të dhomës";
+      return formatEuro(s.price);
+    }
+
+    function svcModeHint(s) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "variable") return "Çmim i ndryshueshëm";
+      if (mode === "room_rate") return "Sipas çmimit të dhomës";
+      return "";
+    }
+
+    async function ngarkoSherbimet() {
+      const data = await api("/api/waiter/services");
+      lastSvcCatalog = {
+        groups: data.groups || [],
+        services: data.services || [],
+      };
+      const catalog = document.getElementById("recep-svc-catalog");
+      if (!catalog) return;
+      const groups = data.groups || [];
+      if (!groups.length) {
+        catalog.innerHTML = '<p style="color:#64748b;font-weight:600">Nuk ka shërbime. Shtoji te Admin → Shërbimet.</p>';
+        return;
+      }
+      catalog.innerHTML = "";
+      for (const g of groups) {
+        const section = document.createElement("section");
+        section.className = "svc-cat-section";
+        section.innerHTML = `<div class="svc-cat-head"><h3 class="svc-cat-title">${escHtml(g.name)}</h3></div><div class="svc-cat-grid"></div>`;
+        const grid = section.querySelector(".svc-cat-grid");
+        for (const s of g.services || []) {
+          const card = document.createElement("div");
+          card.className = "svc-card";
+          const hint = svcModeHint(s);
+          card.innerHTML =
+            `<div class="svc-card-body">` +
+            `<span class="svc-card-name">${escHtml(s.name)}</span>` +
+            (hint ? `<span class="svc-card-mode">${escHtml(hint)}</span>` : "") +
+            `<span class="svc-card-price">${escHtml(svcPriceLabel(s))}</span>` +
+            `</div>`;
+          grid.appendChild(card);
+        }
+        catalog.appendChild(section);
+      }
+      showMsg("recep-svc-msg", "", true);
+    }
+
+    function tickClock() {
+      const el = document.getElementById("recep-clock");
+      if (!el) return;
+      const d = new Date();
+      el.textContent = d.toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+
+    function createCashKeypad({ displayEl, keypadEl, onChange, initial = "0" }) {
+      let raw = String(initial).replace(/[^\d.]/g, "") || "0";
+      function normalize() {
+        if (!raw || raw === ".") raw = "0";
+        const parts = raw.split(".");
+        if (parts.length > 2) raw = parts[0] + "." + parts.slice(1).join("");
+        if (parts[1]?.length > 2) raw = parts[0] + "." + parts[1].slice(0, 2);
+      }
+      function render() {
+        normalize();
+        const n = Number(raw) || 0;
+        displayEl.textContent = "€" + (raw.includes(".") && raw.endsWith(".") ? raw : n.toFixed(raw.includes(".") ? Math.min(2, raw.split(".")[1].length) : 0));
+        if (!raw.includes(".") && n > 0) displayEl.textContent = "€" + String(Math.round(n) === n ? n : n.toFixed(2));
+        onChange?.(n, raw);
+      }
+      keypadEl?.querySelectorAll(".shift-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (btn.dataset.action === "back") {
+            raw = raw.length <= 1 ? "0" : raw.slice(0, -1);
+          } else {
+            const d = btn.dataset.digit;
+            if (d === "." && raw.includes(".")) return;
+            raw = raw === "0" && d !== "." ? d : raw + d;
+          }
+          render();
+        });
+      });
+      render();
+      return {
+        getValue() { normalize(); return Number(raw) || 0; },
+        setValue(v) { raw = String(v ?? "0"); render(); },
+      };
+    }
+
+    const rcShiftClosePad = createCashKeypad({
+      displayEl: document.getElementById("rc-shift-close-display"),
+      keypadEl: document.getElementById("rc-shift-close-keypad"),
+      onChange: (actual) => {
+        if (!rcShiftClosePreview) return;
+        const expected = Number(rcShiftClosePreview.expected_closing_cash) || 0;
+        const diff = Math.round((actual - expected) * 100) / 100;
+        const wrap = document.getElementById("rc-shift-close-diff-wrap");
+        const val = document.getElementById("rc-shift-close-diff-value");
+        const lbl = document.getElementById("rc-shift-close-diff-label");
+        if (!wrap || !val || !lbl) return;
+        wrap.hidden = false;
+        val.textContent = (diff >= 0 ? "+" : "") + formatEuro(diff);
+        lbl.textContent = Math.abs(diff) < 0.005 ? "Barazim" : diff < 0 ? "Mungesë" : "Tepricë";
+      },
+    });
+
+    function zgjidhRcHandoverPeer(staffId) {
+      const hidden = document.getElementById("rc-shift-handover-to");
+      if (hidden) hidden.value = staffId ? String(staffId) : "";
+      document.querySelectorAll("#rc-shift-handover-pick .shift-handover-btn").forEach((b) => {
+        b.classList.toggle("active", String(b.dataset.handoverId) === String(staffId || ""));
+      });
+    }
+
+    function renderRcHandoverPick(peers) {
+      const pick = document.getElementById("rc-shift-handover-pick");
+      if (!pick) return;
+      pick.innerHTML = peers.map((p) =>
+        `<button type="button" class="shift-handover-btn" data-handover-id="${p.id}">${escHtml(p.name)}</button>`,
+      ).join("");
+      zgjidhRcHandoverPeer("");
+    }
+
+    async function ngarkoRcPeersHandover() {
+      const wrap = document.getElementById("rc-shift-handover-wrap");
+      const pick = document.getElementById("rc-shift-handover-pick");
+      if (!wrap || !pick) return;
+      wrap.hidden = false;
+      try {
+        const data = await api("/api/waiter/shift/peers");
+        const peers = data.peers || [];
+        if (!peers.length) {
+          pick.innerHTML = '<p class="shift-handover-empty">Nuk ka staf tjetër — mbyllni pa dorëzim.</p>';
+          zgjidhRcHandoverPeer("");
+          return;
+        }
+        renderRcHandoverPick(peers);
+      } catch {
+        pick.innerHTML = '<p class="shift-handover-empty">Dorëzimi nuk u ngarkua — mbyllni pa dorëzim.</p>';
+        zgjidhRcHandoverPeer("");
+      }
+    }
+
+    document.getElementById("rc-shift-handover-pick")?.addEventListener("click", (e) => {
+      const btn = e.target.closest(".shift-handover-btn");
+      if (!btn) return;
+      zgjidhRcHandoverPeer(btn.dataset.handoverId || "");
+    });
+
+    function countOccupiedRooms() {
+      return (lastRooms || []).filter((r) => r.status === "occupied").length;
+    }
+
+    function showRcShiftEndModal(preview) {
+      rcShiftClosePreview = preview;
+      document.getElementById("rc-shift-order-count").textContent =
+        String(preview.order_count || 0);
+      document.getElementById("rc-shift-total-sales").textContent =
+        formatEuro(preview.total_sales || 0);
+      document.getElementById("rc-shift-cash-sales").textContent =
+        formatEuro(preview.cash_total || 0);
+      document.getElementById("rc-shift-card-sales").textContent =
+        formatEuro(preview.card_total || 0);
+      document.getElementById("rc-shift-occupied").textContent =
+        String(countOccupiedRooms());
+      document.getElementById("rc-shift-opening").textContent =
+        formatEuro(preview.opening_cash || 0);
+      document.getElementById("rc-shift-expected").textContent =
+        formatEuro(preview.expected_closing_cash || 0);
+      rcShiftClosePad.setValue(preview.expected_closing_cash || 0);
+      const diffWrap = document.getElementById("rc-shift-close-diff-wrap");
+      if (diffWrap) diffWrap.hidden = true;
+      const msg = document.getElementById("rc-shift-close-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      ngarkoRcPeersHandover();
+      document.getElementById("modal-rc-shift-end").hidden = false;
+    }
+
+    function hideRcShiftEndModal() {
+      document.getElementById("modal-rc-shift-end").hidden = true;
+      rcShiftClosePreview = null;
+    }
+
+    function syncRcShiftCloseButton() {
+      const btn = document.getElementById("btn-rc-mbyll-nderrimin");
+      if (btn) {
+        btn.disabled = !recepShiftOpen;
+        btn.textContent = recepShiftOpen ? "Mbyll ndërrimin" : "Ndërrimi jo aktiv";
+      }
+    }
+
+    async function ngarkoShiftRecep() {
+      try {
+        const s = await api("/api/waiter/shift");
+        recepShiftOpen = !!s.open;
+        syncRcShiftCloseButton();
+        return s;
+      } catch {
+        recepShiftOpen = false;
+        syncRcShiftCloseButton();
+        return null;
+      }
+    }
+
+    /** Pas login: hap ndërrimin automatikisht (0 € arkë) si waiter modal — recepsion fillon direkt. */
+    async function ensureRecepShiftOpen() {
+      let s;
+      try {
+        s = await api("/api/waiter/shift");
+      } catch (err) {
+        recepShiftOpen = false;
+        syncRcShiftCloseButton();
+        showMsg("recep-rooms-msg", err.message || "Ndërrimi nuk u lexua.", false);
+        return;
+      }
+
+      if (s.shift_ended) {
+        recepShiftOpen = !!s.open;
+        syncRcShiftCloseButton();
+        return;
+      }
+
+      if (s.needs_handover_acceptance) {
+        recepShiftOpen = false;
+        syncRcShiftCloseButton();
+        showMsg(
+          "recep-rooms-msg",
+          "Keni ndërrim për pranim — pranoni dorëzimin (kamarier) ose kontaktoni administratorin.",
+          false,
+        );
+        return;
+      }
+
+      const needsAutoOpen = !s.open || s.needs_opening_cash;
+      if (!needsAutoOpen) {
+        recepShiftOpen = true;
+        syncRcShiftCloseButton();
+        return;
+      }
+
+      try {
+        await api("/api/waiter/shift/open", {
+          method: "POST",
+          body: JSON.stringify({ opening_cash: 0 }),
+        });
+        recepShiftOpen = true;
+        syncRcShiftCloseButton();
+      } catch (err) {
+        recepShiftOpen = false;
+        syncRcShiftCloseButton();
+        showMsg("recep-rooms-msg", err.message || "Ndërrimi nuk u hap automatikisht.", false);
+      }
+    }
+
+    async function mbyllNderriminRecep() {
+      if (!recepShiftOpen) {
+        alert("Ndërrimi nuk është aktiv. Rifreskoni faqen ose kontaktoni administratorin.");
+        return;
+      }
+      let preview;
+      try {
+        preview = await api("/api/waiter/shift");
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+      if (!preview.open) {
+        alert("Ndërrimi nuk është aktiv.");
+        recepShiftOpen = false;
+        await ngarkoShiftRecep();
+        return;
+      }
+      if ((preview.active_tables || 0) > 0) {
+        alert(
+          `Mbyllni fillimisht ${preview.active_tables} porosi/tavolinë aktive të kamarierit (nëse ka) para mbylljes së ndërrimit.`,
+        );
+        return;
+      }
+      if (!lastRooms.length) {
+        try {
+          await ngarkoDhomat();
+        } catch { /* */ }
+      }
+      showRcShiftEndModal(preview);
+    }
+
+    document.getElementById("btn-rc-mbyll-nderrimin")?.addEventListener("click", mbyllNderriminRecep);
+    document.getElementById("btn-rc-shift-close-cancel")?.addEventListener("click", hideRcShiftEndModal);
+    document.getElementById("btn-rc-shift-close-confirm")?.addEventListener("click", async () => {
+      const msgEl = document.getElementById("rc-shift-close-msg");
+      if (msgEl) { msgEl.hidden = true; msgEl.textContent = ""; }
+      const btn = document.getElementById("btn-rc-shift-close-confirm");
+      const handoverTo = document.getElementById("rc-shift-handover-to")?.value;
+      if (btn) { btn.disabled = true; btn.textContent = "Duke mbyllur…"; }
+      try {
+        await api("/api/waiter/shift/close", {
+          method: "POST",
+          body: JSON.stringify({
+            actual_closing_cash: rcShiftClosePad.getValue(),
+            handover_to_staff_id: handoverTo ? Number(handoverTo) : null,
+          }),
+        });
+        hideRcShiftEndModal();
+        recepShiftOpen = false;
+        if (typeof dil === "function") dil();
+        window.location.href = "/login.html?mode=recepsion";
+      } catch (err) {
+        if (msgEl) {
+          msgEl.textContent = err.message;
+          msgEl.hidden = false;
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Mbyll ndërrimin"; }
+      }
+    });
+
+    document.getElementById("btn-tab-rooms")?.addEventListener("click", () => setRecepView("rooms"));
+    document.getElementById("btn-tab-reservations")?.addEventListener("click", () => setRecepView("reservations"));
+    document.getElementById("btn-tab-services")?.addEventListener("click", () => setRecepView("services"));
+    document.getElementById("btn-tab-housekeeping")?.addEventListener("click", () => setRecepView("housekeeping"));
+    document.getElementById("btn-tab-orders")?.addEventListener("click", () => setRecepView("orders"));
+    document.getElementById("btn-rifresko")?.addEventListener("click", () => {
+      if (recepView === "services") ngarkoSherbimet().catch((e) => showMsg("recep-svc-msg", e.message, false));
+      else if (recepView === "reservations") ngarkoRezervimetRecep().catch((e) => showMsg("recep-rez-msg", e.message, false));
+      else if (recepView === "housekeeping") ngarkoHousekeepingRecep().catch((e) => showMsg("recep-hk-msg", e.message, false));
+      else if (recepView === "orders") ngarkoPorositeRecep().catch((e) => showMsg("recep-orders-msg", e.message, false));
+      else ngarkoDhomat().catch((e) => showMsg("recep-rooms-msg", e.message, false));
+    });
+
+    document.getElementById("rc-hk-filters")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-hk-filter]");
+      if (!btn) return;
+      hkFilter = btn.getAttribute("data-hk-filter") || "all";
+      document.querySelectorAll("#rc-hk-filters .hk-filter-btn").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+      renderHousekeepingRecep();
+    });
+
+    document.getElementById("btn-rc-rez-new")?.addEventListener("click", () => hapRezervimFormRecep(null));
+    document.getElementById("rc-rez-backdrop")?.addEventListener("click", mbyllRezervimFormRecep);
+    document.getElementById("rc-rez-cancel")?.addEventListener("click", mbyllRezervimFormRecep);
+    document.getElementById("rc-rez-in")?.addEventListener("change", () => {
+      clearTimeout(rezRoomReloadTimer);
+      rezRoomReloadTimer = setTimeout(() => refreshRezAvailableRoomsRecep().catch(() => {}), 200);
+    });
+    document.getElementById("rc-rez-out")?.addEventListener("change", () => {
+      clearTimeout(rezRoomReloadTimer);
+      rezRoomReloadTimer = setTimeout(() => refreshRezAvailableRoomsRecep().catch(() => {}), 200);
+    });
+    document.getElementById("rc-rez-room")?.addEventListener("change", () => {
+      renderRecepRezServicesPicker(collectRecepRezServicesPayload().map((s) => ({
+        service_id: s.service_id, quantity: s.quantity, unit_price: s.amount, notes: s.notes,
+      })));
+    });
+    document.getElementById("rc-rez-save")?.addEventListener("click", async () => {
+      const msg = document.getElementById("rc-rez-msg");
+      const btn = document.getElementById("rc-rez-save");
+      const id = document.getElementById("rc-rez-id")?.value;
+      const body = {
+        guest_name: document.getElementById("rc-rez-name")?.value?.trim() || "",
+        phone: document.getElementById("rc-rez-phone")?.value?.trim() || "",
+        email: document.getElementById("rc-rez-email")?.value?.trim() || "",
+        room_id: Number(document.getElementById("rc-rez-room")?.value) || 0,
+        check_in_date: document.getElementById("rc-rez-in")?.value || "",
+        check_out_date: document.getElementById("rc-rez-out")?.value || "",
+        persons: Number(document.getElementById("rc-rez-persons")?.value) || 1,
+        deposit: Number(document.getElementById("rc-rez-deposit")?.value) || 0,
+        notes: document.getElementById("rc-rez-notes")?.value?.trim() || "",
+        status: document.getElementById("rc-rez-status")?.value || "confirmed",
+        services: collectRecepRezServicesPayload(),
+      };
+      if (!body.guest_name) {
+        if (msg) { msg.hidden = false; msg.textContent = "Emri i mysafirit është i detyrueshëm."; }
+        return;
+      }
+      if (!body.room_id) {
+        if (msg) { msg.hidden = false; msg.textContent = "Zgjidh një dhomë të lirë."; }
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        if (id) {
+          await api(`/api/waiter/room-reservations/${id}`, { method: "PUT", body: JSON.stringify(body) });
+        } else {
+          await api("/api/waiter/room-reservations", { method: "POST", body: JSON.stringify(body) });
+        }
+        mbyllRezervimFormRecep();
+        await ngarkoRezervimetRecep();
+        await ngarkoDhomat();
+        showMsg("recep-rez-msg", id ? "Rezervimi u përditësua." : "Rezervimi u ruajt.", true);
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim rezervimi"; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
+    document.querySelectorAll("[data-close]").forEach((el) => {
+      el.addEventListener("click", () => mbyllModal(el.getAttribute("data-close")));
+    });
+
+    document.querySelectorAll("[data-rc-checkout-coupon]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        checkoutCouponType = btn.dataset.rcCheckoutCoupon || "thermal";
+        document.querySelectorAll("[data-rc-checkout-coupon]").forEach((b) => {
+          b.classList.toggle("active", b.dataset.rcCheckoutCoupon === checkoutCouponType);
+        });
+      });
+    });
+
+    document.getElementById("rc-checkout-pay-mixed")?.addEventListener("change", updateCheckoutMixedPaymentBar);
+    ["rc-checkout-pay-cash-amt", "rc-checkout-pay-card-amt", "rc-checkout-pay-voucher-amt"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", updateCheckoutMixedPaymentBar);
+    });
+
+    document.getElementById("rc-checkout-backdrop")?.addEventListener("click", mbyllRcCheckOut);
+    document.getElementById("rc-checkout-cancel")?.addEventListener("click", mbyllRcCheckOut);
+    document.getElementById("rc-checkout-out")?.addEventListener("change", () => {
+      refreshRcCheckoutBill().catch(() => {});
+    });
+    document.getElementById("rc-checkout-services")?.addEventListener("input", () => {
+      refreshRcCheckoutBill().catch(() => {});
+    });
+    document.getElementById("rc-checkout-print")?.addEventListener("click", async () => {
+      const msg = document.getElementById("rc-checkout-msg");
+      const btn = document.getElementById("rc-checkout-print");
+      const roomId = document.getElementById("rc-checkout-room-id")?.value;
+      const body = {
+        check_out_date: document.getElementById("rc-checkout-out")?.value || "",
+        services_total: Number(document.getElementById("rc-checkout-services")?.value) || 0,
+      };
+      if (btn) btn.disabled = true;
+      try {
+        await api(`/api/waiter/rooms/${roomId}/print-folio`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        if (msg) {
+          msg.hidden = false;
+          msg.className = "alert";
+          msg.style.color = "";
+          msg.textContent = "Fatura u dërgua te printeri termik.";
+        }
+      } catch (err) {
+        if (msg) {
+          msg.hidden = false;
+          msg.className = "alert alert-error";
+          msg.textContent = err.message || "Printimi dështoi";
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+    document.getElementById("rc-checkout-save")?.addEventListener("click", async () => {
+      const msg = document.getElementById("rc-checkout-msg");
+      const btn = document.getElementById("rc-checkout-save");
+      const roomId = document.getElementById("rc-checkout-room-id")?.value;
+      const payInfo = await resolveCheckoutPayment();
+      if (!payInfo) return;
+      const body = {
+        check_out_date: document.getElementById("rc-checkout-out")?.value || "",
+        services_total: Number(document.getElementById("rc-checkout-services")?.value) || 0,
+        payment_method: payInfo.payment_method,
+        coupon_type: effectiveCheckoutCouponType(),
+        fiscal_skip: effectiveCheckoutCouponType() === "thermal",
+      };
+      if (payInfo.payment_splits) body.payment_splits = payInfo.payment_splits;
+      if (btn) btn.disabled = true;
+      try {
+        const result = await api(`/api/waiter/rooms/${roomId}/check-out`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        if (effectiveCheckoutCouponType() === "thermal" && !result.printed && result.html) {
+          const doWinPrint = confirm(
+            (result.printMessage || "Printeri termik nuk u gjet.") +
+            "\n\nCheck-out u krye. Hap dialogun e printimit të Windows?",
+          );
+          if (doWinPrint) {
+            document.getElementById("print-fature").innerHTML = result.html || "";
+            window.print();
+          }
+        } else if (effectiveCheckoutCouponType() === "fiscal" && !result.printed && result.printMessage) {
+          alert(
+            `Kuponi fiskal NUK u printua.\n\n${result.printMessage}\n\nCheck-out u krye — dhoma është E Papastër.`,
+          );
+        }
+        mbyllRcCheckOut();
+        await ngarkoDhomat();
+        showMsg(
+          "recep-rooms-msg",
+          `Check-out u krye · ${formatEuro(result?.bill?.total || 0)}. Dhoma E Papastër.`,
+          true,
+        );
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim Check-out"; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
+    document.getElementById("rc-add-svc-backdrop")?.addEventListener("click", mbyllRcAddService);
+    document.getElementById("rc-add-svc-cancel")?.addEventListener("click", mbyllRcAddService);
+    document.getElementById("rc-add-svc-service")?.addEventListener("change", onRcAddServicePickChange);
+    document.getElementById("rc-add-svc-save")?.addEventListener("click", async () => {
+      const msg = document.getElementById("rc-add-svc-msg");
+      const btn = document.getElementById("rc-add-svc-save");
+      const serviceId = Number(document.getElementById("rc-add-svc-service")?.value);
+      const roomId = Number(document.getElementById("rc-add-svc-room-id")?.value);
+      const mode = document.getElementById("rc-add-svc-mode")?.value || "fixed";
+      const body = {
+        service_id: serviceId,
+        quantity: Number(document.getElementById("rc-add-svc-qty")?.value) || 1,
+        notes: document.getElementById("rc-add-svc-notes")?.value?.trim() || "",
+      };
+      if (mode === "variable" || mode === "room_rate" || mode === "fixed") {
+        body.amount = Number(document.getElementById("rc-add-svc-amount")?.value);
+      }
+      if (!serviceId) {
+        if (msg) { msg.hidden = false; msg.textContent = "Zgjidhni një shërbim."; }
+        return;
+      }
+      if (!roomId) {
+        if (msg) { msg.hidden = false; msg.textContent = "Dhoma mungon."; }
+        return;
+      }
+      if (mode === "variable" && (!Number.isFinite(body.amount) || body.amount < 0)) {
+        if (msg) { msg.hidden = false; msg.textContent = "Shkruani çmimin e shërbimit."; }
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        const result = await api(`/api/waiter/rooms/${roomId}/add-service`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        mbyllRcAddService();
+        const roomNo = result?.room?.room_number || roomId;
+        const amt = formatEuro(result?.charge?.amount || 0);
+        const svcName = result?.service?.name || "Shërbimi";
+        showMsg(
+          "recep-rooms-msg",
+          `${svcName} (${amt}) u shtua te dhoma ${roomNo}.`,
+          true,
+        );
+        await ngarkoDhomat().catch(() => {});
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim"; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
+    document.getElementById("rc-checkin-backdrop")?.addEventListener("click", mbyllRcCheckIn);
+    document.getElementById("rc-checkin-cancel")?.addEventListener("click", mbyllRcCheckIn);
+    document.getElementById("rc-checkin-save")?.addEventListener("click", async () => {
+      const msg = document.getElementById("rc-checkin-msg");
+      const btn = document.getElementById("rc-checkin-save");
+      const roomId = document.getElementById("rc-checkin-room-id")?.value;
+      const body = {
+        guest_name: document.getElementById("rc-checkin-name")?.value?.trim() || "",
+        phone: document.getElementById("rc-checkin-phone")?.value?.trim() || "",
+        document_id: document.getElementById("rc-checkin-document")?.value?.trim() || "",
+        persons: Number(document.getElementById("rc-checkin-persons")?.value) || 1,
+        check_in_date: document.getElementById("rc-checkin-in")?.value || "",
+        check_out_date: document.getElementById("rc-checkin-out")?.value || "",
+        notes: document.getElementById("rc-checkin-notes")?.value?.trim() || "",
+      };
+      if (!body.guest_name) {
+        if (msg) { msg.hidden = false; msg.textContent = "Emri i mysafirit është i detyrueshëm."; }
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        await api(`/api/waiter/rooms/${roomId}/check-in`, { method: "POST", body: JSON.stringify(body) });
+        mbyllRcCheckIn();
+        await ngarkoDhomat();
+        showMsg("recep-rooms-msg", `Check-in: ${body.guest_name}`, true);
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim Check-in"; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
+    tickClock();
+    setInterval(tickClock, 30_000);
+
+    (async () => {
+      try {
+        if (typeof applyAppWindowTitle === "function") {
+          applyAppWindowTitle("Recepsion — Revolution HOTEL");
+        }
+      } catch { /* */ }
+      await refreshRegisterMode();
+      await ensureRecepShiftOpen();
+      setRecepView("rooms");
+    })();
+  </script>
+</body>
+</html>

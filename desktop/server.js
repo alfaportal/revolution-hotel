@@ -1373,6 +1373,15 @@ function staffOrAdmin(req, res, next) {
   next();
 }
 
+/** Ndërrimi stafi — kamarier ose recepsion (i njëjti staff_id / daily_log). */
+function waiterOrRecepsion(req, res, next) {
+  const role = req.session?.role;
+  if (role !== "kamarier" && role !== "recepsion") {
+    return res.status(403).json({ gabim: "Nuk keni akses." });
+  }
+  next();
+}
+
 function auditActivity(userName, userRole, action, detail = "") {
   try {
     db.logActivity({ user_name: userName, user_role: userRole, action, detail });
@@ -2013,11 +2022,7 @@ app.post("/api/login/pin", async (req, res) => {
     }
     const staffRole = db.normalizeStaffRole(staff.staff_role);
     if (staffRole !== loginMode) {
-      return res.status(401).json({
-        gabim: loginMode === "recepsion"
-          ? "Ky PIN nuk është i recepsionit."
-          : "Ky PIN nuk është i kamarierit.",
-      });
+      return res.status(401).json({ gabim: "Ky PIN nuk lejohet për këtë panel" });
     }
     if (webToken) {
       const linked = db.findStaffByWebToken(webToken);
@@ -2129,11 +2134,7 @@ app.post("/api/login/card", async (req, res) => {
     if (loginModeRaw) {
       const loginMode = db.normalizeStaffRole(loginModeRaw);
       if (staffRole !== loginMode) {
-        return res.status(401).json({
-          gabim: loginMode === "recepsion"
-            ? "Kjo kartelë nuk është e recepsionit."
-            : "Kjo kartelë nuk është e kamarierit.",
-        });
+        return res.status(401).json({ gabim: "Ky PIN nuk lejohet për këtë panel" });
       }
       sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
     }
@@ -2644,7 +2645,7 @@ function resolveStaffCloudWaiterIdentity(session) {
   };
 }
 
-app.get("/api/waiter/shift/peers", auth, waiterOnly, (req, res) => {
+app.get("/api/waiter/shift/peers", auth, waiterOrRecepsion, (req, res) => {
   try {
     const staffId = resolveWaiterStaffId(req.session);
     if (!staffId) {
@@ -2674,7 +2675,7 @@ app.post("/api/waiter/shift/accept-handover", auth, waiterOnly, (req, res) => {
   }
 });
 
-app.post("/api/waiter/shift/open", auth, waiterOnly, (req, res) => {
+app.post("/api/waiter/shift/open", auth, waiterOrRecepsion, (req, res) => {
   try {
     const staffId = resolveWaiterStaffId(req.session);
     if (!staffId) {
@@ -2688,7 +2689,7 @@ app.post("/api/waiter/shift/open", auth, waiterOnly, (req, res) => {
   }
 });
 
-app.get("/api/waiter/shift", auth, waiterOnly, (req, res) => {
+app.get("/api/waiter/shift", auth, waiterOrRecepsion, (req, res) => {
   try {
     const staffId = resolveWaiterStaffId(req.session);
     if (!staffId) {
@@ -2707,7 +2708,7 @@ app.get("/api/waiter/shift", auth, waiterOnly, (req, res) => {
   }
 });
 
-app.post("/api/waiter/shift/close", auth, waiterOnly, async (req, res) => {
+app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) => {
   try {
     const staffId = resolveWaiterStaffId(req.session);
     if (!staffId) {
@@ -2833,6 +2834,7 @@ app.get("/api/admin/shift-reports", auth, adminOnly, (req, res) => {
       from: req.query.from,
       to: req.query.to,
       staff_id: req.query.staff_id,
+      staff_role: req.query.staff_role,
     });
     res.json({ ok: true, shifts: rows });
   } catch (e) {

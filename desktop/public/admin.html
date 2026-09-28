@@ -2267,7 +2267,7 @@
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">TË ARDHURAT DITORE</div>
           <div class="dashboard-kpi-val" id="dash-revenue">0.00 €</div>
-          <div class="dashboard-kpi-sub" id="dash-revenue-sub">Netët + shërbimet + restoranti</div>
+          <div class="dashboard-kpi-sub dash-revenue-sub-lines" id="dash-revenue-sub">Restoranti · Recepsioni · Netët + Shërbimet</div>
         </div>
       </div>
 
@@ -2877,6 +2877,12 @@
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">RESTORANT</div>
           <div class="dashboard-kpi-val" id="raport-restaurant">0.00 €</div>
+          <div class="dashboard-kpi-sub">Pa check-out (CO-)</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">RECEPSION</div>
+          <div class="dashboard-kpi-val" id="raport-reception">0.00 €</div>
+          <div class="dashboard-kpi-sub">Check-out dhomash (CO-)</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">NETË HOTEL</div>
@@ -3045,13 +3051,22 @@
       </div>
 
       <div class="card shift-reports-card">
-        <div class="card-title">Raportet e nderrimeve (kamarierë)</div>
+        <div class="card-title">Raportet e nderrimeve (Stafi)</div>
         <p class="tables-panel-sub" style="margin:-0.35rem 0 0.75rem">Paratë e nisjes, shitjet dhe mospërputhjet cash për barazim</p>
+        <div style="margin:0 0 0.75rem;display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem">
+          <label for="shift-reports-role-filter" style="font-size:0.85rem;font-weight:600;color:var(--ngjyr-muted,#64748b)">Filtri roli</label>
+          <select id="shift-reports-role-filter" class="btn btn-ghost btn-sm" style="min-width:11rem;padding:0.45rem 0.65rem">
+            <option value="">Të gjithë</option>
+            <option value="kamarier">Kamarierë</option>
+            <option value="recepsion">Recepsion</option>
+          </select>
+        </div>
         <div class="reports-table-wrap">
           <table class="dashboard-top-table">
             <thead>
               <tr>
-                <th>Kamarieri</th>
+                <th>Stafi</th>
+                <th>Roli</th>
                 <th>Hapur</th>
                 <th>Mbyllur</th>
                 <th>Nisja</th>
@@ -3065,7 +3080,7 @@
               </tr>
             </thead>
             <tbody id="shift-reports-body">
-              <tr><td colspan="11" class="purchases-empty">Zgjidhni periudhën dhe klikoni Apliko</td></tr>
+              <tr><td colspan="12" class="purchases-empty">Zgjidhni periudhën dhe klikoni Apliko</td></tr>
             </tbody>
           </table>
         </div>
@@ -6073,6 +6088,7 @@
         <div class="stat-card"><div class="val">${d.today}</div><div class="lbl">${tt("Data e sotme")}</div></div>
         <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Totali")} (${d.periodLabel})</div></div>
         <div class="stat-card"><div class="val">${formatEuro(src.restaurant ?? d.restaurantSales ?? 0)}</div><div class="lbl">${tt("Restorant")}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(src.reception ?? d.receptionSales ?? 0)}</div><div class="lbl">${tt("Recepsion")}</div></div>
         <div class="stat-card"><div class="val">${formatEuro(src.nights ?? d.hotelNights ?? 0)}</div><div class="lbl">${tt("Netë hotel")}</div></div>
         <div class="stat-card"><div class="val">${formatEuro(src.services ?? d.hotelServices ?? 0)}</div><div class="lbl">${tt("Shërbime / RS")}</div></div>
         <div class="stat-card"><div class="val">${formatEuro(d.totalCash)}</div><div class="lbl">${tt("Cash")} (${tt("restorant")})</div></div>
@@ -6197,8 +6213,16 @@
             const statusLabel = cancelled
               ? tt("Anulluar")
               : (e.status === "completed" ? tt("completed") : (e.status || "—"));
+            const isCoCheckout = String(e.receipt_number || "").trim().toUpperCase().startsWith("CO-");
             const isHotel = e.entry_type && e.entry_type !== "restaurant";
-            const locCell = isHotel ? `Dh.${escHtml(e.table_number || "—")}` : `T${e.table_number}`;
+            let locCell;
+            if (isCoCheckout) {
+              locCell = `Recepsion Dh.${escHtml(e.table_number || "—")}`;
+            } else if (isHotel) {
+              locCell = `Dh.${escHtml(e.table_number || "—")}`;
+            } else {
+              locCell = `T${e.table_number}`;
+            }
             return `<tr${rowClass}>
             <td>${e.date || "—"}</td>
             <td>${e.time}</td>
@@ -6376,10 +6400,17 @@
       );
       setText("dash-occupancy", `${d.occupancy_pct ?? 0}%`);
       setText("dash-revenue", formatEuro(rev.total != null ? rev.total : d.totalSales));
-      setText(
-        "dash-revenue-sub",
-        `Netët ${formatEuro(rev.nights || 0)} · Shërbime ${formatEuro(rev.services || 0)} · Restorant ${formatEuro(rev.restaurant || 0)}`,
-      );
+      const nightsSvc =
+        rev.nights_services != null
+          ? rev.nights_services
+          : (Number(rev.nights || 0) + Number(rev.services || 0));
+      const revSub = document.getElementById("dash-revenue-sub");
+      if (revSub) {
+        revSub.innerHTML =
+          `Restoranti ${formatEuro(rev.restaurant ?? 0)}<br>` +
+          `Recepsioni ${formatEuro(rev.reception ?? 0)}<br>` +
+          `Netët + Shërbimet ${formatEuro(nightsSvc)}`;
+      }
 
       renderHotelDashArrivals(d.arrivals || []);
       renderHotelDashDepartures(d.departures || []);
@@ -13116,12 +13147,16 @@
       const body = document.getElementById("shift-reports-body");
       if (!body) return;
       try {
-        const data = await api(`/api/admin/shift-reports?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        const roleFilter = document.getElementById("shift-reports-role-filter")?.value || "";
+        let shiftQs = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+        if (roleFilter) shiftQs += `&staff_role=${encodeURIComponent(roleFilter)}`;
+        const data = await api(`/api/admin/shift-reports?${shiftQs}`);
         const rows = data.shifts || [];
         if (!rows.length) {
-          body.innerHTML = '<tr><td colspan="11" class="purchases-empty">Nuk ka nderrime të mbyllura për këtë periudhë</td></tr>';
+          body.innerHTML = '<tr><td colspan="12" class="purchases-empty">Nuk ka nderrime të mbyllura për këtë periudhë</td></tr>';
           return;
         }
+        const shiftRoleLabel = (role) => (role === "recepsion" ? "Recepsion" : "Kamarier");
         body.innerHTML = rows.map(s => {
           const diff = s.cash_difference;
           let diffHtml = "—";
@@ -13142,6 +13177,7 @@
           };
           return `<tr>
             <td>${escHtml(s.waiter_name)}</td>
+            <td>${escHtml(shiftRoleLabel(s.staff_role))}</td>
             <td>${fmtDt(s.opened_at)}</td>
             <td>${fmtDt(s.closed_at)}</td>
             <td>${formatEuro(s.opening_cash || 0)}</td>
@@ -13155,7 +13191,7 @@
           </tr>`;
         }).join("");
       } catch (err) {
-        body.innerHTML = `<tr><td colspan="11" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="12" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
       }
     }
 
@@ -13393,6 +13429,8 @@
       const nightsEl = document.getElementById("raport-hotel-nights");
       const svcEl = document.getElementById("raport-hotel-services");
       if (restEl) restEl.textContent = formatEuro(src.restaurant ?? r.restaurantSales ?? 0);
+      const recepEl = document.getElementById("raport-reception");
+      if (recepEl) recepEl.textContent = formatEuro(src.reception ?? r.receptionSales ?? 0);
       if (nightsEl) nightsEl.textContent = formatEuro(src.nights ?? r.hotelNights ?? 0);
       if (svcEl) svcEl.textContent = formatEuro(src.services ?? r.hotelServices ?? 0);
       document.getElementById("raport-orders").textContent = String(r.orderCount);

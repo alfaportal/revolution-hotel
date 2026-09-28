@@ -6236,6 +6236,11 @@ function roundReportMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
+/** Check-out recepsioni — regjistruar në daily_log me receipt_number CO-… */
+function isRecepsionCheckoutReceipt(receiptNumber) {
+  return String(receiptNumber || "").trim().toUpperCase().startsWith("CO-");
+}
+
 /** Netët (akruale) + shërbime/RS — i njëjti burim si getHotelRevenueReport. Kontabilisti përdor check-out. */
 function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDitari = false } = {}) {
   let hotelNights = 0;
@@ -6344,17 +6349,20 @@ function getReports(dateFrom, dateTo) {
     ORDER BY date ASC, time ASC
   `).all(from, to);
 
-  const restaurantSales = entries.reduce((s, e) => s + Number(e.total || 0), 0);
+  const restaurantEntries = entries.filter((e) => !isRecepsionCheckoutReceipt(e.receipt_number));
+  const receptionEntries = entries.filter((e) => isRecepsionCheckoutReceipt(e.receipt_number));
+  const restaurantSales = restaurantEntries.reduce((s, e) => s + Number(e.total || 0), 0);
+  const receptionSales = receptionEntries.reduce((s, e) => s + Number(e.total || 0), 0);
   const totalDiscount = entries.reduce((s, e) => s + Number(e.discount_total || 0), 0);
-  const orderCount = entries.length;
+  const orderCount = restaurantEntries.length;
   const hotelRev = collectHotelReportRevenue({ from, to });
   const totalSales = roundReportMoney(
-    restaurantSales + hotelRev.hotelNights + hotelRev.hotelServices,
+    restaurantSales + receptionSales + hotelRev.hotelNights + hotelRev.hotelServices,
   );
   const average = orderCount ? restaurantSales / orderCount : 0;
 
   const promoMap = {};
-  for (const e of entries) {
+  for (const e of restaurantEntries) {
     const disc = Number(e.discount_total) || 0;
     const name = String(e.promotion_name || "").trim();
     if (disc <= 0 || !name) continue;
@@ -6368,7 +6376,7 @@ function getReports(dateFrom, dateTo) {
 
   const itemCounts = {};
   const itemRevenue = {};
-  for (const e of entries) {
+  for (const e of restaurantEntries) {
     for (const it of JSON.parse(e.items_json || "[]")) {
       const name = String(it.name || "").trim();
       if (!name) continue;
@@ -6393,27 +6401,32 @@ function getReports(dateFrom, dateTo) {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       dailyMap.set(d.toISOString().slice(0, 10), {
         restaurant: 0,
+        reception: 0,
         nights: 0,
         services: 0,
         total: 0,
       });
     }
   }
-  for (const e of entries) {
+  for (const e of restaurantEntries) {
     const day = String(e.date || "").slice(0, 10);
     if (!dailyMap.has(day)) continue;
-    const row = dailyMap.get(day);
-    row.restaurant += Number(e.total || 0);
+    dailyMap.get(day).restaurant += Number(e.total || 0);
+  }
+  for (const e of receptionEntries) {
+    const day = String(e.date || "").slice(0, 10);
+    if (!dailyMap.has(day)) continue;
+    dailyMap.get(day).reception += Number(e.total || 0);
   }
   for (const [day, amt] of hotelRev.nightsByDay) {
     if (!dailyMap.has(day)) {
-      dailyMap.set(day, { restaurant: 0, nights: 0, services: 0, total: 0 });
+      dailyMap.set(day, { restaurant: 0, reception: 0, nights: 0, services: 0, total: 0 });
     }
     dailyMap.get(day).nights += amt;
   }
   for (const [day, amt] of hotelRev.servicesByDay) {
     if (!dailyMap.has(day)) {
-      dailyMap.set(day, { restaurant: 0, nights: 0, services: 0, total: 0 });
+      dailyMap.set(day, { restaurant: 0, reception: 0, nights: 0, services: 0, total: 0 });
     }
     dailyMap.get(day).services += amt;
   }
@@ -6421,26 +6434,31 @@ function getReports(dateFrom, dateTo) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, row]) => {
       const restaurant = roundReportMoney(row.restaurant);
+      const reception = roundReportMoney(row.reception || 0);
       const nights = roundReportMoney(row.nights);
       const services = roundReportMoney(row.services);
       return {
         date,
         restaurant,
+        reception,
         nights,
         services,
-        total: roundReportMoney(restaurant + nights + services),
+        total: roundReportMoney(restaurant + reception + nights + services),
       };
     });
 
   const restaurantRounded = roundReportMoney(restaurantSales);
+  const receptionRounded = roundReportMoney(receptionSales);
 
   return {
     totalSales,
     restaurantSales: restaurantRounded,
+    receptionSales: receptionRounded,
     hotelNights: hotelRev.hotelNights,
     hotelServices: hotelRev.hotelServices,
     by_source: {
       restaurant: restaurantRounded,
+      reception: receptionRounded,
       nights: hotelRev.hotelNights,
       services: hotelRev.hotelServices,
       total: totalSales,
@@ -7307,9 +7325,10 @@ function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId) {
   })();
 }
 
-function listShiftReports({ from, to, staff_id } = {}) {
+function listShiftReports({ from, to, staff_id, staff_role } = {}) {
   let sql = `
     SELECT ws.*,
+      st.staff_role,
       h.to_waiter_name AS handed_over_to_name,
       h.handover_cash,
       h.closing_discrepancy AS handover_closing_discrepancy,
@@ -7318,6 +7337,7 @@ function listShiftReports({ from, to, staff_id } = {}) {
       h.status AS handover_status,
       h.accepted_at AS handover_accepted_at
     FROM waiter_shifts ws
+    LEFT JOIN staff st ON st.id = ws.staff_id
     LEFT JOIN shift_handovers h ON h.from_shift_id = ws.id
     WHERE ws.closed_at IS NOT NULL
   `;
@@ -7334,9 +7354,15 @@ function listShiftReports({ from, to, staff_id } = {}) {
     sql += " AND ws.staff_id = ?";
     params.push(Number(staff_id));
   }
+  if (staff_role) {
+    const role = normalizeStaffRole(staff_role);
+    sql += " AND LOWER(TRIM(COALESCE(st.staff_role, 'kamarier'))) = ?";
+    params.push(role);
+  }
   sql += " ORDER BY ws.closed_at DESC, ws.id DESC LIMIT 500";
   return sqlite.prepare(sql).all(...params).map(row => ({
     ...row,
+    staff_role: normalizeStaffRole(row.staff_role),
     opening_cash: row.opening_cash != null ? Number(row.opening_cash) : 0,
     closing_cash_actual: row.closing_cash_actual != null ? Number(row.closing_cash_actual) : null,
     expected_closing_cash: row.expected_closing_cash != null ? Number(row.expected_closing_cash) : null,
@@ -10508,7 +10534,14 @@ function getDitari(opts = {}) {
   }));
 
   const completedRestaurant = parsed.filter(e => e.status !== "cancelled");
-  const restaurantSales = completedRestaurant.reduce((s, e) => s + Number(e.total || 0), 0);
+  const completedRestOnly = completedRestaurant.filter(
+    (e) => !isRecepsionCheckoutReceipt(e.receipt_number),
+  );
+  const completedReception = completedRestaurant.filter((e) =>
+    isRecepsionCheckoutReceipt(e.receipt_number),
+  );
+  const restaurantSales = completedRestOnly.reduce((s, e) => s + Number(e.total || 0), 0);
+  const receptionSales = completedReception.reduce((s, e) => s + Number(e.total || 0), 0);
 
   const hotelRev = collectHotelReportRevenue({
     from: range.dateFrom,
@@ -10530,15 +10563,15 @@ function getDitari(opts = {}) {
   });
 
   const totalSales = roundReportMoney(
-    restaurantSales + hotelRev.hotelNights + hotelRev.hotelServices,
+    restaurantSales + receptionSales + hotelRev.hotelNights + hotelRev.hotelServices,
   );
-  const totalCash = completedRestaurant
+  const totalCash = completedRestOnly
     .filter(e => normalizePaymentMethod(e.payment_method) === "cash")
     .reduce((s, e) => s + e.total, 0);
-  const totalKarte = completedRestaurant
+  const totalKarte = completedRestOnly
     .filter(e => normalizePaymentMethod(e.payment_method) === "karte")
     .reduce((s, e) => s + e.total, 0);
-  const tablesServed = new Set(completedRestaurant.map(e => e.table_number)).size;
+  const tablesServed = new Set(completedRestOnly.map(e => e.table_number)).size;
   const activity = getActivityLog(range.fromDatetime, range.toDatetime);
 
   return {
@@ -10553,17 +10586,19 @@ function getDitari(opts = {}) {
     today: new Date().toLocaleDateString("sq-AL"),
     totalSales,
     restaurantSales: roundReportMoney(restaurantSales),
+    receptionSales: roundReportMoney(receptionSales),
     hotelNights: hotelRev.hotelNights,
     hotelServices: hotelRev.hotelServices,
     by_source: {
       restaurant: roundReportMoney(restaurantSales),
+      reception: roundReportMoney(receptionSales),
       nights: hotelRev.hotelNights,
       services: hotelRev.hotelServices,
       total: totalSales,
     },
     totalCash,
     totalKarte,
-    orderCount: completedRestaurant.length,
+    orderCount: completedRestOnly.length,
     hotelTransactionCount: hotelEntries.length,
     tablesServed,
     entries: allEntries,
@@ -10637,10 +10672,22 @@ function getDashboardOverview() {
     SELECT COALESCE(SUM(total), 0) AS t
     FROM daily_log
     WHERE date = ? AND status = 'completed'
+      AND (receipt_number IS NULL OR receipt_number NOT LIKE 'CO-%')
   `).get(today)?.t) || 0;
 
-  const dailyRevenueTotal =
-    Math.round((nightsRevenue + servicesRevenue + restaurantRevenue) * 100) / 100;
+  const receptionRevenue = Number(sqlite.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS t
+    FROM daily_log
+    WHERE date = ? AND status = 'completed'
+      AND receipt_number LIKE 'CO-%'
+  `).get(today)?.t) || 0;
+
+  const nightsServicesRevenue =
+    Math.round((nightsRevenue + servicesRevenue) * 100) / 100;
+
+  const dailyRevenueTotal = Math.round(
+    (restaurantRevenue + receptionRevenue + nightsRevenue + servicesRevenue) * 100,
+  ) / 100;
 
   const dayStats = getReservationDayStats(today);
   const reservationsToday =
@@ -10754,9 +10801,11 @@ function getDashboardOverview() {
     departures_count: Number(dayStats.departing_count || 0),
     occupancy_pct: occupancyPct,
     daily_revenue: {
+      restaurant: Math.round(restaurantRevenue * 100) / 100,
+      reception: Math.round(receptionRevenue * 100) / 100,
       nights: Math.round(nightsRevenue * 100) / 100,
       services: Math.round(servicesRevenue * 100) / 100,
-      restaurant: Math.round(restaurantRevenue * 100) / 100,
+      nights_services: nightsServicesRevenue,
       total: dailyRevenueTotal,
     },
     arrivals,
