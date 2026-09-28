@@ -1817,6 +1817,18 @@ app.get("/api/login/waiters", (_req, res) => {
   res.json({ waiters: db.getStaffForLogin() });
 });
 
+/** Roli i terminalit pas pairing (recepsion / kamarier) — lexohet nga login.html. */
+app.get("/api/login/terminal-role", (_req, res) => {
+  try {
+    const license = require("./license");
+    const eapp = electronApp();
+    const terminal_role = license.readTerminalRole(eapp) || null;
+    res.json({ ok: true, terminal_role });
+  } catch (e) {
+    res.json({ ok: false, terminal_role: null, gabim: e.message || String(e) });
+  }
+});
+
 /** Bootstrap për link personal ?w=token — tregon emrin e kamarierit para PIN. */
 app.get("/api/login/waiter-bootstrap", (req, res) => {
   try {
@@ -8361,6 +8373,111 @@ app.post("/api/fiscal-register/test", auth, adminOnly, async (_req, res) => {
     }
   } catch (e) {
     res.status(400).json({ gabim: e.message });
+  }
+});
+
+function storedLicenseKeyForCloud() {
+  const eapp = electronApp();
+  if (!eapp) return "";
+  try {
+    license.registerInstallContext(eapp);
+  } catch {
+    /* ignore */
+  }
+  return String(license.readStoredLicense(eapp) || "").trim();
+}
+
+async function cloudTerminalJson(method, apiPath, payload) {
+  const cloudHealth = require("./cloud-health");
+  const { hotelCloudApiPath } = require("./cloud-server-url");
+  const res = await cloudHealth.requestJsonWithFallback(
+    method,
+    hotelCloudApiPath(apiPath),
+    payload,
+  );
+  let parsed = {};
+  try {
+    parsed = JSON.parse(res.data || "{}");
+  } catch {
+    parsed = {};
+  }
+  return { status: res.status, parsed };
+}
+
+app.post("/api/admin/generate-pair-code", auth, adminOnly, async (req, res) => {
+  try {
+    const celesi = storedLicenseKeyForCloud();
+    if (!celesi) {
+      return res.status(400).json({ ok: false, gabim: "Nuk ka licencë aktive në këtë POS." });
+    }
+    const roleRaw = String(req.body?.terminal_role || "kamarier").trim().toLowerCase();
+    const terminal_role = roleRaw === "recepsion" ? "recepsion" : "kamarier";
+    const { status, parsed } = await cloudTerminalJson("POST", "/api/v1/terminal/generate-pair-code", {
+      celesi,
+      terminal_role,
+    });
+    if (status >= 400 || parsed.ok === false) {
+      return res.status(status >= 400 ? status : 400).json({
+        ok: false,
+        gabim: parsed.gabim || parsed.message || "Nuk u gjenerua kodi.",
+      });
+    }
+    res.status(201).json(parsed);
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || "Gabim cloud." });
+  }
+});
+
+app.get("/api/admin/terminals", auth, adminOnly, async (_req, res) => {
+  try {
+    const celesi = storedLicenseKeyForCloud();
+    if (!celesi) {
+      return res.json({ ok: true, terminals: [], max_terminals: 1 });
+    }
+    const qs = new URLSearchParams({ celesi }).toString();
+    const { status, parsed } = await cloudTerminalJson(
+      "GET",
+      `/api/v1/terminal/terminals?${qs}`,
+      null,
+    );
+    if (status >= 400 || parsed.ok === false) {
+      return res.status(status >= 400 ? status : 502).json({
+        ok: false,
+        terminals: [],
+        gabim: parsed.gabim || "Nuk u lexua lista e terminaleve.",
+      });
+    }
+    res.json(parsed);
+  } catch (e) {
+    res.status(500).json({ ok: false, terminals: [], gabim: e.message || "Gabim cloud." });
+  }
+});
+
+app.delete("/api/admin/terminals/:deviceId", auth, adminOnly, async (req, res) => {
+  try {
+    const celesi = storedLicenseKeyForCloud();
+    if (!celesi) {
+      return res.status(400).json({ ok: false, gabim: "Nuk ka licencë aktive." });
+    }
+    const deviceId = encodeURIComponent(String(req.params.deviceId || "").trim());
+    if (!deviceId) {
+      return res.status(400).json({ ok: false, gabim: "Mungon pajisja." });
+    }
+    const qs = new URLSearchParams({ celesi }).toString();
+    const { status, parsed } = await cloudTerminalJson(
+      "DELETE",
+      `/api/v1/terminal/terminals/${deviceId}?${qs}`,
+      null,
+    );
+    if (status >= 400 || parsed.ok === false) {
+      return res.status(status >= 400 ? status : 400).json({
+        ok: false,
+        gabim: parsed.gabim || "Nuk u hoq terminali.",
+      });
+    }
+    res.json(parsed);
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || "Gabim cloud." });
   }
 });
 

@@ -694,6 +694,32 @@
 
     syncLoginRoleButtons();
 
+    (async function applyTerminalRoleFromPairing() {
+      if (isStaffOnlyLoginMode) return;
+      try {
+        const tr = await fetch("/api/login/terminal-role").then((r) => r.json());
+        const bound = tr?.terminal_role;
+        if (bound !== "recepsion" && bound !== "kamarier") return;
+        selectedPinLoginMode = bound;
+        syncLoginRoleButtons();
+        const pick = document.getElementById("login-staff-role-pick");
+        if (pick) pick.hidden = true;
+        const head = document.querySelector(".staff-main-head h1");
+        const sub = document.querySelector(".staff-main-head p");
+        if (head) {
+          head.textContent = bound === "recepsion" ? "Recepsion" : "Restoranti";
+        }
+        if (sub) {
+          sub.textContent =
+            bound === "recepsion"
+              ? "Terminal recepsioni — shkruani PIN-in (4 shifra)."
+              : "Terminal restorant — shkruani PIN-in (4 shifra).";
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+
     if (isStaffOnlyLoginMode) {
       document.documentElement.classList.add("login-mode-staff");
       selectedPinLoginMode = staffLoginMode;

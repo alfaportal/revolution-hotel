@@ -624,6 +624,63 @@ function verifyStoredHardwareKey(rec, app, hardwareId) {
 }
 
 /** Hardware key SHA256 OSE çelës cloud i ruajtur më parë (source=cloud). */
+function normalizePairJoinCode(raw) {
+  let c = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!c) return "";
+  if (!c.includes("-") && /^HTL[A-Z0-9]{4,}$/.test(c)) {
+    c = `HTL-${c.slice(3)}`;
+  }
+  if (!/^HTL-[A-Z0-9]{4}$/.test(c) && /^[A-Z0-9]{4}$/.test(c)) {
+    c = `HTL-${c}`;
+  }
+  return c;
+}
+
+async function joinTerminalWithPairCode(app, { code, email, terminal_role_ui }) {
+  const license = require(path.join(__dirname, "..", "license"));
+  const cloudHealth = require(path.join(__dirname, "..", "cloud-health"));
+  const pairCode = normalizePairJoinCode(code);
+  if (!pairCode) {
+    throw new Error("Shkruani kodin e lidhjes (p.sh. HTL-7X2K).");
+  }
+  const device_id = license.getMachineId();
+  const hardware_id = license.getHardwareIdForDisplay(app);
+  const res = await cloudHealth.requestJsonWithFallback("POST", "/api/v1/terminal/join", {
+    code: pairCode,
+    device_id,
+    hardware_id,
+    hostname: require("os").hostname(),
+  });
+  let parsed = {};
+  try {
+    parsed = JSON.parse(res.data || "{}");
+  } catch {
+    parsed = {};
+  }
+  if (res.status >= 400 || parsed.ok === false) {
+    const msg = parsed.gabim || parsed.message || `Gabim serveri (HTTP ${res.status}).`;
+    throw new Error(msg);
+  }
+  const celesi = String(parsed.celesi || "").trim();
+  if (!celesi) {
+    throw new Error("Serveri nuk ktheu çelësin e licencës.");
+  }
+  const contactEmail = String(email || "").trim().toLowerCase();
+  await license.activateWithKey(app, celesi, { contact_email: contactEmail });
+  writeStoredLicenseKey(app, celesi, { source: "cloud", email: contactEmail });
+  const uiRole = String(terminal_role_ui || "").trim().toLowerCase();
+  let role =
+    parsed.terminal_role === "recepsion" || parsed.terminal_role === "kamarier"
+      ? parsed.terminal_role
+      : uiRole === "recepsion" || uiRole === "kamarier"
+        ? uiRole
+        : "kamarier";
+  if (typeof license.writeTerminalRole === "function") {
+    license.writeTerminalRole(app, role);
+  }
+  return { ok: true, terminal_role: role, celesi };
+}
+
 function isHardwareUnlocked(app, hardwareId) {
   const rec = readStoredLicenseRecord(app);
   if (!rec || !rec.key) return false;
@@ -680,6 +737,7 @@ function promptHardwareActivation(app, opts = {}) {
         ipcMain.removeHandler("hw-lic-close");
         ipcMain.removeHandler("hw-lic-whatsapp");
         ipcMain.removeHandler("hw-lic-poll-cloud");
+        ipcMain.removeHandler("hw-lic-join");
       } catch {
         /* ignore */
       }
@@ -694,7 +752,7 @@ function promptHardwareActivation(app, opts = {}) {
     const { shell } = require("electron");
     const win = new BrowserWindow({
       width: 560,
-      height: 720,
+      height: 820,
       fullscreen: false,
       frame: true,
       resizable: true,
@@ -738,6 +796,15 @@ function promptHardwareActivation(app, opts = {}) {
       .err{color:#f87171;min-height:1.3em;margin-top:10px;font-size:.9rem;white-space:pre-wrap}
       .phone{margin-top:14px;padding-top:14px;border-top:1px solid #334155;color:#cbd5e1;font-size:.95rem;line-height:1.45}
       .phone b{color:#25D366}
+      .pair-divider{display:flex;align-items:center;gap:10px;margin:18px 0 14px;color:#64748b;font-size:.82rem;text-transform:uppercase;letter-spacing:.08em}
+      .pair-divider::before,.pair-divider::after{content:"";flex:1;height:1px;background:#334155}
+      .pair-block{margin:0 0 8px}
+      .pair-block .pair-title{margin:0 0 6px;font-size:1rem;font-weight:700;color:#f1f5f9}
+      .pair-block .pair-hint{margin:0 0 10px;color:#94a3b8;font-size:.88rem;line-height:1.4}
+      .pair-block select{width:100%;box-sizing:border-box;padding:12px;font-size:.95rem;border:2px solid #475569;border-radius:10px;background:#020617;color:#f8fafc;margin:0 0 10px}
+      button.pair-join{margin-top:4px;width:100%;padding:13px;font-size:1rem;font-weight:600;background:#0d9488;color:#fff;border:none;border-radius:10px;cursor:pointer}
+      button.pair-join:disabled{background:#64748b;cursor:wait}
+      .pair-err{color:#fbbf24;min-height:1.2em;margin:6px 0 0;font-size:.88rem;white-space:pre-wrap}
     </style></head><body><div class="wrap"><div class="card">
       <button type="button" class="btn-close" id="x" title="Mbyll" aria-label="Mbyll">×</button>
       <h1>Aktivizo Revolution HOTEL</h1>
@@ -751,6 +818,18 @@ function promptHardwareActivation(app, opts = {}) {
       <input id="k" class="key" type="text" placeholder="Shkruaj ose ngjit çelësin" autocomplete="off" spellcheck="false" inputmode="text" autocapitalize="characters">
       <div class="err" id="e"></div>
       <button type="button" class="primary" id="b">Aktivizo</button>
+      <div class="pair-divider" aria-hidden="true">ose</div>
+      <div class="pair-block">
+        <p class="pair-title">Lidhu me hotel ekzistues</p>
+        <p class="pair-hint">Keni kod lidhës nga pronari?</p>
+        <input id="pair-code" type="text" placeholder="Shkruaj kodin (p.sh. HTL-7X2K)" autocomplete="off" spellcheck="false" autocapitalize="characters">
+        <select id="pair-role" aria-label="Roli i terminalit">
+          <option value="recepsion">Recepsion</option>
+          <option value="kamarier" selected>Restorant</option>
+        </select>
+        <div class="pair-err" id="pair-e"></div>
+        <button type="button" class="pair-join" id="pair-join">Lidhu</button>
+      </div>
       <button type="button" class="ghost" id="c">Mbyll</button>
       <p class="phone">WhatsApp / tel: <b>${CONTACT_PHONE}</b><br>Dërgoni foto të ID-së (këto numra) për aktivizim.<br>Duke pritur regjistrimin nga admini…</p>
     </div></div>
@@ -795,6 +874,34 @@ function promptHardwareActivation(app, opts = {}) {
         if (e.key === 'Enter' && !btn.disabled) submit();
         if (e.key === 'Escape') quitApp();
       });
+      const pairBtn = document.getElementById('pair-join');
+      const pairCode = document.getElementById('pair-code');
+      const pairRole = document.getElementById('pair-role');
+      const pairErr = document.getElementById('pair-e');
+      async function submitPair() {
+        const code = String(pairCode.value || '').trim();
+        if (!code) { pairErr.textContent = 'Shkruani kodin e lidhjes.'; return; }
+        pairBtn.disabled = true;
+        pairBtn.textContent = 'Duke u lidhur...';
+        pairErr.textContent = '';
+        try {
+          const r = await ipcRenderer.invoke('hw-lic-join', {
+            code,
+            email: String(emailEl.value || '').trim(),
+            terminal_role: String(pairRole.value || 'kamarier'),
+          });
+          if (r && r.ok) return;
+          pairErr.textContent = (r && r.message) || 'Lidhja dështoi.';
+        } catch (e) {
+          pairErr.textContent = e.message || String(e);
+        }
+        pairBtn.disabled = false;
+        pairBtn.textContent = 'Lidhu';
+      }
+      pairBtn.onclick = submitPair;
+      pairCode.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !pairBtn.disabled) submitPair();
+      });
       const poll = setInterval(async () => {
         try {
           const r = await ipcRenderer.invoke('hw-lic-poll-cloud');
@@ -836,6 +943,19 @@ function promptHardwareActivation(app, opts = {}) {
         await shell.openExternal(
           buildWhatsAppActivationUrl(payload?.hardware_id || hwFormatted, payload?.email),
         );
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, message: err.message || String(err) };
+      }
+    });
+
+    ipcMain.handle("hw-lic-join", async (_e, payload) => {
+      try {
+        const code = String(payload?.code || "").trim();
+        const email = String(payload?.email || "").trim().toLowerCase();
+        const terminal_role_ui = String(payload?.terminal_role || "").trim().toLowerCase();
+        await joinTerminalWithPairCode(app, { code, email, terminal_role_ui });
+        finish(true);
         return { ok: true };
       } catch (err) {
         return { ok: false, message: err.message || String(err) };

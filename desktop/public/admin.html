@@ -1619,6 +1619,28 @@
       text-transform: uppercase;
     }
 
+    .terminal-pair-code-value {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-align: center;
+      padding: 1rem 0.75rem;
+      margin: 0.5rem 0;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 2px dashed #38bdf8;
+      color: #f8fafc;
+      user-select: all;
+    }
+    .terminals-admin-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 0.75rem; }
+    .terminals-admin-table th, .terminals-admin-table td {
+      padding: 0.5rem 0.4rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+      text-align: left;
+    }
+    .terminals-admin-table th { color: var(--ngjyr-muted, #94a3b8); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
     .license-actions {
       display: flex;
       flex-direction: column;
@@ -3750,6 +3772,45 @@
             <button type="button" class="btn btn-primary" id="btn-license-save">Ruaj licencën</button>
           </div>
           <div class="fiscal-save-msg" id="msg-license"></div>
+        </div>
+      </div>
+      <div class="card settings-card">
+        <div class="card-title">Terminalet</div>
+        <p style="margin:0 0 1rem;color:var(--ngjyr-muted);font-size:0.85rem">
+          Lidhni PC të ri (recepsion ose restorant) me kod lidhës — punonjësi e fut në ekranin e aktivizimit.
+        </p>
+        <div class="fiscal-field-row">
+          <label for="terminal-pair-role">Roli për kodin e ri</label>
+          <select id="terminal-pair-role" class="btn btn-ghost btn-sm" style="width:100%;max-width:280px;padding:0.55rem 0.65rem">
+            <option value="recepsion">Recepsion</option>
+            <option value="kamarier" selected>Restorant</option>
+          </select>
+        </div>
+        <div class="license-actions" style="margin-top:0.5rem">
+          <button type="button" class="btn btn-primary" id="btn-terminal-generate-pair">Gjeneroni kod lidhës</button>
+        </div>
+        <div id="terminal-pair-code-box" hidden style="margin-top:1rem">
+          <p class="settings-field-hint" style="margin:0 0 0.35rem">Kodi për punonjësin (tregojeni ose kopjoni)</p>
+          <div class="terminal-pair-code-value" id="terminal-pair-code-value">—</div>
+          <p class="settings-field-hint" id="terminal-pair-code-meta" style="margin:0.35rem 0 0"></p>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-terminal-copy-pair-code" style="margin-top:0.5rem">Kopjo kodin</button>
+        </div>
+        <div class="fiscal-save-msg" id="msg-terminal-pair"></div>
+        <h3 style="margin:1.25rem 0 0.5rem;font-size:0.95rem">Të lidhur</h3>
+        <div class="reports-table-wrap">
+          <table class="terminals-admin-table">
+            <thead>
+              <tr>
+                <th>Pajisja</th>
+                <th>Roli</th>
+                <th>Aktiv së fundi</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="terminals-admin-body">
+              <tr><td colspan="4" style="color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -5963,7 +6024,10 @@
       if (name === "fiskalizimi" && isHotelTabGateUnlocked("fiskalizimi")) ngarkoFiscalizimin();
       if (name === "audit" && isHotelTabGateUnlocked("audit")) { /* audit log */ }
       if (name === "paper-block") refreshPaperBlockUi().catch(() => {});
-      if (name === "licenca") ngarkoLicencen();
+      if (name === "licenca") {
+        ngarkoLicencen();
+        ngarkoTerminaletAdmin();
+      }
       if (name === "stafi") ngarkoStafin();
       if (name === "stoku") {
         ngarkoKategorite({ all: true })
@@ -17350,6 +17414,106 @@
       } catch {
         document.getElementById("license-machine-id").select();
         document.execCommand("copy");
+      }
+    });
+
+    function formatTerminalRoleLabel(role) {
+      return role === "recepsion" ? "Recepsion" : "Restorant";
+    }
+
+    function formatTerminalLastSeen(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso).slice(0, 16);
+        return d.toLocaleString("sq-AL", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } catch {
+        return "—";
+      }
+    }
+
+    async function ngarkoTerminaletAdmin() {
+      const tbody = document.getElementById("terminals-admin-body");
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td colspan="4" style="color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>`;
+      try {
+        const data = await api("/api/admin/terminals");
+        const rows = data.terminals || [];
+        if (!rows.length) {
+          tbody.innerHTML = `<tr><td colspan="4" style="color:var(--ngjyr-muted)">Nuk ka terminale të regjistruara.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows.map((t) => {
+          const host = escHtml(t.device_hostname || t.device_id || "—");
+          const dev = t.device_id ? `<span style="display:block;font-size:0.75rem;color:var(--ngjyr-muted)">${escHtml(t.device_id)}</span>` : "";
+          return `<tr>
+            <td>${host}${dev}</td>
+            <td>${escHtml(formatTerminalRoleLabel(t.terminal_role))}</td>
+            <td>${escHtml(formatTerminalLastSeen(t.last_seen_at))}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm btn-terminal-remove" data-device-id="${escHtml(t.device_id)}">Hiq</button></td>
+          </tr>`;
+        }).join("");
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="4" style="color:#b91c1c">${escHtml(err.message || "Gabim")}</td></tr>`;
+      }
+    }
+
+    document.getElementById("btn-terminal-generate-pair")?.addEventListener("click", async () => {
+      const msg = document.getElementById("msg-terminal-pair");
+      const role = document.getElementById("terminal-pair-role")?.value || "kamarier";
+      const box = document.getElementById("terminal-pair-code-box");
+      const valEl = document.getElementById("terminal-pair-code-value");
+      const meta = document.getElementById("terminal-pair-code-meta");
+      if (msg) msg.textContent = "";
+      try {
+        const data = await api("/api/admin/generate-pair-code", {
+          method: "POST",
+          body: JSON.stringify({ terminal_role: role }),
+        });
+        if (valEl) valEl.textContent = data.code || "—";
+        if (box) box.hidden = !data.code;
+        if (meta) {
+          const exp = data.expires_at ? formatTerminalLastSeen(data.expires_at) : "";
+          meta.textContent = exp
+            ? `Roli: ${formatTerminalRoleLabel(data.terminal_role || role)} · skadon me licencën (${exp})`
+            : `Roli: ${formatTerminalRoleLabel(data.terminal_role || role)}`;
+        }
+      } catch (err) {
+        if (box) box.hidden = true;
+        if (msg) {
+          msg.textContent = err.message || "Nuk u gjenerua kodi.";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+      }
+    });
+
+    document.getElementById("btn-terminal-copy-pair-code")?.addEventListener("click", async () => {
+      const code = document.getElementById("terminal-pair-code-value")?.textContent?.trim();
+      if (!code || code === "—") return;
+      try {
+        await navigator.clipboard.writeText(code);
+      } catch {
+        /* ignore */
+      }
+    });
+
+    document.getElementById("terminals-admin-body")?.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".btn-terminal-remove");
+      if (!btn) return;
+      const deviceId = btn.getAttribute("data-device-id");
+      if (!deviceId) return;
+      if (!confirm(`Hiq terminalin ${deviceId}?`)) return;
+      try {
+        await api(`/api/admin/terminals/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+        await ngarkoTerminaletAdmin();
+      } catch (err) {
+        alert(err.message || "Nuk u hoq.");
       }
     });
 

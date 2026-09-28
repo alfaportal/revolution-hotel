@@ -15,6 +15,7 @@ const ACTIVATION_FILE_BASENAMES = [
   ".lic-activated.json",
   ".lic-online",
   ".install-device-id",
+  ".terminal-role",
 ];
 
 /** Hotel — licencë e ndarë (HotelLicense). */
@@ -235,6 +236,48 @@ function requestJson(method, _baseUrl, reqPath, payload) {
 
 function activationRecordPath(app) {
   return path.join(licenseStorageRoot(app), ".lic-activated.json");
+}
+
+function terminalRolePath(app) {
+  return path.join(licenseStorageRoot(app), ".terminal-role");
+}
+
+/** Pas pairing terminali — "recepsion" | "kamarier" (restorant). */
+function readTerminalRole(app) {
+  const ea = app || _electronApp;
+  if (!ea) return "";
+  try {
+    const p = terminalRolePath(ea);
+    if (!p || !fs.existsSync(p)) return "";
+    const raw = String(fs.readFileSync(p, "utf8") || "").trim().toLowerCase();
+    return raw === "recepsion" ? "recepsion" : raw === "kamarier" ? "kamarier" : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeTerminalRole(app, role) {
+  const ea = app || _electronApp;
+  if (!ea) return;
+  registerInstallContext(ea);
+  const r = String(role || "").trim().toLowerCase();
+  const norm = r === "recepsion" ? "recepsion" : "kamarier";
+  try {
+    fs.writeFileSync(terminalRolePath(ea), norm, "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearTerminalRole(app) {
+  const ea = app || _electronApp;
+  if (!ea) return;
+  try {
+    const p = terminalRolePath(ea);
+    if (p && fs.existsSync(p)) fs.unlinkSync(p);
+  } catch {
+    /* ignore */
+  }
 }
 
 function keyHash(key) {
@@ -1591,4 +1634,7 @@ module.exports = {
   REVOCATION_FAIL_CODES,
   clearLicenseRevokedLocally,
   readLocalRevokeBlock,
+  readTerminalRole,
+  writeTerminalRole,
+  clearTerminalRole,
 };
