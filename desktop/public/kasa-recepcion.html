@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>Kasa recepsion — Revolution HOTEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a1628;
+      --bg-elevated: #0f2137;
+      --card: #132238;
+      --soft: #1a2d4a;
+      --border: #243b5c;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+      --ok: #22c55e;
+      --danger: #ef4444;
+      --radius: 12px;
+      --radius-lg: 16px;
+      --touch-min: 48px;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, sans-serif;
+    }
+    .ui-sr-check {
+      position: fixed;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+      left: -9999px;
+    }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .4rem .85rem;
+      gap: .65rem;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      min-height: 48px;
+    }
+    .top-left { display: flex; align-items: center; gap: .65rem; flex-shrink: 0; }
+    .top-logo { height: 36px; width: auto; max-width: 120px; object-fit: contain; }
+    .top-kasa-link {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: .03em;
+    }
+    .top-kasa-link:hover { color: var(--accent); }
+    .top-bar-rest {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .55rem;
+    }
+    .who {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: right;
+      font-size: .76rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .who b { color: var(--text); }
+    .kasa-btn-exit {
+      min-width: 72px;
+      min-height: 40px;
+      padding: .4rem .85rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--danger);
+      color: #fff;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: .88rem;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+    }
+    .wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+      gap: 0;
+      overflow: hidden;
+    }
+    .card {
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .col-cart {
+      position: relative;
+      background: linear-gradient(180deg, #121c30 0%, #0f172a 100%);
+      padding: .65rem .75rem;
+      border-right: 1px solid var(--border);
+    }
+    .col-cart .kasa-module-nav {
+      margin: -.65rem -.75rem .5rem;
+      padding: .45rem .75rem;
+    }
+    .kasa-work-host {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .kasa-cart-pane {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .col-cart.is-module-open .kasa-cart-pane {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .checkout-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+    .cart-header { text-align: center; flex-shrink: 0; margin-bottom: .5rem; }
+    .cart-header .basket-label {
+      display: block;
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .cart-head-meta {
+      display: block;
+      margin-top: .25rem;
+      font-size: .85rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    #scan {
+      width: 100%;
+      max-width: 720px;
+      margin: .5rem auto .65rem;
+      display: block;
+      padding: .85rem 1rem;
+      font-size: 1.05rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+      text-align: center;
+    }
+    #scan:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, .2);
+    }
+    .checkout-mid {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+    }
+    .sale-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-elevated);
+    }
+    .cart-list { display: flex; flex-direction: column; margin: 0; padding: 0; }
+    .cart-empty-inline {
+      color: var(--muted);
+      text-align: center;
+      padding: 2rem 1rem;
+      font-size: .95rem;
+    }
+    .cart-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: .5rem .65rem;
+      align-items: center;
+      padding: .75rem .85rem;
+      border-bottom: 1px solid var(--border);
+      font-size: .88rem;
+    }
+    .cart-row:last-child { border-bottom: none; }
+    .cart-row.flash-line { animation: lineflash .7s ease; background: rgba(34, 211, 238, .08); }
+    @keyframes lineflash {
+      0% { background: rgba(249, 115, 22, .25); }
+      100% { background: transparent; }
+    }
+    .cart-name-cell { font-weight: 600; line-height: 1.35; min-width: 0; }
+    .cart-qty-cell { display: inline-flex; align-items: center; gap: 4px; }
+    .cart-qty-cell .qty {
+      width: 4rem;
+      padding: .35rem;
+      font-size: .88rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--soft);
+      color: var(--text);
+    }
+    .cart-price-cell { white-space: nowrap; font-weight: 800; color: var(--accent); }
+    .cart-row button.cart-rm, .cart-row button.qty-btn {
+      min-width: var(--touch-min);
+      min-height: var(--touch-min);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--soft);
+      color: var(--text);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .cart-row button.cart-rm { background: rgba(239, 68, 68, .15); color: #fecaca; font-size: 1.1rem; }
+    .cart-totals-block {
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--card);
+      overflow: hidden;
+    }
+    .cart-total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .85rem 1rem;
+      background: linear-gradient(90deg, #0f2840 0%, #132238 100%);
+    }
+    .cart-total-label {
+      font-size: .8rem;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    #total { font-size: 1.75rem; font-weight: 900; color: var(--accent); }
+    .kasa-module-nav {
+      flex-shrink: 0;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 12;
+    }
+    .main-cat-bar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: .45rem;
+      flex-shrink: 0;
+      margin: 0;
+    }
+    .main-cat-bar button {
+      min-height: var(--touch-min);
+      padding: .55rem .4rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #1e3a5f, #172554);
+      color: #e0f2fe;
+      font-weight: 800;
+      font-size: .78rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .main-cat-bar button.on {
+      background: linear-gradient(180deg, #ff7a45, #ea580c);
+      border-color: #fb923c;
+      color: #fff;
+    }
+    .recep-module-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 11;
+      background: #eef2f7;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+    }
+    .recep-module-overlay[hidden] { display: none !important; }
+    .recep-module-toolbar {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .5rem;
+      padding: .35rem .5rem;
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .recep-module-close {
+      min-height: 40px;
+      padding: .4rem .85rem;
+      background: var(--danger);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: .82rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .recep-module-frame {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      border: 0;
+      background: #fff;
+    }
+    .svc-cat-grid-rc {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+      gap: .75rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding-bottom: 1rem;
+    }
+    .svc-card-rc {
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
+      min-height: 168px;
+      padding: 0;
+    }
+    .svc-card-rc:active { transform: scale(0.98); }
+    .svc-card-rc .svc-card-photo-wrap {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #e2e8f0;
+      overflow: hidden;
+    }
+    .svc-card-rc .svc-card-photo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .svc-card-rc .svc-card-body {
+      padding: .65rem .7rem .75rem;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: .2rem;
+    }
+    .svc-card-rc .svc-card-name { font-weight: 800; color: #0f172a; font-size: .9rem; line-height: 1.25; }
+    .svc-card-rc .svc-card-price { font-weight: 800; color: #0f766e; font-size: .9rem; margin-top: auto; }
+    .svc-card-rc .svc-card-mode { font-size: .68rem; font-weight: 700; color: #64748b; }
+    .cart-table-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-elevated);
+    }
+    table.cart-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .88rem;
+    }
+    table.cart-table thead th {
+      position: sticky;
+      top: 0;
+      background: #0f2840;
+      color: var(--text);
+      font-weight: 800;
+      text-align: left;
+      padding: .6rem .65rem;
+      border-bottom: 1px solid var(--border);
+    }
+    table.cart-table tbody td {
+      padding: .55rem .65rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    table.cart-table tbody tr:last-child td { border-bottom: none; }
+    table.cart-table .cart-empty td {
+      text-align: center;
+      color: var(--muted);
+      padding: 2rem .65rem;
+    }
+    .cart-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .45rem;
+      flex-shrink: 0;
+      margin-top: .45rem;
+    }
+    .cart-action-btn {
+      min-height: var(--touch-min);
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 800;
+      font-size: .82rem;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: .5rem .35rem;
+      color: #e0f2fe;
+      background: linear-gradient(180deg, #1e3a5f, #172554);
+      border: 1px solid #38bdf866;
+    }
+    .cart-action-hint {
+      background: var(--soft);
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      cursor: default;
+      font-weight: 600;
+      font-size: .72rem;
+    }
+    label.cart-action-cat { margin: 0; }
+
+    .col-pay.market-checkout-panel {
+      background: #0f172a66;
+      padding: .45rem .5rem .4rem;
+      border-left: 1px solid #2d3f5c;
+    }
+    .col-pay.market-checkout-panel .checkout-head { margin-bottom: .35rem; }
+    .col-pay.market-checkout-panel .basket-label {
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #cbd5e1;
+    }
+    .col-pay.market-checkout-panel .checkout-mid {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      gap: 6px;
+    }
+    .col-pay.market-checkout-panel .pay-method-card {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) 72px;
+      gap: 6px;
+      align-items: center;
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #2d3f5c;
+      border-radius: 8px;
+      background: #111827;
+      color: #f1f5f9;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      min-height: 44px;
+    }
+    .col-pay.market-checkout-panel .pay-method-card.on {
+      border-color: #22c55e88;
+      background: rgba(34, 197, 94, 0.12);
+    }
+    .col-pay.market-checkout-panel .pay-method-card .pay-method-check {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1px solid #2d3f5c;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .72rem;
+      color: transparent;
+    }
+    .col-pay.market-checkout-panel .pay-method-card.on .pay-method-check {
+      border-color: #22c55e;
+      background: #22c55e;
+      color: #052e16;
+      font-weight: 900;
+    }
+    .col-pay.market-checkout-panel .pay-method-card .pay-method-label {
+      font-size: 0.78rem;
+      font-weight: 650;
+    }
+    .col-pay.market-checkout-panel .pay-method-card .pay-checkout-amt {
+      width: 100%;
+      margin: 0;
+      padding: 4px 6px;
+      font-size: 0.78rem;
+      height: 30px;
+      text-align: right;
+      background: #111827;
+      border: 1px solid #2d3f5c;
+      color: #f1f5f9;
+      border-radius: 8px;
+    }
+    .col-pay.market-checkout-panel .pay-cash-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid #2d3f5c;
+      border-radius: 8px;
+      background: #111827;
+    }
+    .col-pay.market-checkout-panel .pay-cash-box label {
+      display: block;
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+    .col-pay.market-checkout-panel .pay-cash-box input {
+      width: 100%;
+      font-size: 1.1rem;
+      font-weight: 800;
+      height: 40px;
+      padding: 6px 8px;
+      background: #111827;
+      border: 1px solid #2d3f5c;
+      color: #f1f5f9;
+      border-radius: 8px;
+    }
+    .col-pay.market-checkout-panel .pay-change-val {
+      font-size: 1.35rem;
+      font-weight: 900;
+      color: #4ade80;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+    }
+    .col-pay.market-checkout-panel .pay-change-val.zero { color: #94a3b8; font-size: 1rem; }
+    .col-pay.market-checkout-panel .checkout-foot {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 1px solid #2d3f5c;
+      padding-top: .4rem;
+    }
+    .col-pay.market-checkout-panel .checkout-pay-shortcuts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+    .col-pay.market-checkout-panel .btn-pay-quick {
+      min-height: var(--touch-min);
+      padding: 10px 8px;
+      font-size: 0.88rem;
+      font-weight: 800;
+      border: 1px solid #2d3f5c;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      background: linear-gradient(180deg, #1e3a5f, #172554);
+      color: #e0f2fe;
+    }
+    .col-pay.market-checkout-panel .checkout-pay-actions .btn {
+      min-height: var(--touch-min);
+      padding: 10px 8px;
+      font-size: 0.88rem;
+      font-weight: 800;
+      border-radius: 8px;
+      width: 100%;
+      cursor: pointer;
+      font-family: inherit;
+      border: none;
+    }
+    .col-pay.market-checkout-panel #btn-paguaj {
+      background: linear-gradient(180deg, #4ade80, #16a34a);
+      color: #052e16;
+    }
+    .col-pay.market-checkout-panel #btn-clear-cart {
+      background: #1a2740;
+      color: #f1f5f9;
+      border: 1px solid #2d3f5c;
+    }
+    .col-pay.market-checkout-panel #msg {
+      min-height: 32px;
+      padding: 6px 8px;
+      font-size: 0.78rem;
+      border: 1px solid #2d3f5c;
+      border-radius: 6px;
+      background: #111827;
+      color: #94a3b8;
+    }
+    .col-pay.market-checkout-panel #msg:not(:empty) {
+      color: #86efac;
+      border-color: #166534;
+      background: rgba(22, 101, 52, 0.15);
+    }
+    .pay-mixed-status {
+      font-size: 0.78rem;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #2d3f5c;
+      background: rgba(34, 197, 94, 0.08);
+      color: #86efac;
+    }
+    .pay-mixed-status.mismatch {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: #ef4444;
+      color: #fecaca;
+    }
+    .pay-mixed-status.hidden { display: none !important; }
+
+    .catalog-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      background: rgba(5, 12, 24, .92);
+      grid-template-columns: minmax(140px, 22%) minmax(0, 1fr);
+      gap: 0;
+      padding: 3.5rem 1rem 1rem;
+    }
+    body:has(#ui-catalog-open:checked) .catalog-panel { display: grid; }
+    .catalog-panel-close {
+      position: fixed;
+      top: .75rem;
+      right: 1rem;
+      z-index: 46;
+      min-height: 44px;
+      padding: .5rem 1rem;
+      background: var(--danger);
+      color: #fff;
+      border-radius: 8px;
+      font-weight: 800;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+    }
+    .col-cats {
+      background: var(--bg-elevated);
+      border-radius: var(--radius) 0 0 var(--radius);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .cat-sidebar-head {
+      padding: .65rem .85rem;
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .cat-nav {
+      flex: 1;
+      overflow-y: auto;
+      padding: .45rem;
+      display: flex;
+      flex-direction: column;
+      gap: .35rem;
+    }
+    .cat-nav button {
+      width: 100%;
+      text-align: left;
+      padding: .75rem .85rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--soft);
+      color: var(--text);
+      font-weight: 700;
+      font-size: .82rem;
+      cursor: pointer;
+    }
+    .cat-nav button.on {
+      background: linear-gradient(180deg, #ff7a45, #ea580c);
+      border-color: #fb923c;
+      color: #fff;
+    }
+    .col-products {
+      background: var(--card);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      border: 1px solid var(--border);
+      border-left: none;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .products-head {
+      padding: .65rem .85rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .products-head h2 { margin: 0; font-size: 1rem; font-weight: 800; }
+    #touch-cat-search {
+      width: 100%;
+      margin-top: .5rem;
+      padding: .75rem .85rem;
+      font-size: 1rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+    }
+    .catalog-panel .touch-grid {
+      flex: 1;
+      overflow-y: auto;
+      padding: .65rem .75rem .85rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: .65rem;
+      align-content: start;
+    }
+    .catalog-panel .touch-grid button.svc-card {
+      appearance: none;
+      min-height: 88px;
+      padding: .65rem .75rem;
+      border-radius: 12px;
+      border: 1px solid #2d3f5c;
+      background: #132035;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: .65rem;
+      font-family: inherit;
+    }
+    .svc-card img {
+      width: 56px;
+      height: 56px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #0f172a;
+    }
+    .svc-card-text { min-width: 0; flex: 1; }
+    .svc-card-name { font-size: .92rem; font-weight: 700; line-height: 1.25; }
+    .svc-card-price { font-size: .95rem; font-weight: 800; color: var(--accent); margin-top: .2rem; }
+    .empty { color: var(--muted); padding: 1rem; text-align: center; grid-column: 1 / -1; }
+
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      .col-cart { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="top-left">
+      <img src="/img/revolution-logo.png" alt="Revolution" class="top-logo" width="120" height="36" />
+      <span class="top-kasa-link">Recepsion</span>
+      <a href="/recepcion.html" class="top-kasa-link" style="font-size:.85rem;font-weight:600;color:var(--muted)">Dhomat · Check-in</a>
+    </div>
+    <div class="top-bar-rest">
+      <div class="who" id="who"></div>
+      <button type="button" class="kasa-btn-exit" id="btn-close-shift" hidden>Mbyll arkën</button>
+      <a href="/login.html" class="kasa-btn-exit" data-dil="1">Dil</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section class="card col-cart checkout-panel" id="col-cart">
+      <nav class="kasa-module-nav main-cat-bar" id="main-cat-bar" aria-label="Module recepsioni"></nav>
+
+      <div class="kasa-work-host">
+        <div class="kasa-cart-pane" id="kasa-cart-pane">
+          <header class="cart-header checkout-head">
+            <span class="basket-label">SHPORTA</span>
+            <span class="cart-head-meta"><strong id="cart-head-count">0</strong> shërb. · <span id="cart-head-qty">0</span> copë</span>
+          </header>
+
+          <div class="checkout-mid">
+            <div class="cart-table-wrap">
+              <table class="cart-table" id="cart-table">
+                <thead>
+                  <tr>
+                    <th>Shërbimi</th>
+                    <th>Sasia</th>
+                    <th>Çmimi</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="cart-tbody">
+                  <tr class="cart-empty"><td colspan="4">Lista është bosh — zgjidh shërbim ose shto nga dhoma.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cart-totals-block">
+              <div class="cart-total-row">
+                <span class="cart-total-label">TOTALI I PAGESËS</span>
+                <strong class="cart-total-amt" id="total">0.00 €</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="cart-actions">
+            <button type="button" class="cart-action-btn" id="btn-clear-all">Anulim</button>
+            <button type="button" class="cart-action-btn" id="btn-undo-line">Anulim i përkohshëm</button>
+          </div>
+        </div>
+
+        <div id="recep-module-overlay" class="recep-module-overlay" hidden>
+          <div class="recep-module-toolbar">
+            <button type="button" class="recep-module-close" id="recep-module-close">× Shporta / arkë</button>
+          </div>
+          <iframe
+            id="recep-module-frame"
+            class="recep-module-frame"
+            title="Recepsion — Revolution HOTEL"
+            src="about:blank"
+          ></iframe>
+        </div>
+      </div>
+    </section>
+
+    <section class="card col-pay checkout-panel market-checkout-panel">
+      <div class="checkout-head">
+        <span class="basket-label">MËNYRAT E PAGESËS</span>
+      </div>
+      <div class="checkout-mid checkout-pay-mid">
+        <div class="checkout-pay-methods" id="pay-checkout-cards">
+          <button type="button" class="pay-method-card on" data-pay-toggle="cash">
+            <span class="pay-method-check">✓</span>
+            <span class="pay-method-label">Para e gatshme</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="cash" min="0" step="0.01" value="0.00" disabled />
+          </button>
+          <button type="button" class="pay-method-card" data-pay-toggle="debit_card">
+            <span class="pay-method-check"></span>
+            <span class="pay-method-label">Debit kartelë</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="debit_card" min="0" step="0.01" value="0.00" disabled />
+          </button>
+          <button type="button" class="pay-method-card" data-pay-toggle="credit_card">
+            <span class="pay-method-check"></span>
+            <span class="pay-method-label">Kredit kartelë</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="credit_card" min="0" step="0.01" value="0.00" disabled />
+          </button>
+          <button type="button" class="pay-method-card" data-pay-toggle="sms">
+            <span class="pay-method-check"></span>
+            <span class="pay-method-label">Pagesë mobile / QR</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="sms" min="0" step="0.01" value="0.00" disabled />
+          </button>
+          <button type="button" class="pay-method-card" data-pay-toggle="check">
+            <span class="pay-method-check"></span>
+            <span class="pay-method-label">Çek</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="check" min="0" step="0.01" value="0.00" disabled />
+          </button>
+          <button type="button" class="pay-method-card" data-pay-toggle="bank_account">
+            <span class="pay-method-check"></span>
+            <span class="pay-method-label">Transfer bankar</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="bank_account" min="0" step="0.01" value="0.00" disabled />
+          </button>
+          <button type="button" class="pay-method-card" data-pay-toggle="voucher">
+            <span class="pay-method-check"></span>
+            <span class="pay-method-label">Voucher</span>
+            <input type="number" class="pay-checkout-amt" data-pay-id="voucher" min="0" step="0.01" value="0.00" disabled />
+          </button>
+        </div>
+        <div class="pay-cash-box" id="pay-cash-box">
+          <div>
+            <label for="pay-received">Pagesa e pranuar</label>
+            <input id="pay-received" type="number" min="0" step="0.01" value="0" placeholder="0.00" />
+          </div>
+          <div>
+            <label>Kusuri</label>
+            <div class="pay-change-val zero" id="pay-change">0.00 €</div>
+          </div>
+        </div>
+        <div id="pay-mixed-status" class="pay-mixed-status hidden" aria-live="polite"></div>
+      </div>
+      <div class="checkout-foot">
+        <div class="checkout-pay-shortcuts">
+          <button type="button" class="btn-pay-quick cash" id="pay-cash">Cash</button>
+          <button type="button" class="btn-pay-quick card" id="pay-card">Kartelë</button>
+        </div>
+        <div class="checkout-pay-actions">
+          <button type="button" class="btn" id="btn-paguaj">Paguaj</button>
+          <button type="button" class="btn" id="btn-clear-cart">Pastro shportën</button>
+        </div>
+        <p id="msg"></p>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/app.js?v=6"></script>
+  <script>
+    (function guardRecepsionSession() {
+      const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+      if (!u || u.roli !== "recepsion" || !u.token) {
+        window.location.replace("/login.html?mode=recepsion");
+        throw new Error("no session");
+      }
+      window.__recepUser = u;
+    })();
+
+    const user = window.__recepUser;
+    const RECEP_MODULES = [
+      { id: "rooms", label: "Dhomat" },
+      { id: "reservations", label: "Rezervimet" },
+      { id: "services", label: "Shërbimet" },
+      { id: "housekeeping", label: "Pastrimi" },
+      { id: "orders", label: "Porositë" },
+    ];
+
+    let catalog = { groups: [], services: [], categories: [] };
+    let servicesById = new Map();
+    let cart = [];
+    let shiftSummary = null;
+    let activeRecepView = null;
+    let primaryPay = "cash";
+    let multiPay = false;
+
+    function euro(n) {
+      return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + " €";
+    }
+
+    function servicePrice(svc) {
+      const p = svc?.price ?? svc?.default_price ?? svc?.unit_price;
+      return Math.round((Number(p) || 0) * 100) / 100;
+    }
+
+    function cartTotal() {
+      return cart.reduce((s, l) => s + l.price * l.qty, 0);
+    }
+
+    function payable() {
+      return Math.round(cartTotal() * 100) / 100;
+    }
+
+    function renderCart() {
+      const tbody = document.getElementById("cart-tbody");
+      const t = payable();
+      document.getElementById("total").textContent = euro(t);
+      document.getElementById("cart-head-count").textContent = String(cart.length);
+      document.getElementById("cart-head-qty").textContent = String(cart.reduce((s, l) => s + l.qty, 0));
+      if (!cart.length) {
+        tbody.innerHTML = '<tr class="cart-empty"><td colspan="4">Lista është bosh — zgjidh shërbim ose shto nga dhoma.</td></tr>';
+        syncPayAmounts(t);
+        updateChange();
+        return;
+      }
+      tbody.innerHTML = cart.map((l, idx) => `
+        <tr data-idx="${idx}">
+          <td>${esc(l.name)}</td>
+          <td>
+            <button type="button" class="qty-btn" data-act="minus" data-idx="${idx}">−</button>
+            <input class="qty" type="number" min="1" max="99" value="${l.qty}" data-idx="${idx}" style="width:3rem;margin:0 .25rem" />
+            <button type="button" class="qty-btn" data-act="plus" data-idx="${idx}">+</button>
+          </td>
+          <td>${euro(l.price * l.qty)}</td>
+          <td><button type="button" class="cart-rm" data-idx="${idx}" aria-label="Hiq">×</button></td>
+        </tr>`).join("");
+      syncPayAmounts(t);
+      updateChange();
+    }
+
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function addServiceToCart(svc, qty = 1) {
+      if (!svc || !svc.id) return;
+      const price = servicePrice(svc);
+      if (price <= 0) {
+        document.getElementById("msg").textContent = "Shërbimi nuk ka çmim.";
+        return;
+      }
+      const id = Number(svc.id);
+      const existing = cart.find((l) => l.service_id === id);
+      if (existing) existing.qty += qty;
+      else cart.push({ service_id: id, name: svc.name || "Shërbim", price, qty: Math.max(1, qty) });
+      renderCart();
+    }
+
+    function recepModuleUrl(view) {
+      const v = RECEP_MODULES.some((m) => m.id === view) ? view : "rooms";
+      return `/recepcion.html?view=${encodeURIComponent(v)}&embed=kasa`;
+    }
+
+    function openRecepModule(view) {
+      if (!RECEP_MODULES.some((m) => m.id === view)) view = "rooms";
+      activeRecepView = view;
+      renderCategoryNav();
+      const col = document.getElementById("col-cart");
+      const overlay = document.getElementById("recep-module-overlay");
+      const frame = document.getElementById("recep-module-frame");
+      frame.src = recepModuleUrl(view) + "&_=" + Date.now();
+      overlay.hidden = false;
+      col?.classList.add("is-module-open");
+    }
+
+    function closeRecepModule() {
+      document.getElementById("recep-module-overlay").hidden = true;
+      document.getElementById("col-cart")?.classList.remove("is-module-open");
+      activeRecepView = null;
+      renderCategoryNav();
+      const frame = document.getElementById("recep-module-frame");
+      frame.src = "about:blank";
+    }
+
+    function servicePhotoFallback(name) {
+      const n = String(name || "").trim().toLowerCase();
+      const map = {
+        bazen: "/service-stock/bazen.jpg",
+        sauna: "/service-stock/sauna.jpg",
+        xhakuzi: "/service-stock/xhakuzi.jpg",
+        "palestra / gym": "/service-stock/gym.jpg",
+        masazh: "/service-stock/masazh.jpg",
+        facial: "/service-stock/facial.jpg",
+        manikyr: "/service-stock/manikyr.jpg",
+        pedikyr: "/service-stock/pedikyr.jpg",
+        minibar: "/service-stock/minibar.jpg",
+        "room service": "/service-stock/room-service.jpg",
+        "shtrat shtesë": "/service-stock/shtrat-shtese.jpg",
+        "shtrat shtese": "/service-stock/shtrat-shtese.jpg",
+        "zgjatje qëndrimi": "/service-stock/zgjatje-qendrimi.jpg",
+        "larje rrobash / laundry": "/service-stock/laundry.jpg",
+        parking: "/service-stock/parking.jpg",
+      };
+      for (const [k, v] of Object.entries(map)) {
+        if (n.includes(k) || k.includes(n)) return v;
+      }
+      return "";
+    }
+
+    function svcPriceLabel(s) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "variable") {
+        return Number(s.price) > 0 ? `nga ${euro(s.price)}` : "Sipas artikullit";
+      }
+      if (mode === "room_rate") return "Sipas çmimit të dhomës";
+      return euro(servicePrice(s));
+    }
+
+    function svcModeHint(s) {
+      const mode = String(s.price_mode || "fixed");
+      if (mode === "variable") return "Çmim i ndryshueshëm";
+      if (mode === "room_rate") return "Sipas çmimit të dhomës";
+      return "";
+    }
+
+    function syncPayAmounts(total) {
+      const t = total != null ? total : payable();
+      document.querySelectorAll(".pay-checkout-amt").forEach((inp) => {
+        const id = inp.dataset.payId;
+        if (!multiPay && id === primaryPay) inp.value = t.toFixed(2);
+        else if (!multiPay) inp.value = "0.00";
+      });
+      if (!multiPay && primaryPay === "cash") {
+        const recv = document.getElementById("pay-received");
+        if (recv && (!recv.value || Number(recv.value) < t)) recv.value = t ? t.toFixed(2) : "0";
+      }
+    }
+
+    function updateChange() {
+      const t = payable();
+      const recv = Number(document.getElementById("pay-received").value) || 0;
+      const ch = Math.max(0, Math.round((recv - t) * 100) / 100);
+      const el = document.getElementById("pay-change");
+      el.textContent = euro(ch);
+      el.classList.toggle("zero", ch <= 0 && t <= 0);
+    }
+
+    function setPrimaryPay(method) {
+      primaryPay = method;
+      multiPay = false;
+      document.querySelectorAll(".pay-method-card").forEach((card) => {
+        const on = card.dataset.payToggle === method;
+        card.classList.toggle("on", on);
+        card.querySelector(".pay-method-check").textContent = on ? "✓" : "";
+      });
+      document.getElementById("pay-cash-box").hidden = method !== "cash" && !multiPay;
+      syncPayAmounts();
+      updateChange();
+    }
+
+    function enableMultiPay() {
+      multiPay = true;
+      document.querySelectorAll(".pay-method-card").forEach((card) => {
+        card.classList.add("on");
+        card.querySelector(".pay-method-check").textContent = "✓";
+        const inp = card.querySelector(".pay-checkout-amt");
+        inp.disabled = false;
+      });
+      document.getElementById("pay-cash-box").hidden = true;
+      updateMixedStatus();
+    }
+
+    function updateMixedStatus() {
+      const t = payable();
+      const status = document.getElementById("pay-mixed-status");
+      if (!multiPay) {
+        status.classList.add("hidden");
+        return;
+      }
+      status.classList.remove("hidden");
+      let sum = 0;
+      const splits = [];
+      document.querySelectorAll(".pay-checkout-amt").forEach((inp) => {
+        const amt = Math.round((Number(inp.value) || 0) * 100) / 100;
+        if (amt > 0) splits.push({ id: inp.dataset.payId, amt });
+        sum += amt;
+      });
+      sum = Math.round(sum * 100) / 100;
+      const ok = Math.abs(sum - t) < 0.01;
+      status.textContent = ok
+        ? `Shuma e metodave: ${euro(sum)}`
+        : `Shuma ${euro(sum)} ≠ totali ${euro(t)}`;
+      status.classList.toggle("mismatch", !ok);
+      return { ok, splits, sum };
+    }
+
+    function buildPaymentPayload() {
+      const t = payable();
+      if (multiPay) {
+        const m = updateMixedStatus();
+        if (!m?.ok) throw new Error("Rregulloni shumat e metodave të pagesës.");
+        const splits = m.splits.map((s) => ({ method: s.id, amount: s.amt }));
+        return { payment_method: "mixed", payment_splits: splits };
+      }
+      if (primaryPay === "cash") {
+        const given = Number(document.getElementById("pay-received").value) || 0;
+        if (given + 0.001 < t) throw new Error("Pagesa e pranuar është më e vogël se totali.");
+      }
+      return { payment_method: primaryPay, payment_splits: null };
+    }
+
+    async function loadCatalog() {
+      const data = await api("/api/waiter/services");
+      catalog.groups = data.groups || [];
+      catalog.services = data.services || [];
+      catalog.categories = data.categories || [];
+      servicesById = new Map(catalog.services.map((s) => [Number(s.id), s]));
+      renderCategoryNav();
+    }
+
+    function renderCategoryNav() {
+      const nav = document.getElementById("main-cat-bar");
+      nav.innerHTML = RECEP_MODULES.map((m) => {
+        const on = activeRecepView === m.id ? " on" : "";
+        return `<button type="button" class="${on.trim()}" data-recep-view="${m.id}">${esc(m.label)}</button>`;
+      }).join("");
+    }
+
+    async function loadShift() {
+      try {
+        const data = await api("/api/waiter/shift");
+        shiftSummary = data;
+        const who = document.getElementById("who");
+        const open = !!data.open;
+        const oc = data.opening_cash != null ? euro(data.opening_cash) : "—";
+        const inTill = open
+          ? euro((Number(data.opening_cash) || 0) + (Number(data.cash_total) || 0))
+          : "—";
+        const sales = Number(data.order_count) || 0;
+        who.innerHTML =
+          `<b>${esc(user.emri || "Recepsion")}</b> — Recepsion — ` +
+          (open ? `<b style="color:#4ade80">Ndërrimi hapur</b>` : `<span style="color:#f97316">Pa ndërrim</span>`) +
+          ` — në arkë ${inTill} — ${sales} shitje`;
+        const btnClose = document.getElementById("btn-close-shift");
+        btnClose.hidden = !open;
+      } catch {
+        document.getElementById("who").textContent = user.emri || "Recepsion";
+      }
+    }
+
+    async function paySale() {
+      const msg = document.getElementById("msg");
+      if (!shiftSummary?.open) {
+        msg.textContent = "Hap ndërrimin në recepsion para shitjes.";
+        return;
+      }
+      if (!cart.length) {
+        msg.textContent = "Shtoni të paktën një shërbim.";
+        return;
+      }
+      let payPayload;
+      try {
+        payPayload = buildPaymentPayload();
+      } catch (e) {
+        msg.textContent = e.message || "Gabim pagese";
+        return;
+      }
+      msg.textContent = "Duke regjistruar…";
+      try {
+        const body = {
+          items: cart.map((l) => ({
+            service_id: l.service_id,
+            name: l.name,
+            price: l.price,
+            quantity: l.qty,
+          })),
+          ...payPayload,
+        };
+        const res = await api("/api/recepcion/kasa/pay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+        cart = [];
+        setPrimaryPay("cash");
+        document.getElementById("pay-received").value = "";
+        renderCart();
+        await loadShift();
+      } catch (e) {
+        msg.textContent = e.message || "Gabim";
+      }
+    }
+
+    document.getElementById("cart-tbody").addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const idx = Number(btn.dataset.idx);
+      if (Number.isNaN(idx) || !cart[idx]) return;
+      if (btn.classList.contains("cart-rm")) {
+        cart.splice(idx, 1);
+        renderCart();
+        return;
+      }
+      if (btn.dataset.act === "plus") cart[idx].qty += 1;
+      if (btn.dataset.act === "minus") {
+        cart[idx].qty -= 1;
+        if (cart[idx].qty <= 0) cart.splice(idx, 1);
+      }
+      renderCart();
+    });
+
+    document.getElementById("cart-tbody").addEventListener("change", (e) => {
+      const inp = e.target.closest("input.qty");
+      if (!inp) return;
+      const idx = Number(inp.dataset.idx);
+      let q = Math.max(1, Math.min(99, Number(inp.value) || 1));
+      if (cart[idx]) cart[idx].qty = q;
+      renderCart();
+    });
+
+    document.getElementById("main-cat-bar").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-recep-view]");
+      if (!btn) return;
+      openRecepModule(btn.dataset.recepView);
+    });
+
+    document.getElementById("recep-module-close").addEventListener("click", closeRecepModule);
+
+    document.querySelectorAll("[data-pay-toggle]").forEach((card) => {
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".pay-checkout-amt")) {
+          enableMultiPay();
+          return;
+        }
+        setPrimaryPay(card.dataset.payToggle);
+      });
+    });
+
+    document.querySelectorAll(".pay-checkout-amt").forEach((inp) => {
+      inp.addEventListener("focus", () => enableMultiPay());
+      inp.addEventListener("input", () => updateMixedStatus());
+    });
+
+    document.getElementById("pay-received").addEventListener("input", updateChange);
+    document.getElementById("pay-cash").onclick = () => { setPrimaryPay("cash"); paySale(); };
+    document.getElementById("pay-card").onclick = () => { setPrimaryPay("credit_card"); paySale(); };
+    document.getElementById("btn-paguaj").onclick = () => paySale();
+    document.getElementById("btn-clear-cart").onclick = () => {
+      cart = [];
+      renderCart();
+      document.getElementById("msg").textContent = "";
+    };
+    document.getElementById("btn-clear-all").onclick = () => {
+      cart = [];
+      renderCart();
+      document.getElementById("msg").textContent = "";
+    };
+    document.getElementById("btn-undo-line").onclick = () => {
+      if (!cart.length) return;
+      cart.pop();
+      renderCart();
+      document.getElementById("msg").textContent = cart.length ? "U hoq rreshti i fundit." : "";
+    };
+    document.getElementById("btn-close-shift").onclick = () => {
+      window.location.href = "/recepcion.html";
+    };
+
+    (async function init() {
+      try {
+        await loadCatalog();
+        await loadShift();
+        setPrimaryPay("cash");
+        renderCart();
+        renderCategoryNav();
+      } catch (e) {
+        document.getElementById("msg").textContent = e.message || "Gabim ngarkimi";
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
+  <link rel="stylesheet" href="/css/recepcion-truffle.css?v=1">
   <style>
     .recepcion-shell { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
@@ -38,12 +39,6 @@
       flex: 1 1 auto;
       min-width: 7rem;
     }
-    .recep-main-tabs .waiter-nav-btn.recep-nav-active {
-      background: #ff6b35;
-      border-color: #ff6b35;
-      color: #fff;
-    }
-
     .waiter-rooms-legend {
       display: flex; flex-wrap: wrap; gap: 0.55rem 1.1rem;
       margin: 0 0 0.9rem; padding: 0.55rem 0.75rem;
@@ -69,12 +64,19 @@
 
     .waiter-room-card {
       position: relative;
-      min-height: 200px;
+      min-height: 178px;
       display: flex; flex-direction: column; align-items: stretch;
       gap: 0.28rem; padding: 0.9rem 0.85rem 0.75rem;
       border-radius: 12px; border: 1px solid #e2e8f0;
-      background: #fff; text-align: left;
+      background: #fff; text-align: left; cursor: pointer;
       box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      overflow: hidden;
+      font: inherit;
+    }
+    .waiter-room-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
     }
     .waiter-room-card::before {
       content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
@@ -94,29 +96,35 @@
       display: flex; align-items: flex-start; justify-content: space-between; gap: 0.4rem;
     }
     .waiter-room-num {
-      font-size: 1.85rem; font-weight: 800; line-height: 1;
+      font-size: 1.85rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em;
       font-variant-numeric: tabular-nums;
     }
+    .waiter-room-card.free .waiter-room-num { color: #14532d; }
+    .waiter-room-card.occupied .waiter-room-num { color: #7f1d1d; }
+    .waiter-room-card.dirty .waiter-room-num { color: #713f12; }
+    .waiter-room-card.maintenance .waiter-room-num { color: #334155; }
+    .waiter-room-card.reserved .waiter-room-num { color: #1e3a8a; }
     .waiter-room-badge {
-      font-size: 0.68rem; font-weight: 800; padding: 0.22rem 0.45rem;
-      border-radius: 999px; background: rgba(15, 23, 42, 0.08); color: #334155;
+      font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em;
+      text-transform: uppercase; padding: 0.22rem 0.5rem; border-radius: 6px;
       white-space: nowrap;
     }
-    .waiter-room-type { font-size: 0.82rem; font-weight: 600; color: #475569; }
-    .waiter-room-floor { font-size: 0.78rem; color: #64748b; font-weight: 600; }
+    .waiter-room-card.free .waiter-room-badge { background: #bbf7d0; color: #14532d; }
+    .waiter-room-card.occupied .waiter-room-badge { background: #fecaca; color: #7f1d1d; }
+    .waiter-room-card.dirty .waiter-room-badge { background: #fde68a; color: #713f12; }
+    .waiter-room-card.maintenance .waiter-room-badge { background: #cbd5e1; color: #334155; }
+    .waiter-room-card.reserved .waiter-room-badge { background: #bfdbfe; color: #1e3a8a; }
+    .waiter-room-type {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.78rem; font-weight: 700; color: #334155;
+    }
+    .waiter-room-type .rtype-ico { font-size: 0.95rem; line-height: 1; }
+    .waiter-room-floor { font-size: 0.72rem; color: #64748b; font-weight: 600; }
     .waiter-room-guest-line { font-size: 0.85rem; font-weight: 700; color: #0f172a; margin-top: 0.15rem; }
     .waiter-room-dates { font-size: 0.72rem; color: #64748b; font-weight: 600; }
-    .waiter-room-price { font-size: 0.88rem; font-weight: 800; color: #0f766e; margin-top: auto; }
-
-    .recep-room-actions {
-      display: flex; gap: 0.35rem; margin-top: 0.55rem; padding-top: 0.5rem;
-      border-top: 1px solid rgba(15, 23, 42, 0.08);
-    }
-    .recep-room-actions .btn {
-      flex: 1; font-size: 0.72rem; padding: 0.45rem 0.3rem; font-weight: 800;
-    }
-    .recep-room-actions.recep-room-actions--stacked {
-      flex-direction: column;
+    .waiter-room-price {
+      margin-top: auto; padding-top: 0.35rem;
+      font-size: 0.82rem; font-weight: 800; color: #0f172a;
     }
     #modal-rc-add-service .table-modal-content { max-width: 440px; width: min(440px, 96vw); }
 
@@ -140,14 +148,21 @@
       gap: 0.75rem;
     }
     .svc-card {
-      display: flex; flex-direction: column; align-items: stretch;
+      display: flex; flex-direction: column; align-items: stretch; gap: 0;
       padding: 0; border-radius: 12px; text-align: left; overflow: hidden;
       border: 1px solid #e2e8f0; background: #fff;
-      cursor: default; font: inherit; min-height: 120px;
+      cursor: default; font: inherit; min-height: 168px;
+    }
+    .svc-card-photo-wrap {
+      position: relative; width: 100%; aspect-ratio: 4 / 3;
+      background: #e2e8f0; overflow: hidden;
+    }
+    .svc-card-photo {
+      width: 100%; height: 100%; object-fit: cover; display: block;
     }
     .svc-card-body {
       display: flex; flex-direction: column; gap: 0.2rem;
-      padding: 0.75rem 0.7rem; flex: 1;
+      padding: 0.65rem 0.7rem 0.75rem; flex: 1;
     }
     .svc-card-name { font-weight: 800; color: #0f172a; font-size: 0.9rem; line-height: 1.25; }
     .svc-card-price { font-weight: 800; color: #0f766e; font-size: 0.9rem; margin-top: auto; }
@@ -265,6 +280,9 @@
     .ord-status.table { background: #dbeafe; color: #1e40af; font-size: 0.72rem; font-weight: 800; padding: 0.2rem 0.5rem; border-radius: 999px; }
     .ord-status.room { background: #dcfce7; color: #166534; font-size: 0.72rem; font-weight: 800; padding: 0.2rem 0.5rem; border-radius: 999px; }
     #recep-rez-msg, #recep-hk-msg, #recep-orders-msg { font-size: 0.88rem; font-weight: 600; min-height: 1.25rem; margin-bottom: 0.5rem; }
+
+    /* Brenda kasës (iframe) — pamje e plotë recepsion, pa DIL / pa link kasa */
+    body.recep-embed-kasa a[href="/kasa-recepcion.html"] { display: none !important; }
   </style>
 </head>
 <body class="waiter-screen">
@@ -301,6 +319,7 @@
           <strong id="hdr-staff-top">—</strong>
         </div>
         <span class="app-version-pill" id="recep-app-version" hidden></span>
+        <a href="/kasa-recepcion.html" class="btn btn-primary btn-sm">Kasa (arka)</a>
         <button type="button" class="btn btn-shift-close btn-sm" id="btn-rc-mbyll-nderrimin">Mbyll ndërrimin</button>
         <div class="waiter-topbar-time" id="recep-clock">--:--</div>
       </header>
@@ -319,8 +338,8 @@
           <span class="waiter-kpi-value" id="kpi-dirty">0</span>
         </div>
         <div class="waiter-kpi waiter-kpi-cash">
-          <span class="waiter-kpi-label">GJITHSEJ</span>
-          <span class="waiter-kpi-value" id="kpi-total">0</span>
+          <span class="waiter-kpi-label">TË REZERVUARA</span>
+          <span class="waiter-kpi-value" id="kpi-reserved">0</span>
         </div>
       </div>
 
@@ -335,7 +354,7 @@
       <div class="waiter-table-toolbar">
         <div>
           <h1 class="waiter-main-title" id="hdr-emri">Revolution HOTEL</h1>
-          <p class="waiter-main-sub" id="recep-main-sub">Dhomat dhe shërbimet — pa restorant / tavolina</p>
+          <p class="waiter-main-sub" id="recep-main-sub">Recepsioni — kliko dhomën për detaje · Check-in / Check-out</p>
         </div>
       </div>
 
@@ -431,6 +450,7 @@
           <div id="rc-orders-empty" class="rez-empty" hidden>Nuk ka porosi aktive.</div>
         </div>
       </div>
+
     </main>
   </div>
 
@@ -998,7 +1018,7 @@
       const sub = document.getElementById("recep-main-sub");
       if (sub) {
         const subs = {
-          rooms: "Lista e dhomave — Check-in / Check-out / Shto shërbim",
+          rooms: "Recepsioni — kliko dhomën për detaje · Check-in / Check-out",
           reservations: "Rezervimet — konverto në Check-in ose ndrysho",
           services: "Katalogu i shërbimeve — shtimi në folio nga dhoma e zënë",
           housekeeping: "Pastrimi — statuset dhe pastruesi",
@@ -1452,16 +1472,69 @@
       const elO = document.getElementById("kpi-occupied");
       const elF = document.getElementById("kpi-free");
       const elD = document.getElementById("kpi-dirty");
-      const elT = document.getElementById("kpi-total");
+      const reserved = list.filter((r) => displayStatus(r) === "reserved").length;
+      const elR = document.getElementById("kpi-reserved");
       if (elO) elO.textContent = String(occ);
       if (elF) elF.textContent = String(free);
       if (elD) elD.textContent = String(dirty);
-      if (elT) elT.textContent = String(list.length);
+      if (elR) elR.textContent = String(reserved);
+    }
+
+    const ROOM_TYPE_ICON = {
+      single: "🛏", double: "🛏🛏", suite: "🏨", familje: "👨‍👩‍👧‍👦", family: "👨‍👩‍👧‍👦",
+      twin: "🛏🛏", deluxe: "✨", standard: "🛏",
+    };
+    function roomTypeIcon(type) {
+      const t = String(type || "").trim().toLowerCase();
+      if (ROOM_TYPE_ICON[t]) return ROOM_TYPE_ICON[t];
+      if (t.includes("suite")) return "🏨";
+      if (t.includes("famil") || t.includes("family")) return "👨‍👩‍👧‍👦";
+      if (t.includes("double") || t.includes("dopio") || t.includes("twin")) return "🛏🛏";
+      if (t.includes("single") || t.includes("tek")) return "🛏";
+      return "🛏";
     }
 
     function displayStatus(room) {
+      const ds = String(room.display_status || "").trim().toLowerCase();
+      if (ds && W_ROOM_STATUS[ds]) return ds;
       const st = String(room.status || "free");
       return W_ROOM_STATUS[st] ? st : "free";
+    }
+
+    function servicePhotoFallback(name) {
+      const map = {
+        bazen: "/service-stock/bazen.jpg",
+        sauna: "/service-stock/sauna.jpg",
+        xhakuzi: "/service-stock/xhakuzi.jpg",
+        "palestra / gym": "/service-stock/gym.jpg",
+        "palestra/gym": "/service-stock/gym.jpg",
+        masazh: "/service-stock/masazh.jpg",
+        facial: "/service-stock/facial.jpg",
+        spa: "/service-stock/facial.jpg",
+        manikyr: "/service-stock/manikyr.jpg",
+        pedikyr: "/service-stock/pedikyr.jpg",
+        minibar: "/service-stock/minibar.jpg",
+        "room service": "/service-stock/room-service.jpg",
+        "shtrat shtese": "/service-stock/shtrat-shtese.jpg",
+        "zgjatje qendrimi": "/service-stock/zgjatje-qendrimi.jpg",
+        "larje robash / laundry": "/service-stock/laundry.jpg",
+        laundry: "/service-stock/laundry.jpg",
+        hekurosje: "/service-stock/hekurosje.jpg",
+        "pastrim i thate": "/service-stock/pastrim-thate.jpg",
+        parking: "/service-stock/parking.jpg",
+        "transfer aeroport": "/service-stock/transfer-aeroport.jpg",
+        "marrje me veture": "/service-stock/marrje-veture.jpg",
+        "wi-fi premium": "/service-stock/wifi.jpg",
+        "late check-out": "/service-stock/late-checkout.jpg",
+        "early check-in": "/service-stock/early-checkin.jpg",
+      };
+      const key = String(name || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ë/g, "e");
+      return map[key] || "";
     }
 
     function hotelTodayYmd() {
@@ -1784,7 +1857,8 @@
       for (const r of rooms) {
         const st = displayStatus(r);
         const guest = r.active_guest;
-        const card = document.createElement("article");
+        const card = document.createElement("button");
+        card.type = "button";
         card.className = "waiter-room-card " + st;
         card.setAttribute("data-room-id", String(r.id));
 
@@ -1795,39 +1869,19 @@
           datesLine = `<div class="waiter-room-dates">${escHtml(guest.check_in_date || "—")} → ${escHtml(guest.check_out_date || "—")}</div>`;
         }
 
-        const showCheckIn = st === "free";
-        const showCheckOut = st === "occupied";
-
         card.innerHTML =
           `<div class="waiter-room-card-top">` +
             `<div class="waiter-room-num">${escHtml(String(r.room_number))}</div>` +
             `<span class="waiter-room-badge">${escHtml(W_ROOM_STATUS[st] || st)}</span>` +
           `</div>` +
-          `<div class="waiter-room-type">${escHtml(r.type || "Standard")}</div>` +
+          `<div class="waiter-room-type"><span class="rtype-ico">${roomTypeIcon(r.type)}</span>${escHtml(r.type || "Standard")}</div>` +
           `<div class="waiter-room-floor">Kati ${Number(r.floor) || 0}</div>` +
           guestLine + datesLine +
-          `<div class="waiter-room-price">${formatEuro(r.price_per_night)} <span style="font-weight:600;color:#64748b">/ natë</span></div>` +
-          `<div class="recep-room-actions${showCheckOut ? " recep-room-actions--stacked" : ""}">` +
-            (showCheckIn
-              ? `<button type="button" class="btn btn-primary recep-btn-checkin">Check-in</button>`
-              : "") +
-            (showCheckOut
-              ? `<button type="button" class="btn btn-primary recep-btn-checkout">Check-out</button>` +
-                `<button type="button" class="btn btn-ghost recep-btn-addsvc">Shto shërbim</button>`
-              : "") +
-          `</div>`;
+          `<div class="waiter-room-price">${formatEuro(r.price_per_night)} <span style="font-weight:600;color:#64748b">/ natë</span></div>`;
 
-        card.querySelector(".recep-btn-checkin")?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          hapModalCheckIn(r);
-        });
-        card.querySelector(".recep-btn-checkout")?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          hapModalCheckOut(r);
-        });
-        card.querySelector(".recep-btn-addsvc")?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          hapRcAddService(r);
+        card.addEventListener("click", () => {
+          if (st === "free" || st === "reserved") hapModalCheckIn(r);
+          else if (st === "occupied") hapModalCheckOut(r);
         });
 
         grid.appendChild(card);
@@ -1880,12 +1934,19 @@
           const card = document.createElement("div");
           card.className = "svc-card";
           const hint = svcModeHint(s);
+          const photo = String(s.photo || servicePhotoFallback(s.name) || "").trim();
+          const photoHtml = photo
+            ? `<div class="svc-card-photo-wrap"><img class="svc-card-photo" src="${escHtml(photo)}" alt="${escHtml(s.name)}" loading="lazy"></div>`
+            : `<div class="svc-card-photo-wrap" style="background:linear-gradient(135deg,#dbeafe,#e2e8f0)"></div>`;
           card.innerHTML =
+            photoHtml +
             `<div class="svc-card-body">` +
             `<span class="svc-card-name">${escHtml(s.name)}</span>` +
             (hint ? `<span class="svc-card-mode">${escHtml(hint)}</span>` : "") +
             `<span class="svc-card-price">${escHtml(svcPriceLabel(s))}</span>` +
             `</div>`;
+          const img = card.querySelector(".svc-card-photo");
+          if (img) img.addEventListener("error", () => { img.remove(); });
           grid.appendChild(card);
         }
         catalog.appendChild(section);
@@ -2435,14 +2496,20 @@
     setInterval(tickClock, 30_000);
 
     (async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const embedKasa = urlParams.get("embed") === "kasa";
+      if (embedKasa) document.body.classList.add("recep-embed-kasa");
+      const viewParam = urlParams.get("view");
+      const initialView =
+        viewParam && RECEP_VIEWS.includes(viewParam) ? viewParam : "rooms";
       try {
-        if (typeof applyAppWindowTitle === "function") {
+        if (typeof applyAppWindowTitle === "function" && !embedKasa) {
           applyAppWindowTitle("Recepsion — Revolution HOTEL");
         }
       } catch { /* */ }
       await refreshRegisterMode();
       await ensureRecepShiftOpen();
-      setRecepView("rooms");
+      setRecepView(initialView);
       startRecepGuestServicePolling();
     })();
   </script>

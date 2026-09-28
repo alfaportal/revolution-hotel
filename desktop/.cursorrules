@@ -3,8 +3,12 @@
 ## RREGULL I DETYRUESHËM — LEXO PARA ÇFARËDO PUNE
 
 ### 1. LEXO RREGULLAT
-Para se të bësh ÇFARËDO ndryshimi, LEXO PLOTËSISHT këtë skedar DHE .cursorrules (nëse ekziston).
+Para se të bësh ÇFARËDO ndryshimi, LEXO PLOTËSISHT këtë skedar DHE CLAUDE.md.
+Lexo edhe workspace: `.cursor/rules/00-golden-project-isolation.mdc`, `00b-biznes-ndalim-absolut-naseri.mdc`, `00a-verifikim-real-pa-supozime-naseri.mdc`, `06-nje-setup-build-naseri.mdc`, **`07-raport-menjher-pas-prekjes-naseri.mdc`**.
 Nëse nuk i lexon — NDALO dhe lexoji. Pa përjashtim.
+
+### 1b. RAPORT MENJËHERË (rule 07 — Naseri)
+Pas **çdo** prekjeje (edit, skedar i ri, komandë shell) — **para** mbylljes së përgjigjes duhet seksioni **«Çfarë preka — raport»**: tabelë (skedar + çfarë ndryshoi), çfarë NUK preka, si ta provosh. Edhe për **një rresht**. Pa raport = nuk mbaron detyra.
 
 ### 2. MOS PREK PA LEJE — TELEFONI DHE PANELI I ADMINIT
 Kodet e telefonit (waiter.js, mobile, cloud waiter) DHE panelit të adminit (admin.html, admin JS, tab-et, UI admin) janë ZONA TË MBROJTURA.

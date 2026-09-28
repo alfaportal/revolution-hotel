@@ -79,6 +79,7 @@ const OBFUSCATE_FILES = [
   "ai/ai-admin-dashboard.js",
   "cloud-sync.js",
   "cloud-auto-sync.js",
+  "hotel-cloud-sync.js",
   "cloud-health.js",
   "cloud-failure-log.js",
   "receipt-print.js",

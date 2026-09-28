@@ -6236,9 +6236,69 @@ function roundReportMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
-/** Check-out recepsioni — regjistruar në daily_log me receipt_number CO-… */
+/** Check-out / kasa recepsioni — daily_log me receipt_number CO-… ose RC-… */
 function isRecepsionCheckoutReceipt(receiptNumber) {
-  return String(receiptNumber || "").trim().toUpperCase().startsWith("CO-");
+  const r = String(receiptNumber || "").trim().toUpperCase();
+  return r.startsWith("CO-") || r.startsWith("RC-");
+}
+
+function nextRecepcionKasaReceiptNumber() {
+  const rows = sqlite.prepare(`
+    SELECT receipt_number FROM daily_log
+    WHERE receipt_number LIKE 'RC-%'
+    ORDER BY id DESC LIMIT 300
+  `).all();
+  let max = 0;
+  for (const row of rows) {
+    const m = /^RC-(\d+)/i.exec(String(row.receipt_number || "").trim());
+    if (m) max = Math.max(max, Number(m[1]) || 0);
+  }
+  return `RC-${max + 1}`;
+}
+
+/** Shitje walk-in shërbimesh në recepsion (kasa) — daily_log RC-… */
+function recordRecepcionKasaSale({
+  items,
+  payment_method = "cash",
+  payment_splits = null,
+  waiter_name = "Recepsion",
+  staff_id = null,
+  shift_id = null,
+} = {}) {
+  const lines = Array.isArray(items) ? items : [];
+  if (!lines.length) throw new Error("Shporta është bosh.");
+  let subtotal = 0;
+  const logItems = lines.map((it) => {
+    const qty = Math.max(1, Number(it.quantity) || 1);
+    const price = Math.round((Number(it.price) || 0) * 100) / 100;
+    subtotal += price * qty;
+    return {
+      service_id: it.service_id != null ? Number(it.service_id) : null,
+      name: String(it.name || "Shërbim"),
+      quantity: qty,
+      price,
+    };
+  });
+  const total = Math.round(subtotal * 100) / 100;
+  if (total <= 0) throw new Error("Totali duhet të jetë më i madh se zero.");
+  const meta =
+    staff_id != null && shift_id != null
+      ? { staff_id: Number(staff_id), shift_id: Number(shift_id) }
+      : shiftMetaForWaiter(waiter_name);
+  const method = normalizePaymentMethod(payment_method, payment_splits);
+  const receipt_number = nextRecepcionKasaReceiptNumber();
+  addDailyLogEntry({
+    table_number: "Recepsion",
+    waiter_name: waiter_name || "Recepsion",
+    items_json: JSON.stringify(logItems),
+    total,
+    receipt_number,
+    payment_method: method,
+    staff_id: meta.staff_id,
+    shift_id: meta.shift_id,
+    subtotal: total,
+  });
+  return { receipt_number, total, payment_method: method };
 }
 
 /** Netët (akruale) + shërbime/RS — i njëjti burim si getHotelRevenueReport. Kontabilisti përdor check-out. */
@@ -10672,14 +10732,14 @@ function getDashboardOverview() {
     SELECT COALESCE(SUM(total), 0) AS t
     FROM daily_log
     WHERE date = ? AND status = 'completed'
-      AND (receipt_number IS NULL OR receipt_number NOT LIKE 'CO-%')
+      AND (receipt_number IS NULL OR (receipt_number NOT LIKE 'CO-%' AND receipt_number NOT LIKE 'RC-%'))
   `).get(today)?.t) || 0;
 
   const receptionRevenue = Number(sqlite.prepare(`
     SELECT COALESCE(SUM(total), 0) AS t
     FROM daily_log
     WHERE date = ? AND status = 'completed'
-      AND receipt_number LIKE 'CO-%'
+      AND (receipt_number LIKE 'CO-%' OR receipt_number LIKE 'RC-%')
   `).get(today)?.t) || 0;
 
   const nightsServicesRevenue =
@@ -10966,6 +11026,7 @@ function getVersionInfo() {
     ensureHotelServiceStockPhotos,
   ensureHotelServiceCategoryPhotos,
   setHotelServiceCategoryPhoto,
+    recordRecepcionKasaSale,
     addServiceChargeToRoom,
     submitGuestRoomMenuOrder,
     submitGuestRoomServiceOrder,

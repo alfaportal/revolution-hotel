@@ -1,0 +1,195 @@
+/* Recepsion — dark POS (si kamarieri hotel / foto origjinale). Vetëm #ekrani-recepcion */
+
+html:has(#ekrani-recepcion),
+body.waiter-screen:has(#ekrani-recepcion) {
+  height: 100%;
+  min-height: 0;
+  background: #1a1a2e;
+}
+
+#ekrani-recepcion.waiter-shell {
+  --tbl-bg: #1a1a2e;
+  --tbl-accent: #ff6b35;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body.recep-embed-kasa #ekrani-recepcion.waiter-shell {
+  height: 100%;
+  min-height: 100%;
+}
+
+#ekrani-recepcion .waiter-sidebar {
+  background: #12121f;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+}
+
+#ekrani-recepcion .waiter-brand {
+  background: linear-gradient(135deg, #ff6b35, #e85a28);
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.4);
+  border-radius: 14px;
+}
+
+#ekrani-recepcion .waiter-sync-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border-radius: 50%;
+}
+
+#ekrani-recepcion .waiter-nav-exit {
+  background: #e11d48;
+  color: #fff;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+#ekrani-recepcion .waiter-main {
+  background: #1a1a2e;
+  color: #f8fafc;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#ekrani-recepcion .waiter-topbar {
+  background: #1e1e2e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+#ekrani-recepcion .waiter-topbar-left {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+#ekrani-recepcion .waiter-topbar-greeting {
+  color: #94a3b8;
+}
+
+#ekrani-recepcion .waiter-topbar-left strong {
+  color: #fff;
+  font-weight: 800;
+}
+
+#ekrani-recepcion .waiter-topbar-time {
+  color: #fff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+#ekrani-recepcion .waiter-kpi-row {
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.55rem;
+}
+
+#ekrani-recepcion .waiter-kpi {
+  border-radius: 14px;
+  padding: 0.7rem 0.8rem;
+  border: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  color: #fff;
+}
+
+#ekrani-recepcion .waiter-kpi-label {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#ekrani-recepcion .waiter-kpi-value {
+  color: #fff;
+  font-size: 1.55rem;
+  font-weight: 900;
+}
+
+#ekrani-recepcion .waiter-kpi-open {
+  background: linear-gradient(145deg, #e11d48, #be123c);
+}
+
+#ekrani-recepcion .waiter-kpi-free {
+  background: linear-gradient(145deg, #16a34a, #15803d);
+}
+
+#ekrani-recepcion .waiter-kpi-new {
+  background: linear-gradient(145deg, #2563eb, #1d4ed8);
+}
+
+#ekrani-recepcion .waiter-kpi-cash {
+  background: linear-gradient(145deg, #ff6b35, #e85a28);
+}
+
+#ekrani-recepcion .recep-main-tabs {
+  padding: 0 1rem 0.35rem;
+  margin: 0 0 0.5rem;
+}
+
+#ekrani-recepcion .recep-main-tabs .waiter-nav-btn {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+#ekrani-recepcion .recep-main-tabs .waiter-nav-btn.recep-nav-active {
+  background: #ff6b35;
+  border-color: #ff6b35;
+  color: #fff;
+}
+
+#ekrani-recepcion .waiter-table-toolbar {
+  padding: 0.35rem 1rem 0.65rem;
+}
+
+#ekrani-recepcion .waiter-main-title {
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+#ekrani-recepcion .waiter-main-sub {
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+#ekrani-recepcion .btn-shift-close {
+  background: #ff6b35;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.35);
+}
+
+#ekrani-recepcion #recep-rooms-panel:not([hidden]),
+#ekrani-recepcion #recep-services-panel:not([hidden]),
+#ekrani-recepcion #recep-reservations-panel:not([hidden]),
+#ekrani-recepcion #recep-housekeeping-panel:not([hidden]),
+#ekrani-recepcion #recep-orders-panel:not([hidden]) {
+  margin: 0 1rem 1rem;
+  padding: 0.85rem 1rem 1.25rem;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
+  flex: 1 1 auto;
+  min-height: 8rem;
+  max-height: none;
+}
+
+body.recep-embed-kasa #ekrani-recepcion .waiter-main {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.recep-embed-kasa .waiter-nav-exit {
+  display: none !important;
+}

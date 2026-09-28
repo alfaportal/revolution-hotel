@@ -1,7 +1,7 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
-const { joinContent } = require("./app-paths");
+const { joinContent, listPublicStaticRoots, resolvePublicFile } = require("./app-paths");
 const os = require("os");
 const crypto = require("crypto");
 process.env.FISCAL_LOCAL_RUN = process.env.FISCAL_LOCAL_RUN || "1";
@@ -1707,14 +1707,25 @@ if (fs.existsSync(ADMIN_HTML_PATH)) {
   });
 }
 
-app.use(express.static(joinContent("public"), {
+const publicStaticOpts = {
   setHeaders(res, filePath) {
     if (/\.(html|js|css)$/i.test(filePath)) {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       res.setHeader("Pragma", "no-cache");
     }
   },
-}));
+};
+for (const publicRoot of listPublicStaticRoots()) {
+  app.use(express.static(publicRoot, publicStaticOpts));
+}
+
+app.get("/kasa-recepcion.html", (_req, res) => {
+  const fp = resolvePublicFile("kasa-recepcion.html");
+  if (!fs.existsSync(fp)) return res.status(404).send("kasa-recepcion.html mungon — build i ri ose sync-installed-public");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.sendFile(fp);
+});
 
 app.get("/", (_req, res) => {
   if (!db.isSetupDone()) return res.redirect("/setup.html");
@@ -3543,6 +3554,29 @@ app.get("/api/waiter/services", auth, staffOrAdmin, (_req, res) => {
     categories: catalog.categories,
     groups: catalog.groups,
   });
+});
+
+app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    if (req.session?.role !== "recepsion" && req.session?.role !== "admin") {
+      return res.status(403).json({ gabim: "Vetëm recepsioni." });
+    }
+    const waiterName = String(req.session?.name || req.session?.emri || "Recepsion").trim();
+    const result = db.recordRecepcionKasaSale({
+      items: req.body?.items,
+      payment_method: req.body?.payment_method,
+      payment_splits: req.body?.payment_splits,
+      waiter_name: waiterName,
+    });
+    auditReq(
+      req,
+      "Kasa recepsion",
+      `${result.receipt_number} · ${result.total}€ · ${result.payment_method}`,
+    );
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
 });
 
 app.get("/api/waiter/active-orders", auth, staffOrAdmin, (_req, res) => {
