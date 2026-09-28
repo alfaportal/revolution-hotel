@@ -1621,6 +1621,15 @@
       return typeof window.t === "function" ? window.t(s) : s;
     }
 
+    function eshtePorosiSherbimiHoteliQr(o) {
+      return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
+    }
+
+    /** Shërbimet hoteli (bazen, spa…) — recepsioni i pranon; restoranti nuk i sheh. */
+    function filtroPorosiOnlineRestorant(orders) {
+      return (orders || []).filter((o) => !eshtePorosiSherbimiHoteliQr(o));
+    }
+
     function hapWaiterOnlinePop() {
       if (!waiterOnlineOrders.length) return;
       renderWaiterOnlinePreview(waiterOnlineOrders);
@@ -1634,14 +1643,9 @@
       waiterOnlinePop?.classList.remove("hidden");
       const title = document.getElementById("waiter-online-pop-title");
       if (title) {
-        const hasGuestSvc = waiterOnlineOrders.some(
-          (x) => x.is_guest_hotel_service || x.order_kind === "guest_hotel_service",
-        );
-        title.textContent = hasGuestSvc
-          ? (waiterOnlineOrders.length === 1 ? tt("Kërkesë shërbimi") : `${waiterOnlineOrders.length} ${tt("kërkesa shërbimesh")}`)
-          : (waiterOnlineOrders.length === 1
-            ? tt("Porosi e re")
-            : `${waiterOnlineOrders.length} ${tt("porosi të reja")}`);
+        title.textContent = waiterOnlineOrders.length === 1
+          ? tt("Porosi e re")
+          : `${waiterOnlineOrders.length} ${tt("porosi të reja")}`;
       }
     }
 
@@ -1675,17 +1679,13 @@
       const items = (o.items || []).slice(0, 4).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
       const src = o.source_label || "Online";
       const customer = o.customer_label || o.waiter_name || "Klient";
-      const isGuestSvc = o.is_guest_hotel_service || o.order_kind === "guest_hotel_service";
       const tn = parseTableNumFromCloudOrder(o);
-      const table = isGuestSvc
-        ? (o.room_number ? `Dh. ${o.room_number}` : "Dhoma")
-        : (tn > 0 ? `T${tn}` : "Porosi online");
+      const table = tn > 0 ? `T${tn}` : "Porosi online";
       const extra = orders.length > 1 ? `<small>+ ${orders.length - 1} ${tt("tjetër në radhë")}</small>` : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <strong>${src} · ${customer}</strong>
         <span>${table} · ${formatEuro(o.total || 0)}</span>
         <small>${items}</small>
-        ${isGuestSvc ? `<small style="color:#94a3b8">${tt("Shërbim hoteli — prano për ta dërguar te stafi")}</small>` : ""}
         ${extra}
       </div>`;
     }
@@ -1894,9 +1894,9 @@
     async function ngarkoPorosiOnlineWaiter(skipLayoutFetch = false) {
       try {
         const data = await api("/api/waiter/online-orders/pending");
-        waiterOnlineOrders = data.orders || [];
+        waiterOnlineOrders = filtroPorosiOnlineRestorant(data.orders || []);
         lastMyExternalOrders = data.my_orders || [];
-        const pending = Number(data.pending) || waiterOnlineOrders.length;
+        const pending = waiterOnlineOrders.length;
         const myExternal = Number(data.my_external) || lastMyExternalOrders.length;
         const prevPending = lastOnlinePendingWaiter;
         if (pending <= 0) {

@@ -281,6 +281,20 @@
     </aside>
 
     <main class="waiter-main">
+      <div id="recep-online-backdrop" class="waiter-online-backdrop hidden" aria-hidden="true"></div>
+      <div id="recep-online-pop" class="waiter-online-pop hidden" role="dialog" aria-modal="true" aria-label="Kërkesë shërbimi nga dhoma">
+        <div class="waiter-online-pop-head">
+          <strong id="recep-online-pop-title">Kërkesë shërbimi</strong>
+          <button type="button" class="waiter-online-pop-close" id="btn-recep-online-pop-close" aria-label="Mbyll">×</button>
+        </div>
+        <div id="recep-online-pop-preview" class="waiter-online-pop-preview"></div>
+        <div id="recep-online-accept-msg" class="alert alert-error" hidden></div>
+        <div class="waiter-online-pop-actions">
+          <button type="button" class="btn btn-primary waiter-online-pop-accept" id="btn-recep-online-accept">PRANO</button>
+          <button type="button" class="btn btn-danger waiter-online-pop-cancel" id="btn-recep-online-cancel">REFUZO</button>
+        </div>
+      </div>
+
       <header class="waiter-topbar">
         <div class="waiter-topbar-left">
           <span class="waiter-topbar-greeting">Recepsion,</span>
@@ -653,6 +667,7 @@
   <div id="print-fature" class="print-receipt"></div>
 
   <script src="/js/app.js?v=6"></script>
+  <script src="/js/order-alarm-sound.js"></script>
   <script>
     /* Recepsion: pa kyçje pas mosveprimit — vetëm butoni DIL (app.js WAITER_LOCK_MS 30s). */
     window.aktivizoKyçjenTerminaleKamarier = function recepNoIdleTerminalLock() {};
@@ -692,6 +707,252 @@
     let rcAddSvcRoom = null;
     let recepShiftOpen = false;
     let rcShiftClosePreview = null;
+
+    let recepGuestServiceOrders = [];
+    let recepOnlinePopOpen = false;
+    let recepOnlineAcceptBusy = false;
+    let recepOnlineAlarmTimer = null;
+    let lastRecepGuestSvcPending = null;
+
+    function eshtePorosiSherbimiHoteliQr(o) {
+      return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
+    }
+
+    function filtroPorosiSherbimiRecep(orders) {
+      return (orders || []).filter(eshtePorosiSherbimiHoteliQr);
+    }
+
+    function dridhPorosiRecep() {
+      try {
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate([300, 200, 300, 200, 300]);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function luajTingullPorosiRecep() {
+      dridhPorosiRecep();
+      if (typeof window.playOrderAlarmSound === "function") {
+        window.playOrderAlarmSound();
+      }
+    }
+
+    function mbyllRecepOnlinePop() {
+      recepOnlinePopOpen = false;
+      document.getElementById("recep-online-pop")?.classList.add("hidden");
+      document.getElementById("recep-online-backdrop")?.classList.add("hidden");
+      const msg = document.getElementById("recep-online-accept-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    function renderRecepGuestServicePreview(orders) {
+      const body = document.getElementById("recep-online-pop-preview");
+      if (!body) return;
+      if (!orders.length) {
+        body.innerHTML = "";
+        return;
+      }
+      const o = orders[0];
+      const items = (o.items || []).slice(0, 6).map((it) => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
+      const src = o.source_label || "Shërbim hoteli";
+      const customer = o.customer_label || o.customer_name || o.waiter_name || "Mysafir";
+      const room = o.room_number ? `Dh. ${o.room_number}` : "Dhoma";
+      const extra = orders.length > 1 ? `<small>+ ${orders.length - 1} tjetër në radhë</small>` : "";
+      body.innerHTML = `<div class="waiter-online-pop-order">
+        <strong>${escHtml(src)} · ${escHtml(customer)}</strong>
+        <span>${escHtml(room)} · ${formatEuro(o.total || 0)}</span>
+        <small>${escHtml(items)}</small>
+        <small style="color:#94a3b8">QR shërbimesh — prano për ta shtuar te fatura e dhomës</small>
+        ${extra}
+      </div>`;
+    }
+
+    function hapRecepGuestServicePop() {
+      if (!recepGuestServiceOrders.length) return;
+      renderRecepGuestServicePreview(recepGuestServiceOrders);
+      recepOnlineAcceptBusy = false;
+      const acceptBtn = document.getElementById("btn-recep-online-accept");
+      const refuseBtn = document.getElementById("btn-recep-online-cancel");
+      if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = "PRANO"; }
+      if (refuseBtn) { refuseBtn.disabled = false; refuseBtn.textContent = "REFUZO"; }
+      recepOnlinePopOpen = true;
+      document.getElementById("recep-online-backdrop")?.classList.remove("hidden");
+      document.getElementById("recep-online-pop")?.classList.remove("hidden");
+      const title = document.getElementById("recep-online-pop-title");
+      if (title) {
+        title.textContent = recepGuestServiceOrders.length === 1
+          ? "Kërkesë shërbimi"
+          : `${recepGuestServiceOrders.length} kërkesa shërbimesh`;
+      }
+    }
+
+    function pickRefuseReasonRecep() {
+      return new Promise((resolve) => {
+        const existing = document.getElementById("refuse-reason-modal-recep");
+        if (existing) existing.remove();
+        const presets = ["Shumë i zënë", "Shërbimi jo i disponueshëm", "Orar i mbyllur", "Informacion i gabuar"];
+        const wrap = document.createElement("div");
+        wrap.id = "refuse-reason-modal-recep";
+        wrap.style.cssText = "position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem;";
+        wrap.innerHTML = `
+          <div style="background:#fff;border-radius:14px;max-width:340px;width:100%;padding:1rem 1.1rem">
+            <h3 style="margin:0 0 .75rem;font-size:1.1rem">Pse e refuzoni?</h3>
+            <div id="refuse-reason-btns-recep" style="display:flex;flex-direction:column;gap:.45rem"></div>
+            <input id="refuse-reason-other-recep" type="text" maxlength="300" placeholder="Arsye tjetër…"
+              style="width:100%;margin-top:.65rem;padding:.55rem .7rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box" />
+            <div style="display:flex;gap:.5rem;margin-top:.85rem">
+              <button type="button" id="refuse-reason-cancel-recep" style="flex:1;padding:.65rem;border:none;border-radius:8px;background:#e5e7eb;font-weight:600">Anulo</button>
+              <button type="button" id="refuse-reason-ok-recep" style="flex:1;padding:.65rem;border:none;border-radius:8px;background:#dc2626;color:#fff;font-weight:700">REFUZO</button>
+            </div>
+          </div>`;
+        document.body.appendChild(wrap);
+        let chosen = "";
+        const btns = wrap.querySelector("#refuse-reason-btns-recep");
+        presets.forEach((label) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = label;
+          b.style.cssText = "padding:.65rem;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;font-weight:600;text-align:left";
+          b.onclick = () => {
+            chosen = label;
+            wrap.querySelector("#refuse-reason-other-recep").value = "";
+            btns.querySelectorAll("button").forEach((x) => { x.style.borderColor = "#e5e7eb"; x.style.background = "#f9fafb"; });
+            b.style.borderColor = "#dc2626";
+            b.style.background = "#fef2f2";
+          };
+          btns.appendChild(b);
+        });
+        const finish = (val) => { wrap.remove(); resolve(val); };
+        wrap.querySelector("#refuse-reason-cancel-recep").onclick = () => finish(null);
+        wrap.querySelector("#refuse-reason-ok-recep").onclick = () => {
+          const other = String(wrap.querySelector("#refuse-reason-other-recep").value || "").trim();
+          finish(other || chosen || "Pa arsye");
+        };
+        wrap.addEventListener("click", (e) => { if (e.target === wrap) finish(null); });
+      });
+    }
+
+    async function ngarkoPorosiSherbimiRecep() {
+      try {
+        const data = await api("/api/waiter/online-orders/pending");
+        recepGuestServiceOrders = filtroPorosiSherbimiRecep(data.orders || []);
+        const pending = recepGuestServiceOrders.length;
+        const prevPending = lastRecepGuestSvcPending;
+        if (pending <= 0) {
+          mbyllRecepOnlinePop();
+        } else if (recepOnlinePopOpen) {
+          renderRecepGuestServicePreview(recepGuestServiceOrders);
+        } else if (prevPending != null && pending < prevPending) {
+          mbyllRecepOnlinePop();
+        }
+        const isFirstPoll = prevPending === null;
+        const isNew = pending > 0 && (
+          data.has_new
+          || (prevPending != null && pending > prevPending)
+          || (isFirstPoll && pending > 0)
+        );
+        if (isNew) {
+          luajTingullPorosiRecep();
+          if (!recepOnlinePopOpen) hapRecepGuestServicePop();
+          if (!recepOnlineAlarmTimer) {
+            recepOnlineAlarmTimer = setInterval(() => {
+              if (recepGuestServiceOrders.length) luajTingullPorosiRecep();
+            }, 12000);
+          }
+        } else if (pending <= 0 && recepOnlineAlarmTimer) {
+          clearInterval(recepOnlineAlarmTimer);
+          recepOnlineAlarmTimer = null;
+        }
+        lastRecepGuestSvcPending = pending;
+      } catch {
+        /* cloud offline */
+      }
+    }
+
+    async function pranoPorosiSherbimiRecep() {
+      if (recepOnlineAcceptBusy) return;
+      const first = recepGuestServiceOrders[0];
+      if (!first?.id) return;
+      recepOnlineAcceptBusy = true;
+      const acceptBtn = document.getElementById("btn-recep-online-accept");
+      if (acceptBtn) { acceptBtn.disabled = true; acceptBtn.textContent = "…"; }
+      const msg = document.getElementById("recep-online-accept-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      try {
+        const data = await api("/api/waiter/online-orders/accept", {
+          method: "POST",
+          body: JSON.stringify({
+            order_ids: [String(first.id)],
+            orders: recepGuestServiceOrders,
+          }),
+        });
+        if (data.cloud_message && !data.cloud_ok && msg) {
+          msg.textContent = data.cloud_message;
+          msg.hidden = false;
+        }
+        mbyllRecepOnlinePop();
+        await ngarkoPorosiSherbimiRecep();
+        if (recepView === "orders") {
+          await ngarkoPorositeRecep();
+        }
+        if (recepView === "rooms") {
+          await ngarkoDhomat().catch(() => {});
+        }
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Nuk u pranua.";
+          msg.hidden = false;
+        }
+      } finally {
+        recepOnlineAcceptBusy = false;
+        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = "PRANO"; }
+      }
+    }
+
+    async function refuzoPorosiSherbimiRecep() {
+      if (recepOnlineAcceptBusy) return;
+      const first = recepGuestServiceOrders[0];
+      if (!first?.id) return;
+      const reason = await pickRefuseReasonRecep();
+      if (reason == null) return;
+      recepOnlineAcceptBusy = true;
+      const refuseBtn = document.getElementById("btn-recep-online-cancel");
+      if (refuseBtn) { refuseBtn.disabled = true; refuseBtn.textContent = "…"; }
+      const msg = document.getElementById("recep-online-accept-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      try {
+        const data = await api("/api/waiter/online-orders/refuse", {
+          method: "POST",
+          body: JSON.stringify({ order_ids: [String(first.id)], reason }),
+        });
+        if (data.cloud_message && !data.cloud_ok && msg) {
+          msg.textContent = data.cloud_message;
+          msg.hidden = false;
+        }
+        mbyllRecepOnlinePop();
+        await ngarkoPorosiSherbimiRecep();
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Nuk u refuzua.";
+          msg.hidden = false;
+        }
+      } finally {
+        recepOnlineAcceptBusy = false;
+        if (refuseBtn) { refuseBtn.disabled = false; refuseBtn.textContent = "REFUZO"; }
+      }
+    }
+
+    function startRecepGuestServicePolling() {
+      ngarkoPorosiSherbimiRecep().catch(() => {});
+      setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 15_000);
+    }
+
+    document.getElementById("btn-recep-online-pop-close")?.addEventListener("click", mbyllRecepOnlinePop);
+    document.getElementById("recep-online-backdrop")?.addEventListener("click", mbyllRecepOnlinePop);
+    document.getElementById("btn-recep-online-accept")?.addEventListener("click", pranoPorosiSherbimiRecep);
+    document.getElementById("btn-recep-online-cancel")?.addEventListener("click", refuzoPorosiSherbimiRecep);
 
     function escHtml(s) {
       return String(s ?? "")
@@ -2182,6 +2443,7 @@
       await refreshRegisterMode();
       await ensureRecepShiftOpen();
       setRecepView("rooms");
+      startRecepGuestServicePolling();
     })();
   </script>
 </body>

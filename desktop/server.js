@@ -2283,7 +2283,7 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, (req, res) => {
   res.json({ ok: true, dismissed: ids.length });
 });
 
-app.get("/api/waiter/online-orders/pending", auth, waiterOnly, async (req, res) => {
+app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req, res) => {
   try {
     ensureOnlineOrdersWatcher();
     const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
@@ -2433,7 +2433,7 @@ app.post("/api/waiter/online-orders/close", auth, waiterOnly, async (req, res) =
   }
 });
 
-app.post("/api/waiter/online-orders/accept", auth, waiterOnly, async (req, res) => {
+app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req, res) => {
   try {
     const orderIds = Array.isArray(req.body?.order_ids)
       ? req.body.order_ids
@@ -2493,7 +2493,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOnly, async (req, res) 
   }
 });
 
-app.post("/api/waiter/online-orders/refuse", auth, waiterOnly, async (req, res) => {
+app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req, res) => {
   try {
     const orderIds = Array.isArray(req.body?.order_ids)
       ? req.body.order_ids
