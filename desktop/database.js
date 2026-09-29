@@ -189,6 +189,12 @@ function getSetting(key, fallback = null) {
   return row ? row.value : fallback;
 }
 
+function getMaxRegisters() {
+  const n = Math.floor(Number(getSetting("max_registers", "1")));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(10, n);
+}
+
 function reservationDateFilterSql(query = {}) {
   const { date, from, to } = query;
   if (date) return { sql: "date = ?", params: [String(date).slice(0, 10)] };
@@ -11301,6 +11307,7 @@ function getVersionInfo() {
     exportAtkPurchaseQuarterlyCsv,
     listPurchaseInvoicesForAtk,
     getSetting,
+    getMaxRegisters,
     setSetting,
     upsertReservationLocal,
     insertLocalReservation,

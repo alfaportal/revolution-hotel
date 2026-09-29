@@ -616,13 +616,27 @@ table.sa-table { width: 100%; border-collapse: collapse; font-size: 1rem; }
 .drawer-form input,
 .drawer-form select {
   width: 100%;
-  min-height: 44px;
+  min-height: var(--tap);
   padding: 0.65rem 0.85rem;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
   font-weight: 500;
+  font-size: 1rem;
+}
+.drawer-max-registers select {
+  min-height: var(--tap);
+}
+#btn-drawer-save.drawer-save-touch {
+  min-height: var(--tap);
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.85rem 1rem;
+}
+#dr-save-msg.save-ok {
+  color: var(--ok);
+  font-weight: 600;
 }
 .prob-overview-row:hover {
   background: rgba(255, 107, 53, 0.08);

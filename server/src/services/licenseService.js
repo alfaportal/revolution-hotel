@@ -173,8 +173,19 @@ async function provisionLicenseDevice(id, opts = {}) {
   return { celesi: lic.celesi, device_id: deviceId, created: true };
 }
 
+function normalizeMaxRegisters(raw, fallback = 1) {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(10, Math.max(1, n));
+}
+
+function maxRegistersFromClient(clients) {
+  if (!clients || clients.max_registers == null) return 1;
+  return normalizeMaxRegisters(clients.max_registers, 1);
+}
+
 const LICENSE_WITH_CLIENT_SELECT =
-  "*, clients(id, emri, adresa, telefoni, email, tipi, package_tier, kitchen_slug, kitchen_key)";
+  "*, clients(id, emri, adresa, telefoni, email, tipi, package_tier, kitchen_slug, kitchen_key, max_registers)";
 
 async function findLicenseByDeviceIdOnDb(db, id) {
   const { data: byPrimary, error } = await db
@@ -691,6 +702,7 @@ async function validateLicense({
       kitchen_key: kitchenKey,
     }, normalizePackageTier(license.clients?.package_tier)),
     features: featuresForTier(normalizePackageTier(license.clients?.package_tier)),
+    max_registers: maxRegistersFromClient(license.clients),
   };
 }
 
@@ -730,7 +742,11 @@ async function getLicenseAccessLinks({ celesi, device_id, app_type, hostname, cl
 
 function normalizeClientRow(row) {
   if (!row) return row;
-  return { ...row, package_tier: normalizePackageTier(row.package_tier) };
+  return {
+    ...row,
+    package_tier: normalizePackageTier(row.package_tier),
+    max_registers: normalizeMaxRegisters(row.max_registers, 1),
+  };
 }
 
 async function listClients(opts = {}) {
@@ -923,6 +939,10 @@ async function updateClient(id, body) {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(body, "max_registers")) {
+    patch.max_registers = normalizeMaxRegisters(body.max_registers, 1);
+  }
+
   if (!Object.keys(patch).length) {
     throw new Error("Nuk ka fusha për përditësim.");
   }
@@ -934,7 +954,14 @@ async function updateClient(id, body) {
   let { data, error } = await doUpdate(patch);
 
   // Kolona opsionale mund të mungojë para migrimit — hiqi dhe riprovo
-  const optionalCols = ["product_line", "aktiv", "owner_group_id", "ai_monthly_token_limit", "package_tier"];
+  const optionalCols = [
+    "product_line",
+    "aktiv",
+    "owner_group_id",
+    "ai_monthly_token_limit",
+    "package_tier",
+    "max_registers",
+  ];
   let guard = 0;
   while (error && guard < 5) {
     guard += 1;

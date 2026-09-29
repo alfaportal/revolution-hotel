@@ -287,9 +287,33 @@ function keyHash(key) {
 /** Pa limit kohor offline — politikë Revolution Invest (mbetet për referencë). */
 const CLOUD_OFFLINE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
+function normalizeLicensedMaxRegisters(raw) {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(10, n);
+}
+
+function syncMaxRegistersToSettings(raw) {
+  if (raw == null || raw === "") return;
+  try {
+    const db = require("./database");
+    if (db && typeof db.setSetting === "function") {
+      db.setSetting("max_registers", String(normalizeLicensedMaxRegisters(raw)));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function writeActivationRecord(app, key, extra = {}) {
   const existing = readActivationRecord(app) || {};
   const touchOnline = extra.last_online_at != null || extra._from_online === true;
+  const nextMaxReg =
+    extra.max_registers != null && extra.max_registers !== ""
+      ? normalizeLicensedMaxRegisters(extra.max_registers)
+      : existing.max_registers != null
+        ? normalizeLicensedMaxRegisters(existing.max_registers)
+        : null;
   const record = {
     celesi_hash: keyHash(key),
     device_id: getMachineId(),
@@ -309,8 +333,12 @@ function writeActivationRecord(app, key, extra = {}) {
     valid_until: extra.valid_until || existing.valid_until || "",
     trial_ends_at: extra.trial_ends_at || existing.trial_ends_at || "",
     license_message: extra.license_message || existing.license_message || "",
+    ...(nextMaxReg != null ? { max_registers: nextMaxReg } : {}),
   };
   fs.writeFileSync(activationRecordPath(app), JSON.stringify(record), "utf8");
+  if (nextMaxReg != null && (touchOnline || extra.max_registers != null)) {
+    syncMaxRegistersToSettings(nextMaxReg);
+  }
   if (touchOnline) markOnlineLicense(app, key);
 }
 
@@ -323,7 +351,7 @@ function offlineExpiredMessage() {
 }
 
 function activationMetaFromOnline(online = {}) {
-  return {
+  const meta = {
     _from_online: true,
     last_online_at: new Date().toISOString(),
     client_name: online.client_name || "",
@@ -334,6 +362,10 @@ function activationMetaFromOnline(online = {}) {
     trial_ends_at: online.trial_ends_at || "",
     license_message: online.message || "",
   };
+  if (online.max_registers != null && online.max_registers !== "") {
+    meta.max_registers = online.max_registers;
+  }
+  return meta;
 }
 
 function readActivationRecord(app) {
@@ -512,6 +544,7 @@ async function validateLicenseOnline(key, opts = {}) {
         client_id: parsed.client_id || "",
         package_tier: parsed.package_tier || "",
         features: parsed.features || {},
+        max_registers: parsed.max_registers,
         trial_active: !!parsed.trial_active,
         trial_ends_at: parsed.trial_ends_at || null,
         valid_until: parsed.valid_until || null,
@@ -571,6 +604,7 @@ async function validateLicenseHeartbeat(key) {
         message: parsed.message || "OK",
         package_tier: parsed.package_tier || "",
         features: parsed.features || {},
+        max_registers: parsed.max_registers,
         celesi: parsed.celesi || parsed.celesi_updated || k,
         celesi_updated: parsed.celesi_updated || null,
         device_id: parsed.device_id || null,
@@ -799,6 +833,18 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
           } catch {
             /* ignore */
           }
+        }
+      }
+
+      if (beat.valid && !beat.offline && beat.max_registers != null && beat.max_registers !== "") {
+        const activeKey = remoteKey || localKey || key;
+        const prev = readActivationRecord(app) || {};
+        const nextMax = normalizeLicensedMaxRegisters(beat.max_registers);
+        const prevMax =
+          prev.max_registers != null ? normalizeLicensedMaxRegisters(prev.max_registers) : null;
+        writeActivationRecord(app, activeKey, { max_registers: nextMax });
+        if (prevMax !== nextMax) {
+          console.log("[license-heartbeat] max_registers:", nextMax);
         }
       }
     } catch {
