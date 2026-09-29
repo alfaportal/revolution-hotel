@@ -1145,6 +1145,37 @@ async function ensureHardwareLicense(app) {
             }
           }
         }
+        if (rec && rec.source !== "cloud") {
+          try {
+            const licenseMod = require(path.join(__dirname, "..", "license"));
+            const onlineResult = await licenseMod.validateHardwareWithCloud(app, formatted);
+            if (
+              onlineResult &&
+              !onlineResult.offline &&
+              !onlineResult.valid &&
+              (onlineResult.code === "REVOKED" ||
+                onlineResult.code === "NOT_FOUND" ||
+                onlineResult.code === "SUSPENDED")
+            ) {
+              clearHardwareLicense(app);
+              try {
+                if (typeof licenseMod.wipeAllActivationData === "function") {
+                  licenseMod.wipeAllActivationData(app);
+                }
+              } catch {
+                /* ignore */
+              }
+              logHwLicenseAudit(app, "hardware_cloud_revoked", {
+                hardware_id: formatted,
+                code: onlineResult.code,
+              });
+              const activated = await promptHardwareActivation(app, { reason: "no_license" });
+              return { ok: !!activated, grace: null };
+            }
+          } catch {
+            /* Pa internet — vazhdo me licencën lokale */
+          }
+        }
         clearGrace(app);
         return { ok: true, grace: null };
       }

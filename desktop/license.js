@@ -580,14 +580,54 @@ async function validateLicenseOnline(key, opts = {}) {
   }
 }
 
+/** Hardware-only — pyet cloud a ekziston / aktive HW ID (pa çelës .lic). */
+async function validateHardwareWithCloud(app, hardwareId) {
+  const hw = String(hardwareId || getHardwareIdForDisplay(app) || "").trim();
+  if (!hw) {
+    return { valid: false, offline: false, code: "MISSING_HARDWARE", message: "Mungon Hardware ID." };
+  }
+  try {
+    const res = await requestJson("POST", getServerUrl(), "/api/v1/license/check-hardware", {
+      hardware_id: hw,
+      device_id: getMachineId(),
+    });
+    let parsed = {};
+    try {
+      parsed = JSON.parse(res.data || "{}");
+    } catch {
+      parsed = {};
+    }
+    if (res.status < 400 && parsed.valid) {
+      return {
+        valid: true,
+        offline: false,
+        code: parsed.code || "OK",
+        message: parsed.message || parsed.gabim || "OK",
+      };
+    }
+    const code =
+      String(parsed.code || "").trim() ||
+      (res.status === 404 ? "NOT_FOUND" : res.status >= 500 ? "ERROR" : "NOT_FOUND");
+    return {
+      valid: false,
+      offline: false,
+      code,
+      message: parsed.message || parsed.gabim || "Liçenca nuk është aktive.",
+    };
+  } catch {
+    return { valid: true, offline: true, code: "OFFLINE", message: "Pa internet." };
+  }
+}
+
 async function validateLicenseHeartbeat(key) {
   const VERSION = require("./version-config");
   const k = normalizeKey(key);
+  const hwDisplay = getHardwareIdForDisplay();
   try {
     const res = await requestJson("POST", getServerUrl(), "/api/v1/license/heartbeat", {
       celesi: k,
       device_id: getMachineId(),
-      hardware_id: getHardwareIdForDisplay(),
+      hardware_id: hwDisplay,
       hostname: os.hostname(),
       app_type: "hotel",
     });
@@ -723,20 +763,43 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
     if (_watchdogInFlight) return;
     _watchdogInFlight = true;
     try {
-      let key = readStoredLicense(app);
-      if (!key) {
-        try {
-          const lg = require("./fiscal/license-guard");
-          const hwRec = lg.readStoredLicenseRecord(app);
-          if (hwRec && hwRec.key && hwRec.source === "cloud") {
-            key = hwRec.key;
-          }
-        } catch {
-          /* ignore */
-        }
+      let hwRec = null;
+      try {
+        const lg = require("./fiscal/license-guard");
+        hwRec = lg.readStoredLicenseRecord(app);
+      } catch {
+        /* ignore */
+      }
+      const cloudKeyFile = readStoredLicense(app);
+      let key = cloudKeyFile;
+      if (!key && hwRec && hwRec.key) {
+        key = hwRec.key;
       }
       if (!key) return;
-      const beat = await validateLicenseHeartbeat(key);
+
+      const hardwareOnlyCloudCheck = !cloudKeyFile && hwRec && hwRec.source !== "cloud";
+      const beat = hardwareOnlyCloudCheck
+        ? await (async () => {
+            const hwCloud = await validateHardwareWithCloud(app);
+            if (hwCloud.offline) {
+              return { valid: true, offline: true, message: hwCloud.message || "Pa internet." };
+            }
+            const code = String(hwCloud.code || "").trim();
+            const forceLogout =
+              !hwCloud.valid &&
+              (code === "REVOKED" ||
+                code === "NOT_FOUND" ||
+                code === "SUSPENDED" ||
+                HEARTBEAT_FORCE_LOGOUT_CODES.has(code));
+            return {
+              valid: !!hwCloud.valid,
+              offline: false,
+              code,
+              force_logout: forceLogout,
+              message: hwCloud.message || "Liçenca nuk është aktive.",
+            };
+          })()
+        : await validateLicenseHeartbeat(key);
       if (beat["force_factory_reset"] && typeof onFactoryReset === "function") {
         try {
           await requestJson("POST", getServerUrl(), "/api/v1/license/ack-factory-reset", {
@@ -1673,6 +1736,7 @@ module.exports = {
   reportHardwareIdToCloud,
   claimByHardwareFromCloud,
   claimByHardwareId: claimByHardwareFromCloud,
+  validateHardwareWithCloud,
   isRevocationCode,
   purgeAllLicenseArtifacts,
   isWithinCloudOfflineWindow,
