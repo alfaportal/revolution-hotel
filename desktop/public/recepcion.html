@@ -151,8 +151,15 @@
       display: flex; flex-direction: column; align-items: stretch; gap: 0;
       padding: 0; border-radius: 12px; text-align: left; overflow: hidden;
       border: 1px solid #e2e8f0; background: #fff;
-      cursor: default; font: inherit; min-height: 168px;
+      cursor: pointer; font: inherit; min-height: 168px;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
     }
+    .svc-card:hover {
+      border-color: #ff6b35;
+      box-shadow: 0 4px 14px rgba(255, 107, 53, 0.22);
+      transform: translateY(-1px);
+    }
+    .svc-card:active { transform: translateY(0); }
     .svc-card-photo-wrap {
       position: relative; width: 100%; aspect-ratio: 4 / 3;
       background: #e2e8f0; overflow: hidden;
@@ -169,6 +176,46 @@
     .svc-card-mode { font-size: 0.68rem; font-weight: 700; color: #64748b; }
 
     .recep-hotel-panel .rez-toolbar h2 { margin: 0; font-size: 1.15rem; }
+
+    /* Modalet (check-in, rezervim, check-out) — si waiter.html; pa këto mbeten poshtë faqes */
+    .table-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      box-sizing: border-box;
+    }
+    .table-modal[hidden] { display: none !important; }
+    .table-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+    }
+    .table-modal-content {
+      position: relative;
+      z-index: 1;
+      background: var(--ngjyr-card, #fff);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(15, 23, 42, 0.25);
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 1.25rem;
+      color: #0f172a;
+    }
+    .table-modal-content h2 {
+      font-size: 1.35rem;
+      margin: 0 0 0.75rem;
+    }
+    body.recep-embed-kasa .table-modal {
+      z-index: 5000;
+      padding: 0.75rem;
+    }
 
     .recep-modal-placeholder {
       margin: 0.5rem 0 1rem; color: #64748b; font-size: 0.9rem; font-weight: 600; line-height: 1.45;
@@ -617,6 +664,10 @@
       <input type="hidden" id="rc-add-svc-room-id" value="">
       <input type="hidden" id="rc-add-svc-mode" value="fixed">
       <div class="hotel-form-grid">
+        <div class="hotel-form-field wide" id="rc-add-svc-room-wrap" hidden>
+          <label for="rc-add-svc-room">Dhoma (e zënë)</label>
+          <select id="rc-add-svc-room"></select>
+        </div>
         <div class="hotel-form-field wide">
           <label for="rc-add-svc-service">Shërbimi (katalogu)</label>
           <select id="rc-add-svc-service"></select>
@@ -1816,12 +1867,79 @@
     function mbyllRcAddService() {
       document.getElementById("modal-rc-add-service").hidden = true;
       rcAddSvcRoom = null;
+      const roomWrap = document.getElementById("rc-add-svc-room-wrap");
+      if (roomWrap) roomWrap.hidden = true;
       const msg = document.getElementById("rc-add-svc-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
     }
 
+    function fillRcOccupiedRoomSelect() {
+      const sel = document.getElementById("rc-add-svc-room");
+      if (!sel) return [];
+      const occ = (lastRooms || []).filter((r) => r.status === "occupied");
+      if (!occ.length) {
+        sel.innerHTML = '<option value="">Nuk ka dhoma të zëna</option>';
+        return [];
+      }
+      sel.innerHTML = occ
+        .map((r) => {
+          const g = r.active_guest?.guest_name || "Mysafir";
+          return `<option value="${String(r.id)}">Dhoma ${escHtml(String(r.room_number))} — ${escHtml(g)}</option>`;
+        })
+        .join("");
+      return occ;
+    }
+
+    function bindRcAddServiceRoomSelect() {
+      const roomSel = document.getElementById("rc-add-svc-room");
+      if (!roomSel) return;
+      roomSel.onchange = () => {
+        const rid = roomSel.value;
+        rcAddSvcRoom = (lastRooms || []).find((r) => String(r.id) === String(rid)) || null;
+        document.getElementById("rc-add-svc-room-id").value = rid || "";
+        const serviceId = document.getElementById("rc-add-svc-service")?.value;
+        applyRcAddServicePricing(serviceId ? findServiceById(serviceId) : null);
+      };
+    }
+
+    async function hapRcAddServiceFromCatalog(service) {
+      if (!service?.id) return;
+      if (!lastRooms?.length) {
+        try { await ngarkoDhomat(); } catch { /* */ }
+      }
+      const occ = fillRcOccupiedRoomSelect();
+      if (!occ.length) {
+        showMsg("recep-svc-msg", "Nuk ka dhoma të zëna — bëni check-in fillimisht.", false);
+        return;
+      }
+      const roomWrap = document.getElementById("rc-add-svc-room-wrap");
+      if (roomWrap) roomWrap.hidden = false;
+      bindRcAddServiceRoomSelect();
+      rcAddSvcRoom = occ[0];
+      document.getElementById("rc-add-svc-room-id").value = String(occ[0].id);
+      const roomSel = document.getElementById("rc-add-svc-room");
+      if (roomSel) roomSel.value = String(occ[0].id);
+      document.getElementById("rc-add-svc-title").textContent = service.name || "Shërbim";
+      document.getElementById("rc-add-svc-qty").value = "1";
+      document.getElementById("rc-add-svc-notes").value = "";
+      const msg = document.getElementById("rc-add-svc-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      try {
+        await ensureSvcCatalogLoaded();
+        fillRcAddServiceSelect();
+        const sel = document.getElementById("rc-add-svc-service");
+        if (sel) sel.value = String(service.id);
+        applyRcAddServicePricing(service);
+        document.getElementById("modal-rc-add-service").hidden = false;
+      } catch (err) {
+        showMsg("recep-svc-msg", err.message || "Gabim katalogu", false);
+      }
+    }
+
     async function hapRcAddService(room) {
       if (!room || room.status !== "occupied") return;
+      const roomWrap = document.getElementById("rc-add-svc-room-wrap");
+      if (roomWrap) roomWrap.hidden = true;
       rcAddSvcRoom = room;
       document.getElementById("rc-add-svc-room-id").value = String(room.id);
       const guest = room.active_guest?.guest_name || "Mysafir";
@@ -1937,7 +2055,8 @@
         section.innerHTML = `<div class="svc-cat-head"><h3 class="svc-cat-title">${escHtml(g.name)}</h3></div><div class="svc-cat-grid"></div>`;
         const grid = section.querySelector(".svc-cat-grid");
         for (const s of g.services || []) {
-          const card = document.createElement("div");
+          const card = document.createElement("button");
+          card.type = "button";
           card.className = "svc-card";
           const hint = svcModeHint(s);
           const photo = String(s.photo || servicePhotoFallback(s.name) || "").trim();
@@ -1953,6 +2072,7 @@
             `</div>`;
           const img = card.querySelector(".svc-card-photo");
           if (img) img.addEventListener("error", () => { img.remove(); });
+          card.addEventListener("click", () => { void hapRcAddServiceFromCatalog(s); });
           grid.appendChild(card);
         }
         catalog.appendChild(section);

@@ -2358,8 +2358,13 @@
           </table>
         </div>
         <div id="ditari-totali" style="margin-top:1rem;font-size:1.25rem;font-weight:800;text-align:right"></div>
+        <div style="margin-top:1rem">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-ditari-toggle-activity" aria-expanded="false">
+            Shfaq
+          </button>
+        </div>
       </div>
-      <div class="card">
+      <div class="card" id="ditari-activity-card" style="display:none">
         <div class="card-title">Regjistri i veprimeve (kush e preku programin)</div>
         <p style="margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.85rem">
           Hyrjet, kërkimet dhe printimet regjistrohen me datë, orë dhe sekonda.
@@ -2870,6 +2875,9 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-z">Raporti Z</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-x-fiskal" title="Modi X ATK — gjendja aktuale e kuponëve (pa mbyllje)">Raporti X Fiskal</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-periodik" title="Raport periodik fiskal mes dy datave">Raport Periodik</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-shkurt-periodik" title="Raport fiskal periodik i përmbledhur (Neni 13)">Raport i Shkurtër</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-mujor-memorie" title="Raporti mujor i memories fiskale ATK">Raport Mujor ATK</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-z-fiskal" title="Raporti Z fiskal — mbyllje ditore ATK">Raporti Z Fiskal</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-raporti-ditor">Përmbledhje Ditore</button>
         </div>
       </div>
@@ -2961,6 +2969,20 @@
               <tr><th>Promocioni</th><th>Përdorime</th><th>Totali zbritur</th></tr>
             </thead>
             <tbody id="raport-promo-stats"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="raport-register-card">
+        <div class="card-title">Shitjet sipas arkës</div>
+        <div class="reports-table-wrap">
+          <table class="dashboard-top-table">
+            <thead>
+              <tr><th>Arka</th><th>Shitje</th><th>Cash</th><th>Kartë</th><th>Kredi</th><th>Totali</th></tr>
+            </thead>
+            <tbody id="raport-by-register">
+              <tr><td colspan="6" class="purchases-empty">Zgjidhni periudhën dhe klikoni Apliko</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
@@ -6147,18 +6169,12 @@
     function renderDitariStats(elId, d) {
       const el = document.getElementById(elId);
       if (!el) return;
-      const src = d.by_source || {};
       el.innerHTML = `
         <div class="stat-card"><div class="val">${d.today}</div><div class="lbl">${tt("Data e sotme")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Totali")} (${d.periodLabel})</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(src.restaurant ?? d.restaurantSales ?? 0)}</div><div class="lbl">${tt("Restorant")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(src.reception ?? d.receptionSales ?? 0)}</div><div class="lbl">${tt("Recepsion")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(src.nights ?? d.hotelNights ?? 0)}</div><div class="lbl">${tt("Netë hotel")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(src.services ?? d.hotelServices ?? 0)}</div><div class="lbl">${tt("Shërbime / RS")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(d.totalCash)}</div><div class="lbl">${tt("Cash")} (${tt("restorant")})</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(d.totalKarte)}</div><div class="lbl">${tt("Kartë")} (${tt("restorant")})</div></div>
-        <div class="stat-card"><div class="val">${d.orderCount}</div><div class="lbl">${tt("Porosi restorant")}</div></div>
-        <div class="stat-card"><div class="val">${d.tablesServed}</div><div class="lbl">${tt("Tavolina të shërbyera")}</div></div>`;
+        <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Shitjet")} (${d.periodLabel})</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(d.totalCash)}</div><div class="lbl">${tt("Cash")}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(d.totalKarte)}</div><div class="lbl">${tt("Kartë")}</div></div>
+        <div class="stat-card"><div class="val">${d.orderCount}</div><div class="lbl">${tt("Porosi të përfunduara")}</div></div>`;
     }
 
     function initDitariDateInputs() {
@@ -6312,26 +6328,55 @@
       document.getElementById("ditari-totali").textContent =
         "TOTALI (" + d.periodLabel + "): " + formatEuro(d.totalSales);
 
+      lastDitariPayload = d;
+      if (ditariActivityVisible) renderDitariActivityRows(d.activity || []);
+      else clearDitariActivityRows();
+    }
+
+    let lastDitariPayload = null;
+    let ditariActivityVisible = false;
+
+    function clearDitariActivityRows() {
       const actBody = document.getElementById("ditari-activity");
-      if (actBody) {
-        const actRows = (d.activity || []).map(a => `<tr>
+      if (actBody) actBody.innerHTML = "";
+    }
+
+    function renderDitariActivityRows(activity) {
+      const actBody = document.getElementById("ditari-activity");
+      if (!actBody) return;
+      const actRows = (activity || []).map(a => `<tr>
               <td>${a.created_at}</td>
               <td>${a.user_name}</td>
               <td>${a.user_role}</td>
               <td>${a.action}</td>
               <td style="font-size:0.85rem">${a.detail || "—"}</td>
             </tr>`);
-        if (typeof VirtWindow !== "undefined") {
-          VirtWindow.renderTableRows(
-            actBody,
-            actRows,
-            '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka veprime të regjistruara për këtë periudhë</td></tr>',
-          );
-        } else {
-          actBody.innerHTML = actRows.length
-            ? actRows.join("")
-            : '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka veprime të regjistruara për këtë periudhë</td></tr>';
-        }
+      if (typeof VirtWindow !== "undefined") {
+        VirtWindow.renderTableRows(
+          actBody,
+          actRows,
+          '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka veprime të regjistruara për këtë periudhë</td></tr>',
+        );
+      } else {
+        actBody.innerHTML = actRows.length
+          ? actRows.join("")
+          : '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka veprime të regjistruara për këtë periudhë</td></tr>';
+      }
+    }
+
+    function setDitariActivityPanelVisible(show) {
+      ditariActivityVisible = !!show;
+      const card = document.getElementById("ditari-activity-card");
+      const btn = document.getElementById("btn-ditari-toggle-activity");
+      if (card) card.style.display = ditariActivityVisible ? "" : "none";
+      if (btn) {
+        btn.textContent = ditariActivityVisible ? "Fshih" : "Shfaq";
+        btn.setAttribute("aria-expanded", ditariActivityVisible ? "true" : "false");
+      }
+      if (ditariActivityVisible && lastDitariPayload) {
+        renderDitariActivityRows(lastDitariPayload.activity || []);
+      } else if (!ditariActivityVisible) {
+        clearDitariActivityRows();
       }
     }
 
@@ -6567,6 +6612,10 @@
       renderDitariTables(d);
       return d;
     }
+
+    document.getElementById("btn-ditari-toggle-activity")?.addEventListener("click", () => {
+      setDitariActivityPanelVisible(!ditariActivityVisible);
+    });
 
     document.getElementById("btn-ditari-kerko").addEventListener("click", () => ngarkoDitarin({ audit: true }));
 
@@ -6927,6 +6976,43 @@
         alert(e.message || "Gabim");
       }
     });
+    document.getElementById("btn-raporti-shkurt-periodik").addEventListener("click", async () => {
+      const from = prompt("Raport i shkurtër — data Nga (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+      if (!from) return;
+      const to = prompt("Raport i shkurtër — data Deri (YYYY-MM-DD)", from);
+      if (!to) return;
+      const op = document.getElementById("hdr-emri")?.textContent || "Admin";
+      await printoNgaApi("/api/fiscal/short-periodic-report", {
+        from,
+        to,
+        from_date: from,
+        to_date: to,
+        operator_name: op,
+      });
+    });
+    document.getElementById("btn-raporti-mujor-memorie").addEventListener("click", async () => {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const defFrom = `${y}-${m}-01`;
+      const defTo = now.toISOString().slice(0, 10);
+      const from = prompt("Raport mujor memorie ATK — Nga (YYYY-MM-DD)", defFrom);
+      if (!from) return;
+      const to = prompt("Raport mujor memorie ATK — Deri (YYYY-MM-DD)", defTo);
+      if (!to) return;
+      const op = document.getElementById("hdr-emri")?.textContent || "Admin";
+      await printoNgaApi("/api/fiscal/monthly-memory-report", {
+        from,
+        to,
+        from_date: from,
+        to_date: to,
+        operator_name: op,
+      });
+    });
+    document.getElementById("btn-raporti-z-fiskal").addEventListener("click", () =>
+      printoNgaApi("/api/fiscal/z-report", {
+        operator_name: document.getElementById("hdr-emri")?.textContent || "Admin",
+      }));
     document.getElementById("btn-raporti-ditor").addEventListener("click", () =>
       printoNgaApi("/api/admin/reports/daily-summary/print"));
 
@@ -13503,6 +13589,20 @@
       renderRaportDailyChart(r.dailySales || []);
       renderRaportProductsChart(r.topItems || []);
       renderRaportTopTable(r.topItems || []);
+      const byReg = document.getElementById("raport-by-register");
+      if (byReg) {
+        const regs = r.byRegister || [];
+        byReg.innerHTML = regs.length
+          ? regs.map((x) => `<tr>
+              <td>${escHtml(x.register_name)}</td>
+              <td>${x.order_count}</td>
+              <td>${formatEuro(x.cash)}</td>
+              <td>${formatEuro(x.card)}</td>
+              <td>${formatEuro(x.credit)}</td>
+              <td>${formatEuro(x.total)}</td>
+            </tr>`).join("")
+          : '<tr><td colspan="6" class="purchases-empty">Nuk ka shitje për këtë periudhë</td></tr>';
+      }
       const promoCard = document.getElementById("raport-promo-card");
       const promoBody = document.getElementById("raport-promo-stats");
       const stats = r.promotionStats || [];

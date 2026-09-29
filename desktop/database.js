@@ -6531,6 +6531,42 @@ function getReports(dateFrom, dateTo) {
   const restaurantRounded = roundReportMoney(restaurantSales);
   const receptionRounded = roundReportMoney(receptionSales);
 
+  const byRegisterMap = new Map();
+  for (const e of entries) {
+    const rc = String(e.receipt_number || "").trim().toUpperCase();
+    let registerName = "Restorant";
+    if (isRecepsionCheckoutReceipt(e.receipt_number)) registerName = "Recepsion (check-out)";
+    else if (rc.startsWith("RC-")) registerName = "Kasa recepsion";
+    if (!byRegisterMap.has(registerName)) {
+      byRegisterMap.set(registerName, {
+        register_name: registerName,
+        order_count: 0,
+        total: 0,
+        cash: 0,
+        card: 0,
+        credit: 0,
+      });
+    }
+    const b = byRegisterMap.get(registerName);
+    b.order_count += 1;
+    const tot = Number(e.total) || 0;
+    b.total += tot;
+    const pm = normalizePaymentMethod(e.payment_method);
+    if (pm === "karte" || pm === "debit_card" || pm === "credit_card") b.card += tot;
+    else if (pm === "kredi") b.credit += tot;
+    else if (pm === "mixed") b.cash += tot;
+    else b.cash += tot;
+  }
+  const byRegister = [...byRegisterMap.values()]
+    .map((b) => ({
+      ...b,
+      total: roundReportMoney(b.total),
+      cash: roundReportMoney(b.cash),
+      card: roundReportMoney(b.card),
+      credit: roundReportMoney(b.credit),
+    }))
+    .sort((a, b) => String(a.register_name).localeCompare(String(b.register_name), "sq"));
+
   return {
     totalSales,
     restaurantSales: restaurantRounded,
@@ -6550,6 +6586,7 @@ function getReports(dateFrom, dateTo) {
     average,
     topItems,
     dailySales,
+    byRegister,
     dateFrom: from,
     dateTo: to,
   };
