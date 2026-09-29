@@ -3796,7 +3796,7 @@
           <div class="fiscal-save-msg" id="msg-license"></div>
         </div>
       </div>
-      <div class="card settings-card">
+      <div class="card settings-card" id="terminals-admin-card">
         <div class="card-title">Terminalet</div>
         <p style="margin:0 0 1rem;color:var(--ngjyr-muted);font-size:0.85rem">
           Lidhni PC të ri (recepsion ose restorant) me kod lidhës — punonjësi e fut në ekranin e aktivizimit.
@@ -17538,12 +17538,29 @@
       }
     }
 
+    function syncTerminalsAdminUi(data) {
+      const card = document.getElementById("terminals-admin-card");
+      const maxReg = Math.max(1, Math.floor(Number(data?.max_registers) || 1));
+      if (card) card.hidden = maxReg < 2;
+      const genBtn = document.getElementById("btn-terminal-generate-pair");
+      const canAdd = data?.can_add_device !== false && maxReg >= 2;
+      if (genBtn) genBtn.disabled = !canAdd;
+      const msg = document.getElementById("msg-terminal-pair");
+      if (msg && maxReg >= 2 && !canAdd) {
+        msg.textContent =
+          "Numri maksimal i paisjeve është arritur. Kontaktoni administratorin.";
+        msg.style.color = "var(--ngjyr-warning, #f59e0b)";
+      }
+    }
+
     async function ngarkoTerminaletAdmin() {
       const tbody = document.getElementById("terminals-admin-body");
       if (!tbody) return;
       tbody.innerHTML = `<tr><td colspan="4" style="color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>`;
       try {
         const data = await api("/api/admin/terminals");
+        syncTerminalsAdminUi(data);
+        if (document.getElementById("terminals-admin-card")?.hidden) return;
         const rows = data.terminals || [];
         if (!rows.length) {
           tbody.innerHTML = `<tr><td colspan="4" style="color:var(--ngjyr-muted)">Nuk ka terminale të regjistruara.</td></tr>`;

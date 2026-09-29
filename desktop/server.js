@@ -1834,7 +1834,13 @@ app.get("/api/login/terminal-role", (_req, res) => {
     const license = require("./license");
     const eapp = electronApp();
     const terminal_role = license.readTerminalRole(eapp) || null;
-    res.json({ ok: true, terminal_role });
+    const max_registers = db.getMaxRegisters();
+    res.json({
+      ok: true,
+      terminal_role,
+      max_registers,
+      lock_role_from_terminal: max_registers >= 2 && !!terminal_role,
+    });
   } catch (e) {
     res.json({ ok: false, terminal_role: null, gabim: e.message || String(e) });
   }
@@ -8448,6 +8454,13 @@ app.post("/api/admin/generate-pair-code", auth, adminOnly, async (req, res) => {
     if (!celesi) {
       return res.status(400).json({ ok: false, gabim: "Nuk ka licencë aktive në këtë POS." });
     }
+    const maxReg = db.getMaxRegisters();
+    if (maxReg < 2) {
+      return res.status(403).json({
+        ok: false,
+        gabim: "Licenca lejon vetëm një pajisje — pairing nuk nevojitet.",
+      });
+    }
     const roleRaw = String(req.body?.terminal_role || "kamarier").trim().toLowerCase();
     const terminal_role = roleRaw === "recepsion" ? "recepsion" : "kamarier";
     const { status, parsed } = await cloudTerminalJson("POST", "/api/v1/terminal/generate-pair-code", {
@@ -8469,8 +8482,9 @@ app.post("/api/admin/generate-pair-code", auth, adminOnly, async (req, res) => {
 app.get("/api/admin/terminals", auth, adminOnly, async (_req, res) => {
   try {
     const celesi = storedLicenseKeyForCloud();
+    const max_registers = db.getMaxRegisters();
     if (!celesi) {
-      return res.json({ ok: true, terminals: [], max_terminals: 1 });
+      return res.json({ ok: true, terminals: [], max_registers, max_terminals: max_registers });
     }
     const qs = new URLSearchParams({ celesi }).toString();
     const { status, parsed } = await cloudTerminalJson(
@@ -8482,10 +8496,15 @@ app.get("/api/admin/terminals", auth, adminOnly, async (_req, res) => {
       return res.status(status >= 400 ? status : 502).json({
         ok: false,
         terminals: [],
+        max_registers,
         gabim: parsed.gabim || "Nuk u lexua lista e terminaleve.",
       });
     }
-    res.json(parsed);
+    res.json({
+      ...parsed,
+      max_registers: parsed.max_registers != null ? parsed.max_registers : max_registers,
+      max_terminals: parsed.max_registers != null ? parsed.max_registers : max_registers,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, terminals: [], gabim: e.message || "Gabim cloud." });
   }

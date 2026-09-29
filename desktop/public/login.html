@@ -698,7 +698,11 @@
       if (isStaffOnlyLoginMode) return;
       try {
         const tr = await fetch("/api/login/terminal-role").then((r) => r.json());
+        const maxReg = Math.max(1, Math.floor(Number(tr?.max_registers) || 1));
         const bound = tr?.terminal_role;
+        const lockRole = tr?.lock_role_from_terminal === true
+          || (maxReg >= 2 && (bound === "recepsion" || bound === "kamarier"));
+        if (!lockRole) return;
         if (bound !== "recepsion" && bound !== "kamarier") return;
         selectedPinLoginMode = bound;
         syncLoginRoleButtons();
