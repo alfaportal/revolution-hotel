@@ -3,7 +3,11 @@
  * Integrity (prod) → Licencë cloud (dialog + poll) → DB ready → server → UI → security-alert
  */
 const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
-const { runProdLicenseDialogUntilOk, loadCloud } = require("./protection/license-boot");
+const {
+  runProdLicenseDialogUntilOk,
+  loadCloud,
+  isProdLicenseSatisfied,
+} = require("./protection/license-boot");
 const path = require("path");
 const fs = require("fs");
 const { joinContent } = require("./app-paths");
@@ -225,13 +229,20 @@ function startLicenseWatchdogForApp(cloud) {
     cloud.startLicenseWatchdog(
       app,
       (beat) => {
-        if (cloud.isRevocationCode(beat?.code) || beat?.force_factory_reset) {
+        if (
+          cloud.isRevocationCode(beat?.code) ||
+          beat?.force_factory_reset ||
+          beat?.code === "OFFLINE_EXPIRED" ||
+          beat?.code === "OFFLINE_NEED_ACTIVATION"
+        ) {
           reopenLicenseDialog(beat, beat?.message || NO_LICENSE_MSG).catch(() => {});
           return;
         }
         if (beat?.code && cloud.HARD_LICENSE_FAIL_CODES.has(beat.code)) {
           reopenLicenseDialog(beat, beat?.message || NO_LICENSE_MSG).catch(() => {});
-        } else if (beat?.valid) {
+          return;
+        }
+        if (beat?.valid) {
           pushLicenseUiFromCloud().catch(() => {});
         }
       },
@@ -276,6 +287,15 @@ async function bootHotelLicenseLayers() {
     return false;
   }
   global.__hwLicenseGrace = licenseGuard.getGraceBannerInfo(app);
+
+  if (!(await isProdLicenseSatisfied(cloud, app))) {
+    const dialogOk = await runProdLicenseDialogUntilOk(app, "no_license");
+    if (!dialogOk) {
+      app.quit();
+      return false;
+    }
+  }
+
   await pushLicenseUiFromCloud();
   startLicenseWatchdogForApp(cloud);
   return true;
@@ -288,7 +308,11 @@ async function reopenLicenseDialog(beat = {}, detail) {
   try {
     if (cloud.isRevocationCode(beat?.code) || beat?.force_factory_reset) {
       cloud.purgeAllLicenseArtifacts(app, detail, { allowReactivation: true });
-    } else if (beat?.code && cloud.HARD_LICENSE_FAIL_CODES.has(beat.code)) {
+    } else if (
+      beat?.code === "OFFLINE_EXPIRED" ||
+      beat?.code === "OFFLINE_NEED_ACTIVATION" ||
+      (beat?.code && cloud.HARD_LICENSE_FAIL_CODES.has(beat.code))
+    ) {
       cloud.clearStoredLicense(app);
     }
   } catch (e) {
@@ -326,6 +350,20 @@ async function reopenLicenseDialog(beat = {}, detail) {
       return;
     }
     global.__hwLicenseGrace = licenseGuard.getGraceBannerInfo(app);
+
+    if (isProd) {
+      if (!(await isProdLicenseSatisfied(cloud, app))) {
+        const dialogOk = await runProdLicenseDialogUntilOk(
+          app,
+          licenseFailReasonFromBeat(beat),
+        );
+        if (!dialogOk) {
+          app.quit();
+          return;
+        }
+      }
+    }
+
     await pushLicenseUiFromCloud();
     startLicenseWatchdogForApp(cloud);
     if (hotelHttpStarted) {

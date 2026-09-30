@@ -343,7 +343,29 @@ function writeActivationRecord(app, key, extra = {}) {
 }
 
 function isWithinCloudOfflineWindow(app) {
-  return true;
+  try {
+    const ea = app || _electronApp;
+    if (!ea) return false;
+    const rec = readActivationRecord(ea);
+    if (!rec?.last_online_at) return false;
+    const t = new Date(rec.last_online_at).getTime();
+    if (!Number.isFinite(t)) return false;
+    return Date.now() - t <= CLOUD_OFFLINE_MAX_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Offline grace vetëm pas validate/heartbeat OK (hash çelësi + marker online). */
+function hasServerConfirmedActivation(app) {
+  const ea = app || _electronApp;
+  if (!ea) return false;
+  const key = readStoredLicense(ea);
+  if (!key) return false;
+  const rec = readActivationRecord(ea);
+  if (!rec?.last_online_at) return false;
+  if (rec.celesi_hash && rec.celesi_hash === keyHash(key)) return true;
+  return hasOnlineMarker(ea, key);
 }
 
 function offlineExpiredMessage() {
@@ -571,11 +593,25 @@ async function validateLicenseOnline(key, opts = {}) {
       ...parseOnlineResponse(parsed, res.status),
     };
   } catch (err) {
+    const ea = _electronApp;
+    if (
+      isWithinCloudOfflineWindow(ea) &&
+      readStoredLicense(ea) &&
+      hasServerConfirmedActivation(ea)
+    ) {
+      return {
+        valid: true,
+        offline: true,
+        message: "Pa internet — brenda 7 ditëve.",
+        code: "OK",
+      };
+    }
+    const hasKey = !!readStoredLicense(ea);
     return {
       valid: false,
       offline: true,
-      code: "OFFLINE",
-      message: err.message || "Nuk u lidh me serverin.",
+      code: hasKey ? "OFFLINE_EXPIRED" : "OFFLINE_NEED_ACTIVATION",
+      message: hasKey ? offlineExpiredMessage() : "Lidhuni me internet për aktivizim.",
     };
   }
 }
@@ -615,7 +651,24 @@ async function validateHardwareWithCloud(app, hardwareId) {
       message: parsed.message || parsed.gabim || "Liçenca nuk është aktive.",
     };
   } catch {
-    return { valid: true, offline: true, code: "OFFLINE", message: "Pa internet." };
+    if (
+      isWithinCloudOfflineWindow(app) &&
+      readStoredLicense(app) &&
+      hasServerConfirmedActivation(app)
+    ) {
+      return {
+        valid: true,
+        offline: true,
+        code: "OK",
+        message: "Pa internet — brenda 7 ditëve.",
+      };
+    }
+    return {
+      valid: false,
+      offline: true,
+      code: "OFFLINE_EXPIRED",
+      message: offlineExpiredMessage(),
+    };
   }
 }
 
@@ -679,7 +732,8 @@ async function validateLicenseHeartbeat(key) {
       message: parsed.message || parsed.gabim || "Liçenca nuk është aktive.",
     };
   } catch (err) {
-    const localRevoke = readLocalRevokeBlock(_electronApp);
+    const ea = _electronApp;
+    const localRevoke = readLocalRevokeBlock(ea);
     if (localRevoke?.blocked) {
       return {
         valid: false,
@@ -688,7 +742,24 @@ async function validateLicenseHeartbeat(key) {
         message: localRevoke.message,
       };
     }
-    return { valid: true, offline: true, message: "Pa internet — heartbeat." };
+    if (
+      isWithinCloudOfflineWindow(ea) &&
+      readStoredLicense(ea) &&
+      hasServerConfirmedActivation(ea)
+    ) {
+      return {
+        valid: true,
+        offline: true,
+        code: "OK",
+        message: "Pa internet — brenda 7 ditëve.",
+      };
+    }
+    return {
+      valid: false,
+      offline: true,
+      code: "OFFLINE_EXPIRED",
+      message: offlineExpiredMessage(),
+    };
   }
 }
 
@@ -782,7 +853,12 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
         ? await (async () => {
             const hwCloud = await validateHardwareWithCloud(app);
             if (hwCloud.offline) {
-              return { valid: true, offline: true, message: hwCloud.message || "Pa internet." };
+              return {
+                valid: !!hwCloud.valid,
+                offline: true,
+                code: hwCloud.code || (hwCloud.valid ? "OK" : "OFFLINE_EXPIRED"),
+                message: hwCloud.message || "Pa internet.",
+              };
             }
             const code = String(hwCloud.code || "").trim();
             const forceLogout =
@@ -812,9 +888,13 @@ function startLicenseWatchdog(app, onForceLogout, onFactoryReset) {
         onFactoryReset(beat);
         return;
       }
-      if (
-        !beat.valid &&
-        (beat.force_logout || (beat.code && HARD_LICENSE_FAIL_CODES.has(beat.code)))
+      if (beat.valid || (beat.offline && beat.code === "OK")) {
+        /* offline OK — vazhdo */
+      } else if (
+        beat.force_logout ||
+        beat.code === "OFFLINE_EXPIRED" ||
+        beat.code === "OFFLINE_NEED_ACTIVATION" ||
+        (beat.code && HARD_LICENSE_FAIL_CODES.has(beat.code))
       ) {
         if (FULL_PURGE_LICENSE_CODES.has(beat.code)) {
           handleLicenseHardFail(app, beat.code);
@@ -946,20 +1026,16 @@ async function validateLicenseAsync(key, app, { requireOnline = false } = {}) {
         features: online.features || {},
       };
     }
-    if (!requireOnline && app && isDeviceRegistered(app, key)) {
+    if (
+      online.offline &&
+      app &&
+      isWithinCloudOfflineWindow(app) &&
+      hasServerConfirmedActivation(app)
+    ) {
       return {
         valid: true,
         source: "stored",
-        message: online.offline
-          ? "Pajisja e regjistruar (pa internet)."
-          : "Pajisja e regjistruar.",
-      };
-    }
-    if (online.offline && app && hasOnlineMarker(app, key)) {
-      return {
-        valid: true,
-        source: "online-offline",
-        message: "Licencë online (pa internet).",
+        message: "Pa internet — brenda 7 ditëve.",
       };
     }
     return {
@@ -1740,6 +1816,7 @@ module.exports = {
   isRevocationCode,
   purgeAllLicenseArtifacts,
   isWithinCloudOfflineWindow,
+  hasServerConfirmedActivation,
   HARD_LICENSE_FAIL_CODES,
   REVOCATION_FAIL_CODES,
   clearLicenseRevokedLocally,

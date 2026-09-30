@@ -992,17 +992,34 @@ function promptHardwareActivation(app, opts = {}) {
               return { ok: false, message: MSG_LICENSE_EXPIRED };
             }
           }
-          writeStoredLicenseKey(app, raw, { source: "hardware", match, email });
-          try {
+          if (app.isPackaged) {
             const licenseMod = require(path.join(__dirname, "..", "license"));
-            const claimed = await licenseMod.claimByHardwareFromCloud(app);
-            if (claimed && claimed.valid && (claimed.celesi || claimed.license_key)) {
-              const ck = claimed.celesi || claimed.license_key;
-              writeStoredLicenseKey(app, ck, { source: "cloud", email });
+            try {
+              const claimed = await licenseMod.claimByHardwareFromCloud(app);
+              if (claimed?.valid && (claimed.celesi || claimed.license_key)) {
+                const ck = claimed.celesi || claimed.license_key;
+                await licenseMod.activateWithKey(app, ck, { contact_email: email });
+                writeStoredLicenseKey(app, ck, { source: "cloud", email });
+                finish(true);
+                return { ok: true };
+              }
+            } catch {
+              /* provo check-hardware online */
             }
-          } catch {
-            /* HMAC lokale mjafton; boot pret cloud */
+            const hwCloud = await licenseMod.validateHardwareWithCloud(app, hwFormattedNow);
+            if (hwCloud.valid && !hwCloud.offline) {
+              writeStoredLicenseKey(app, raw, { source: "hardware", match, email });
+              finish(true);
+              return { ok: true };
+            }
+            return {
+              ok: false,
+              message:
+                hwCloud.message ||
+                "Setup kërkon internet dhe konfirmim cloud (çelës admin ose Hardware ID aktiv).",
+            };
           }
+          writeStoredLicenseKey(app, raw, { source: "hardware", match, email });
           finish(true);
           return { ok: true };
         }
@@ -1127,6 +1144,13 @@ async function ensureHardwareLicense(app) {
                 const activated = await promptNoLicense();
                 return { ok: !!activated, grace: null };
               }
+              if (
+                !license.isWithinCloudOfflineWindow(app) ||
+                !license.hasServerConfirmedActivation(app)
+              ) {
+                const activated = await promptNoLicense();
+                return { ok: !!activated, grace: null };
+              }
             } else {
               license.wipeAllActivationData(app);
               try {
@@ -1143,37 +1167,44 @@ async function ensureHardwareLicense(app) {
               const activated = await promptNoLicense();
               return { ok: !!activated, grace: null };
             }
+            if (
+              !license.isWithinCloudOfflineWindow(app) ||
+              !license.hasServerConfirmedActivation(app)
+            ) {
+              const activated = await promptNoLicense();
+              return { ok: !!activated, grace: null };
+            }
           }
         }
         if (rec && rec.source !== "cloud") {
-          try {
-            const licenseMod = require(path.join(__dirname, "..", "license"));
-            const onlineResult = await licenseMod.validateHardwareWithCloud(app, formatted);
-            if (
-              onlineResult &&
-              !onlineResult.offline &&
-              !onlineResult.valid &&
-              (onlineResult.code === "REVOKED" ||
-                onlineResult.code === "NOT_FOUND" ||
-                onlineResult.code === "SUSPENDED")
-            ) {
-              clearHardwareLicense(app);
-              try {
-                if (typeof licenseMod.wipeAllActivationData === "function") {
-                  licenseMod.wipeAllActivationData(app);
-                }
-              } catch {
-                /* ignore */
+          const licenseMod = require(path.join(__dirname, "..", "license"));
+          const onlineResult = await licenseMod.validateHardwareWithCloud(app, formatted);
+          if (
+            onlineResult &&
+            !onlineResult.offline &&
+            !onlineResult.valid &&
+            (onlineResult.code === "REVOKED" ||
+              onlineResult.code === "NOT_FOUND" ||
+              onlineResult.code === "SUSPENDED")
+          ) {
+            clearHardwareLicense(app);
+            try {
+              if (typeof licenseMod.wipeAllActivationData === "function") {
+                licenseMod.wipeAllActivationData(app);
               }
-              logHwLicenseAudit(app, "hardware_cloud_revoked", {
-                hardware_id: formatted,
-                code: onlineResult.code,
-              });
-              const activated = await promptHardwareActivation(app, { reason: "no_license" });
-              return { ok: !!activated, grace: null };
+            } catch {
+              /* ignore */
             }
-          } catch {
-            /* Pa internet — vazhdo me licencën lokale */
+            logHwLicenseAudit(app, "hardware_cloud_revoked", {
+              hardware_id: formatted,
+              code: onlineResult.code,
+            });
+            const activated = await promptHardwareActivation(app, { reason: "no_license" });
+            return { ok: !!activated, grace: null };
+          }
+          if (onlineResult?.offline && !onlineResult.valid && app.isPackaged) {
+            const activated = await promptHardwareActivation(app, { reason: "offline_expired" });
+            return { ok: !!activated, grace: null };
           }
         }
         clearGrace(app);
