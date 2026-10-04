@@ -2,6 +2,7 @@
  * Thirrje AI te serveri cloud (Revolution HOTEL) — kërkon licencë + internet.
  */
 const cloudHealth = require("./cloud-health");
+const { hotelCloudApiPath } = require("./cloud-server-url");
 
 /**
  * Master switch për AI në HOTEL (si Kafene — gate real: paketa + çelësi licencë).
@@ -31,7 +32,8 @@ function getAiCloudConfig(db) {
 }
 
 async function requestJson(method, _baseUrl, path, payload, headers = {}) {
-  const res = await cloudHealth.requestJsonWithFallback(method, path, payload, {
+  const apiPath = hotelCloudApiPath(path);
+  const res = await cloudHealth.requestJsonWithFallback(method, apiPath, payload, {
     timeoutMs: 120000,
     headers: { Accept: "application/json", ...headers },
   });

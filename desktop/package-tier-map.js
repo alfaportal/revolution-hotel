@@ -76,13 +76,12 @@ function toLegacyTier(tier) {
 }
 
 /**
- * AI vetëm Pako 4 (newTier=pako_4 ose ai:true në package-tier).
- * Pa bake: cloud pako_5 = AI.
+ * AI: legacy pako_2 (Biznes + AI), pako_5 (Premium), ose newTier pako_4 / features.ai.
  */
 function isAiPackage(tier) {
   const t = normalizeTierKey(tier);
-  if (t === "pako_4" || t === "pako_5") return true;
-  if (t === "pako_1" || t === "pako_2" || t === "pako_3") return false;
+  if (t === "pako_2" || t === "pako_4" || t === "pako_5") return true;
+  if (t === "pako_1" || t === "pako_3") return false;
   const baked = bakedNewTier();
   if (baked) return baked === "pako_4";
   try {

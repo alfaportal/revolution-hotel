@@ -64,8 +64,8 @@ const TIER_FEATURES = {
     accountant: false,
     ai: false,
   },
-  /** Pako 3 — Full pa AI (ID i ripërdorur nga Basic) */
-  pako_2: { ...FULL_NO_AI },
+  /** Pako 4 — Biznes + AI (legacy id pako_2) */
+  pako_2: { ...FULL_NO_AI, ai: true },
   /** Pako 1 — Standard — PA Kontabilist */
   pako_3: {
     pos: true,

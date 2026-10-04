@@ -1764,13 +1764,10 @@
     body.tier-rank-3 [data-panel="ai"], body.tier-rank-3 #panel-ai {
       display: none !important;
     }
-    /* Pako 4 — Biznes (+ AI veçori; tab AI vetëm rank 5 + ai-package-tier) */
-    body.tier-rank-4 [data-panel="ai"], body.tier-rank-4 #panel-ai {
-      display: none !important;
-    }
-    /* tier-rank-5: asgjë nuk fshihet nga pakoja */
+    /* Pako 4 — Biznes (+ AI): tab AI nga ai-package-tier (pako_2 / pako_5) */
+    /* tier-rank-5: asgjë nuk fshihet nga pakoja (Ditari etj.) */
 
-    /* Tab AI vetëm kur pakoja ka AI (pako_5 / features.ai) */
+    /* Tab AI vetëm kur pakoja ka AI (pako_2, pako_5 / features.ai) */
     body:not(.ai-package-tier) [data-panel="ai"],
     body:not(.ai-package-tier) #panel-ai {
       display: none !important;
@@ -5876,7 +5873,8 @@
         "tier-rank-5"
       );
       document.body.classList.add("tier-rank-" + rank);
-      const hasAiTier = t === "pako_5" || (features && features.ai === true);
+      const hasAiTier =
+        t === "pako_2" || t === "pako_5" || (features && features.ai === true);
       document.body.classList.toggle("ai-package-tier", !!hasAiTier);
       if (t && t !== _lastAppliedPackageTier) {
         console.log("[admin] Pako:", t || "(bosh)", "→ tier-rank-" + rank, "accountant=", features?.accountant);
