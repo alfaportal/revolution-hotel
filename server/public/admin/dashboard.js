@@ -2145,11 +2145,13 @@ async function loadSettings() {
   const ui = s.package_prices_ui || {};
   document.getElementById("set-name").value = s.admin_name || "";
   document.getElementById("set-email").value = s.admin_email || "";
-  // UI Pako 1–4 → çmimet e sakta (jo ID legacy)
+  // UI Pako 1–5 (marketing) → çmimet e sakta (jo ID legacy)
   document.getElementById("set-p1").value = ui.pako_1 ?? s.package_prices?.pako_3 ?? "";
   document.getElementById("set-p2").value = ui.pako_2 ?? s.package_prices?.pako_4 ?? "";
   document.getElementById("set-p3").value = ui.pako_3 ?? s.package_prices?.pako_2 ?? "";
   document.getElementById("set-p4").value = ui.pako_4 ?? s.package_prices?.pako_5 ?? "";
+  document.getElementById("set-p5").value =
+    ui.pako_5 ?? s.package_prices?.pako_5 ?? s.package_prices?.pako_premium ?? "";
   document.getElementById("set-ai").value = s.ai_price_per_1k_tokens ?? "";
 }
 
@@ -2441,12 +2443,13 @@ async function boot() {
         body: JSON.stringify({
           admin_name: document.getElementById("set-name").value.trim(),
           admin_email: document.getElementById("set-email").value.trim(),
-          // Marketing Pako 1–4 (jo ID legacy) — serveri i mapon dhe i ruan në DB
+          // Marketing Pako 1–5 (jo ID legacy) — serveri i mapon dhe i ruan në DB
           package_prices_ui: {
             pako_1: Number(document.getElementById("set-p1").value),
             pako_2: Number(document.getElementById("set-p2").value),
             pako_3: Number(document.getElementById("set-p3").value),
             pako_4: Number(document.getElementById("set-p4").value),
+            pako_5: Number(document.getElementById("set-p5").value),
           },
           ai_price_per_1k_tokens: Number(document.getElementById("set-ai").value),
         }),
