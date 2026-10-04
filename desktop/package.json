@@ -132,6 +132,8 @@
       "cloud-auto-sync.js",
       "hotel-cloud-sync.js",
       "cloud-health.js",
+      "terminal-relay.js",
+      "terminal-sync.js",
       "cloud-failure-log.js",
       "receipt-print.js",
       "receipt-text.js",

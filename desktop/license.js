@@ -566,12 +566,21 @@ const HARD_LICENSE_FAIL_CODES = new Set([
   "DEVICE_MISMATCH",
   "DEVICE_REQUIRED",
   "TERMINAL_LIMIT_EXCEEDED",
+  "TERMINAL_REVOKED",
+  "TERMINAL_DENIED",
 ]);
 
 /** Revokim ose licencë e fshirë — vetëm skedarët e licencës. */
 const FULL_PURGE_LICENSE_CODES = new Set(["REVOKED", "NOT_FOUND", "SUSPENDED"]);
 
-const HEARTBEAT_FORCE_LOGOUT_CODES = new Set(["REVOKED", "NOT_FOUND", "SUSPENDED"]);
+const HEARTBEAT_FORCE_LOGOUT_CODES = new Set([
+  "REVOKED",
+  "NOT_FOUND",
+  "SUSPENDED",
+  "TERMINAL_REVOKED",
+  "TERMINAL_DENIED",
+  "TERMINAL_LIMIT_EXCEEDED",
+]);
 
 function licenseHardFailMessage(code) {
   return code === "NOT_FOUND"
@@ -581,7 +590,8 @@ function licenseHardFailMessage(code) {
 
 /** Pa dialog ErrorBox — vetëm ekrani i aktivizimit (HW) shpjegon hapin tjetër. */
 function isActivationNeededCode(code) {
-  return String(code || "").trim() === "NOT_FOUND";
+  const c = String(code || "").trim();
+  return c === "NOT_FOUND" || c === "TERMINAL_REVOKED" || c === "TERMINAL_DENIED";
 }
 
 function wipeDirHard(dir) {
@@ -1821,7 +1831,7 @@ async function activateWithKey(app, key, opts = {}) {
   clearLicenseRevokedLocally(app);
   writeStoredLicense(app, key);
   writeActivationRecord(app, key, activationMetaFromOnline(online));
-  if (!readTerminalRole(app)) {
+  if (!opts.via_pair_join && !readTerminalRole(app)) {
     writeTerminalRole(app, "arka1");
   }
   return {

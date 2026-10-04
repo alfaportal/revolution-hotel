@@ -217,11 +217,33 @@ async function pushLicenseUiFromCloud() {
 }
 
 function licenseFailReasonFromBeat(beat) {
+  const code = String(beat?.code || "").trim();
+  if (code === "TERMINAL_REVOKED" || code === "TERMINAL_DENIED") return "terminal_revoked";
   const cloud = loadCloud();
-  if (cloud.isRevocationCode(beat?.code) || beat?.force_logout) return "revoked";
-  if (beat?.code === "EXPIRED") return "expired";
-  if (beat?.code === "OFFLINE_EXPIRED") return "offline_expired";
+  if (cloud.isRevocationCode(code) || beat?.force_logout) return "revoked";
+  if (code === "EXPIRED") return "expired";
+  if (code === "OFFLINE_EXPIRED") return "offline_expired";
   return "no_license";
+}
+
+function handleTerminalRevokedFromWatchdog(cloud, beat) {
+  try {
+    cloud.wipeAllActivationData(app);
+  } catch {
+    /* ignore */
+  }
+  const detail =
+    (beat && beat.message) ||
+    "Kjo arkë u hoq nga pronari. Përdorni kod të ri lidhës ose kontaktoni administratorin.";
+  try {
+    dialog.showErrorBox("Licenca", detail);
+  } catch {
+    /* ignore */
+  }
+  const licenseGuard = require("./fiscal/license-guard");
+  licenseGuard
+    .promptHardwareActivation(app, { reason: "terminal_revoked", onBeforeShow: closeSplash })
+    .catch(() => {});
 }
 
 function startLicenseWatchdogForApp(cloud) {
@@ -229,6 +251,10 @@ function startLicenseWatchdogForApp(cloud) {
     cloud.startLicenseWatchdog(
       app,
       (beat) => {
+        if (beat && (beat.code === "TERMINAL_REVOKED" || beat.code === "TERMINAL_DENIED")) {
+          handleTerminalRevokedFromWatchdog(cloud, beat);
+          return;
+        }
         if (
           cloud.isRevocationCode(beat?.code) ||
           beat?.force_factory_reset ||
@@ -264,6 +290,10 @@ async function bootHotelLicenseLayers() {
       cloud.startLicenseWatchdog(
         app,
         (beat) => {
+          if (beat && (beat.code === "TERMINAL_REVOKED" || beat.code === "TERMINAL_DENIED")) {
+            handleTerminalRevokedFromWatchdog(cloud, beat);
+            return;
+          }
           if (cloud.isRevocationCode(beat?.code)) {
             reopenLicenseDialog(beat, beat?.message || NO_LICENSE_MSG).catch(() => {});
           }

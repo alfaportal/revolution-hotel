@@ -2194,9 +2194,30 @@
     .rez-svc-price { color: var(--ngjyr-muted); font-size: 0.78rem; white-space: nowrap; }
     .rez-svc-qty, .rez-svc-amt { width: 3.2rem; padding: 0.2rem 0.35rem; font-size: 0.8rem; }
     .rez-svc-summary { font-size: 0.78rem; color: var(--ngjyr-muted); margin-top: 0.15rem; }
+    #master-only-banner.master-only-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10050;
+      margin: 0;
+      padding: 0.75rem 1rem;
+      background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 55%, #ea580c 100%);
+      color: #1c1400;
+      font-size: 1.08rem;
+      font-weight: 700;
+      line-height: 1.35;
+      text-align: center;
+      border-bottom: 2px solid #c2410c;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+    body.admin-app.master-only-secondary-banner {
+      padding-top: 3.35rem;
+    }
   </style>
 </head>
 <body class="admin-app">
+  <div id="master-only-banner" class="master-only-banner" hidden role="status" aria-live="polite"></div>
   <div class="admin-shell">
     <header class="admin-topbar">
       <div class="admin-topbar-left">
@@ -2291,6 +2312,15 @@
           <div class="dashboard-kpi-val" id="dash-revenue">0.00 €</div>
           <div class="dashboard-kpi-sub dash-revenue-sub-lines" id="dash-revenue-sub">Restoranti · Recepsioni · Netët + Shërbimet</div>
         </div>
+      </div>
+
+      <div class="card settings-card" id="dash-register-status-card" style="margin-bottom:1rem">
+        <div class="card-title" id="dash-register-status-title">Arkat &amp; ndërrimet</div>
+        <div id="dash-register-status-list" style="display:flex;flex-direction:column;gap:0.45rem;font-size:0.92rem">
+          <span style="color:var(--ngjyr-muted)">Duke ngarkuar…</span>
+        </div>
+        <p id="dash-register-sales-line" class="settings-field-hint" style="margin:0.75rem 0 0;font-size:0.88rem"></p>
+        <p id="dash-register-total-line" style="margin:0.35rem 0 0;font-weight:800;font-size:1.05rem"></p>
       </div>
 
       <div class="dashboard-grid-2 hotel-pasqyra-lists">
@@ -6483,6 +6513,185 @@
       }).join("");
     }
 
+    function fmtRegisterClock(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return "";
+      return d.toLocaleString("sq-AL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function fmtDashAgoSec(sec) {
+      const s = Math.max(0, Math.round(Number(sec) || 0));
+      if (s < 60) return `${s} sek`;
+      if (s < 3600) return `${Math.round(s / 60)} min`;
+      if (s < 86400) return `${Math.round(s / 3600)} orë`;
+      return `${Math.round(s / 86400)} ditë`;
+    }
+
+    function fmtRelativeAgoFromIso(iso) {
+      if (!iso) return "";
+      const t = Date.parse(iso);
+      if (!Number.isFinite(t)) return "";
+      const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (sec < 60) return `para ${sec} sek`;
+      if (sec < 3600) return `para ${Math.round(sec / 60)} min`;
+      if (sec < 86400) return `para ${Math.round(sec / 3600)} orë`;
+      return `para ${Math.round(sec / 86400)} ditë`;
+    }
+
+    function staffRoleLabel(role) {
+      const r = String(role || "kamarier").trim().toLowerCase();
+      return r === "recepsion" ? "Recepsion" : "Kamarier";
+    }
+
+    function remotePullStatusHtml(st) {
+      const pull = st?.pull && typeof st.pull === "object" ? st.pull : {};
+      const viaPull = pull.via === "cloud" ? "cloud" : pull.via === "lan" ? "LAN" : "";
+      const viaTop = st?.via === "cloud" ? "cloud" : st?.via === "lan" ? "LAN" : "";
+      const viaLabel = viaPull || viaTop;
+      const skipped = Math.max(0, Math.floor(Number(pull.stock_skipped_pending) || 0));
+      const row = (label, iso) => {
+        const ago = fmtRelativeAgoFromIso(iso);
+        if (ago) return `<div>✓ ${label}: <strong>${escHtml(ago)}</strong></div>`;
+        return `<div style="color:var(--ngjyr-muted)">${label}: —</div>`;
+      };
+      const parts = [
+        row("Punonjës sync", pull.staff_at),
+        row("Menu sync", pull.menu_at),
+        row("Shërbime sync", pull.services_at),
+        pull.stock_at
+          ? `<div>✓ Stok sync: <strong>${escHtml(fmtRelativeAgoFromIso(pull.stock_at))}</strong></div>`
+          : '<div style="color:var(--ngjyr-muted)">Stok sync: —</div>',
+      ];
+      if (skipped > 0) {
+        parts.push(
+          `<div style="color:#ea580c;font-weight:600">⚠ Stoku i bllokuar — ${skipped} shitje pending</div>`,
+        );
+      }
+      if (viaLabel) {
+        parts.push(`<div style="color:var(--ngjyr-muted);margin-top:0.1rem">Via: ${escHtml(viaLabel)}</div>`);
+      }
+      return `<div class="terminal-remote-pull" style="font-size:0.78rem;line-height:1.45">${parts.join("")}</div>`;
+    }
+
+    function remoteRegisterLinkHtml(r, masterVersion) {
+      const st = r.remote_status || {};
+      const parts = [];
+      const via = st.via === "cloud" ? "cloud" : st.via === "lan" ? "LAN" : "";
+      if (r.remote_online) {
+        parts.push(`<span style="color:#16a34a">Online${via ? ` (${via})` : ""}</span>`);
+      } else if (r.remote_seen_age_sec != null) {
+        parts.push(`<span style="color:#dc2626">Offline · ${fmtDashAgoSec(r.remote_seen_age_sec)}</span>`);
+      } else {
+        parts.push('<span style="color:#dc2626">Offline</span>');
+      }
+      const pending = Number(st.pending) || 0;
+      if (pending > 0) parts.push(`${pending} shitje në pritje`);
+      if (st.last_error && pending > 0) {
+        parts.push(`<span style="color:#dc2626">${escHtml(st.last_error)}</span>`);
+      }
+      if (st.app_version) {
+        const differs = masterVersion && st.app_version !== masterVersion;
+        parts.push(
+          differs
+            ? `<span style="color:#f59e0b">v${escHtml(st.app_version)} (Kryesorja v${escHtml(masterVersion)})</span>`
+            : `v${escHtml(st.app_version)}`,
+        );
+      }
+      const ip = r.remote_ip || st.remote_ip || "";
+      const pullBlock = remotePullStatusHtml(st);
+      return `<div style="margin:0.15rem 0 0.35rem 1.25rem;font-size:0.8rem;color:var(--ngjyr-muted)">🖥️ Arka remote (PC)${ip ? ` · ${escHtml(ip)}` : ""} · ${parts.join(" · ")}${pullBlock}</div>`;
+    }
+
+    function renderDashRegisterStatus(payload) {
+      const card = document.getElementById("dash-register-status-card");
+      const list = document.getElementById("dash-register-status-list");
+      const salesLine = document.getElementById("dash-register-sales-line");
+      const totalLine = document.getElementById("dash-register-total-line");
+      const titleEl = document.getElementById("dash-register-status-title");
+      const showReg = payload?.show_register_labels === true;
+      if (titleEl) titleEl.textContent = showReg ? "Arkat e lokalit" : "Arkat & ndërrimet";
+      if (!list) return;
+      const regs = payload?.registers || [];
+      if (!regs.length) {
+        list.innerHTML = '<span style="color:var(--ngjyr-muted)">Nuk ka arka të regjistruara.</span>';
+        if (salesLine) salesLine.textContent = "";
+        if (totalLine) totalLine.textContent = "";
+        return;
+      }
+      if (card) card.hidden = false;
+      list.innerHTML = regs.map((r) => {
+        const remotePart = r.remote ? remoteRegisterLinkHtml(r, payload.master_version) : "";
+        const regPart = showReg && r.name ? `<strong>${escHtml(r.name)}</strong> — ` : "";
+        const salesHint =
+          r.sales_today > 0 || r.sales_today_count > 0
+            ? ` · shitje sot ${formatEuro(r.sales_today)} (${r.sales_today_count})`
+            : "";
+        const roleHint = r.staff_role ? ` · ${escHtml(staffRoleLabel(r.staff_role))}` : "";
+        if (r.status === "open") {
+          const when = fmtRegisterClock(r.opened_at);
+          const who = escHtml(r.staff_name || "—");
+          return `<div><span style="color:#16a34a">🟢</span> ${regPart}${who}${roleHint}${when ? ` (hapur ${when})` : ""}${salesHint}${remotePart}</div>`;
+        }
+        let closed = `<span style="color:#dc2626">🔴</span> ${regPart}e mbyllur`;
+        if (r.staff_name) closed += ` · ${escHtml(r.staff_name)}${roleHint}`;
+        if (r.closed_at) closed += ` · ${fmtRegisterClock(r.closed_at)}`;
+        if (r.closing_cash_actual != null) closed += ` · në arkë ${formatEuro(r.closing_cash_actual)}`;
+        return `<div>${closed}${salesHint}${remotePart}</div>`;
+      }).join("");
+      const parts = (payload.sales_today_by_register || [])
+        .filter((x) => showReg && x.register_name && (x.total > 0 || x.order_count > 0))
+        .map((x) => `${escHtml(x.register_name)}: ${formatEuro(x.total)}`);
+      if (salesLine) {
+        salesLine.textContent = parts.length
+          ? `Shitje sot: ${parts.join(" · ")}`
+          : showReg
+            ? "Shitje sot: ende pa transaksione."
+            : `Shitje sot: ${formatEuro(payload.sales_today_total || 0)}`;
+      }
+      if (totalLine) {
+        totalLine.textContent = showReg
+          ? `TOTALI (sot, krejt arkat): ${formatEuro(payload.sales_today_total || 0)}`
+          : `TOTALI (sot): ${formatEuro(payload.sales_today_total || 0)}`;
+      }
+    }
+
+    async function ngarkoRegisterStatusPasqyra() {
+      const card = document.getElementById("dash-register-status-card");
+      try {
+        const st = await api("/api/admin/register-status");
+        renderDashRegisterStatus(st);
+      } catch (e) {
+        if (card && (e.status === 403 || /Kryesore/i.test(String(e.message || "")))) {
+          card.hidden = true;
+          return;
+        }
+        const list = document.getElementById("dash-register-status-list");
+        if (list) {
+          list.innerHTML = `<span style="color:var(--ngjyr-danger)">${escHtml(e.message || "Statusi i arkave nuk u lexua.")}</span>`;
+        }
+      }
+    }
+
+    async function shfaqShiritinArkaDytesore() {
+      const el = document.getElementById("master-only-banner");
+      if (!el) return;
+      let data;
+      try {
+        data = await api("/api/login/terminal-role");
+      } catch {
+        return;
+      }
+      const role = String(data?.terminal_role || "").trim().toLowerCase();
+      if (role === "arka1") return;
+      const m = /^arka(\d+)$/.exec(role);
+      if (!m || Number(m[1]) < 2) return;
+      el.textContent =
+        `Kjo arkë është Arka ${m[1]} — nuk mund të ndryshoni menu, stok, punonjës, dhoma ose shërbime. Ndryshimet bëhen vetëm nga Kryesorja.`;
+      el.hidden = false;
+      document.body.classList.add("master-only-secondary-banner");
+    }
+
     async function ngarkoPasqyra() {
       if (ngarkoPasqyra._inFlight) return;
       if (ngarkoPasqyra._lastMs && Date.now() - ngarkoPasqyra._lastMs < 3000) return;
@@ -6525,6 +6734,7 @@
       renderHotelDashDepartures(d.departures || []);
       renderHotelDashDirty(d.dirty_rooms || []);
       try { localStorage.setItem("hotel_cache_dashboard", JSON.stringify(d)); } catch { /* ignore */ }
+      await ngarkoRegisterStatusPasqyra();
       } finally {
         ngarkoPasqyra._inFlight = false;
       }
@@ -18142,7 +18352,13 @@
         }
       } catch { /* ignore */ }
       ngarkoSettings().catch(() => {});
+      shfaqShiritinArkaDytesore().catch(() => {});
       ngarkoPasqyra();
+      setInterval(() => {
+        if (document.getElementById("panel-pasqyra")?.classList.contains("active")) {
+          ngarkoRegisterStatusPasqyra().catch(() => {});
+        }
+      }, 30000);
       if (location.hash === "#licenca") switchAdminPanel("licenca");
       if (window.hotelElectron && typeof window.hotelElectron.onLicensePackageUpdated === "function") {
         window.hotelElectron.onLicensePackageUpdated(() => ngarkoLicencen().catch(() => {}));

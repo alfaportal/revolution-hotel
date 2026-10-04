@@ -728,7 +728,10 @@ async function joinTerminalWithPairCode(app, { code, email, terminal_role_ui }) 
     throw new Error("Serveri nuk ktheu çelësin e licencës.");
   }
   const contactEmail = String(email || "").trim().toLowerCase();
-  await license.activateWithKey(app, celesi, { contact_email: contactEmail });
+  await license.activateWithKey(app, celesi, {
+    contact_email: contactEmail,
+    via_pair_join: true,
+  });
   writeStoredLicenseKey(app, celesi, { source: "cloud", email: contactEmail });
   const uiRole = String(terminal_role_ui || "").trim().toLowerCase();
   const moduleFromCloud =
@@ -804,6 +807,9 @@ function promptHardwareActivation(app, opts = {}) {
         ".";
     } else if (reason === "revoked") {
       subText = "Licenca është çaktivizuar. Kontaktoni " + CONTACT_PHONE + " për çelës të ri.";
+    } else if (reason === "terminal_revoked") {
+      subText =
+        "Kjo arkë është çaktivizuar nga administratori. Përdorni kod të ri lidhës (Lidhu) ose kontaktoni administratorin.";
     } else if (reason === "trial_used") {
       subText = `Trial është përdorur në këtë kompjuter. Futni License Key vjetor. Kontaktoni ${CONTACT_PHONE}.`;
     }

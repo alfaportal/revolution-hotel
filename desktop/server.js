@@ -1056,6 +1056,13 @@ function electronApp() {
   }
 }
 
+function terminalRegisterNumber() {
+  const eapp = electronApp();
+  const raw = eapp ? license.readTerminalRole(eapp) : "";
+  const m = /^arka(\d+)$/.exec(String(raw || "").trim().toLowerCase());
+  return m ? Number(m[1]) : 0;
+}
+
 function isFullPackageTier(tier) {
   return String(tier || "").trim() === "pako_5";
 }
@@ -1512,7 +1519,98 @@ function ditariOptsFromQuery(query = {}) {
   return { period: query.period || "sot" };
 }
 
+/** Arka 2+ — vetëm Kryesorja ndryshon menu, stok, punonjës, blerje, dhoma, shërbime, terminalet. */
+const MASTER_ONLY_WRITE_PATHS = [
+  /^\/api\/categories(\/|$)/,
+  /^\/api\/menu(\/|$)/,
+  /^\/api\/stock(\/|$)/,
+  /^\/api\/staff(\/|$)/,
+  /^\/api\/purchases(\/|$)/,
+  /^\/api\/services(\/|$)/,
+  /^\/api\/rooms(\/|$)/,
+  /^\/api\/admin\/generate-pair-code$/,
+  /^\/api\/admin\/terminals(\/|$)/,
+  /^\/api\/admin\/service-categories(\/|$)/,
+  /^\/api\/admin\/services(\/|$)/,
+  /^\/api\/admin\/rooms(\/|$)/,
+];
+const MASTER_ONLY_WRITE_EXCEPT = [
+  /^\/api\/menu\/print$/,
+  /^\/api\/staff\/verify-pin$/,
+  /^\/api\/purchases\/check-duplicate$/,
+  /^\/api\/admin\/rooms\/[^/]+\/(check-in|check-out|clean|print-folio|checkout-preview)$/,
+  /^\/api\/rooms\/[^/]+\/(check-in|check-out|clean|print-folio|checkout-preview)$/,
+];
+
+function isMasterOnlyWrite(method, reqPath) {
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  const p = String(reqPath || "");
+  if (MASTER_ONLY_WRITE_EXCEPT.some((re) => re.test(p))) return false;
+  return MASTER_ONLY_WRITE_PATHS.some((re) => re.test(p));
+}
+
+function masterOnlyWriteGabim(reg, reqPath) {
+  const p = String(reqPath || "");
+  if (/^\/api\/admin\/(generate-pair-code|terminals)/.test(p)) {
+    return `Arka ${reg} — arkat lidhen dhe hiqen vetëm nga paneli i Kryesores.`;
+  }
+  if (/^\/api\/(categories|menu)/.test(p)) {
+    return `Vetëm Kryesorja mund të ndryshojë menunë. (Arka ${reg} — vetëm lexim.)`;
+  }
+  if (/^\/api\/stock/.test(p)) {
+    return `Vetëm Kryesorja mund të ndryshojë stokun. (Arka ${reg} — vetëm lexim.)`;
+  }
+  if (/^\/api\/staff/.test(p)) {
+    return `Vetëm Kryesorja mund të ndryshojë punonjësit. (Arka ${reg} — vetëm lexim.)`;
+  }
+  if (/^\/api\/purchases/.test(p)) {
+    return `Vetëm Kryesorja mund të ndryshojë blerjet. (Arka ${reg} — vetëm lexim.)`;
+  }
+  if (/^\/api\/(services|admin\/service-categories|admin\/services)/.test(p)) {
+    return `Vetëm Kryesorja mund të ndryshojë shërbimet. (Arka ${reg} — vetëm lexim.)`;
+  }
+  if (/^\/api\/(rooms|admin\/rooms)/.test(p)) {
+    return `Vetëm Kryesorja mund të ndryshojë dhomat. (Arka ${reg} — vetëm lexim.)`;
+  }
+  return `Vetëm Kryesorja mund të ndryshojë këto të dhëna. (Arka ${reg} — vetëm lexim.)`;
+}
+
 app.use(express.json({ limit: "12mb" }));
+app.use((req, res, next) => {
+  if (!isMasterOnlyWrite(req.method, req.path)) return next();
+  let reg = 0;
+  try {
+    reg = terminalRegisterNumber();
+  } catch {
+    reg = 0;
+  }
+  if (reg < 2) return next();
+  return res.status(403).json({
+    gabim: masterOnlyWriteGabim(reg, req.path),
+    master_only: true,
+  });
+});
+app.use((req, res, next) => {
+  const m = req.method || "GET";
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return next();
+  const p = String(req.path || "");
+  if (
+    !/^\/api\/(categories|menu|stock|staff|services|admin\/service-categories|admin\/services)(\/|$)/.test(
+      p,
+    )
+  ) {
+    return next();
+  }
+  res.on("finish", () => {
+    if (res.statusCode < 200 || res.statusCode >= 300) return;
+    try {
+      if (terminalRegisterNumber() < 2) markMasterCatalogDirty();
+    } catch {
+      /* ignore */
+    }
+  });
+  next();
+});
 app.use((req, res, next) => {
   const t0 = Date.now();
   res.on("finish", () => {
@@ -4491,6 +4589,52 @@ app.get("/api/settings", auth, adminOnly, async (_req, res) => {
 
 app.get("/api/admin/dashboard", auth, adminOnly, (_req, res) => {
   res.json(db.getDashboardOverview());
+});
+
+app.get("/api/admin/register-status", auth, adminOnly, (_req, res) => {
+  try {
+    if (terminalRegisterNumber() >= 2) {
+      return res.status(403).json({ ok: false, gabim: "Vetëm arka Kryesore e sheh statusin e arkave." });
+    }
+    res.json({ ok: true, ...db.getAdminRegisterStatus() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
+app.get("/api/admin/relay-link", auth, adminOnly, (_req, res) => {
+  try {
+    const n = terminalRegisterNumber();
+    const terminalRelay = require("./terminal-relay");
+    const outbox =
+      typeof db.getLanOutboxStatus === "function"
+        ? db.getLanOutboxStatus()
+        : { pending: 0, last_error: null, last_sent_at: null };
+    if (n < 2) {
+      return res.json({
+        ok: true,
+        register_number: n,
+        role: "primary",
+        ...outbox,
+      });
+    }
+    const linkExtra =
+      terminalLanSyncInstance && typeof terminalLanSyncInstance.getCloudRelayLinkStatus === "function"
+        ? terminalLanSyncInstance.getCloudRelayLinkStatus()
+        : {
+            primary_last_seen_at: terminalRelay.getMasterPrimaryLastSeenAt(),
+            primary_cloud_online: terminalRelay.isMasterPrimaryOnlineOnCloud(),
+          };
+    res.json({
+      ok: true,
+      register_number: n,
+      role: "secondary",
+      ...outbox,
+      ...linkExtra,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
 });
 
 app.get("/api/admin/low-stock", auth, adminOnly, (_req, res) => {
@@ -8459,10 +8603,7 @@ function normalizeLanLicenseKey(key) {
 }
 
 function terminalRegisterNumberLocal() {
-  const eapp = electronApp();
-  const raw = eapp ? license.readTerminalRole(eapp) : "";
-  const m = /^arka(\d+)$/.exec(String(raw || "").trim().toLowerCase());
-  return m ? Number(m[1]) : 0;
+  return terminalRegisterNumber();
 }
 
 function ownTerminalDeviceId() {
@@ -8479,6 +8620,287 @@ function readTerminalRoleCode() {
   const num = terminalRegisterNumberLocal();
   if (!num || num < 2) return "arka1";
   return `arka${num}`;
+}
+
+/** Të gjitha IPv4 private të Kryesores — Arka 2+ i merr nga snapshot cloud + locator. */
+function listLanIPv4Addresses() {
+  const out = [];
+  for (const [ifName, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const net of addrs || []) {
+      if (net.family !== "IPv4" && net.family !== 4) continue;
+      if (net.internal) continue;
+      const ip = String(net.address || "").trim();
+      if (!isPrivateLanAddress(ip) || out.some((x) => x.ip === ip)) continue;
+      out.push({ ip, kind: lanInterfaceKind(ifName) });
+    }
+  }
+  const rank = { ethernet: 0, wifi: 1 };
+  return out.sort((a, b) => (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2)).map((x) => x.ip);
+}
+
+const CATALOG_SNAPSHOT_PUBLISH_MS = 5 * 60 * 1000;
+const RELAY_TICK_ACTIVE_MS = 10 * 1000;
+const RELAY_TICK_IDLE_STEPS_MS = [10 * 1000, 30 * 1000, 60 * 1000, 120 * 1000, 180 * 1000];
+const RELAY_TICK_MAX_ONLINE_MS = 60 * 1000;
+const RELAY_TICK_MAX_OFFLINE_MS = 180 * 1000;
+const RELAY_TICK_UNAVAILABLE_MS = 10 * 60 * 1000;
+const RELAY_DIRTY_PUBLISH_MS = 120 * 1000;
+const RELAY_PAIRING_WINDOW_MS = 30 * 60 * 1000;
+const RELAY_PRESENCE_ONLINE_MS = 90 * 1000;
+
+let masterCloudRelayBusy = false;
+let terminalLanSyncInstance = null;
+const catalogSnapshotPublished = {};
+const relayPresenceSeen = new Map();
+const masterCatalogDirty = { at: 0 };
+const masterCloudRelay = {
+  timer: null,
+  idleStep: 0,
+  pairingUntil: 0,
+  lastSecondaryOnline: false,
+};
+
+function markMasterCatalogDirty() {
+  if (terminalRegisterNumberLocal() >= 2) return;
+  masterCatalogDirty.at = Date.now();
+  scheduleMasterCloudRelay(400);
+}
+
+function markMasterRelayDirty() {
+  markMasterCatalogDirty();
+}
+
+function isRelayPresenceOnline(entry) {
+  const t = Date.parse(entry?.updated_at || "");
+  if (!Number.isFinite(t) || Date.now() - t > RELAY_PRESENCE_ONLINE_MS) return false;
+  if (Math.floor(Number(entry?.register_number) || 0) < 2) return false;
+  return entry?.body?.online !== false;
+}
+
+function computeMasterCloudRelayDelayMs(result) {
+  if (result?.unavailable) return RELAY_TICK_UNAVAILABLE_MS;
+  if (result?.hadQueueRows || result?.hadImport) {
+    masterCloudRelay.idleStep = 0;
+    return RELAY_TICK_ACTIVE_MS;
+  }
+  masterCloudRelay.idleStep = Math.min(
+    masterCloudRelay.idleStep + 1,
+    RELAY_TICK_IDLE_STEPS_MS.length - 1,
+  );
+  let next = RELAY_TICK_IDLE_STEPS_MS[masterCloudRelay.idleStep];
+  const online = !!result?.secondaryOnline;
+  masterCloudRelay.lastSecondaryOnline = online;
+  if (online) {
+    next = Math.min(next, RELAY_TICK_MAX_ONLINE_MS);
+  } else {
+    next = RELAY_TICK_MAX_OFFLINE_MS;
+  }
+  if (Date.now() < masterCloudRelay.pairingUntil) {
+    next = Math.min(next, RELAY_TICK_ACTIVE_MS);
+  }
+  return next;
+}
+
+function scheduleMasterCloudRelay(delayMs) {
+  if (terminalRegisterNumberLocal() >= 2) return;
+  if (masterCloudRelay.timer) clearTimeout(masterCloudRelay.timer);
+  masterCloudRelay.timer = setTimeout(async () => {
+    masterCloudRelay.timer = null;
+    let result = { skipped: true };
+    try {
+      result = await masterCloudRelayTick();
+    } catch (e) {
+      console.warn("[relay] Kryesorja:", e.message || e);
+      result = { unavailable: e.code === "RELAY_UNAVAILABLE" };
+    }
+    if (result.skipped) {
+      scheduleMasterCloudRelay(RELAY_TICK_IDLE_STEPS_MS[2]);
+      return;
+    }
+    scheduleMasterCloudRelay(computeMasterCloudRelayDelayMs(result));
+  }, Math.max(0, delayMs));
+}
+
+async function publishMasterCatalogSnapshots() {
+  if (terminalRegisterNumberLocal() >= 2) return;
+  const celesi = storedLicenseKeyForCloud();
+  if (!celesi) return;
+  try {
+    const terminalRelay = require("./terminal-relay");
+    const staff = buildTerminalStaffList();
+    const menuPayload = buildTerminalMenuPayload();
+    const servicesPayload = buildTerminalServicesPayload();
+    const items = db.getStockForTerminal();
+    const port = Number(process.env.ACTUAL_PORT || process.env.PORT || 3001);
+    const snapshots = {
+      master: {
+        device_id: ownTerminalDeviceId(),
+        lan_hosts: listLanIPv4Addresses(),
+        port,
+        app_version: db.getVersionInfo().app_version || db.getVersionInfo().version,
+      },
+    };
+    if (staff.length) snapshots.staff = { staff };
+    if (menuPayload.categories?.length && menuPayload.items?.length) {
+      snapshots.menu = { categories: menuPayload.categories, items: menuPayload.items };
+    }
+    if (servicesPayload.services?.length) {
+      snapshots.services = {
+        categories: servicesPayload.categories || [],
+        services: servicesPayload.services,
+        groups: servicesPayload.groups || [],
+      };
+    }
+    snapshots.stock = { items: items || [], relay_acked_through: db.getRelayAckedThrough() };
+    const r = await terminalRelay.publishSnapshots({
+      celesi,
+      deviceId: ownTerminalDeviceId(),
+      snapshots,
+      published: catalogSnapshotPublished,
+    });
+    if (r.published) {
+      Object.assign(catalogSnapshotPublished, r.hashes);
+      console.log(`[relay-snapshots] Kryesorja → cloud: ${(r.kinds || []).join(", ")}`);
+    }
+  } catch (e) {
+    if (e.code !== "RELAY_UNAVAILABLE") console.warn("[relay-snapshots] Kryesorja:", e.message || e);
+  }
+}
+
+async function masterCloudRelayTick() {
+  if (masterCloudRelayBusy || terminalRegisterNumberLocal() >= 2) return { skipped: true };
+  const celesi = storedLicenseKeyForCloud();
+  if (!celesi) return { skipped: true };
+  masterCloudRelayBusy = true;
+  let secondaryOnline = false;
+  let hadQueueRows = false;
+  let hadImport = false;
+  let unavailable = false;
+  try {
+    const terminalRelay = require("./terminal-relay");
+    const deviceId = ownTerminalDeviceId();
+
+    try {
+      const pres = await terminalRelay.fetchRelayPresence({ celesi, deviceId });
+      for (const p of pres.presence || []) {
+        if (isRelayPresenceOnline(p)) secondaryOnline = true;
+        if (!p.body || !p.updated_at || Math.floor(Number(p.register_number) || 0) < 2) continue;
+        const dev = String(p.device_id || "").trim().toUpperCase();
+        const seenKey = `${dev}:${p.updated_at}`;
+        if (relayPresenceSeen.get(dev) === seenKey) continue;
+        relayPresenceSeen.set(dev, seenKey);
+        try {
+          db.touchRemoteRegister(
+            dev,
+            p.register_number,
+            { ...p.body, via: "cloud", online: p.body.online !== false },
+            p.body.remote_ip || p.body.lan_ip || null,
+            p.updated_at,
+          );
+        } catch (e) {
+          console.warn(`[relay-presence] Arka ${p.register_number}:`, e.message);
+        }
+      }
+    } catch (e) {
+      if (e.code !== "RELAY_UNAVAILABLE") {
+        console.warn("[relay-presence] Kryesorja:", e.message || e);
+      } else {
+        unavailable = true;
+      }
+    }
+
+    const pulled = await terminalRelay.pullQueue({
+      celesi,
+      deviceId,
+      limit: 100,
+    });
+    hadQueueRows = (pulled.items || []).length > 0;
+    const ackIds = [];
+    const ackedThrough = db.getRelayAckedThrough();
+    let throughChanged = false;
+    for (const row of pulled.items || []) {
+      if (!row.body) {
+        console.warn(
+          `[relay] rreshti #${row.id} nga Arka ${row.register_number} nuk u hap (${row.error || ""}) — pa ack`,
+        );
+        continue;
+      }
+      const dev = String(row.source_device_id || "").trim().toUpperCase();
+      const reg = Math.floor(Number(row.register_number) || 0);
+      if (!dev || reg < 2) continue;
+      try {
+        db.touchRemoteRegister(
+          dev,
+          reg,
+          {
+            via: "cloud",
+            register_number: reg,
+            app_version: masterRemoteAppVersion(),
+          },
+          null,
+          row.created_at,
+        );
+      } catch (e) {
+        console.warn(`[relay] Arka ${reg} presence:`, e.message);
+      }
+      const source = { device_id: dev, register_number: reg };
+      let imported = false;
+      if (row.kind === "sale") {
+        const { accepted, rejected } = db.importSalesFromTerminal([row.body], source);
+        imported = accepted.length > 0 && rejected.length === 0;
+        if (imported) {
+          console.log(
+            `[relay] Arka ${reg} (${dev}) daily_log#${accepted[0]} u importua te Kryesorja (queue#${row.id})`,
+          );
+        } else if (rejected.length) {
+          console.warn(`[relay] queue#${row.id} shitje: ${rejected[0].gabim}`);
+        }
+      } else if (row.kind === "shift") {
+        const { accepted_shifts, rejected_shifts } = db.importShiftsFromTerminal([row.body], source);
+        imported = accepted_shifts.length > 0 && rejected_shifts.length === 0;
+        if (imported) {
+          console.log(
+            `[relay] Arka ${reg} (${dev}) ndërrimi#${accepted_shifts[0]} u importua te Kryesorja (queue#${row.id})`,
+          );
+        } else if (rejected_shifts.length) {
+          console.warn(`[relay] queue#${row.id} ndërrim: ${rejected_shifts[0].gabim}`);
+        }
+      }
+      if (imported) {
+        ackIds.push(row.id);
+        ackedThrough[dev] = Math.max(Number(ackedThrough[dev]) || 0, Number(row.id) || 0);
+        throughChanged = true;
+      }
+    }
+    if (throughChanged) db.setRelayAckedThrough(ackedThrough);
+    if (ackIds.length) {
+      const ack = await terminalRelay.ackQueueItems({
+        celesi,
+        deviceId,
+        ids: ackIds,
+        relayAckedThrough: throughChanged ? ackedThrough : null,
+      });
+      if (Number(ack.acked) !== ackIds.length) {
+        console.warn(`[relay] ack: u kërkuan ${ackIds.length}, u konfirmuan ${Number(ack.acked) || 0}`);
+      }
+    }
+    hadImport = ackIds.length > 0;
+
+    const needPublish =
+      (masterCatalogDirty.at && Date.now() - masterCatalogDirty.at < RELAY_DIRTY_PUBLISH_MS) ||
+      Date.now() < masterCloudRelay.pairingUntil ||
+      secondaryOnline;
+    if (needPublish) {
+      await publishMasterCatalogSnapshots();
+      if (masterCatalogDirty.at) masterCatalogDirty.at = 0;
+    }
+  } catch (e) {
+    if (e.code !== "RELAY_UNAVAILABLE") console.warn("[relay] Kryesorja (cloud):", e.message || e);
+    else unavailable = true;
+  } finally {
+    masterCloudRelayBusy = false;
+  }
+  return { hadQueueRows, hadImport, secondaryOnline, unavailable };
 }
 
 /** LAN: vetëm rrjet lokal, çelësi i licencës, dhe vetëm Kryesorja (arka1) përgjigjet. */
@@ -8580,11 +9002,16 @@ function masterRemoteAppVersion() {
   return String(v.app_version || v.version || "").slice(0, 40);
 }
 
-function processTerminalRegisterReport(deviceId, registerNumber, body, { status = null, remoteIp = null, tag = "lan-report" } = {}) {
+function processTerminalRegisterReport(
+  deviceId,
+  registerNumber,
+  body,
+  { status = null, remoteIp = null, seenAt = null, tag = "lan-report" } = {},
+) {
   if (status !== null) {
     try {
       const st = status && typeof status === "object" ? status : {};
-      db.touchRemoteRegister(deviceId, registerNumber, st, remoteIp);
+      db.touchRemoteRegister(deviceId, registerNumber, st, remoteIp, seenAt);
     } catch (e) {
       console.warn(`[${tag}] Arka ${registerNumber} presence:`, e.message);
     }
@@ -8603,10 +9030,12 @@ app.get("/api/terminal/ping", (req, res) => {
       ? license.readTerminalModule(eapp) || "kamarier"
       : "kamarier";
   const ver = db.getVersionInfo();
+  const regNum = terminalRegisterNumberLocal();
   res.json({
     ok: true,
     role: readTerminalRoleDisplay(),
     role_code: readTerminalRoleCode(),
+    register_number: regNum >= 1 ? regNum : 1,
     device_id: ownTerminalDeviceId(),
     app_version: ver.app_version || ver.version,
     terminal_module,
@@ -8634,7 +9063,11 @@ app.get("/api/terminal/menu", (req, res) => {
 app.get("/api/terminal/stock", (req, res) => {
   if (!assertLanTerminalMaster(req, res)) return;
   try {
-    res.json({ ok: true, items: db.getStockForTerminal() });
+    res.json({
+      ok: true,
+      items: db.getStockForTerminal(),
+      relay_acked_through: db.getRelayAckedThrough(),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message || String(e) });
   }
@@ -8749,6 +9182,9 @@ app.post("/api/admin/generate-pair-code", auth, adminOnly, async (req, res) => {
         gabim: parsed.gabim || parsed.message || "Nuk u gjenerua kodi.",
       });
     }
+    masterCloudRelay.pairingUntil = Date.now() + RELAY_PAIRING_WINDOW_MS;
+    markMasterCatalogDirty();
+    scheduleMasterCloudRelay(400);
     res.status(201).json(parsed);
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message || "Gabim cloud." });
@@ -9115,16 +9551,28 @@ function onServerListening(server, port) {
     } catch (_) {}
     try {
       const terminalSync = require("./terminal-sync");
-      terminalSync
-        .createTerminalLanSync({
-          db,
-          electronApp,
-          storedLicenseKeyForCloud,
-          terminalRegisterNumber: terminalRegisterNumberLocal,
-        })
-        .startTerminalLanSync();
+      terminalLanSyncInstance = terminalSync.createTerminalLanSync({
+        db,
+        electronApp,
+        storedLicenseKeyForCloud,
+        terminalRegisterNumber: terminalRegisterNumberLocal,
+      });
+      terminalLanSyncInstance.startTerminalLanSync();
     } catch (e) {
       console.warn("[lan-sync] start:", e.message);
+    }
+    try {
+      scheduleMasterCloudRelay(8000);
+    } catch (e) {
+      console.warn("[relay] schedule:", e.message);
+    }
+    if (terminalRegisterNumberLocal() < 2) {
+      setTimeout(() => {
+        publishMasterCatalogSnapshots().catch((e) => console.warn("[relay-snapshots]", e.message || e));
+      }, 12000);
+      setInterval(() => {
+        publishMasterCatalogSnapshots().catch((e) => console.warn("[relay-snapshots]", e.message || e));
+      }, CATALOG_SNAPSHOT_PUBLISH_MS);
     }
     try {
       const {

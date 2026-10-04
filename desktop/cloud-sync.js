@@ -44,6 +44,18 @@ function electronApp() {
   }
 }
 
+/** Arka 2+ (pas pairing). Menuja/stafi në cloud janë pronë e Kryesores — sekondarja s'i mbishkruan. */
+function secondaryRegisterNumber() {
+  try {
+    const role = String(require("./license").readTerminalRole(electronApp()) || "").trim().toLowerCase();
+    const m = /^arka(\d+)$/.exec(role);
+    const n = m ? Number(m[1]) : 0;
+    return n >= 2 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function ensureAutoCloudConfig(db) {
   if (!db) return;
   const license = require("./license");
@@ -1041,9 +1053,17 @@ async function pushCatalogAsync(db) {
     return { ok: false, message: "Cloud nuk është konfiguruar." };
   }
   try {
-    const license = require("./license");
-    if (license.terminalRegisterNumber() < 2) {
-      await pullNewCatalogItemsFromCloud(db);
+    await pullNewCatalogItemsFromCloud(db);
+    const secondary = secondaryRegisterNumber();
+    if (secondary) {
+      return {
+        ok: true,
+        skipped: true,
+        menu_items: 0,
+        categories: 0,
+        staff: 0,
+        message: `Arka ${secondary} — menuja dhe stafi dërgohen te cloud vetëm nga Kryesorja.`,
+      };
     }
     const { cfg, payload } = buildCatalogPayload(db);
     const localCount = payload.menu_items?.length || 0;
@@ -1438,6 +1458,15 @@ async function fetchOnlineOrders(db) {
 async function pushStaffAsync(db) {
   if (!isCloudConfigured(db)) {
     return { ok: false, message: "Cloud nuk është konfiguruar." };
+  }
+  const secondary = secondaryRegisterNumber();
+  if (secondary) {
+    return {
+      ok: true,
+      skipped: true,
+      staff: 0,
+      message: `Arka ${secondary} — stafi dërgohet te cloud vetëm nga Kryesorja.`,
+    };
   }
   const { cfg, payload } = buildCatalogPayload(db);
   const localWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;

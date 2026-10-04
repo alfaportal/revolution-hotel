@@ -706,6 +706,308 @@ function countPendingLanSales() {
   return Number(row?.n) || 0;
 }
 
+function getLanOutboxStatus() {
+  const row = sqlite.prepare(`
+    SELECT
+      SUM(CASE WHEN sent_at IS NULL THEN 1 ELSE 0 END) AS pending,
+      MAX(sent_at) AS last_sent_at
+    FROM lan_outbox
+  `).get();
+  const lastErr = sqlite.prepare(`
+    SELECT last_error FROM lan_outbox
+    WHERE sent_at IS NULL AND last_error IS NOT NULL
+    ORDER BY id ASC LIMIT 1
+  `).get();
+  return {
+    pending: Number(row?.pending) || 0,
+    last_sent_at: row?.last_sent_at || null,
+    last_error: lastErr?.last_error || null,
+  };
+}
+
+const RELAY_STOCK_GUARD_MS = 15 * 60 * 1000;
+
+function getRelayAckedThrough() {
+  try {
+    const v = JSON.parse(getSetting("relay_acked_through", "") || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function setRelayAckedThrough(map) {
+  const m = map && typeof map === "object" ? map : {};
+  setSetting("relay_acked_through", JSON.stringify(m));
+}
+
+function bumpRelayAckedThrough(deviceId, queueId) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  const id = Math.floor(Number(queueId) || 0);
+  if (!dev || id < 1) return;
+  const m = getRelayAckedThrough();
+  m[dev] = Math.max(Number(m[dev]) || 0, id);
+  setRelayAckedThrough(m);
+}
+
+function getRelayAckedThroughForDevice(deviceId) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  if (!dev) return 0;
+  return Math.floor(Number(getRelayAckedThrough()[dev]) || 0);
+}
+
+function getRelayLastPushedQueueId() {
+  try {
+    const v = JSON.parse(getSetting("relay_last_pushed_queue", "") || "{}");
+    return {
+      id: Math.floor(Number(v.id) || 0),
+      at: Math.floor(Number(v.at) || 0),
+    };
+  } catch {
+    return { id: 0, at: 0 };
+  }
+}
+
+function setRelayLastPushedQueueId(queueId) {
+  const id = Math.floor(Number(queueId) || 0);
+  if (id < 1) return;
+  setSetting("relay_last_pushed_queue", JSON.stringify({ id, at: Date.now() }));
+}
+
+function countPendingRelaySales(deviceId) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  const pushed = getRelayLastPushedQueueId();
+  if (!pushed.id || !dev) return 0;
+  if (Date.now() - pushed.at > RELAY_STOCK_GUARD_MS) return 0;
+  if (getRelayAckedThroughForDevice(dev) >= pushed.id) return 0;
+  const row = sqlite
+    .prepare("SELECT COUNT(*) AS n FROM lan_outbox WHERE kind = 'sale' AND sent_at IS NOT NULL")
+    .get();
+  return Number(row?.n) || 0;
+}
+
+function relayStockGuardBlocks(deviceId, ackedThroughFromMaster) {
+  const pushed = getRelayLastPushedQueueId();
+  if (!pushed.id) return false;
+  if (Date.now() - pushed.at > RELAY_STOCK_GUARD_MS) return false;
+  const dev = String(deviceId || "").trim().toUpperCase();
+  if (!dev) return false;
+  const fromMaster =
+    ackedThroughFromMaster && typeof ackedThroughFromMaster === "object"
+      ? Math.floor(Number(ackedThroughFromMaster[dev]) || 0)
+      : 0;
+  const acked = Math.max(fromMaster, getRelayAckedThroughForDevice(dev));
+  return acked < pushed.id;
+}
+
+const REMOTE_REGISTER_UI_ONLINE_MS = 120 * 1000;
+
+function parseRemoteStatusJson(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function cashRegisterDto(row) {
+  return {
+    id: Number(row.id),
+    number: Number(row.number),
+    name: row.name,
+    display_name: row.name,
+    active: row.active !== 0 && row.active !== false,
+  };
+}
+
+function listLocalCashRegisters() {
+  return sqlite
+    .prepare(`
+      SELECT id, number, name, active
+      FROM cash_registers
+      WHERE (remote_device_id IS NULL OR TRIM(remote_device_id) = '') AND active = 1
+      ORDER BY number ASC, id ASC
+    `)
+    .all()
+    .map(cashRegisterDto);
+}
+
+function getRegistersWithRemote() {
+  const rows = sqlite
+    .prepare(`
+      SELECT id, number, name, active, remote_device_id, remote_last_seen_at, remote_status_json, remote_ip
+      FROM cash_registers
+      WHERE remote_device_id IS NOT NULL AND TRIM(remote_device_id) != ''
+      ORDER BY number ASC, id ASC
+    `)
+    .all();
+  const now = Date.now();
+  return rows.map((row) => {
+    const dto = cashRegisterDto(row);
+    const status = parseRemoteStatusJson(row.remote_status_json);
+    const seenMs = row.remote_last_seen_at ? Date.parse(row.remote_last_seen_at) : NaN;
+    const ageMs = Number.isFinite(seenMs) ? Math.max(0, now - seenMs) : null;
+    const fromCol = row.remote_ip != null && String(row.remote_ip).trim() !== "" ? String(row.remote_ip).trim() : "";
+    const fromJson = status?.remote_ip ? String(status.remote_ip).trim() : "";
+    const remoteIp = fromCol || fromJson;
+    return {
+      ...dto,
+      remote: true,
+      remote_device_id: String(row.remote_device_id || "").trim().toUpperCase(),
+      remote_last_seen_at: row.remote_last_seen_at || null,
+      remote_status_json: row.remote_status_json || null,
+      remote_status: status,
+      remote_ip: remoteIp || null,
+      remote_online: ageMs != null && ageMs <= REMOTE_REGISTER_UI_ONLINE_MS,
+      remote_seen_age_sec: ageMs != null ? Math.round(ageMs / 1000) : null,
+    };
+  });
+}
+
+function localAppVersionLabel() {
+  try {
+    const v = getVersionInfo();
+    return String(v.app_version || v.version || "").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function getPrimaryOpenWaiterShift() {
+  return sqlite.prepare(`
+    SELECT ws.*, COALESCE(st.staff_role, 'kamarier') AS staff_role
+    FROM waiter_shifts ws
+    LEFT JOIN staff st ON st.id = ws.staff_id
+    WHERE ws.closed_at IS NULL AND ws.opening_cash IS NOT NULL
+    ORDER BY ws.id DESC LIMIT 1
+  `).get();
+}
+
+function getPrimaryLastClosedWaiterShift() {
+  return sqlite.prepare(`
+    SELECT ws.*, COALESCE(st.staff_role, 'kamarier') AS staff_role
+    FROM waiter_shifts ws
+    LEFT JOIN staff st ON st.id = ws.staff_id
+    WHERE ws.closed_at IS NOT NULL
+    ORDER BY ws.closed_at DESC LIMIT 1
+  `).get();
+}
+
+function remoteRegisterStatusItem(reg, sales) {
+  const s = sales || { total: 0, order_count: 0 };
+  const open = sqlite.prepare(`
+    SELECT * FROM remote_shifts WHERE register_id = ? AND closed_at IS NULL ORDER BY opened_at DESC LIMIT 1
+  `).get(reg.id);
+  const last = open
+    ? null
+    : sqlite.prepare(`
+    SELECT * FROM remote_shifts WHERE register_id = ? AND closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT 1
+  `).get(reg.id);
+  const label = reg.display_name || reg.name || `Arka ${reg.number || "?"}`;
+  const staffRole = open
+    ? normalizeStaffRole(open.staff_role)
+    : last
+      ? normalizeStaffRole(last.staff_role)
+      : null;
+  return {
+    id: reg.id,
+    number: reg.number,
+    name: label,
+    status: open ? "open" : "closed",
+    staff_name: open ? open.waiter_name : last?.waiter_name || null,
+    staff_role: staffRole,
+    opened_at: open ? open.opened_at : null,
+    closed_at: last?.closed_at || null,
+    closing_cash_actual: last?.closing_cash_actual != null ? Number(last.closing_cash_actual) : null,
+    sales_today: s.total,
+    sales_today_count: s.order_count,
+    remote: true,
+    remote_last_seen_at: reg.remote_last_seen_at || null,
+    remote_online: !!reg.remote_online,
+    remote_seen_age_sec: reg.remote_seen_age_sec ?? null,
+    remote_ip: reg.remote_ip || null,
+    remote_status: reg.remote_status || null,
+    remote_device_id: reg.remote_device_id || null,
+  };
+}
+
+function getAdminRegisterStatus() {
+  const today = new Date().toISOString().slice(0, 10);
+  const localRegs = listLocalCashRegisters();
+  const remoteRegs = getRegistersWithRemote();
+  const salesRows = sqlite.prepare(`
+    SELECT register_id, SUM(total) AS total, COUNT(*) AS n
+    FROM daily_log
+    WHERE status = 'completed' AND date = ?
+    GROUP BY register_id
+  `).all(today);
+  const salesMap = new Map();
+  for (const row of salesRows) {
+    const rid = Number(row.register_id) || 0;
+    salesMap.set(rid, {
+      total: Math.round((Number(row.total) || 0) * 100) / 100,
+      order_count: Number(row.n) || 0,
+    });
+  }
+
+  const registerItems = [
+    ...localRegs.map((reg) => {
+      const openShift = getPrimaryOpenWaiterShift();
+      const isOpen = !!(openShift && !openShift.closed_at && openShift.opening_cash != null);
+      const sales = salesMap.get(reg.id) || { total: 0, order_count: 0 };
+      let closedAt = null;
+      let closingCashActual = null;
+      let lastWaiter = null;
+      let lastStaffRole = null;
+      if (!isOpen) {
+        const lastClosed = getPrimaryLastClosedWaiterShift();
+        if (lastClosed) {
+          closedAt = lastClosed.closed_at;
+          closingCashActual =
+            lastClosed.closing_cash_actual != null ? Number(lastClosed.closing_cash_actual) : null;
+          lastWaiter = lastClosed.waiter_name;
+          lastStaffRole = normalizeStaffRole(lastClosed.staff_role);
+        }
+      }
+      const label = reg.display_name || reg.name || `Arka ${reg.number || 1}`;
+      return {
+        id: reg.id,
+        number: reg.number,
+        name: label,
+        status: isOpen ? "open" : "closed",
+        staff_name: isOpen ? openShift.waiter_name : lastWaiter,
+        staff_role: isOpen ? normalizeStaffRole(openShift.staff_role) : lastStaffRole,
+        opened_at: isOpen ? openShift.opened_at : null,
+        closed_at: closedAt,
+        closing_cash_actual: closingCashActual,
+        sales_today: sales.total,
+        sales_today_count: sales.order_count,
+        remote: false,
+      };
+    }),
+    ...remoteRegs.map((reg) => remoteRegisterStatusItem(reg, salesMap.get(reg.id))),
+  ];
+
+  const salesTodayByRegister = registerItems.map((r) => ({
+    register_id: r.id,
+    register_name: r.name,
+    total: r.sales_today,
+    order_count: r.sales_today_count,
+  }));
+  const salesTodayTotal = registerItems.reduce((s, r) => s + (Number(r.sales_today) || 0), 0);
+  const showLabels = registerItems.length > 1;
+
+  return {
+    date: today,
+    registers: registerItems,
+    sales_today_by_register: salesTodayByRegister,
+    sales_today_total: Math.round(salesTodayTotal * 100) / 100,
+    show_register_labels: showLabels,
+    master_version: remoteRegs.length ? localAppVersionLabel() : null,
+  };
+}
+
 function remoteSeenIso(seenAt) {
   const t = seenAt ? Date.parse(seenAt) : NaN;
   return Number.isFinite(t) ? new Date(Math.min(t, Date.now())).toISOString() : new Date().toISOString();
@@ -745,15 +1047,22 @@ function touchRemoteRegister(deviceId, registerNumber, status, remoteIp, seenAt 
   const dev = String(deviceId || "").trim().toUpperCase();
   if (!dev) return null;
   const num = Math.max(2, Math.floor(Number(registerNumber) || 2));
+  if (seenAt) {
+    const prev = sqlite.prepare("SELECT remote_last_seen_at FROM cash_registers WHERE remote_device_id = ?").get(dev);
+    if (prev?.remote_last_seen_at && prev.remote_last_seen_at >= remoteSeenIso(seenAt)) {
+      return null;
+    }
+  }
   const regId = ensureRemoteCashRegister(dev, num, seenAt);
   const s = status && typeof status === "object" ? status : {};
   const str = (v, n) => (v != null && v !== "" ? String(v).slice(0, n) : null);
   const pull = s.pull && typeof s.pull === "object" ? s.pull : {};
-  const ip = str(String(remoteIp || s.remote_ip || "").replace(/^::ffff:/i, ""), 64);
+  const ip = str(String(remoteIp || s.remote_ip || s.lan_ip || "").replace(/^::ffff:/i, ""), 64);
   const clean = {
     register_number: num,
     pending: Math.max(0, Math.floor(Number(s.pending) || 0)),
     last_error: str(s.last_error, 300),
+    last_sent_at: str(s.last_sent_at, 40),
     app_version: str(s.app_version, 40),
     via: s.via === "cloud" ? "cloud" : "lan",
     remote_ip: ip,
@@ -761,6 +1070,7 @@ function touchRemoteRegister(deviceId, registerNumber, status, remoteIp, seenAt 
       staff_at: str(pull.staff_at, 40),
       menu_at: str(pull.menu_at, 40),
       stock_at: str(pull.stock_at, 40),
+      services_at: str(pull.services_at, 40),
       stock_skipped_pending: Math.max(0, Math.floor(Number(pull.stock_skipped_pending) || 0)),
     },
   };
@@ -12154,6 +12464,19 @@ function getVersionInfo() {
     markLanOutboxSent,
     markLanOutboxFailed,
     countPendingLanSales,
+    getLanOutboxStatus,
+    getRelayAckedThrough,
+    setRelayAckedThrough,
+    bumpRelayAckedThrough,
+    getRelayLastPushedQueueId,
+    setRelayLastPushedQueueId,
+    countPendingRelaySales,
+    relayStockGuardBlocks,
+    getRegistersWithRemote,
+    parseRemoteStatusJson,
+    REMOTE_REGISTER_UI_ONLINE_MS,
+    remoteRegisterStatusItem,
+    getAdminRegisterStatus,
     ensureRemoteCashRegister,
     touchRemoteRegister,
     importRemoteRegisterSale,
