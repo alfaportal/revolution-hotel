@@ -1041,7 +1041,10 @@ async function pushCatalogAsync(db) {
     return { ok: false, message: "Cloud nuk është konfiguruar." };
   }
   try {
-    await pullNewCatalogItemsFromCloud(db);
+    const license = require("./license");
+    if (license.terminalRegisterNumber() < 2) {
+      await pullNewCatalogItemsFromCloud(db);
+    }
     const { cfg, payload } = buildCatalogPayload(db);
     const localCount = payload.menu_items?.length || 0;
     if (!localCount) {

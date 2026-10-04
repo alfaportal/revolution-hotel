@@ -700,6 +700,15 @@ if (!gotTheLock) {
           } catch {
             /* ignore */
           }
+          if (revokeBlock.code === "NOT_FOUND") {
+            closeSplash();
+            dialog.showErrorBox(
+              "Licenca",
+              "Licenca nuk u gjet. Kontaktoni administratorin.",
+            );
+            app.quit();
+            return;
+          }
         }
       } catch {
         /* vazhdo te aktivizimi HW — pa ErrorBox */

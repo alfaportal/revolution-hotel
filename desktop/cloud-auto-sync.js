@@ -11,6 +11,15 @@ const cloudSync = require("./cloud-sync");
 const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
 const hotelCloudSync = require("./hotel-cloud-sync");
+const license = require("./license");
+
+function isSecondaryCashRegister() {
+  try {
+    return license.terminalRegisterNumber() >= 2;
+  } catch {
+    return false;
+  }
+}
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
 const CLOSED_WAITER_SALES_MS = 5 * 60 * 1000;
@@ -288,6 +297,13 @@ function startPeriodicJob(db, fn, intervalMs) {
 
 async function runCatalogPush(db, { force = false } = {}) {
   if (!db || catalogPushInFlight) return { ok: false };
+  if (isSecondaryCashRegister()) {
+    return {
+      ok: true,
+      skipped: true,
+      message: "Arka 2+ — menu/stok nga LAN (Kryesorja), jo cloud catalog pull.",
+    };
+  }
   if (!lastStatus.connected) return { ok: false, message: "Licenca nuk është e lidhur." };
 
   const now = Date.now();

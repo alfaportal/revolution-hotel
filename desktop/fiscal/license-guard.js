@@ -7,6 +7,7 @@
  */
 const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { execSync } = require("child_process");
 
@@ -623,6 +624,67 @@ function verifyStoredHardwareKey(rec, app, hardwareId) {
   return matchLicenseKey(rec.key, app, hwRaw).ok;
 }
 
+function lanInterfaceKind(ifName) {
+  const n = String(ifName || "").toLowerCase();
+  if (/wi-?fi|wireless|wlan|wifi/.test(n)) return "wifi";
+  if (/ethernet|local area connection|\beth\b/.test(n)) return "ethernet";
+  return "other";
+}
+
+/** IPv4 lokale për LAN (Kryesorja → cloud → Arka 2). */
+function pickLanIPv4Address() {
+  const candidates = [];
+  for (const [ifName, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const net of addrs || []) {
+      if (net.family !== "IPv4" && net.family !== 4) continue;
+      if (net.internal) continue;
+      const ip = String(net.address || "").trim();
+      if (!ip || ip.startsWith("169.254.")) continue;
+      candidates.push({ ip, kind: lanInterfaceKind(ifName) });
+    }
+  }
+  const wifi = candidates.find((c) => c.kind === "wifi");
+  if (wifi) return wifi.ip;
+  const ethernet = candidates.find((c) => c.kind === "ethernet");
+  if (ethernet) return ethernet.ip;
+  return candidates[0]?.ip || null;
+}
+
+function localExpressPort() {
+  return Number(process.env.ACTUAL_PORT || process.env.PORT || 3001);
+}
+
+function getCallerDeviceId(app) {
+  const license = require(path.join(__dirname, "..", "license"));
+  try {
+    license.registerInstallContext(app);
+  } catch {
+    /* ignore */
+  }
+  return String(license.getMachineId() || "").trim().toUpperCase();
+}
+
+/** Body për POST /api/v1/terminal/generate-pair-code (vetëm nga Kryesorja). */
+function buildGeneratePairCodeCloudBody(app, { celesi, terminal_role }) {
+  const roleRaw = String(terminal_role || "kamarier").trim().toLowerCase();
+  const terminal_role_norm = roleRaw === "recepsion" ? "recepsion" : "kamarier";
+  return {
+    celesi: String(celesi || "").trim(),
+    terminal_role: terminal_role_norm,
+    caller_device_id: getCallerDeviceId(app),
+    pos_lan_host: pickLanIPv4Address(),
+    pos_lan_port: localExpressPort(),
+  };
+}
+
+/** Query string për DELETE /api/v1/terminal/terminals/:id */
+function buildRemoveTerminalCloudQuery(app, celesi) {
+  return new URLSearchParams({
+    celesi: String(celesi || "").trim(),
+    caller_device_id: getCallerDeviceId(app),
+  }).toString();
+}
+
 /** Hardware key SHA256 OSE çelës cloud i ruajtur më parë (source=cloud). */
 function normalizePairJoinCode(raw) {
   let c = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -649,7 +711,7 @@ async function joinTerminalWithPairCode(app, { code, email, terminal_role_ui }) 
     code: pairCode,
     device_id,
     hardware_id,
-    hostname: require("os").hostname(),
+    hostname: os.hostname(),
   });
   let parsed = {};
   try {
@@ -669,16 +731,34 @@ async function joinTerminalWithPairCode(app, { code, email, terminal_role_ui }) 
   await license.activateWithKey(app, celesi, { contact_email: contactEmail });
   writeStoredLicenseKey(app, celesi, { source: "cloud", email: contactEmail });
   const uiRole = String(terminal_role_ui || "").trim().toLowerCase();
-  let role =
-    parsed.terminal_role === "recepsion" || parsed.terminal_role === "kamarier"
-      ? parsed.terminal_role
-      : uiRole === "recepsion" || uiRole === "kamarier"
-        ? uiRole
-        : "kamarier";
+  const moduleFromCloud =
+    parsed.terminal_module === "recepsion" || parsed.terminal_module === "kamarier"
+      ? parsed.terminal_module
+      : parsed.terminal_role === "recepsion" || parsed.terminal_role === "kamarier"
+        ? parsed.terminal_role
+        : uiRole === "recepsion" || uiRole === "kamarier"
+          ? uiRole
+          : "kamarier";
+  const regNum = Math.max(
+    1,
+    Math.min(16, Math.floor(Number(parsed.register_number) || 0) || 2),
+  );
   if (typeof license.writeTerminalRole === "function") {
-    license.writeTerminalRole(app, role);
+    license.writeTerminalRole(app, `arka${regNum}`);
   }
-  return { ok: true, terminal_role: role, celesi };
+  if (typeof license.writeTerminalModule === "function") {
+    license.writeTerminalModule(app, moduleFromCloud);
+  }
+  if (typeof license.writeTerminalLan === "function") {
+    license.writeTerminalLan(app, parsed.pos_lan_host, parsed.pos_lan_port);
+  }
+  return {
+    ok: true,
+    terminal_module: moduleFromCloud,
+    register_number: regNum,
+    terminal_role: `arka${regNum}`,
+    celesi,
+  };
 }
 
 function isHardwareUnlocked(app, hardwareId) {
@@ -1253,4 +1333,8 @@ module.exports = {
   TRIAL_DAYS,
   ANNUAL_DAYS,
   GRACE_MS,
+  pickLanIPv4Address,
+  getCallerDeviceId,
+  buildGeneratePairCodeCloudBody,
+  buildRemoveTerminalCloudQuery,
 };

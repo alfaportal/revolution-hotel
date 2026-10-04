@@ -1828,21 +1828,35 @@ app.get("/api/login/waiters", (_req, res) => {
   res.json({ waiters: db.getStaffForLogin() });
 });
 
-/** Roli i terminalit pas pairing (recepsion / kamarier) — lexohet nga login.html. */
+/** Pas pairing: numri i arkës (sync) + moduli UI (recepsion/kamarier) — login.html. */
 app.get("/api/login/terminal-role", (_req, res) => {
   try {
     const license = require("./license");
     const eapp = electronApp();
     const terminal_role = license.readTerminalRole(eapp) || null;
+    const terminal_module = license.readTerminalModule(eapp) || null;
+    const register_number =
+      typeof license.terminalRegisterNumber === "function"
+        ? license.terminalRegisterNumber(eapp) || null
+        : null;
     const max_registers = db.getMaxRegisters();
     res.json({
       ok: true,
       terminal_role,
+      terminal_module,
+      register_number,
       max_registers,
-      lock_role_from_terminal: max_registers >= 2 && !!terminal_role,
+      lock_role_from_terminal:
+        max_registers >= 2 &&
+        (terminal_module === "recepsion" || terminal_module === "kamarier"),
     });
   } catch (e) {
-    res.json({ ok: false, terminal_role: null, gabim: e.message || String(e) });
+    res.json({
+      ok: false,
+      terminal_role: null,
+      terminal_module: null,
+      gabim: e.message || String(e),
+    });
   }
 });
 
@@ -8431,6 +8445,264 @@ function storedLicenseKeyForCloud() {
   return String(license.readStoredLicense(eapp) || "").trim();
 }
 
+function isPrivateLanAddress(raw) {
+  const ip = String(raw || "").trim().replace(/^::ffff:/i, "");
+  if (ip === "127.0.0.1" || ip === "::1") return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(ip)) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return true;
+  const m = /^172\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(ip);
+  return !!(m && Number(m[1]) >= 16 && Number(m[1]) <= 31);
+}
+
+function normalizeLanLicenseKey(key) {
+  return String(key || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function terminalRegisterNumberLocal() {
+  const eapp = electronApp();
+  const raw = eapp ? license.readTerminalRole(eapp) : "";
+  const m = /^arka(\d+)$/.exec(String(raw || "").trim().toLowerCase());
+  return m ? Number(m[1]) : 0;
+}
+
+function ownTerminalDeviceId() {
+  return String(license.getMachineId() || "").trim().toUpperCase();
+}
+
+function readTerminalRoleDisplay() {
+  const num = terminalRegisterNumberLocal();
+  if (!num || num < 2) return "Kryesore";
+  return `Arka ${num}`;
+}
+
+function readTerminalRoleCode() {
+  const num = terminalRegisterNumberLocal();
+  if (!num || num < 2) return "arka1";
+  return `arka${num}`;
+}
+
+/** LAN: vetëm rrjet lokal, çelësi i licencës, dhe vetëm Kryesorja (arka1) përgjigjet. */
+function assertLanTerminalMaster(req, res) {
+  if (!isPrivateLanAddress(req.socket?.remoteAddress)) {
+    res.status(403).json({ ok: false, gabim: "Lejohet vetëm nga rrjeti lokal." });
+    return false;
+  }
+  const given = normalizeLanLicenseKey(req.headers["x-license-key"] || req.query.celesi);
+  const own = normalizeLanLicenseKey(storedLicenseKeyForCloud());
+  const a = Buffer.from(given);
+  const b = Buffer.from(own);
+  if (!own || !given || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    res.status(403).json({ ok: false, gabim: "Çelësi i licencës nuk përputhet." });
+    return false;
+  }
+  if (terminalRegisterNumberLocal() >= 2) {
+    res.status(403).json({ ok: false, gabim: "Ky PC nuk është arka Kryesore." });
+    return false;
+  }
+  return true;
+}
+
+function buildTerminalStaffList() {
+  return db
+    .getStaff()
+    .filter((s) => {
+      const r = String(s.staff_role || "kamarier").trim().toLowerCase();
+      return r === "kamarier" || r === "recepsion";
+    })
+    .map((s) => ({
+      name: s.name,
+      pin: s.pin || null,
+      card_uid: s.card_uid || null,
+      active: !!s.active,
+      role: String(s.staff_role || "kamarier").trim().toLowerCase() === "recepsion" ? "recepsion" : "kamarier",
+    }));
+}
+
+function buildTerminalMenuPayload() {
+  const categories = db.getCategories().map((c) => ({
+    name: c.name,
+    sort_order: Number(c.sort_order) || 0,
+    active: c.active !== 0 && c.active !== false,
+    route: c.route,
+  }));
+  const items = db.getMenuItems(true).map((m) => ({
+    id: m.id,
+    name: m.name,
+    category: m.category,
+    price: Number(m.price) || 0,
+    active: !!m.active,
+    sort_order: Number(m.sort_order) || 0,
+    vat_category: m.vat_category,
+    barcode: m.barcode || "",
+    stock_qty: Number(m.stock_qty) || 0,
+    low_stock_threshold: Number(m.low_stock_threshold) || 0,
+  }));
+  return { categories, items };
+}
+
+function buildTerminalServicesPayload() {
+  const catalog = db.listHotelServicesCatalog({ activeOnly: true });
+  const services = (catalog.services || []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    price: Number(s.price) || 0,
+    active: !!s.active,
+    category_id: s.category_id != null ? Number(s.category_id) : null,
+    category_name: s.category_name || "",
+    vat_category: s.vat_category,
+    sort_order: Number(s.sort_order) || 0,
+  }));
+  const categories = (catalog.categories || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    icon: c.icon || "",
+    sort_order: Number(c.sort_order) || 0,
+  }));
+  return { categories, services, groups: catalog.groups || [] };
+}
+
+function alignTerminalRegisterOnBoot() {
+  try {
+    const eapp = electronApp();
+    const role = eapp ? license.readTerminalRole(eapp) : "";
+    if (role) db.alignCashRegisterWithTerminalRole(role);
+    const regNum = terminalRegisterNumberLocal();
+    if (typeof db.setLanOutboxEnabled === "function") {
+      db.setLanOutboxEnabled(regNum >= 2);
+    }
+  } catch (e) {
+    console.warn("[register] align terminal role:", e.message);
+  }
+}
+
+function masterRemoteAppVersion() {
+  const v = db.getVersionInfo();
+  return String(v.app_version || v.version || "").slice(0, 40);
+}
+
+function processTerminalRegisterReport(deviceId, registerNumber, body, { status = null, remoteIp = null, tag = "lan-report" } = {}) {
+  if (status !== null) {
+    try {
+      const st = status && typeof status === "object" ? status : {};
+      db.touchRemoteRegister(deviceId, registerNumber, st, remoteIp);
+    } catch (e) {
+      console.warn(`[${tag}] Arka ${registerNumber} presence:`, e.message);
+    }
+  }
+  const source = { device_id: deviceId, register_number: registerNumber };
+  const { accepted, rejected } = db.importSalesFromTerminal(body?.sales, source);
+  const { accepted_shifts, rejected_shifts } = db.importShiftsFromTerminal(body?.shifts, source);
+  return { accepted, rejected, accepted_shifts, rejected_shifts };
+}
+
+app.get("/api/terminal/ping", (req, res) => {
+  if (!assertLanTerminalMaster(req, res)) return;
+  const eapp = electronApp();
+  const terminal_module =
+    eapp && typeof license.readTerminalModule === "function"
+      ? license.readTerminalModule(eapp) || "kamarier"
+      : "kamarier";
+  const ver = db.getVersionInfo();
+  res.json({
+    ok: true,
+    role: readTerminalRoleDisplay(),
+    role_code: readTerminalRoleCode(),
+    device_id: ownTerminalDeviceId(),
+    app_version: ver.app_version || ver.version,
+    terminal_module,
+  });
+});
+
+app.get("/api/terminal/staff", (req, res) => {
+  if (!assertLanTerminalMaster(req, res)) return;
+  try {
+    res.json({ ok: true, staff: buildTerminalStaffList() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
+app.get("/api/terminal/menu", (req, res) => {
+  if (!assertLanTerminalMaster(req, res)) return;
+  try {
+    res.json({ ok: true, ...buildTerminalMenuPayload() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
+app.get("/api/terminal/stock", (req, res) => {
+  if (!assertLanTerminalMaster(req, res)) return;
+  try {
+    res.json({ ok: true, items: db.getStockForTerminal() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
+app.get("/api/terminal/services", (req, res) => {
+  if (!assertLanTerminalMaster(req, res)) return;
+  try {
+    res.json({ ok: true, ...buildTerminalServicesPayload() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
+/** Arka 2+ → Kryesore (LAN): shitjet nga daily_log (lan_outbox). */
+app.post("/api/terminal/report", (req, res) => {
+  if (!isPrivateLanAddress(req.socket?.remoteAddress)) {
+    return res.status(403).json({ ok: false, gabim: "Lejohet vetëm nga rrjeti lokal." });
+  }
+  const given = normalizeLanLicenseKey(req.headers["x-license-key"] || req.query.celesi);
+  const own = normalizeLanLicenseKey(storedLicenseKeyForCloud());
+  const a = Buffer.from(given);
+  const b = Buffer.from(own);
+  if (!own || !given || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return res.status(403).json({ ok: false, gabim: "Çelësi i licencës nuk përputhet." });
+  }
+  if (terminalRegisterNumberLocal() >= 2) {
+    return res.status(403).json({ ok: false, gabim: "Ky PC nuk është arka Kryesore." });
+  }
+  const deviceId = String(req.body?.device_id || "").trim().toUpperCase();
+  const registerNumber = Math.floor(Number(req.body?.register_number) || 0);
+  const ownDevice = ownTerminalDeviceId();
+  if (!/^[A-F0-9]{12}$/.test(deviceId) || deviceId === ownDevice || registerNumber < 2) {
+    return res.status(400).json({ ok: false, gabim: "device_id / register_number i pavlefshëm." });
+  }
+  try {
+    const status =
+      req.body?.status && typeof req.body.status === "object"
+        ? { ...req.body.status, via: "lan" }
+        : { via: "lan", register_number: registerNumber, app_version: masterRemoteAppVersion() };
+    const { accepted, rejected, accepted_shifts, rejected_shifts } = processTerminalRegisterReport(
+      deviceId,
+      registerNumber,
+      req.body,
+      {
+        status,
+        remoteIp: req.socket?.remoteAddress,
+        tag: "lan-report",
+      },
+    );
+    for (const ref of accepted) {
+      if (!ref) continue;
+      console.log(
+        `[lan-report] Arka ${registerNumber} (${deviceId}) daily_log#${ref} u importua te Kryesorja`,
+      );
+    }
+    for (const ref of accepted_shifts) {
+      if (!ref) continue;
+      console.log(
+        `[lan-report] Arka ${registerNumber} (${deviceId}) ndërrimi#${ref} u importua te Kryesorja`,
+      );
+    }
+    res.json({ ok: true, accepted, rejected, accepted_shifts, rejected_shifts });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
 async function cloudTerminalJson(method, apiPath, payload) {
   const cloudHealth = require("./cloud-health");
   const { hotelCloudApiPath } = require("./cloud-server-url");
@@ -8463,10 +8735,14 @@ app.post("/api/admin/generate-pair-code", auth, adminOnly, async (req, res) => {
     }
     const roleRaw = String(req.body?.terminal_role || "kamarier").trim().toLowerCase();
     const terminal_role = roleRaw === "recepsion" ? "recepsion" : "kamarier";
-    const { status, parsed } = await cloudTerminalJson("POST", "/api/v1/terminal/generate-pair-code", {
-      celesi,
-      terminal_role,
-    });
+    const licenseGuard = require("./fiscal/license-guard");
+    const eapp = electronApp();
+    const cloudBody = licenseGuard.buildGeneratePairCodeCloudBody(eapp, { celesi, terminal_role });
+    const { status, parsed } = await cloudTerminalJson(
+      "POST",
+      "/api/v1/terminal/generate-pair-code",
+      cloudBody,
+    );
     if (status >= 400 || parsed.ok === false) {
       return res.status(status >= 400 ? status : 400).json({
         ok: false,
@@ -8520,7 +8796,8 @@ app.delete("/api/admin/terminals/:deviceId", auth, adminOnly, async (req, res) =
     if (!deviceId) {
       return res.status(400).json({ ok: false, gabim: "Mungon pajisja." });
     }
-    const qs = new URLSearchParams({ celesi }).toString();
+    const licenseGuard = require("./fiscal/license-guard");
+    const qs = licenseGuard.buildRemoveTerminalCloudQuery(electronApp(), celesi);
     const { status, parsed } = await cloudTerminalJson(
       "DELETE",
       `/api/v1/terminal/terminals/${deviceId}?${qs}`,
@@ -8789,6 +9066,7 @@ const MAX_PORT = START_PORT + 10;
 
 function onServerListening(server, port) {
   process.env.ACTUAL_PORT = String(port);
+  alignTerminalRegisterOnBoot();
   try {
     db.setSetting("local_print_only", "1");
     if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
@@ -8835,6 +9113,19 @@ function onServerListening(server, port) {
     try {
       cloudAutoSync.startCloudAutoSync(db);
     } catch (_) {}
+    try {
+      const terminalSync = require("./terminal-sync");
+      terminalSync
+        .createTerminalLanSync({
+          db,
+          electronApp,
+          storedLicenseKeyForCloud,
+          terminalRegisterNumber: terminalRegisterNumberLocal,
+        })
+        .startTerminalLanSync();
+    } catch (e) {
+      console.warn("[lan-sync] start:", e.message);
+    }
     try {
       const {
         applyLocalRunDatabaseLockdown,
@@ -8934,7 +9225,10 @@ module.exports = { app, startServer, START_PORT };
 
 if (require.main === module) {
   Promise.resolve(typeof db.whenReady === "function" ? db.whenReady() : null)
-    .then(() => startServer())
+    .then(() => {
+      alignTerminalRegisterOnBoot();
+      return startServer();
+    })
     .catch((err) => {
       console.error(err);
       process.exit(1);

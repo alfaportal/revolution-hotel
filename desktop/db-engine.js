@@ -954,6 +954,117 @@ function initSchema() {
     /* ekzistojnë duplikata — rebuild i pastron */
   }
 
+  runSchemaMigration(
+    "hotel-lan-outbox-v1",
+    backupCtx,
+    () => !tableExists("lan_outbox"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS cash_registers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          number INTEGER NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        )
+      `);
+      const regCount = sqlGet("SELECT COUNT(*) AS n FROM cash_registers");
+      if (!(Number(regCount?.n) || 0)) {
+        sqlRun(
+          "INSERT INTO cash_registers (number, name, active, created_at) VALUES (1, 'Kryesore', 1, datetime('now','localtime'))",
+        );
+      }
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_cash_registers_number ON cash_registers(number)");
+      const regColsLan = sqlAll("PRAGMA table_info(cash_registers)");
+      if (!regColsLan.some((c) => c.name === "remote_device_id")) {
+        sqlRun("ALTER TABLE cash_registers ADD COLUMN remote_device_id TEXT");
+      }
+      if (!regColsLan.some((c) => c.name === "remote_last_seen_at")) {
+        sqlRun("ALTER TABLE cash_registers ADD COLUMN remote_last_seen_at TEXT");
+      }
+      if (!regColsLan.some((c) => c.name === "remote_status_json")) {
+        sqlRun("ALTER TABLE cash_registers ADD COLUMN remote_status_json TEXT");
+      }
+      if (!regColsLan.some((c) => c.name === "remote_ip")) {
+        sqlRun("ALTER TABLE cash_registers ADD COLUMN remote_ip TEXT");
+      }
+      const logColsLan = sqlAll("PRAGMA table_info(daily_log)");
+      if (!logColsLan.some((c) => c.name === "register_id")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN register_id INTEGER");
+      }
+      if (!logColsLan.some((c) => c.name === "cash_amount")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN cash_amount REAL NOT NULL DEFAULT 0");
+      }
+      if (!logColsLan.some((c) => c.name === "card_amount")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN card_amount REAL NOT NULL DEFAULT 0");
+      }
+      if (!logColsLan.some((c) => c.name === "source")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN source TEXT NOT NULL DEFAULT 'hotel-kasa'");
+      }
+      if (!logColsLan.some((c) => c.name === "source_device_id")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN source_device_id TEXT");
+      }
+      if (!logColsLan.some((c) => c.name === "source_ref")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN source_ref INTEGER");
+      }
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_daily_log_source_ref ON daily_log(source_device_id, source_ref)",
+      );
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS lan_outbox (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind          TEXT NOT NULL,
+          ref           INTEGER NOT NULL,
+          payload_json  TEXT NOT NULL,
+          created_at    TEXT NOT NULL,
+          sent_at       TEXT,
+          attempts      INTEGER NOT NULL DEFAULT 0,
+          last_error    TEXT
+        )
+      `);
+      sqlRun("CREATE UNIQUE INDEX IF NOT EXISTS idx_lan_outbox_kind_ref ON lan_outbox(kind, ref)");
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_lan_outbox_pending ON lan_outbox(sent_at, id)");
+    },
+  );
+
+  runSchemaMigration(
+    "hotel-remote-shifts-v1",
+    backupCtx,
+    () => !tableExists("remote_shifts"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS remote_shifts (
+          id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_device_id       TEXT NOT NULL,
+          source_ref             INTEGER NOT NULL,
+          register_id            INTEGER,
+          waiter_name            TEXT NOT NULL DEFAULT '',
+          staff_role             TEXT NOT NULL DEFAULT 'kamarier',
+          opened_at              TEXT,
+          closed_at              TEXT,
+          opening_cash           REAL,
+          closing_cash_actual    REAL,
+          expected_closing_cash  REAL,
+          cash_difference        REAL,
+          cash_sales_total       REAL,
+          card_sales_total       REAL,
+          order_count_total      INTEGER,
+          total_sales            REAL,
+          discount_total         REAL,
+          closing_reason         TEXT NOT NULL DEFAULT '',
+          handed_over_to_name    TEXT,
+          updated_at             TEXT
+        )
+      `);
+      sqlRun(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_shifts_source ON remote_shifts(source_device_id, source_ref)",
+      );
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_remote_shifts_register ON remote_shifts(register_id, closed_at)",
+      );
+    },
+  );
+
   migrateAddColumns(
     "categories-active",
     "categories",

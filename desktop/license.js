@@ -16,6 +16,7 @@ const ACTIVATION_FILE_BASENAMES = [
   ".lic-online",
   ".install-device-id",
   ".terminal-role",
+  ".terminal-module",
 ];
 
 /** Hotel — licencë e ndarë (HotelLicense). */
@@ -242,7 +243,11 @@ function terminalRolePath(app) {
   return path.join(licenseStorageRoot(app), ".terminal-role");
 }
 
-/** Pas pairing terminali — "recepsion" | "kamarier" (restorant). */
+function terminalModulePath(app) {
+  return path.join(licenseStorageRoot(app), ".terminal-module");
+}
+
+/** Numri i arkës për sync/relay — arka1, arka2, … (si MARKET/KAFENE). */
 function readTerminalRole(app) {
   const ea = app || _electronApp;
   if (!ea) return "";
@@ -250,7 +255,26 @@ function readTerminalRole(app) {
     const p = terminalRolePath(ea);
     if (!p || !fs.existsSync(p)) return "";
     const raw = String(fs.readFileSync(p, "utf8") || "").trim().toLowerCase();
-    return raw === "recepsion" ? "recepsion" : raw === "kamarier" ? "kamarier" : "";
+    const m = /^arka(\d+)$/.exec(raw);
+    if (m && Number(m[1]) >= 1 && Number(m[1]) <= 16) return raw;
+    /* Legacy: recepsion/kamarier ishte te .terminal-role — migro një herë */
+    if (raw === "recepsion" || raw === "kamarier") {
+      const modP = terminalModulePath(ea);
+      if (!fs.existsSync(modP)) {
+        try {
+          fs.writeFileSync(modP, raw, "utf8");
+        } catch {
+          /* ignore */
+        }
+      }
+      try {
+        fs.writeFileSync(p, "arka1", "utf8");
+      } catch {
+        /* ignore */
+      }
+      return "arka1";
+    }
+    return "";
   } catch {
     return "";
   }
@@ -260,13 +284,123 @@ function writeTerminalRole(app, role) {
   const ea = app || _electronApp;
   if (!ea) return;
   registerInstallContext(ea);
-  const r = String(role || "").trim().toLowerCase();
-  const norm = r === "recepsion" ? "recepsion" : "kamarier";
+  const r = String(role || "").trim().toLowerCase().replace(/\s+/g, "");
+  const norm = /^arka(\d+)$/.test(r) ? r : "arka1";
   try {
     fs.writeFileSync(terminalRolePath(ea), norm, "utf8");
   } catch {
     /* ignore */
   }
+}
+
+/** Moduli UI pas pairing — recepsion | kamarier (restorant). */
+function readTerminalModule(app) {
+  const ea = app || _electronApp;
+  if (!ea) return "";
+  try {
+    const p = terminalModulePath(ea);
+    if (!p || !fs.existsSync(p)) return "";
+    const raw = String(fs.readFileSync(p, "utf8") || "").trim().toLowerCase();
+    return raw === "recepsion" ? "recepsion" : raw === "kamarier" ? "kamarier" : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeTerminalModule(app, moduleRole) {
+  const ea = app || _electronApp;
+  if (!ea) return;
+  registerInstallContext(ea);
+  const r = String(moduleRole || "").trim().toLowerCase();
+  const norm = r === "recepsion" ? "recepsion" : "kamarier";
+  try {
+    fs.writeFileSync(terminalModulePath(ea), norm, "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearTerminalModule(app) {
+  const ea = app || _electronApp;
+  if (!ea) return;
+  try {
+    const p = terminalModulePath(ea);
+    if (p && fs.existsSync(p)) fs.unlinkSync(p);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Adresa LAN e Arkës 1 — ruhet te Arka 2+ pas join (pair code). */
+function writeTerminalLan(app, host, port) {
+  try {
+    const dir = licenseStorageRoot(app || _electronApp);
+    if (!dir) return;
+    const data = JSON.stringify({
+      host: host || null,
+      port: port != null && port !== "" ? Number(port) : null,
+      saved_at: new Date().toISOString(),
+    });
+    fs.writeFileSync(path.join(dir, ".terminal-lan.json"), data, "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
+function readTerminalLan(app) {
+  try {
+    const dir = licenseStorageRoot(app || _electronApp);
+    if (!dir) return null;
+    const raw = fs.readFileSync(path.join(dir, ".terminal-lan.json"), "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+const TERMINAL_LAN_RECENT_MAX = 8;
+
+/** IP-të e fundit të Kryesores që kanë punuar (Arka 2+ — fallback pas DHCP). */
+function readTerminalLanRecentHosts(app) {
+  try {
+    const dir = licenseStorageRoot(app || _electronApp);
+    if (!dir) return [];
+    const raw = fs.readFileSync(path.join(dir, ".terminal-lan-recent.json"), "utf8");
+    const j = JSON.parse(raw);
+    const hosts = Array.isArray(j?.hosts) ? j.hosts : [];
+    return hosts.map((h) => String(h || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function pushTerminalLanRecentHost(app, host, port) {
+  const h = String(host || "").trim();
+  if (!h) return;
+  try {
+    const dir = licenseStorageRoot(app || _electronApp);
+    if (!dir) return;
+    const p = path.join(dir, ".terminal-lan-recent.json");
+    let hosts = readTerminalLanRecentHosts(app).filter((x) => x !== h);
+    hosts.unshift(h);
+    if (hosts.length > TERMINAL_LAN_RECENT_MAX) hosts = hosts.slice(0, TERMINAL_LAN_RECENT_MAX);
+    fs.writeFileSync(
+      p,
+      JSON.stringify({
+        hosts,
+        port: port != null && port !== "" ? Number(port) : null,
+        updated_at: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function terminalRegisterNumber(app) {
+  const m = /^arka(\d+)$/.exec(String(readTerminalRole(app) || "").trim().toLowerCase());
+  return m ? Number(m[1]) : 0;
 }
 
 function clearTerminalRole(app) {
@@ -278,6 +412,7 @@ function clearTerminalRole(app) {
   } catch {
     /* ignore */
   }
+  clearTerminalModule(ea);
 }
 
 function keyHash(key) {
@@ -1266,7 +1401,7 @@ async function enforceRevokedBlock(app) {
         } catch {
           /* ignore */
         }
-        return { blocked: false, code: online.code };
+        return { blocked: true, code: online.code };
       }
       return {
         blocked: true,
@@ -1686,6 +1821,9 @@ async function activateWithKey(app, key, opts = {}) {
   clearLicenseRevokedLocally(app);
   writeStoredLicense(app, key);
   writeActivationRecord(app, key, activationMetaFromOnline(online));
+  if (!readTerminalRole(app)) {
+    writeTerminalRole(app, "arka1");
+  }
   return {
     ok: true,
     activated: true,
@@ -1824,4 +1962,12 @@ module.exports = {
   readTerminalRole,
   writeTerminalRole,
   clearTerminalRole,
+  readTerminalModule,
+  writeTerminalModule,
+  clearTerminalModule,
+  terminalRegisterNumber,
+  writeTerminalLan,
+  readTerminalLan,
+  readTerminalLanRecentHosts,
+  pushTerminalLanRecentHost,
 };

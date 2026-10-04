@@ -195,6 +195,746 @@ function getMaxRegisters() {
   return Math.min(10, n);
 }
 
+function isDefaultPrimaryRegisterName(name) {
+  const n = String(name || "").trim();
+  if (!n) return true;
+  if (/^Kryesore$/i.test(n)) return false;
+  return /^Arka\s*[-]?\s*0?1$/i.test(n);
+}
+
+/** Pas pairing: arka1 → «Kryesore»; arka2+ → «Arka N» (numri i arkës në fiskal/receipt). */
+function alignCashRegisterWithTerminalRole(terminalRole) {
+  try {
+    const role = String(terminalRole || "").trim().toLowerCase();
+    const m = /^arka(\d+)$/.exec(role);
+    const num = m ? Number(m[1]) : 0;
+    const current = String(getSetting("biz_register_number", "Arka-01") || "").trim();
+    if (!num || num < 2) {
+      if (isDefaultPrimaryRegisterName(current)) {
+        setSetting("biz_register_number", "Kryesore");
+        console.log("[register] kryesore: → Kryesore");
+      }
+      return;
+    }
+    const target = `Arka ${num}`;
+    if (
+      isDefaultPrimaryRegisterName(current) ||
+      /^Kryesore$/i.test(current) ||
+      !current
+    ) {
+      setSetting("biz_register_number", target);
+      console.log(`[register] ${role}: → ${target}`);
+    }
+  } catch (e) {
+    console.warn("[register] align terminal role:", e.message);
+  }
+}
+
+/** Kryesore → Arka 2+ (LAN): stoku i artikujve të menusë. */
+function getStockForTerminal() {
+  return sqlite
+    .prepare(`
+    SELECT name, category, COALESCE(stock_qty, 0) AS stock_qty, COALESCE(low_stock_threshold, 0) AS low_stock_threshold
+    FROM menu_items
+  `)
+    .all()
+    .map((r) => ({
+      name: r.name,
+      category: r.category,
+      stock_qty: Number(r.stock_qty) || 0,
+      low_stock_threshold: Number(r.low_stock_threshold) || 0,
+    }));
+}
+
+/** Arka 2+ — zëvendëson kamarierët/recepsionistët nga Kryesorja (LAN). */
+function replaceStaffFromMaster(staffList) {
+  const incoming = new Map();
+  for (const s of Array.isArray(staffList) ? staffList : []) {
+    const name = String(s?.name || "").trim();
+    if (!name) continue;
+    const pinRaw = String(s.pin ?? "").trim();
+    const card = s.card_uid ? normalizeCardUid(s.card_uid) : "";
+    const role = normalizeStaffRole(s.role || s.staff_role || "kamarier");
+    if (role !== "kamarier" && role !== "recepsion") continue;
+    incoming.set(name, {
+      name,
+      pin: /^\d{4}$/.test(pinRaw) ? pinRaw : null,
+      card_uid: card || null,
+      active: s.active ? 1 : 0,
+      staff_role: role,
+    });
+  }
+  if (!incoming.size) return { ok: false, reason: "empty", added: 0, updated: 0, deactivated: 0 };
+
+  let added = 0;
+  let updated = 0;
+  let deactivated = 0;
+  sqlite.transaction(() => {
+    sqlite
+      .prepare(
+        `UPDATE staff SET active = 0
+         WHERE LOWER(COALESCE(staff_role, 'kamarier')) IN ('kamarier', 'recepsion')`,
+      )
+      .run();
+    const local = sqlite
+      .prepare("SELECT id, name, active, staff_role FROM staff")
+      .all()
+      .filter((r) => {
+        const role = normalizeStaffRole(r.staff_role);
+        return role === "kamarier" || role === "recepsion";
+      });
+    const localByName = new Map(local.map((r) => [r.name, r]));
+    for (const s of incoming.values()) {
+      const row = localByName.get(s.name);
+      if (row) {
+        sqlite
+          .prepare(
+            "UPDATE staff SET pin = ?, card_uid = ?, active = ?, staff_role = ? WHERE id = ?",
+          )
+          .run(s.pin, s.card_uid, s.active, s.staff_role, row.id);
+        updated += 1;
+      } else {
+        let token = generateStaffWebToken();
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          try {
+            sqlite
+              .prepare(
+                `INSERT INTO staff (name, pin, card_uid, active, web_token, staff_role)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+              )
+              .run(s.name, s.pin, s.card_uid, s.active, token, s.staff_role);
+            added += 1;
+            break;
+          } catch (e) {
+            if (String(e.message || "").includes("web_token")) {
+              token = generateStaffWebToken();
+              continue;
+            }
+            throw e;
+          }
+        }
+      }
+    }
+    for (const row of local) {
+      if (!incoming.has(row.name) && row.active) deactivated += 1;
+    }
+  })();
+  return { ok: true, added, updated, deactivated };
+}
+
+/** Arka 2+ — menu/kategori nga Kryesorja; stoku nuk preket këtu. */
+function replaceMenuFromMaster(data) {
+  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const incomingCats = new Map();
+  for (const c of categories) {
+    const name = String(c?.name || "").trim();
+    if (!name) continue;
+    incomingCats.set(name, {
+      name,
+      sort_order: Number(c.sort_order) || 0,
+      active: c.active !== 0 && c.active !== false ? 1 : 0,
+      route: normalizeCategoryRoute(c.route),
+    });
+  }
+  const incomingItems = new Map();
+  for (const m of items) {
+    const name = String(m?.name || "").trim();
+    const category = String(m?.category || "").trim();
+    if (!name || !category) continue;
+    const price = Number(m.price);
+    incomingItems.set(`${name}\u0000${category}`, {
+      name,
+      category,
+      price: Number.isFinite(price) && price >= 0 ? price : 0,
+      active: m.active !== 0 && m.active !== false ? 1 : 0,
+      sort_order: Number(m.sort_order) || 0,
+      vat_category: VAT_CATEGORIES.includes(String(m.vat_category)) ? String(m.vat_category) : "18",
+      barcode: String(m.barcode ?? "").trim() || null,
+    });
+  }
+  const empty = { added: 0, updated: 0, deactivated: 0 };
+  if (!incomingCats.size || !incomingItems.size) {
+    return { ok: false, reason: "empty", categories: { ...empty }, items: { ...empty } };
+  }
+
+  const cats = { ...empty };
+  const menu = { ...empty };
+  sqlite.transaction(() => {
+    sqlite.prepare("UPDATE categories SET active = 0").run();
+    sqlite.prepare("UPDATE menu_items SET active = 0").run();
+
+    const localCats = sqlite.prepare("SELECT id, name FROM categories").all();
+    const localCatByName = new Map(localCats.map((r) => [r.name, r]));
+    for (const c of incomingCats.values()) {
+      const row = localCatByName.get(c.name);
+      if (row) {
+        sqlite
+          .prepare("UPDATE categories SET sort_order = ?, active = ?, route = ? WHERE id = ?")
+          .run(c.sort_order, c.active, c.route, row.id);
+        cats.updated += 1;
+      } else {
+        sqlite
+          .prepare("INSERT INTO categories (name, sort_order, active, route) VALUES (?, ?, ?, ?)")
+          .run(c.name, c.sort_order, c.active, c.route);
+        cats.added += 1;
+      }
+    }
+    for (const row of localCats) {
+      if (!incomingCats.has(row.name)) cats.deactivated += 1;
+    }
+
+    const localItems = sqlite.prepare("SELECT id, name, category FROM menu_items").all();
+    const localItemByKey = new Map(localItems.map((r) => [`${r.name}\u0000${r.category}`, r]));
+    for (const m of incomingItems.values()) {
+      const key = `${m.name}\u0000${m.category}`;
+      const row = localItemByKey.get(key);
+      if (row) {
+        sqlite.prepare(
+          `UPDATE menu_items SET price = ?, active = ?, sort_order = ?, vat_category = ?, barcode = ? WHERE id = ?`,
+        ).run(m.price, m.active, m.sort_order, m.vat_category, m.barcode, row.id);
+        menu.updated += 1;
+      } else {
+        sqlite.prepare(
+          `INSERT INTO menu_items (name, category, price, active, sort_order, vat_category, barcode, stock_qty)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+        ).run(m.name, m.category, m.price, m.active, m.sort_order, m.vat_category, m.barcode);
+        menu.added += 1;
+      }
+    }
+    for (const r of localItems) {
+      if (!incomingItems.has(`${r.name}\u0000${r.category}`)) menu.deactivated += 1;
+    }
+  })();
+  return { ok: true, categories: cats, items: menu };
+}
+
+/** Arka 2+ — stoku nga Kryesorja (LAN). */
+function replaceStockFromMaster(items) {
+  const list = (Array.isArray(items) ? items : [])
+    .map((m) => ({
+      name: String(m?.name || "").trim(),
+      category: String(m?.category || "").trim(),
+      stock_qty: Number(m.stock_qty),
+      low_stock_threshold: Number(m.low_stock_threshold),
+    }))
+    .filter((m) => m.name && Number.isFinite(m.stock_qty));
+  if (!list.length) return { ok: false, reason: "empty", updated: 0, unmatched: 0 };
+
+  const byKey = new Map(list.map((m) => [`${m.name}\u0000${m.category}`, m]));
+  const nameCount = new Map();
+  for (const m of list) nameCount.set(m.name, (nameCount.get(m.name) || 0) + 1);
+  const byUniqueName = new Map(list.filter((m) => nameCount.get(m.name) === 1).map((m) => [m.name, m]));
+
+  let updated = 0;
+  let unmatched = 0;
+  sqlite.transaction(() => {
+    const local = sqlite.prepare(`
+      SELECT id, name, category, COALESCE(stock_qty, 0) AS stock_qty, COALESCE(low_stock_threshold, 0) AS low_stock_threshold
+      FROM menu_items
+    `).all();
+    const upd = sqlite.prepare(
+      "UPDATE menu_items SET stock_qty = ?, low_stock_threshold = ? WHERE id = ?",
+    );
+    for (const r of local) {
+      const m = byKey.get(`${r.name}\u0000${r.category}`) || byUniqueName.get(r.name);
+      if (!m) {
+        unmatched += 1;
+        continue;
+      }
+      const qty = Math.max(0, m.stock_qty);
+      const thr = Number.isFinite(m.low_stock_threshold)
+        ? Math.max(0, m.low_stock_threshold)
+        : Number(r.low_stock_threshold) || 0;
+      if (Number(r.stock_qty) === qty && Number(r.low_stock_threshold) === thr) continue;
+      upd.run(qty, thr, r.id);
+      updated += 1;
+    }
+  })();
+  return { ok: true, updated, unmatched };
+}
+
+/** Arka 2+ — shërbimet hotelerike nga Kryesorja (recepsion). */
+function replaceServicesFromMaster(data) {
+  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  const services = Array.isArray(data?.services) ? data.services : [];
+  const incomingCats = new Map();
+  for (const c of categories) {
+    const name = String(c?.name || "").trim();
+    if (!name) continue;
+    incomingCats.set(name.toLowerCase(), {
+      name,
+      icon: String(c.icon || "").trim(),
+      sort_order: Number(c.sort_order) || 0,
+    });
+  }
+  const incomingSvcs = new Map();
+  for (const s of services) {
+    const name = String(s?.name || "").trim();
+    if (!name) continue;
+    const catName = String(s.category_name || "").trim();
+    incomingSvcs.set(name.toLowerCase(), {
+      name,
+      catName,
+      price: Number(s.price) || 0,
+      active: s.active !== 0 && s.active !== false ? 1 : 0,
+      sort_order: Number(s.sort_order) || 0,
+      vat_category: VAT_CATEGORIES.includes(String(s.vat_category)) ? String(s.vat_category) : "18",
+    });
+  }
+  const empty = { added: 0, updated: 0, deactivated: 0 };
+  if (!incomingSvcs.size) {
+    return { ok: false, reason: "empty", categories: { ...empty }, services: { ...empty } };
+  }
+
+  const cats = { ...empty };
+  const svcs = { ...empty };
+  sqlite.transaction(() => {
+    sqlite.prepare("UPDATE services SET active = 0").run();
+
+    const localCats = sqlite.prepare("SELECT id, name FROM service_categories").all();
+    const localCatByName = new Map(localCats.map((r) => [String(r.name).toLowerCase(), r]));
+    for (const c of incomingCats.values()) {
+      const key = c.name.toLowerCase();
+      const row = localCatByName.get(key);
+      if (row) {
+        sqlite
+          .prepare("UPDATE service_categories SET icon = ?, sort_order = ? WHERE id = ?")
+          .run(c.icon, c.sort_order, row.id);
+        cats.updated += 1;
+      } else {
+        const ins = sqlite
+          .prepare(
+            "INSERT INTO service_categories (name, icon, photo, sort_order) VALUES (?, ?, '', ?)",
+          )
+          .run(c.name, c.icon, c.sort_order);
+        cats.added += 1;
+        localCatByName.set(key, { id: Number(ins.lastInsertRowid), name: c.name });
+      }
+    }
+
+    const localSvcs = sqlite.prepare("SELECT id, name, active FROM services").all();
+    const localSvcByName = new Map(localSvcs.map((r) => [String(r.name).toLowerCase(), r]));
+    const catIdByName = new Map(
+      sqlite.prepare("SELECT id, name FROM service_categories").all().map((r) => [String(r.name).toLowerCase(), r.id]),
+    );
+
+    for (const s of incomingSvcs.values()) {
+      const catId = s.catName ? catIdByName.get(s.catName.toLowerCase()) || null : null;
+      const key = s.name.toLowerCase();
+      const row = localSvcByName.get(key);
+      if (row) {
+        sqlite
+          .prepare(
+            `UPDATE services SET price = ?, category_id = ?, active = ?, sort_order = ?, vat_category = ? WHERE id = ?`,
+          )
+          .run(s.price, catId, s.active, s.sort_order, s.vat_category, row.id);
+        svcs.updated += 1;
+      } else {
+        sqlite.prepare(
+          `INSERT INTO services (name, price, category_id, icon, photo, sort_order, price_mode, active, vat_category)
+           VALUES (?, ?, ?, '', '', ?, 'fixed', ?, ?)`,
+        ).run(s.name, s.price, catId, s.sort_order, s.active, s.vat_category);
+        svcs.added += 1;
+      }
+    }
+    for (const row of localSvcs) {
+      if (!incomingSvcs.has(String(row.name).toLowerCase()) && row.active) svcs.deactivated += 1;
+    }
+  })();
+  return { ok: true, categories: cats, services: svcs };
+}
+
+let lanOutboxEnabled = false;
+
+function setLanOutboxEnabled(enabled) {
+  lanOutboxEnabled = !!enabled;
+}
+
+function inferDailyLogSource(receipt_number) {
+  const r = String(receipt_number || "").trim().toUpperCase();
+  if (r.startsWith("CO-")) return "hotel-recepsion-checkout";
+  if (r.startsWith("RC-")) return "hotel-recepsion-kasa";
+  return "hotel-restaurant";
+}
+
+function lanShiftSnapshot(row) {
+  const num = (v) => (v != null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
+  let handedTo = null;
+  if (row?.handed_over_to_staff_id) {
+    handedTo =
+      sqlite.prepare("SELECT name FROM staff WHERE id = ?").get(Number(row.handed_over_to_staff_id))?.name ||
+      null;
+  }
+  let staff_role = "kamarier";
+  if (row?.staff_id) {
+    const s = sqlite.prepare("SELECT staff_role FROM staff WHERE id = ?").get(Number(row.staff_id));
+    staff_role = normalizeStaffRole(s?.staff_role);
+  }
+  return {
+    ref: Number(row.id),
+    waiter_name: String(row.waiter_name || ""),
+    staff_role,
+    opened_at: row.opened_at || null,
+    closed_at: row.closed_at || null,
+    opening_cash: num(row.opening_cash),
+    closing_cash_actual: num(row.closing_cash_actual),
+    expected_closing_cash: num(row.expected_closing_cash),
+    cash_difference: num(row.cash_difference),
+    cash_sales_total: num(row.cash_sales_total),
+    card_sales_total: num(row.card_sales_total),
+    order_count_total: num(row.order_count_total),
+    total_sales: num(row.total_sales),
+    discount_total: num(row.discount_total),
+    closing_reason: String(row.closing_reason || ""),
+    handed_over_to_name: handedTo,
+  };
+}
+
+function enqueueLanShift(shiftId, eventLabel) {
+  if (!lanOutboxEnabled) return;
+  const id = Number(shiftId);
+  if (!id) return;
+  const row = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(id);
+  if (!row) return;
+  const snapshot = { ...lanShiftSnapshot(row), event: String(eventLabel || "shift") };
+  const json = JSON.stringify(snapshot);
+  const now = new Date().toISOString();
+  try {
+    const prev = sqlite.prepare("SELECT id FROM lan_outbox WHERE kind = 'shift' AND ref = ?").get(id);
+    if (prev) {
+      sqlite.prepare(`
+        UPDATE lan_outbox SET payload_json = ?, sent_at = NULL, attempts = 0, last_error = NULL WHERE id = ?
+      `).run(json, prev.id);
+    } else {
+      sqlite.prepare(`
+        INSERT INTO lan_outbox (kind, ref, payload_json, created_at) VALUES ('shift', ?, ?, ?)
+      `).run(id, json, now);
+    }
+  } catch (e) {
+    console.warn(`[lan-outbox] enqueue shift#${id}:`, e.message);
+  }
+}
+
+const LAN_SHIFT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+function syncLanShiftSnapshots() {
+  if (!lanOutboxEnabled) return 0;
+  const since = new Date(Date.now() - LAN_SHIFT_WINDOW_MS).toISOString();
+  const rows = sqlite.prepare(`
+    SELECT * FROM waiter_shifts
+    WHERE opening_cash IS NOT NULL AND (closed_at IS NULL OR closed_at >= ?)
+    ORDER BY id ASC
+  `).all(since);
+  let queued = 0;
+  for (const row of rows) {
+    const event = row.closed_at ? "shift_close" : "shift_open";
+    enqueueLanShift(row.id, event);
+    queued += 1;
+  }
+  return queued;
+}
+
+function insertLanOutbox(type, payload) {
+  const kind = String(type || "sale").trim().toLowerCase();
+  if (kind === "shift_open" || kind === "shift_close") {
+    const ref = Math.floor(Number(payload?.ref) || 0);
+    if (ref) enqueueLanShift(ref, kind);
+    return;
+  }
+  const ref = Math.floor(Number(payload?.ref) || 0);
+  if (!ref) return;
+  try {
+    sqlite.prepare(`
+      INSERT OR IGNORE INTO lan_outbox (kind, ref, payload_json, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(kind, ref, JSON.stringify(payload || {}), new Date().toISOString());
+  } catch (e) {
+    console.warn(`[lan-outbox] enqueue ${kind}#${ref}:`, e.message);
+  }
+}
+
+function getLanOutboxPending(limit = 50) {
+  const n = Math.min(200, Math.max(1, Number(limit) || 50));
+  return sqlite
+    .prepare(`
+    SELECT id, kind, ref, payload_json, attempts FROM lan_outbox
+    WHERE sent_at IS NULL
+    ORDER BY id ASC
+    LIMIT ?
+  `)
+    .all(n)
+    .map((r) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(r.payload_json || "null");
+      } catch {
+        payload = null;
+      }
+      return {
+        id: Number(r.id),
+        kind: r.kind,
+        ref: Number(r.ref),
+        payload,
+        attempts: Number(r.attempts) || 0,
+      };
+    });
+}
+
+function markLanOutboxSent(ids) {
+  const list = (ids || []).map(Number).filter((x) => x > 0);
+  if (!list.length) return 0;
+  const now = new Date().toISOString();
+  const stmt = sqlite.prepare("UPDATE lan_outbox SET sent_at = ?, last_error = NULL WHERE id = ?");
+  for (const id of list) stmt.run(now, id);
+  return list.length;
+}
+
+function markLanOutboxFailed(ids, error) {
+  const list = (ids || []).map(Number).filter((x) => x > 0);
+  if (!list.length) return 0;
+  const msg = String(error || "").slice(0, 300);
+  const stmt = sqlite.prepare("UPDATE lan_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?");
+  for (const id of list) stmt.run(msg, id);
+  return list.length;
+}
+
+function countPendingLanSales() {
+  const row = sqlite
+    .prepare("SELECT COUNT(*) AS n FROM lan_outbox WHERE kind = 'sale' AND sent_at IS NULL")
+    .get();
+  return Number(row?.n) || 0;
+}
+
+function remoteSeenIso(seenAt) {
+  const t = seenAt ? Date.parse(seenAt) : NaN;
+  return Number.isFinite(t) ? new Date(Math.min(t, Date.now())).toISOString() : new Date().toISOString();
+}
+
+function ensureRemoteCashRegister(deviceId, registerNumber, seenAt = null) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  const num = Math.max(2, Math.floor(Number(registerNumber) || 2));
+  const now = remoteSeenIso(seenAt);
+  const existing = sqlite.prepare("SELECT * FROM cash_registers WHERE remote_device_id = ?").get(dev);
+  const wantName = `Arka ${num}`;
+  if (existing) {
+    sqlite.prepare(`
+      UPDATE cash_registers SET remote_last_seen_at = ?
+      WHERE id = ? AND (remote_last_seen_at IS NULL OR remote_last_seen_at < ?)
+    `).run(now, existing.id, now);
+    return Number(existing.id);
+  }
+  const maxRow = sqlite.prepare("SELECT COALESCE(MAX(number), 0) AS n FROM cash_registers").get();
+  let slot = 100 + num;
+  if (sqlite.prepare("SELECT id FROM cash_registers WHERE number = ?").get(slot)) {
+    slot = Math.max(Number(maxRow?.n) || 0, 100) + 1;
+  }
+  const nameTaken = sqlite
+    .prepare("SELECT id FROM cash_registers WHERE LOWER(TRIM(name)) = LOWER(?) AND remote_device_id IS NULL")
+    .get(wantName);
+  const label = nameTaken ? `${wantName} (PC)` : wantName;
+  const r = sqlite.prepare(`
+    INSERT INTO cash_registers (number, name, active, created_at, remote_device_id, remote_last_seen_at)
+    VALUES (?, ?, 1, ?, ?, ?)
+  `).run(slot, label, now, dev, now);
+  console.log(`[lan-report] arkë e re nga PC ${dev}: «${label}» (number=${slot})`);
+  return Number(r.lastInsertRowid);
+}
+
+function touchRemoteRegister(deviceId, registerNumber, status, remoteIp, seenAt = null) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  if (!dev) return null;
+  const num = Math.max(2, Math.floor(Number(registerNumber) || 2));
+  const regId = ensureRemoteCashRegister(dev, num, seenAt);
+  const s = status && typeof status === "object" ? status : {};
+  const str = (v, n) => (v != null && v !== "" ? String(v).slice(0, n) : null);
+  const pull = s.pull && typeof s.pull === "object" ? s.pull : {};
+  const ip = str(String(remoteIp || s.remote_ip || "").replace(/^::ffff:/i, ""), 64);
+  const clean = {
+    register_number: num,
+    pending: Math.max(0, Math.floor(Number(s.pending) || 0)),
+    last_error: str(s.last_error, 300),
+    app_version: str(s.app_version, 40),
+    via: s.via === "cloud" ? "cloud" : "lan",
+    remote_ip: ip,
+    pull: {
+      staff_at: str(pull.staff_at, 40),
+      menu_at: str(pull.menu_at, 40),
+      stock_at: str(pull.stock_at, 40),
+      stock_skipped_pending: Math.max(0, Math.floor(Number(pull.stock_skipped_pending) || 0)),
+    },
+  };
+  sqlite.prepare("UPDATE cash_registers SET remote_status_json = ?, remote_ip = ? WHERE id = ?").run(
+    JSON.stringify(clean),
+    ip,
+    regId,
+  );
+  return regId;
+}
+
+function importRemoteRegisterSale(deviceId, registerNumber, entry) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  const ref = Math.floor(Number(entry?.ref) || 0);
+  if (!dev || !ref) throw new Error("Mungon device_id ose ref.");
+  const total = Number(entry?.total);
+  if (!Number.isFinite(total)) throw new Error("Totali i pavlefshëm.");
+  const date = String(entry?.date || "").trim();
+  const time = String(entry?.time || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}(:\d{2})?$/.test(time)) {
+    throw new Error("Data/ora e pavlefshme.");
+  }
+  const csid = String(entry?.cloud_sale_id || "").trim() || null;
+  const status = entry?.status === "cancelled" ? "cancelled" : "completed";
+
+  return sqlite.transaction(() => {
+    const regId = ensureRemoteCashRegister(dev, registerNumber);
+    const already = sqlite
+      .prepare("SELECT id FROM daily_log WHERE source_device_id = ? AND source_ref = ?")
+      .get(dev, ref);
+    if (already) return { ok: true, duplicate: true, id: Number(already.id) };
+    if (csid) {
+      const byCloud = sqlite.prepare("SELECT id FROM daily_log WHERE cloud_sale_id = ?").get(csid);
+      if (byCloud) return { ok: true, duplicate: true, id: Number(byCloud.id), reason: "cloud_sale_id" };
+    }
+    let items = [];
+    try {
+      items = JSON.parse(String(entry?.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    if (!Array.isArray(items)) items = [];
+    const src = String(entry?.source || inferDailyLogSource(entry?.receipt_number)).trim() || "hotel-kasa";
+    const r = sqlite.prepare(`
+      INSERT INTO daily_log (
+        date, time, table_number, waiter_name, items_json, total, receipt_number, status,
+        payment_method, staff_id, shift_id, subtotal, discount_total, promotion_id, promotion_name,
+        cloud_sale_id, order_id, register_id, cash_amount, card_amount, source, source_device_id, source_ref
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      date,
+      time.length === 5 ? `${time}:00` : time,
+      Number(entry?.table_number) || 0,
+      String(entry?.waiter_name || ""),
+      JSON.stringify(items),
+      total,
+      entry?.receipt_number || null,
+      status,
+      normalizePaymentMethod(entry?.payment_method),
+      entry?.subtotal != null ? Number(entry.subtotal) || 0 : total,
+      Number(entry?.discount_total) || 0,
+      String(entry?.promotion_name || ""),
+      csid,
+      entry?.order_id != null ? Number(entry.order_id) : null,
+      regId,
+      Number(entry?.cash_amount) || 0,
+      Number(entry?.card_amount) || 0,
+      src,
+      dev,
+      ref,
+    );
+    if (status === "completed") {
+      decrementMenuItemStock(
+        items.map((it) => ({
+          name: it?.name,
+          quantity: it?.quantity ?? it?.qty ?? it?.sasia,
+        })),
+      );
+    }
+    return { ok: true, duplicate: false, id: Number(r.lastInsertRowid) };
+  })();
+}
+
+function importSalesFromTerminal(sales, sourceRegister) {
+  const deviceId = String(sourceRegister?.device_id || "").trim().toUpperCase();
+  const registerNumber = Math.floor(Number(sourceRegister?.register_number) || 0);
+  const accepted = [];
+  const rejected = [];
+  for (const s of Array.isArray(sales) ? sales.slice(0, 200) : []) {
+    const ref = Math.floor(Number(s?.ref) || 0);
+    try {
+      importRemoteRegisterSale(deviceId, registerNumber, s);
+      accepted.push(ref);
+    } catch (e) {
+      rejected.push({ ref, gabim: e.message || String(e) });
+    }
+  }
+  return { accepted, rejected };
+}
+
+function importRemoteRegisterShift(deviceId, registerNumber, snap) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  const ref = Math.floor(Number(snap?.ref) || 0);
+  if (!dev || !ref) throw new Error("Mungon device_id ose ref.");
+  if (!String(snap?.opened_at || "").trim()) throw new Error("Mungon opened_at.");
+  const num = (v) => (v != null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
+  const staff_role = normalizeStaffRole(snap?.staff_role || "kamarier");
+
+  return sqlite.transaction(() => {
+    const regId = ensureRemoteCashRegister(dev, registerNumber);
+    const vals = [
+      regId,
+      String(snap.waiter_name || ""),
+      staff_role,
+      String(snap.opened_at),
+      snap.closed_at ? String(snap.closed_at) : null,
+      num(snap.opening_cash),
+      num(snap.closing_cash_actual),
+      num(snap.expected_closing_cash),
+      num(snap.cash_difference),
+      num(snap.cash_sales_total),
+      num(snap.card_sales_total),
+      num(snap.order_count_total),
+      num(snap.total_sales),
+      num(snap.discount_total),
+      String(snap.closing_reason || "").slice(0, 500),
+      snap.handed_over_to_name ? String(snap.handed_over_to_name) : null,
+      new Date().toISOString(),
+    ];
+    const existing = sqlite
+      .prepare("SELECT id FROM remote_shifts WHERE source_device_id = ? AND source_ref = ?")
+      .get(dev, ref);
+    if (existing) {
+      sqlite.prepare(`
+        UPDATE remote_shifts SET
+          register_id = ?, waiter_name = ?, staff_role = ?, opened_at = ?, closed_at = ?, opening_cash = ?,
+          closing_cash_actual = ?, expected_closing_cash = ?, cash_difference = ?,
+          cash_sales_total = ?, card_sales_total = ?, order_count_total = ?, total_sales = ?,
+          discount_total = ?, closing_reason = ?, handed_over_to_name = ?, updated_at = ?
+        WHERE id = ?
+      `).run(...vals, existing.id);
+      return { ok: true, id: Number(existing.id), updated: true };
+    }
+    const r = sqlite.prepare(`
+      INSERT INTO remote_shifts (
+        register_id, waiter_name, staff_role, opened_at, closed_at, opening_cash,
+        closing_cash_actual, expected_closing_cash, cash_difference,
+        cash_sales_total, card_sales_total, order_count_total, total_sales,
+        discount_total, closing_reason, handed_over_to_name, updated_at,
+        source_device_id, source_ref
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(...vals, dev, ref);
+    return { ok: true, id: Number(r.lastInsertRowid), updated: false };
+  })();
+}
+
+function importShiftsFromTerminal(shifts, sourceRegister) {
+  const deviceId = String(sourceRegister?.device_id || "").trim().toUpperCase();
+  const registerNumber = Math.floor(Number(sourceRegister?.register_number) || 0);
+  const accepted_shifts = [];
+  const rejected_shifts = [];
+  for (const s of Array.isArray(shifts) ? shifts.slice(0, 200) : []) {
+    const ref = Math.floor(Number(s?.ref) || 0);
+    try {
+      importRemoteRegisterShift(deviceId, registerNumber, s);
+      accepted_shifts.push(ref);
+    } catch (e) {
+      rejected_shifts.push({ ref, gabim: e.message || String(e) });
+    }
+  }
+  return { accepted_shifts, rejected_shifts };
+}
+
 function reservationDateFilterSql(query = {}) {
   const { date, from, to } = query;
   if (date) return { sql: "date = ?", params: [String(date).slice(0, 10)] };
@@ -4067,8 +4807,10 @@ function accrueHotelNightsForRange(from, to, opts = {}) {
     /* ignore */
   }
 
+  const skipGuestIds = opts.skipGuestIds;
   const guests = listGuestsOverlappingRange(from, to);
   for (const g of guests) {
+    if (skipGuestIds && skipGuestIds.has(Number(g.id))) continue;
     const price = Number(g.price_per_night) || 0;
     if (price <= 0) continue;
     eachHotelYmd(from, to, (day) => {
@@ -4076,7 +4818,10 @@ function accrueHotelNightsForRange(from, to, opts = {}) {
       if (!inDayRange(day, "12:00:00")) return;
       hotelNights += price;
       nightsByDay.set(day, (nightsByDay.get(day) || 0) + price);
-      if (buildEntry) entries.push(buildEntry(g, day, price));
+      if (buildEntry) {
+        const entry = buildEntry(g, day, price);
+        if (entry) entries.push(entry);
+      }
     });
   }
 
@@ -4207,7 +4952,13 @@ function getHotelRevenueReport(from, to) {
     dailyMap.set(day, { date: day, nights: 0, services: 0, restaurant: 0, total: 0 });
   });
 
-  const accrued = accrueHotelNightsForRange(range.from, range.to);
+  const checkoutGuestIdsRev = loadCheckoutGuestIdsInReportRange({
+    from: range.from,
+    to: range.to,
+  });
+  const accrued = accrueHotelNightsForRange(range.from, range.to, {
+    skipGuestIds: checkoutGuestIdsRev,
+  });
   for (const [day, amt] of accrued.nightsByDay) {
     const row = dailyMap.get(day);
     if (row) row.nights += amt;
@@ -4215,11 +4966,12 @@ function getHotelRevenueReport(from, to) {
 
   /* Shërbime hoteli (jo ushqim/pije). Ushqimi nga charge-to-room është te daily_log. */
   const chargeRows = sqlite.prepare(`
-    SELECT date(created_at) AS d, description, amount
+    SELECT date(created_at) AS d, description, amount, guest_id
     FROM room_charges
     WHERE date(created_at) >= date(?) AND date(created_at) <= date(?)
   `).all(range.from, range.to);
   for (const c of chargeRows) {
+    if (c.guest_id != null && checkoutGuestIdsRev.has(Number(c.guest_id))) continue;
     const row = dailyMap.get(c.d);
     if (!row) continue;
     const amt = Number(c.amount) || 0;
@@ -6263,10 +7015,54 @@ function roundReportMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
-/** Check-out / kasa recepsioni — daily_log me receipt_number CO-… ose RC-… */
+/** Check-out recepsioni — daily_log CO-{guest_id}. RC- = kasa walk-in (jo check-out). */
 function isRecepsionCheckoutReceipt(receiptNumber) {
   const r = String(receiptNumber || "").trim().toUpperCase();
-  return r.startsWith("CO-") || r.startsWith("RC-");
+  return r.startsWith("CO-");
+}
+
+/** Kasa recepsioni walk-in — daily_log RC-… */
+function isRecepcionKasaReceipt(receiptNumber) {
+  return String(receiptNumber || "").trim().toUpperCase().startsWith("RC-");
+}
+
+/** Recepsion — check-out ose kasa walk-in (jo tavolinë/restorant). */
+function isRecepsionDailyLogReceipt(receiptNumber) {
+  return isRecepsionCheckoutReceipt(receiptNumber) || isRecepcionKasaReceipt(receiptNumber);
+}
+
+function parseCheckoutGuestIdFromReceipt(receiptNumber) {
+  const m = /^CO-(\d+)/i.exec(String(receiptNumber || "").trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** Mysafirë me check-out (CO-) në periudhë — netët/room_charges mos t'i dyfishohen me faturën CO. */
+function loadCheckoutGuestIdsInReportRange({ from, to, fromDatetime, toDatetime } = {}) {
+  const set = new Set();
+  let rows;
+  if (fromDatetime && toDatetime) {
+    rows = sqlite.prepare(`
+      SELECT receipt_number FROM daily_log
+      WHERE status = 'completed'
+        AND receipt_number LIKE 'CO-%'
+        AND datetime(date || ' ' || time) >= datetime(?)
+        AND datetime(date || ' ' || time) <= datetime(?)
+    `).all(fromDatetime, toDatetime);
+  } else {
+    const f = from || hotelTodayLocalYmd();
+    const t = to || f;
+    rows = sqlite.prepare(`
+      SELECT receipt_number FROM daily_log
+      WHERE status = 'completed'
+        AND receipt_number LIKE 'CO-%'
+        AND date >= ? AND date <= ?
+    `).all(f, t);
+  }
+  for (const row of rows) {
+    const gid = parseCheckoutGuestIdFromReceipt(row.receipt_number);
+    if (gid != null && Number.isFinite(gid)) set.add(gid);
+  }
+  return set;
 }
 
 function nextRecepcionKasaReceiptNumber() {
@@ -6342,8 +7138,16 @@ function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDita
     return dt >= fromDatetime && dt <= toDatetime;
   };
 
+  const checkoutGuestIds = loadCheckoutGuestIdsInReportRange({
+    from,
+    to,
+    fromDatetime,
+    toDatetime,
+  });
+
   try {
     const accrued = accrueHotelNightsForRange(from, to, {
+      skipGuestIds: checkoutGuestIds,
       inDayRange: inDitariRange,
       buildEntry: (g, day, price) => {
         const amt = roundReportMoney(price);
@@ -6370,7 +7174,7 @@ function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDita
     for (const [day, amt] of accrued.nightsByDay) {
       nightsByDay.set(day, amt);
     }
-    hotelEntries.push(...accrued.entries);
+    hotelEntries.push(...(accrued.entries || []));
 
     const hotelCharges = sqlite.prepare(`
       SELECT rc.*, r.room_number, g.guest_name
@@ -6384,6 +7188,7 @@ function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDita
     for (const c of hotelCharges) {
       const amt = Number(c.amount) || 0;
       if (amt <= 0) continue;
+      if (c.guest_id != null && checkoutGuestIds.has(Number(c.guest_id))) continue;
       const food = isFoodDrinkRoomCharge(c.description);
       const rs = isRoomServiceFoodCharge(c.description);
       if (food && !rs) continue;
@@ -6436,8 +7241,8 @@ function getReports(dateFrom, dateTo) {
     ORDER BY date ASC, time ASC
   `).all(from, to);
 
-  const restaurantEntries = entries.filter((e) => !isRecepsionCheckoutReceipt(e.receipt_number));
-  const receptionEntries = entries.filter((e) => isRecepsionCheckoutReceipt(e.receipt_number));
+  const restaurantEntries = entries.filter((e) => !isRecepsionDailyLogReceipt(e.receipt_number));
+  const receptionEntries = entries.filter((e) => isRecepsionDailyLogReceipt(e.receipt_number));
   const restaurantSales = restaurantEntries.reduce((s, e) => s + Number(e.total || 0), 0);
   const receptionSales = receptionEntries.reduce((s, e) => s + Number(e.total || 0), 0);
   const totalDiscount = entries.reduce((s, e) => s + Number(e.discount_total || 0), 0);
@@ -6542,7 +7347,7 @@ function getReports(dateFrom, dateTo) {
     const rc = String(e.receipt_number || "").trim().toUpperCase();
     let registerName = "Restorant";
     if (isRecepsionCheckoutReceipt(e.receipt_number)) registerName = "Recepsion (check-out)";
-    else if (rc.startsWith("RC-")) registerName = "Kasa recepsion";
+    else if (isRecepcionKasaReceipt(e.receipt_number)) registerName = "Kasa recepsion";
     if (!byRegisterMap.has(registerName)) {
       byRegisterMap.set(registerName, {
         register_name: registerName,
@@ -6678,7 +7483,9 @@ function ensureOpenShift(staffId, waiterName) {
     INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at)
     VALUES (?, ?, ?)
   `).run(id, String(waiterName || "").trim(), now);
-  return sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(r.lastInsertRowid);
+  const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(r.lastInsertRowid);
+  insertLanOutbox("shift_open", { ref: shift.id });
+  return shift;
 }
 
 function attachCloudSaleToWaiterShift(cloudSaleId, waiterName) {
@@ -7170,6 +7977,7 @@ function openWaiterShiftWithCash(staffId, openingCash) {
     }
     sqlite.prepare("UPDATE waiter_shifts SET opening_cash = ? WHERE id = ?").run(amount, existing.id);
     const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(existing.id);
+    insertLanOutbox("shift_open", { ref: shift.id });
     const totals = computeShiftTotals(shift.id);
     const activeLabels = activeTableLabelsForWaiter(staff.name);
     return enrichShiftSummary(shift, { ...totals, active_tables: activeLabels.length }, staff, {
@@ -7184,6 +7992,7 @@ function openWaiterShiftWithCash(staffId, openingCash) {
     VALUES (?, ?, ?, ?)
   `).run(id, staff.name, now, amount);
   const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(r.lastInsertRowid);
+  insertLanOutbox("shift_open", { ref: shift.id });
   return enrichShiftSummary(shift, {
     order_count: 0, total_sales: 0, card_total: 0, cash_total: 0, discount_total: 0, active_tables: 0,
   }, staff, {
@@ -7242,6 +8051,7 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
     `).run(now, acceptedAmount, openingDiscrepancy, targetShiftId, hid);
 
     const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(targetShiftId);
+    insertLanOutbox("shift_open", { ref: shift.id });
     const totals = computeShiftTotals(shift.id, staff.id, staff.name);
     return enrichShiftSummary(shift, { ...totals, active_tables: activeLabels.length }, staff, {
       active_table_labels: activeLabels,
@@ -7431,6 +8241,7 @@ function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId) {
     }
 
     const closedShift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(shift.id);
+    insertLanOutbox("shift_close", { ref: closedShift.id });
 
     return {
       shift: closedShift,
@@ -10152,20 +10963,16 @@ function addDailyLogEntry({
   const logStatus = status === "cancelled" ? "cancelled" : "completed";
   const gross = subtotal != null ? Number(subtotal) : Number(total);
   const disc = Number(discount_total) || 0;
-  console.log(
-    "DAILY_LOG INSERT",
-    table_number,
-    total,
-    cloud_sale_id ? String(cloud_sale_id).trim() : null,
-    new Error().stack,
-  );
-  sqlite.prepare(`
+  const src = inferDailyLogSource(receipt_number);
+  const cashAmt = method === "cash" ? Number(total) || 0 : 0;
+  const cardAmt = method === "card" ? Number(total) || 0 : 0;
+  const ins = sqlite.prepare(`
     INSERT INTO daily_log (
       date, time, table_number, waiter_name, items_json, total, receipt_number, status,
       payment_method, staff_id, shift_id, subtotal, discount_total, promotion_id, promotion_name,
-      cloud_sale_id, order_id
+      cloud_sale_id, order_id, cash_amount, card_amount, source
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ts.d,
     ts.t,
@@ -10184,7 +10991,34 @@ function addDailyLogEntry({
     String(promotion_name || ""),
     cloud_sale_id ? String(cloud_sale_id).trim() : null,
     order_id != null ? Number(order_id) : null,
+    cashAmt,
+    cardAmt,
+    src,
   );
+  const logId = Number(ins?.lastInsertRowid) || 0;
+  if (lanOutboxEnabled && logId) {
+    insertLanOutbox("sale", {
+      ref: logId,
+      date: ts.d,
+      time: ts.t,
+      table_number,
+      waiter_name,
+      items_json,
+      total,
+      receipt_number: receipt_number || null,
+      status: logStatus,
+      payment_method: method,
+      subtotal: gross,
+      discount_total: disc,
+      promotion_name: String(promotion_name || ""),
+      cloud_sale_id: cloud_sale_id ? String(cloud_sale_id).trim() : null,
+      order_id: order_id != null ? Number(order_id) : null,
+      cash_amount: cashAmt,
+      card_amount: cardAmt,
+      source: src,
+    });
+  }
+  return logId;
 }
 
 /**
@@ -10659,10 +11493,10 @@ function getDitari(opts = {}) {
 
   const completedRestaurant = parsed.filter(e => e.status !== "cancelled");
   const completedRestOnly = completedRestaurant.filter(
-    (e) => !isRecepsionCheckoutReceipt(e.receipt_number),
+    (e) => !isRecepsionDailyLogReceipt(e.receipt_number),
   );
   const completedReception = completedRestaurant.filter((e) =>
-    isRecepsionCheckoutReceipt(e.receipt_number),
+    isRecepsionDailyLogReceipt(e.receipt_number),
   );
   const restaurantSales = completedRestOnly.reduce((s, e) => s + Number(e.total || 0), 0);
   const receptionSales = completedReception.reduce((s, e) => s + Number(e.total || 0), 0);
@@ -11308,6 +12142,25 @@ function getVersionInfo() {
     listPurchaseInvoicesForAtk,
     getSetting,
     getMaxRegisters,
+    alignCashRegisterWithTerminalRole,
+    getStockForTerminal,
+    replaceStaffFromMaster,
+    replaceMenuFromMaster,
+    replaceStockFromMaster,
+    replaceServicesFromMaster,
+    setLanOutboxEnabled,
+    insertLanOutbox,
+    getLanOutboxPending,
+    markLanOutboxSent,
+    markLanOutboxFailed,
+    countPendingLanSales,
+    ensureRemoteCashRegister,
+    touchRemoteRegister,
+    importRemoteRegisterSale,
+    importSalesFromTerminal,
+    importRemoteRegisterShift,
+    importShiftsFromTerminal,
+    syncLanShiftSnapshots,
     setSetting,
     upsertReservationLocal,
     insertLocalReservation,
