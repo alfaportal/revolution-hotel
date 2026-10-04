@@ -497,11 +497,12 @@ table.sa-table { width: 100%; border-collapse: collapse; font-size: 1rem; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 1.05rem;
   color: var(--text);
-  letter-spacing: 0.08em;
-  min-height: 52px;
-  word-break: break-all;
-  overflow-wrap: anywhere;
-  white-space: normal;
+}
+.lic-package-select {
+  font-family: inherit;
+  font-size: 1rem;
+  min-height: var(--tap);
+  border-color: var(--border);
 }
 .lic-edit-input:focus {
   outline: none;

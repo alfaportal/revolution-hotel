@@ -31,10 +31,10 @@ const PACKAGE_TIER_ALIASES = {
   "pako 4 — ai profesionale": "pako_5",
   "pako 4 - ai profesionale": "pako_5",
   "pako ai": "pako_5",
-  "pako 5": "pako_5",
-  "pako 5 (premium)": "pako_5",
-  "pako 5 premium": "pako_5",
-  premium: "pako_5",
+  "pako 5": "pako_premium",
+  "pako 5 (premium)": "pako_premium",
+  "pako 5 premium": "pako_premium",
+  premium: "pako_premium",
 };
 
 const FULL_NO_AI = {
@@ -105,6 +105,18 @@ const TIER_FEATURES = {
     accountant: true,
     ai: true,
   },
+  pako_premium: {
+    pos: true,
+    owner_panel: true,
+    website: true,
+    mobile: true,
+    kds: true,
+    kiosk: true,
+    waiter: true,
+    online_orders: true,
+    accountant: true,
+    ai: true,
+  },
 };
 
 const TIER_LABELS = {
@@ -113,6 +125,7 @@ const TIER_LABELS = {
   pako_3: "Pako 1 — Standard (POS, KDS, kamarier, cloud, kiosk)",
   pako_4: "Pako 2 — Pro (Standard + porosi online)",
   pako_5: "Pako 4 — AI Profesionale (krejt + AI)",
+  pako_premium: "Pako 5 — Premium (krejt + AI)",
 };
 
 const TIER_SHORT_LABELS = {
@@ -121,6 +134,7 @@ const TIER_SHORT_LABELS = {
   pako_3: "Pako 1",
   pako_4: "Pako 2",
   pako_5: "Pako 4 (AI)",
+  pako_premium: "Pako 5 (Premium)",
 };
 
 const TIER_CONTENTS = {
@@ -129,6 +143,7 @@ const TIER_CONTENTS = {
   pako_3: "POS, KDS, kamarier, cloud, kiosk (pa Kontabilist)",
   pako_4: "POS, KDS, kamarier, cloud, kiosk, porosi online (pa Kontabilist)",
   pako_5: "POS, KDS, kamarier, cloud, kiosk, porosi online, Kontabilisti, AI",
+  pako_premium: "POS, KDS, kamarier, cloud, kiosk, porosi online, Kontabilisti, AI — Premium",
 };
 
 /** Numri marketing 1–4 për shfaqje. */
@@ -141,7 +156,7 @@ function marketingPakoNumber(tier) {
 function normalizePackageTier(tier) {
   const raw = String(tier || "pako_3").trim().toLowerCase();
   /* ID exact (pako_3…pako_5) — mos e ngatërro me alias marketing "pako 4" */
-  if (PACKAGE_TIERS.includes(raw)) return raw;
+  if (PACKAGE_TIERS.includes(raw) || raw === "pako_premium") return raw;
 
   const spaced = raw.replace(/_/g, " ").replace(/\s+/g, " ").trim();
   const alias = PACKAGE_TIER_ALIASES[spaced] || PACKAGE_TIER_ALIASES[raw] || null;

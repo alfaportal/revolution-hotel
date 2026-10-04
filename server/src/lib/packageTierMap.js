@@ -59,7 +59,7 @@ function labelForTier(tier) {
 
 function isAiLegacyTier(tier) {
   const t = normalizeTierKey(tier);
-  return t === "pako_2" || t === "pako_5" || toNewTier(tier) === "pako_4";
+  return t === "pako_2" || t === "pako_5" || t === "pako_premium" || toNewTier(tier) === "pako_4";
 }
 
 module.exports = {

@@ -151,7 +151,7 @@ function syncNewClientForm() {
     el.classList.toggle("hidden", product !== "market");
   });
   document.querySelectorAll(".nc-tier-only").forEach((el) => {
-    el.classList.toggle("hidden", product !== "kafene" && product !== "market");
+    el.classList.toggle("hidden", product !== "kafene" && product !== "market" && product !== "hotel");
   });
   const pako = document.getElementById("nc-pako")?.closest(".field");
   if (pako) pako.classList.toggle("hidden", product === "security");
@@ -517,13 +517,13 @@ function renderDrawerMaxRegistersField(client, productLine) {
       </label>`;
 }
 
-/** Pako 1–5 — ID legacy në DB (pako_1, pako_3, pako_4, pako_2, pako_5). */
+/** Pako 1–5 — ID legacy në DB (si MARKET). */
 const DRAWER_PAKO_OPTS = [
-  ["pako_1", "Pako 1 — Bazik"],
-  ["pako_3", "Pako 2 — Standard"],
-  ["pako_4", "Pako 3 — Profesional"],
-  ["pako_2", "Pako 4 — Biznes + AI"],
-  ["pako_5", "Pako 5 — Premium"],
+  ["pako_3", "Pako 1 — Bazik"],
+  ["pako_4", "Pako 2 — Standard"],
+  ["pako_2", "Pako 3 — Profesional"],
+  ["pako_5", "Pako 4 — Biznes + AI"],
+  ["pako_premium", "Pako 5 — Premium"],
 ];
 
 function normalizeDrawerPackageTier(tier) {
@@ -533,16 +533,17 @@ function normalizeDrawerPackageTier(tier) {
     .replace(/\./g, "_");
   if (DRAWER_PAKO_OPTS.some(([v]) => v === raw)) return raw;
   const alias = {
-    pako_premium: "pako_5",
+    pako_1: "pako_3",
+    bazik: "pako_3",
+    "pako 1": "pako_3",
+    "pako 2": "pako_4",
+    "pako 3": "pako_2",
+    "pako 4": "pako_5",
+    "pako 5": "pako_premium",
+    "pako 5 (premium)": "pako_premium",
+    "pako 5 premium": "pako_premium",
+    premium: "pako_premium",
     "pako ai": "pako_5",
-    "pako 5 (premium)": "pako_5",
-    "pako 5 premium": "pako_5",
-    premium: "pako_5",
-    bazik: "pako_1",
-    "pako 1": "pako_1",
-    "pako 2": "pako_3",
-    "pako 3": "pako_4",
-    "pako 4": "pako_2",
   };
   const spaced = raw.replace(/_/g, " ").replace(/\s+/g, " ").trim();
   return alias[raw] || alias[spaced] || raw;
@@ -696,9 +697,22 @@ async function openClientDetail(id, opts = {}) {
         </select>
       </label>
       <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>`
-    : `<label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>
-      <label>Veprimtaria (POS)<select id="dr-tipi">${selectOpts(DRAWER_TIPI_OPTS, c.tipi)}</select></label>
-      <label>Paketa<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(c.package_tier))}</select></label>`;
+    : product === "hotel"
+      ? `<label>Paketa<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(c.package_tier))}</select></label>
+      <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>
+      <label>Veprimtaria (HOTEL)<select id="dr-hotel-tipi">${selectOpts(
+          [
+            ["hotel", "Hotel"],
+            ["motel", "Motel"],
+            ["hostel", "Hostel"],
+            ["resort", "Resort"],
+            ["ville_me_qira", "Villë me qira"],
+          ],
+          c.tipi || "hotel",
+        )}</select></label>`
+      : `<label>Paketa<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(c.package_tier))}</select></label>
+      <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>
+      <label>Veprimtaria (POS)<select id="dr-tipi">${selectOpts(DRAWER_TIPI_OPTS, c.tipi)}</select></label>`;
 
   const maxRegField = renderDrawerMaxRegistersField(c, product);
 
@@ -886,9 +900,11 @@ function bindDrawerSave(clientId, productLine) {
       licenses: [],
     };
     const tipiEl = document.getElementById("dr-tipi");
+    const hotelTipiEl = document.getElementById("dr-hotel-tipi");
     const pakoEl = document.getElementById("dr-pako");
     const veprimtariEl = document.getElementById("dr-veprimtari");
-    if (tipiEl?.value) body.tipi = tipiEl.value;
+    if (hotelTipiEl?.value) body.tipi = hotelTipiEl.value;
+    else if (tipiEl?.value) body.tipi = tipiEl.value;
     if (pakoEl?.value) body.package_tier = pakoEl.value;
     if (veprimtariEl?.value) body.veprimtari = veprimtariEl.value;
     const maxRegEl = document.getElementById("dr-max-registers");
@@ -919,6 +935,9 @@ function bindDrawerSave(clientId, productLine) {
       if (msg) {
         msg.textContent = okText;
         msg.classList.toggle("save-ok", !licErrs.length);
+      }
+      if (typeof showToast === "function") {
+        showToast(licErrs.length ? okText : "✅ U ruajt.", "ok");
       }
       await refreshClientsAndProblems().catch(() => null);
       await openClientDetail(clientId, { product: saved?.product_line || product });
@@ -1366,10 +1385,21 @@ function bindLicenseActions(root) {
             body: JSON.stringify(patch),
           });
         }
+        const saveCard = btn.closest("[data-license-card]");
+        const clientId = saveCard?.dataset?.clientId || "";
+        const tierEl = saveCard?.querySelector(`[data-tier-input="${id}"]`);
+        const tierVal = String(tierEl?.value || "").trim();
+        if (clientId && tierVal) {
+          const prod = productQuery(true) || "hotel";
+          await api(`/api/super/dashboard/clients/${encodeURIComponent(clientId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ product_line: prod, package_tier: tierVal }),
+          });
+        }
         btn.textContent = "U ruajt ✓";
         if (msgEl) {
           msgEl.classList.remove("err");
-          msgEl.textContent = "U ruajt — i njëjti ID/licencë te telefon + panel.";
+          msgEl.textContent = "U ruajt — pako, ID dhe licencë.";
         }
         setTimeout(() => {
           btn.textContent = prev;
@@ -1428,7 +1458,10 @@ async function loadLicenses() {
   }
   list = (d.licenses || []).map((l) => ({
     id: l.id,
+    client_id: l.client_id || l.clients?.id || "",
     client_name: l.client_name || l.clients?.emri || "—",
+    package_tier: l.package_tier || l.clients?.package_tier || "pako_3",
+    package_label: l.package_label || "",
     hardware_id: formatLicenseHwId(l.hardware_id) || formatLicenseHwId(l.display_device_id) || formatLicenseHwId(l.device_id) || l.hardware_id || "",
     license_key: l.license_key || l.celesi || "",
     statusi: l.statusi,
@@ -1478,10 +1511,16 @@ function renderLicensesList(filterText = "") {
                 </div>
               </div>`;
             }
-            return `<div class="license-card" data-license-card="${esc(l.id)}">
+            return `<div class="license-card" data-license-card="${esc(l.id)}" data-client-id="${esc(l.client_id || "")}">
               <h4>${esc(l.client_name)}
                 <span class="badge ${active ? "badge-ok" : "badge-bad"}" style="margin-left:0.35rem">${esc(l.statusi)}</span>
               </h4>
+              <div class="lic-field-block">
+                <label class="lic-field-label">Pako</label>
+                <select class="lic-edit-input lic-package-select" data-tier-input="${esc(l.id)}" aria-label="Pako">
+                  ${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(l.package_tier))}
+                </select>
+              </div>
               <div class="lic-field-block">
                 <label class="lic-field-label">ID</label>
                 <input type="text" class="lic-edit-input mono" data-hw-input="${esc(l.id)}" value="${esc(hw)}" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">

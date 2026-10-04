@@ -61,10 +61,11 @@ const DEFAULT_SETTINGS = {
   admin_name: "Super Admin",
   admin_email: "admin@revolutioninvest.com",
   package_prices: {
-    pako_3: 150, // Pako 1
-    pako_4: 180, // Pako 2
-    pako_2: 220, // Pako 3 (pa AI)
-    pako_5: 250, // Pako 4 (AI)
+    pako_3: 150, // Pako 1 — Bazik
+    pako_4: 180, // Pako 2 — Standard
+    pako_2: 220, // Pako 3 — Profesional
+    pako_5: 250, // Pako 4 — Biznes + AI
+    pako_premium: 320, // Pako 5 — Premium
   },
   ai_price_per_1k_tokens: 0.0025,
   currency: "EUR",
@@ -94,7 +95,7 @@ function normalizePackagePrices(raw = {}) {
   const out = { ...DEFAULT_SETTINGS.package_prices };
   const src = raw && typeof raw === "object" ? raw : {};
   // ID legacy direkte
-  for (const k of ["pako_2", "pako_3", "pako_4", "pako_5", "pako_1"]) {
+  for (const k of ["pako_2", "pako_3", "pako_4", "pako_5", "pako_premium", "pako_1"]) {
     if (src[k] != null && src[k] !== "" && Number.isFinite(Number(src[k]))) {
       out[k] = Number(src[k]);
     }
@@ -109,6 +110,7 @@ function normalizePackagePrices(raw = {}) {
     if (m.pako_2 != null) out.pako_4 = Number(m.pako_2);
     if (m.pako_3 != null) out.pako_2 = Number(m.pako_3);
     if (m.pako_4 != null) out.pako_5 = Number(m.pako_4);
+    if (m.pako_5 != null) out.pako_premium = Number(m.pako_5);
   }
   return out;
 }
@@ -120,18 +122,26 @@ function mergeSettings(raw) {
   if (s.ai_price_per_1k_tokens != null) {
     s.ai_price_per_1k_tokens = Number(s.ai_price_per_1k_tokens);
   }
-  // Për UI: çmimet sipas numrit marketing 1–4
+  // Për UI: çmimet sipas numrit marketing 1–5
   s.package_prices_ui = {
     pako_1: s.package_prices.pako_3,
     pako_2: s.package_prices.pako_4,
     pako_3: s.package_prices.pako_2,
     pako_4: s.package_prices.pako_5,
+    pako_5: s.package_prices.pako_premium,
   };
   s.package_catalog = [
-    { id: "pako_3", ui: "pako_1", name: "Pako 1", contents: packageContents("pako_3"), price: s.package_prices.pako_3 },
-    { id: "pako_4", ui: "pako_2", name: "Pako 2", contents: packageContents("pako_4"), price: s.package_prices.pako_4 },
-    { id: "pako_2", ui: "pako_3", name: "Pako 3", contents: packageContents("pako_2"), price: s.package_prices.pako_2 },
-    { id: "pako_5", ui: "pako_4", name: "Pako 4 (AI)", contents: packageContents("pako_5"), price: s.package_prices.pako_5 },
+    { id: "pako_3", ui: "pako_1", name: "Pako 1 — Bazik", contents: packageContents("pako_3"), price: s.package_prices.pako_3 },
+    { id: "pako_4", ui: "pako_2", name: "Pako 2 — Standard", contents: packageContents("pako_4"), price: s.package_prices.pako_4 },
+    { id: "pako_2", ui: "pako_3", name: "Pako 3 — Profesional", contents: packageContents("pako_2"), price: s.package_prices.pako_2 },
+    { id: "pako_5", ui: "pako_4", name: "Pako 4 — Biznes + AI", contents: packageContents("pako_5"), price: s.package_prices.pako_5 },
+    {
+      id: "pako_premium",
+      ui: "pako_5",
+      name: "Pako 5 — Premium",
+      contents: packageContents("pako_premium"),
+      price: s.package_prices.pako_premium,
+    },
   ];
   return s;
 }
@@ -367,15 +377,76 @@ async function weeklySalesSeries() {
   }));
 }
 
+const PRESENCE_ONLINE_MS = 2 * 60 * 1000;
+const PRESENCE_IDLE_MS = 10 * 60 * 1000;
+
+function formatRelativeSq(ms) {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `Para ${sec} sek`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `Para ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 48) return `Para ${hr} orë`;
+  const days = Math.floor(hr / 24);
+  return `Para ${days} ditë`;
+}
+
+function computePresence(lastSeenAt) {
+  if (!lastSeenAt) {
+    return { status: "never", label: "Kurrë i lidhur", icon: "⚫" };
+  }
+  const ms = Date.now() - new Date(lastSeenAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) {
+    return { status: "never", label: "Kurrë i lidhur", icon: "⚫" };
+  }
+  if (ms < PRESENCE_ONLINE_MS) {
+    return { status: "online", label: formatRelativeSq(ms), icon: "🟢" };
+  }
+  if (ms < PRESENCE_IDLE_MS) {
+    return { status: "idle", label: formatRelativeSq(ms), icon: "🟡" };
+  }
+  return { status: "offline", label: "Offline", icon: "🔴" };
+}
+
 function licenseLastSeen(lic) {
+  let latest =
+    lic.last_heartbeat_at
+    || lic.last_validation_at
+    || lic.last_activated_at
+    || lic.updated_at
+    || lic.created_at
+    || null;
   const terminals = lic.terminals || [];
-  let latest = lic.last_activated_at || lic.updated_at || lic.created_at || null;
   for (const t of terminals) {
     if (t.last_seen_at && (!latest || new Date(t.last_seen_at) > new Date(latest))) {
       latest = t.last_seen_at;
     }
   }
   return latest;
+}
+
+function clientLicenseSummary(licenses) {
+  const list = licenses || [];
+  if (!list.length) {
+    return { last_heartbeat_at: null };
+  }
+  let lastHeartbeat = null;
+  for (const l of list) {
+    const seen = licenseLastSeen(l);
+    if (seen && (!lastHeartbeat || new Date(seen) > new Date(lastHeartbeat))) {
+      lastHeartbeat = seen;
+    }
+  }
+  return { last_heartbeat_at: lastHeartbeat };
+}
+
+function countOnlineClients(clients, licByClient) {
+  let online = 0;
+  for (const c of clients) {
+    const summary = clientLicenseSummary(licByClient.get(c.id) || []);
+    if (computePresence(summary.last_heartbeat_at).status === "online") online += 1;
+  }
+  return online;
 }
 
 function isOfflineOver48h(lic) {
@@ -455,6 +526,7 @@ async function getOverviewKafene(adminProduct = "kafene") {
   // Trial = licencë aktive me afat të shkurtër (≤16 ditë).
   // Mos numëro licenca vjetore që gabimisht kanë trial_ends_at të mbushur.
   const trial = licenses.filter((l) => isShortTrialLicense(l)).length;
+  const online_count = countOnlineClients(clients, licByClient);
 
   return {
     active_clients: activeClients.length,
@@ -462,6 +534,7 @@ async function getOverviewKafene(adminProduct = "kafene") {
     licenses_total: licenses.length,
     licenses_active: licenses.filter((l) => l.statusi === "aktive").length,
     trial_accounts: trial,
+    online_count,
     sales_today_total: slice === "kafene" ? salesToday.total : 0,
     problem_clients: problems,
     weekly_sales: slice === "kafene" ? weekly : [],
@@ -530,6 +603,8 @@ async function getClientsGrouped({ product } = {}) {
     }
     const lics = licByClient.get(c.id) || [];
     const activeLic = lics.some((l) => l.statusi === "aktive");
+    const licSummary = clientLicenseSummary(lics);
+    const presence = computePresence(licSummary.last_heartbeat_at);
     const row = {
       id: c.id,
       emri: c.emri,
@@ -546,6 +621,10 @@ async function getClientsGrouped({ product } = {}) {
       sector_num: sector.num,
       sector_id: sector.id,
       product_line: p,
+      last_heartbeat_at: licSummary.last_heartbeat_at,
+      presence_status: presence.status,
+      presence_label: presence.label,
+      presence_icon: presence.icon,
     };
     const bucket = bySectorId.get(sector.id) || bySectorId.get("other") || sectors[0];
     bucket.clients.push(row);
@@ -564,10 +643,13 @@ async function getClientsGrouped({ product } = {}) {
     };
   });
 
+  const online_count = countOnlineClients(clients, licByClient);
+
   return {
     sectors: padded,
     groups: padded,
     total: clients.length,
+    online_count,
     product_line: p,
     products: PRODUCT_LINES,
   };
@@ -739,10 +821,13 @@ async function getLicensesView({ product } = {}) {
     licenses: licenses.map((l) => {
       const device = String(l.display_device_id || l.device_id || "").trim();
       const hardware_id = resolveLicenseHardwareId(l);
+      const tier = normalizePackageTier(l.clients?.package_tier);
       return {
         id: l.id,
         client_id: l.client_id || l.clients?.id,
         client_name: l.clients?.emri || "—",
+        package_tier: tier,
+        package_label: packageLabel(tier),
         device_id: device,
         hardware_id,
         license_key: l.celesi || "",
@@ -1153,7 +1238,7 @@ async function createBillingInvoice({ restaurant_id, period_from, period_to, ser
 
 function marketingNumFallback(tier) {
   const id = normalizePackageTier(tier);
-  const map = { pako_3: 1, pako_4: 2, pako_2: 3, pako_5: 4 };
+  const map = { pako_3: 1, pako_4: 2, pako_2: 3, pako_5: 4, pako_premium: 5 };
   return map[id] || 1;
 }
 
