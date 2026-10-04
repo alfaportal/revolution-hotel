@@ -4,7 +4,7 @@ const { asyncHandler } = require("../lib/asyncHandler");
 const { listAiUsageSummary, aiUsageRowsToCsv, aiUsageDetailRowsToCsv } = require("../services/aiUsageReportService");
 const { buildAiUsageInvoicePdf } = require("../services/aiBillingPdfService");
 const { getClientById } = require("../services/salesService");
-const { packageLabel } = require("../lib/packages");
+const { packageLabel, normalizePackageTier } = require("../lib/packages");
 const {
   generateHardwareLicenseKey,
   normalizeHardwareId,
@@ -348,6 +348,9 @@ router.patch(
     }
 
     // Kafene / POS — ruaj klientin GJITHMONË; licencat veç e veç (një gabim licence mos e prish klientin)
+    if (body.package_tier != null && String(body.package_tier).trim() !== "") {
+      body.package_tier = normalizePackageTier(body.package_tier);
+    }
     const client = await updateClient(id, { ...body, product_line: product });
     const licenses = [];
     const license_errors = [];

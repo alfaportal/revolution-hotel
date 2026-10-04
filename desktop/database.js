@@ -3462,13 +3462,21 @@ function addServiceChargeToRoom(roomId, serviceId, {
   return { charge, guest, room, service: svc, quantity: qty, unit_price: unit };
 }
 
+function guestPersonCount(guest) {
+  const raw = guest?.persons ?? guest?.persona;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(99, Math.trunc(n));
+}
+
 function buildGuestBill(guest, room, { check_out_date, services_total, extra_services } = {}) {
   const outDate = check_out_date != null
     ? parseHotelDate(check_out_date)
     : parseHotelDate(guest.check_out_date);
   const nights = hotelNightsBetween(guest.check_in_date, outDate);
   const price = Number(room.price_per_night) || 0;
-  const room_total = Math.round(nights * price * 100) / 100;
+  const persons = guestPersonCount(guest);
+  const room_total = Math.round(nights * price * persons * 100) / 100;
   const charges = listRoomChargesForGuest(guest.id);
   const charges_total = Math.round(
     charges.reduce((s, c) => s + (Number(c.amount) || 0), 0) * 100,
@@ -3485,6 +3493,7 @@ function buildGuestBill(guest, room, { check_out_date, services_total, extra_ser
   const total_due = Math.round((total - deposit) * 100) / 100;
   return {
     nights,
+    persons,
     price_per_night: price,
     room_total,
     charges,
@@ -3516,12 +3525,14 @@ function getCheckoutPreview(roomId, opts = {}) {
 function buildCheckoutLogItems(bill, room) {
   const items = [];
   const nights = Number(bill.nights) || 0;
+  const persons = Number(bill.persons) || 1;
   const roomTotal = Number(bill.room_total) || 0;
+  const unitNight = Number(bill.price_per_night) || 0;
   if (roomTotal > 0) {
     items.push({
-      name: `Dhoma ${room.room_number || "—"} — ${nights} netë`,
-      quantity: nights > 0 ? nights : 1,
-      price: nights > 0 ? Number(bill.price_per_night) || roomTotal : roomTotal,
+      name: `Dhoma ${room.room_number || "—"} — ${nights} netë × ${persons} persona`,
+      quantity: nights > 0 ? nights * persons : persons,
+      price: nights > 0 && unitNight > 0 ? unitNight : roomTotal,
     });
   }
   for (const c of bill.charges || []) {
@@ -5008,8 +5019,9 @@ function getGuestsReport({ from, to } = {}) {
     try {
       const nights = hotelNightsBetween(g.check_in_date, g.check_out_date);
       const price = Number(g.price_per_night) || 0;
+      const persons = guestPersonCount(g);
       nightsTotal += nights;
-      revenueEstimate += nights * price;
+      revenueEstimate += nights * price * persons;
     } catch {
       /* skip bad dates */
     }
@@ -5123,13 +5135,15 @@ function accrueHotelNightsForRange(from, to, opts = {}) {
     if (skipGuestIds && skipGuestIds.has(Number(g.id))) continue;
     const price = Number(g.price_per_night) || 0;
     if (price <= 0) continue;
+    const persons = guestPersonCount(g);
+    const dayRate = price * persons;
     eachHotelYmd(from, to, (day) => {
       if (!guestStayOverlapsDay(g, day)) return;
       if (!inDayRange(day, "12:00:00")) return;
-      hotelNights += price;
-      nightsByDay.set(day, (nightsByDay.get(day) || 0) + price);
+      hotelNights += dayRate;
+      nightsByDay.set(day, (nightsByDay.get(day) || 0) + dayRate);
       if (buildEntry) {
-        const entry = buildEntry(g, day, price);
+        const entry = buildEntry(g, day, dayRate);
         if (entry) entries.push(entry);
       }
     });
@@ -5495,12 +5509,12 @@ function getHotelRoomsReport(from, to) {
     let nightsRevenue = 0;
     const price = Number(room.price_per_night) || 0;
     eachHotelYmd(range.from, range.to, (day) => {
-      const stayed = guests.some(
+      const gStay = guests.find(
         (g) => Number(g.room_id) === Number(room.id) && guestStayOverlapsDay(g, day),
       );
-      if (stayed) {
+      if (gStay) {
         nightsOccupied += 1;
-        nightsRevenue += price;
+        nightsRevenue += price * guestPersonCount(gStay);
       }
     });
     const services = chargeByRoom.get(Number(room.id)) || 0;
@@ -5808,8 +5822,9 @@ function getGuestFolio(guestId, { check_out_date, extra_services, services_total
     room,
     bill,
     room_line: {
-      description: `${bill.nights} netë × ${Number(bill.price_per_night || 0).toFixed(2)} €`,
+      description: `${bill.nights} netë × ${Number(bill.persons) || 1} persona × ${Number(bill.price_per_night || 0).toFixed(2)} €`,
       nights: bill.nights,
+      persons: Number(bill.persons) || 1,
       price_per_night: bill.price_per_night,
       amount: bill.room_total,
     },
@@ -11920,7 +11935,7 @@ function getDashboardOverview() {
     const inD = String(g.check_in_date || "");
     const outD = String(g.check_out_date || "");
     if (inD && outD && inD <= today && outD > today) {
-      return sum + (Number(g.price_per_night) || 0);
+      return sum + (Number(g.price_per_night) || 0) * guestPersonCount(g);
     }
     return sum;
   }, 0);

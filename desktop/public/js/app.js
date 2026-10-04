@@ -40,6 +40,7 @@ async function api(cale, opts = {}) {
     }
     throw new Error(data.gabim || (isLoginCall ? "Kredencialet janë të gabuara." : "Sesioni skadoi"));
   }
+  if (res.status === 409 && data.needs_confirm_over_1000) return data;
   if (!res.ok) throw new Error(data.gabim || "Gabim i panjohur");
   return data;
 }

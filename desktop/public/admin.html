@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/admin-modern.css?v=20260925katgrid">
+  <link rel="stylesheet" href="/css/admin-modern.css?v=20261004tabwrap">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -920,6 +920,49 @@
       padding-top: 0.75rem;
       border-top: 1px solid #2e2e45;
     }
+    #panel-paper-block #paper-block-issue-wrap { position: relative; z-index: 2; }
+    #panel-paper-block #paper-block-issue-wrap input,
+    #panel-paper-block #paper-block-issue-wrap select { pointer-events: auto; cursor: text; }
+    #paper-product-results {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      z-index: 40;
+      max-height: 240px;
+      overflow-y: auto;
+      background: #1a1a2e;
+      border: 1px solid #2e2e45;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    #paper-product-results.hidden { display: none !important; }
+    #paper-product-results button {
+      display: block; width: 100%; margin: 0; padding: 10px 12px; text-align: left; border: none;
+      border-bottom: 1px solid #2e2e45; background: transparent; color: inherit; cursor: pointer; font-size: 0.88rem;
+    }
+    #paper-product-results button:hover { background: rgba(255, 107, 53, 0.12); }
+    #paper-product-results .paper-pick-meta { display: block; font-size: 0.75rem; color: #a0a0b8; margin-top: 2px; }
+    #panel-kuponet-fiskale .kuponet-toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;
+    }
+    #panel-kuponet-fiskale .kuponet-toolbar input[type="text"] { max-width: 280px; flex: 1 1 200px; }
+    #panel-kuponet-fiskale .kuponet-reason-row {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.75rem 0;
+    }
+    #panel-kuponet-fiskale .kuponet-reason-menu {
+      position: absolute; z-index: 20; background: #1e1e2a; border: 1px solid #2e2e45; border-radius: 8px;
+      padding: 0.35rem; min-width: 220px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    #panel-kuponet-fiskale .kuponet-reason-menu button {
+      display: block; width: 100%; text-align: left; padding: 0.45rem 0.65rem; border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 6px;
+    }
+    #panel-kuponet-fiskale .kuponet-reason-menu button:hover { background: rgba(255, 107, 53, 0.12); }
+    #panel-kuponet-fiskale .kuponet-items-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    #panel-kuponet-fiskale .kuponet-items-table th,
+    #panel-kuponet-fiskale .kuponet-items-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid #2e2e45; text-align: left; }
+    #panel-kuponet-fiskale .kuponet-table-wrap { overflow-x: auto; margin-top: 0.5rem; }
+    #panel-kuponet-fiskale .kuponet-msg { margin-top: 0.65rem; font-size: 0.85rem; white-space: pre-wrap; color: #a0a0b8; }
     #panel-paper-block .sef-paper-issue-form .settings-field,
     #card-fiscalizimi .sef-paper-issue-form .settings-field {
       margin: 0;
@@ -1681,50 +1724,58 @@
   </style>
   <!--
     Paketa/tier UI gating — vetëm show/hide, asnjë logjikë biznesi.
-    body.tier-rank-N vendoset nga applyPackageTier() sipas cloud/legacy IDs:
-    pako_3=Pako1 rank2, pako_4=Pako2 rank3, pako_2=Pako3 Full rank4, pako_5=Pako4 AI rank4.
+    body.tier-rank-1…5 nga applyPackageTier(): pako_1→1, pako_3→2, pako_4→3, pako_2→4, pako_5→5.
     Rifreskohet çdo 15s nga /api/license (heartbeat). !important mban fshehjen.
   -->
   <style id="tier-gating">
-    /* Kontabilisti vetëm Pako 3 Full / Pako 4 AI (rank 4) — i fshehur në Pako 1–2 dhe para se të dihet pakoja */
-    body:not(.tier-rank-4) [data-panel="kontabilisti"],
-    body:not(.tier-rank-4) #panel-kontabilisti {
+    /* Pako 1 — Bazik */
+    body.tier-rank-1 [data-panel="menuja"], body.tier-rank-1 #panel-menuja,
+    body.tier-rank-1 [data-panel="stoku"], body.tier-rank-1 #panel-stoku,
+    body.tier-rank-1 [data-panel="sherbimet"], body.tier-rank-1 #panel-sherbimet,
+    body.tier-rank-1 [data-panel="rezervime-dhomash"], body.tier-rank-1 #panel-rezervime-dhomash,
+    body.tier-rank-1 [data-panel="mysafiret"], body.tier-rank-1 #panel-mysafiret,
+    body.tier-rank-1 [data-panel="qr-tavolinat"], body.tier-rank-1 #panel-qr-tavolinat,
+    body.tier-rank-1 [data-panel="blerjet"], body.tier-rank-1 #panel-blerjet,
+    body.tier-rank-1 [data-panel="promocione"], body.tier-rank-1 #panel-promocione,
+    body.tier-rank-1 [data-panel="rezervime"], body.tier-rank-1 #panel-rezervime,
+    body.tier-rank-1 [data-panel="faturat"], body.tier-rank-1 #panel-faturat,
+    body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
+    body.tier-rank-1 [data-panel="ai"], body.tier-rank-1 #panel-ai,
+    body.tier-rank-1 #low-stock-banner {
       display: none !important;
     }
-    /* Kërkon rank >= 2 (Standard+): QR Kodet, Cilësimet > Cloud & linke */
-    /* Punonjësit (stafi) është VETËM show/hide veçori — RFID-i i tij mbetet gjithmonë i dukshëm në të gjitha paketat. */
-    body.tier-rank-1 [data-panel="qr-tavolinat"], body.tier-rank-1 #panel-qr-tavolinat,
-    /* Kërkon rank >= 3 (Pro+): Stoku, Promocione, Raportet (me X/Z), Blerjet */
-    body.tier-rank-1 [data-panel="stoku"], body.tier-rank-1 #panel-stoku,
-    body.tier-rank-1 [data-panel="promocione"], body.tier-rank-1 #panel-promocione, body.tier-rank-1 #modal-promotion,
-    body.tier-rank-1 [data-panel="raportet"], body.tier-rank-1 #panel-raportet,
-    body.tier-rank-1 [data-panel="blerjet"], body.tier-rank-1 #panel-blerjet,
-    body.tier-rank-1 #low-stock-banner,
-    /* Kërkon rank >= 4 (vetëm Full): Rezervimet, Ditari, Kontabilisti, Licenca, AI, KDS link (RFID PËRJASHTOHET — gjithmonë i dukshëm) */
-    body.tier-rank-1 [data-panel="rezervime"], body.tier-rank-1 #panel-rezervime, body.tier-rank-1 #modal-reservation,
-    body.tier-rank-1 [data-panel="ditari"], body.tier-rank-1 #panel-ditari,
-    body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
-    body.tier-rank-1 [data-panel="licenca"], body.tier-rank-1 #panel-licenca,
-    body.tier-rank-1 #btn-menu-scan-ai, body.tier-rank-1 #modal-menu-scan,
-
-    body.tier-rank-2 [data-panel="stoku"], body.tier-rank-2 #panel-stoku,
-    body.tier-rank-2 [data-panel="promocione"], body.tier-rank-2 #panel-promocione, body.tier-rank-2 #modal-promotion,
-    body.tier-rank-2 [data-panel="raportet"], body.tier-rank-2 #panel-raportet,
+    /* Pako 2 — Standard */
+    body.tier-rank-2 [data-panel="rezervime-dhomash"], body.tier-rank-2 #panel-rezervime-dhomash,
+    body.tier-rank-2 [data-panel="mysafiret"], body.tier-rank-2 #panel-mysafiret,
+    body.tier-rank-2 [data-panel="qr-tavolinat"], body.tier-rank-2 #panel-qr-tavolinat,
     body.tier-rank-2 [data-panel="blerjet"], body.tier-rank-2 #panel-blerjet,
-    body.tier-rank-2 #low-stock-banner,
-    body.tier-rank-2 [data-panel="rezervime"], body.tier-rank-2 #panel-rezervime, body.tier-rank-2 #modal-reservation,
-    body.tier-rank-2 [data-panel="ditari"], body.tier-rank-2 #panel-ditari,
+    body.tier-rank-2 [data-panel="promocione"], body.tier-rank-2 #panel-promocione,
+    body.tier-rank-2 [data-panel="rezervime"], body.tier-rank-2 #panel-rezervime,
+    body.tier-rank-2 [data-panel="faturat"], body.tier-rank-2 #panel-faturat,
     body.tier-rank-2 [data-panel="kontabilisti"], body.tier-rank-2 #panel-kontabilisti,
-    body.tier-rank-2 [data-panel="licenca"], body.tier-rank-2 #panel-licenca,
-    body.tier-rank-2 #btn-menu-scan-ai, body.tier-rank-2 #modal-menu-scan,
-
-    body.tier-rank-3 [data-panel="rezervime"], body.tier-rank-3 #panel-rezervime, body.tier-rank-3 #modal-reservation,
-    body.tier-rank-3 [data-panel="ditari"], body.tier-rank-3 #panel-ditari,
+    body.tier-rank-2 [data-panel="ai"], body.tier-rank-2 #panel-ai {
+      display: none !important;
+    }
+    /* Pako 3 — Profesional */
+    body.tier-rank-3 [data-panel="promocione"], body.tier-rank-3 #panel-promocione,
+    body.tier-rank-3 [data-panel="rezervime"], body.tier-rank-3 #panel-rezervime,
+    body.tier-rank-3 [data-panel="faturat"], body.tier-rank-3 #panel-faturat,
     body.tier-rank-3 [data-panel="kontabilisti"], body.tier-rank-3 #panel-kontabilisti,
-    body.tier-rank-3 [data-panel="licenca"], body.tier-rank-3 #panel-licenca,
-    body.tier-rank-3 #btn-menu-scan-ai, body.tier-rank-3 #modal-menu-scan,
+    body.tier-rank-3 [data-panel="ai"], body.tier-rank-3 #panel-ai {
+      display: none !important;
+    }
+    /* Pako 4 — Biznes (+ AI veçori; tab AI vetëm rank 5 + ai-package-tier) */
+    body.tier-rank-4 [data-panel="ai"], body.tier-rank-4 #panel-ai {
+      display: none !important;
+    }
+    /* tier-rank-5: asgjë nuk fshihet nga pakoja */
 
-    /* AI — butonat/skanimet fshehur derisa /api/ai/status → enabled; paneli AI mbetet i dukshëm */
+    /* Tab AI vetëm kur pakoja ka AI (pako_5 / features.ai) */
+    body:not(.ai-package-tier) [data-panel="ai"],
+    body:not(.ai-package-tier) #panel-ai {
+      display: none !important;
+    }
+    /* AI — butonat/skanimet fshehur derisa /api/ai/status → enabled */
     body:not(.ai-package-on) #btn-menu-scan-ai,
     body:not(.ai-package-on) #modal-menu-scan,
     body:not(.ai-package-on) #btn-receipt-scan-ai,
@@ -1808,7 +1859,13 @@
       --ngjyr-muted: #a0a0b8;
     }
     body.admin-app .admin-topbar,
-    body.admin-app .admin-tabbar { background: #1a1a2e !important; border-color: #2e2e45 !important; }
+    body.admin-app .admin-tabbar {
+      background: #1a1a2e !important;
+      border-color: #2e2e45 !important;
+      flex-wrap: wrap !important;
+      overflow-x: visible !important;
+      overflow-y: visible !important;
+    }
     body.admin-app .admin-topbar-brand { color: #fff !important; }
     body.admin-app .admin-tab-btn { color: #a0a0b8 !important; }
     body.admin-app .admin-tab-btn.active { color: #FF6B35 !important; border-bottom-color: #FF6B35 !important; }
@@ -2146,13 +2203,8 @@
     }
     body.admin-app .hotel-reports-block .dashboard-chart-bars,
     body.admin-app .hotel-reports-block .dashboard-chart-area { min-height: 140px; }
-    /* Tab-e të hequra për hotel (Tavolinat si tab kryesor / Promocione / Rezervime tavolinash).
-       Menaxhimi i tavolinave është te Cilësimet → Restorant & Bar (#panel-restorant). */
-    body.admin-app [data-panel="tavolinat"],
-    body.admin-app [data-panel="promocione"],
-    body.admin-app #panel-promocione,
-    body.admin-app [data-panel="rezervime"],
-    body.admin-app #panel-rezervime { display: none !important; }
+    /* Tavolinat si tab kryesor u hoq — menaxhimi te Cilësimet → Restorant & Bar (#panel-restorant). */
+    body.admin-app [data-panel="tavolinat"] { display: none !important; }
     body.admin-app .admin-hk-filters { display:flex; flex-wrap:wrap; gap:0.45rem; margin-bottom:0.75rem; }
     body.admin-app .admin-hk-filter {
       background:#252538; border:1px solid #3a3a55; color:#c8c8d8;
@@ -2241,6 +2293,8 @@
     <nav class="admin-tabbar" id="tabs">
       <button type="button" class="admin-tab-btn active" data-panel="pasqyra">Pasqyra</button>
       <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
+      <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
+      <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
       <button type="button" class="admin-tab-btn" data-panel="stoku">Stoku</button>
       <button type="button" class="admin-tab-btn" data-panel="stafi">Punonjësit</button>
       <button type="button" class="admin-tab-btn" data-panel="dhomat">Dhomat</button>
@@ -2253,8 +2307,9 @@
       <button type="button" class="admin-tab-btn" data-panel="faturat">Faturat</button>
       <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
       <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
+      <button type="button" class="admin-tab-btn" data-panel="kuponet-fiskale">Kuponët fiskalë</button>
       <button type="button" class="admin-tab-btn" data-panel="audit">Audit</button>
-      <button type="button" class="admin-tab-btn" data-panel="paper-block">Bllokimi i letrës</button>
+      <button type="button" class="admin-tab-btn" data-panel="paper-block">Blloku i letrës</button>
       <button type="button" class="admin-tab-btn" data-panel="cilësimet">Cilësimet</button>
       <button type="button" class="admin-tab-btn" data-panel="licenca">Licenca</button>
       <button type="button" class="admin-tab-btn" data-panel="blerjet">Blerjet</button>
@@ -2797,7 +2852,6 @@
       <div class="purchases-panel-header">
         <div>
           <h2 class="purchases-panel-title">Rezervime tavolinash</h2>
-          <p class="purchases-panel-sub">Menaxhoni rezervimet — kamarieri sheh tavolinat e rezervuara me 🔒</p>
         </div>
         <button type="button" class="btn btn-primary" id="btn-reservation-add">+ Shto rezervim</button>
       </div>
@@ -2820,7 +2874,6 @@
       <div class="purchases-panel-header">
         <div>
           <h2 class="purchases-panel-title">Promocione &amp; Zbritje</h2>
-          <p class="purchases-panel-sub">Happy hour, fundjavë, zbritje për kategori ose produkte specifike</p>
         </div>
         <button type="button" class="btn btn-primary" id="btn-promo-add">+ Promocion i ri</button>
       </div>
@@ -3791,7 +3844,6 @@
     <section id="panel-licenca" class="panel">
       <div class="settings-page-header">
         <h2 class="settings-page-title">Licenca</h2>
-        <p class="settings-page-sub">ID e pajisjes dhe çelësi i aktivizimit për këtë kompjuter POS</p>
       </div>
       <div class="card settings-card">
         <div class="card-title">Licenca e aplikacionit</div>
@@ -3940,7 +3992,6 @@
     <section id="panel-fiskalizimi" class="panel">
       <div class="settings-page-header" style="margin:0 0 0.75rem">
         <h2 class="settings-page-title" id="fiskalizimi-panel-secret-title">Fiskalizimi</h2>
-        <p class="settings-page-sub">SEF / ATK — konfigurimi i fiskalizimit dhe lidhja me ATK.</p>
       </div>
 
       <div id="hotel-gate-fiskalizimi" class="card settings-card admin-tab-gate" hidden>
@@ -4170,59 +4221,117 @@
       </div>
     </section>
 
-    <!-- BLLOKIMI I LETRËS (tab kryesor) -->
+    <!-- BLLOKU I LETRËS (tab kryesor) -->
     <section id="panel-paper-block" class="panel">
+      <div class="settings-page-header" style="margin:0 0 0.75rem">
+        <h2 class="settings-page-title">Blloku i letrës</h2>
+      </div>
       <div class="card settings-card" id="fiscal-sef-panel-paper-block">
-        <div class="sef-paper-block-box" id="sef-paper-block-box">
-          <div class="sef-audit-title">Bllokimi i letrës (Neni 45)</div>
-          <p class="sef-paper-desc">
-            Kur SEF ndalon plotësisht, aktivizohet automatikisht (ose manualisht).
-            Lëshoni kupon nga blloku fizik me numër serik, regjistroni këtu (lokal — pa ATK live për HOTEL).
-          </p>
-          <div id="paper-block-box" hidden></div>
-          <div class="sef-paper-actions">
-            <button type="button" class="btn btn-sm btn-paper-enable" id="btn-paper-enable">Aktivizo bllokimin e letrës</button>
-            <button type="button" class="btn btn-sm btn-ghost" id="btn-paper-disable">Çaktivizo</button>
-            <button type="button" class="btn btn-sm btn-paper-register" id="btn-paper-register-all">Regjistro të gjithë në SEF</button>
-            <button type="button" class="btn btn-sm btn-warning" id="btn-repair-wizard-open">Riparim SEF (48h)</button>
-          </div>
-          <ul id="paper-block-list"></ul>
-          <div id="offline-compliance-box" hidden></div>
-          <div id="offline-compliance-actions" hidden>
-            <button type="button" class="btn btn-sm btn-ghost" id="btn-comp-export-48h">Eksporto raport 48h</button>
-            <button type="button" class="btn btn-sm btn-ghost" id="btn-comp-export-day10">Eksporto raport ditë 10</button>
-            <button type="button" class="btn btn-sm btn-primary" id="btn-comp-ack-48h">Konfirmo — e njoftova ATK-në</button>
-            <button type="button" class="btn btn-sm btn-primary" id="btn-comp-ack-day10">Konfirmo — i dorëzova ATK-së</button>
-          </div>
-          <div class="sef-paper-issue-form" id="paper-block-issue-wrap" hidden>
-            <div class="settings-field">
-              <label for="paper-serial-no">Nr. serik (blloku fizik)</label>
-              <input type="text" id="paper-serial-no" autocomplete="off" placeholder="p.sh. BLK-001234" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-item-name">Përshkrimi</label>
-              <input type="text" id="paper-item-name" placeholder="Shërbim / artikull" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-item-qty">Sasia</label>
-              <input type="number" id="paper-item-qty" min="0.001" step="0.001" value="1" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-item-price">Çmimi (€)</label>
-              <input type="number" id="paper-item-price" min="0" step="0.01" placeholder="0.00" />
-            </div>
-            <div class="settings-field">
-              <label for="paper-payment">Pagesa</label>
-              <select id="paper-payment">
-                <option value="cash">Cash</option>
-                <option value="card">Kartë</option>
-                <option value="bank">Bankë</option>
-              </select>
-            </div>
-            <button type="button" class="btn btn-sm btn-sef-audit" id="btn-paper-issue">Regjistro kuponin</button>
-          </div>
-          <div class="fiscal-save-msg" id="paper-block-msg"></div>
+        <div id="paper-block-box" hidden style="margin:0 0 0.75rem;padding:0.65rem 0.75rem;border:1px solid #92400e;border-radius:8px;background:#fffbeb;color:#78350f;white-space:pre-wrap;font-size:0.85rem;line-height:1.45"></div>
+        <div class="sef-paper-actions" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem">
+          <button type="button" class="btn btn-sm btn-paper-enable" id="btn-paper-enable">Aktivizo bllokimin e letrës</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-paper-disable">Çaktivizo</button>
+          <button type="button" class="btn btn-sm btn-paper-register" id="btn-paper-register-all">Regjistro të gjithë në SEF</button>
+          <button type="button" class="btn btn-sm btn-warning" id="btn-repair-wizard-open">Riparim SEF (48h)</button>
         </div>
+        <div id="paper-block-issue-wrap" class="sef-paper-issue-form" hidden style="margin:0 0 1rem;padding:14px;border:1px solid #2e2e45;border-radius:8px;max-width:920px">
+          <h3 style="margin:0 0 10px;font-size:1rem">Regjistro kupon bllok letër</h3>
+          <div class="settings-field" style="max-width:320px">
+            <label for="paper-serial-no">Numri serik i bllokut</label>
+            <input id="paper-serial-no" type="text" placeholder="p.sh. 000123" autocomplete="off" />
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;max-width:420px;margin-top:10px">
+            <div class="settings-field" style="margin:0">
+              <label for="paper-sale-date">Data e shitjes</label>
+              <input id="paper-sale-date" type="date" />
+            </div>
+            <div class="settings-field" style="margin:0">
+              <label for="paper-sale-time">Ora e shitjes</label>
+              <input id="paper-sale-time" type="time" step="60" />
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <label for="paper-product-search" style="font-size:0.78rem;display:block">Kërko ose skano produktin (katalogu)</label>
+            <div style="position:relative;max-width:520px;margin:4px 0 10px">
+              <input id="paper-product-search" type="search" placeholder="Emri i produktit…" autocomplete="off" />
+              <div id="paper-product-results" class="hidden" role="listbox" aria-label="Rezultatet e katalogut"></div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-paper-add-item">Artikull manual (jo në katalog)</button>
+            <div style="display:grid;grid-template-columns:minmax(100px,1fr) 52px 72px 96px 64px 36px;gap:8px;font-size:0.75rem;color:#a0a0b8;margin:8px 0 4px;max-width:780px">
+              <span>Emri</span><span>Njësia</span><span>Sasia</span><span>Çmimi (€)</span><span>TVSH</span><span></span>
+            </div>
+            <div id="paper-issue-items"></div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-paper-issue-submit">Regjistro kuponin</button>
+            <span id="paper-issue-total-hint" style="color:#a0a0b8;font-size:0.88rem"></span>
+          </div>
+        </div>
+        <ul id="paper-block-list" style="margin:0 0 0.75rem;padding-left:1.2rem;font-size:0.85rem;color:#a0a0b8"></ul>
+        <div id="offline-compliance-box" hidden></div>
+        <div id="offline-compliance-actions" hidden>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-comp-export-48h">Eksporto raport 48h</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-comp-export-day10">Eksporto raport ditë 10</button>
+          <button type="button" class="btn btn-sm btn-primary" id="btn-comp-ack-48h">Konfirmo — e njoftova ATK-në</button>
+          <button type="button" class="btn btn-sm btn-primary" id="btn-comp-ack-day10">Konfirmo — i dorëzova ATK-së</button>
+        </div>
+        <div class="fiscal-save-msg" id="paper-block-msg"></div>
+      </div>
+    </section>
+
+    <section id="panel-kuponet-fiskale" class="panel">
+      <div class="settings-page-header" style="margin:0 0 0.75rem">
+        <h2 class="settings-page-title">Kuponët fiskalë</h2>
+      </div>
+      <div class="card settings-card">
+        <div class="kuponet-toolbar">
+          <button type="button" class="btn btn-ghost btn-sm" id="kuponet-refresh">Rifresko</button>
+          <input type="text" id="kuponet-nuikf" placeholder="NUIKF ose numër serik bllok letër" autocomplete="off" style="text-transform:uppercase" />
+          <button type="button" class="btn btn-sm" id="kuponet-btn-cancel" style="background:#b45309;color:#fff">Anulo</button>
+          <button type="button" class="btn btn-primary btn-sm" id="kuponet-btn-return">Kthim malli</button>
+        </div>
+        <div id="kuponet-return-panel" class="settings-card" hidden style="margin:0.75rem 0;padding:0.75rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+            <p id="kuponet-return-sub" style="margin:0;color:var(--ngjyr-muted);font-size:0.88rem">—</p>
+            <button type="button" class="btn btn-ghost btn-sm" id="kuponet-return-close">Mbyll</button>
+          </div>
+          <div id="kuponet-return-items"></div>
+          <button type="button" class="btn btn-primary btn-sm" id="kuponet-return-confirm" style="margin-top:10px">Konfirmo kthimin</button>
+        </div>
+        <div class="kuponet-reason-row">
+          <label for="kuponet-reason-btn">Arsyeja</label>
+          <div style="position:relative">
+            <button type="button" class="btn btn-ghost btn-sm" id="kuponet-reason-btn">— Zgjidh arsyen —</button>
+            <div id="kuponet-reason-menu" class="kuponet-reason-menu" hidden role="listbox"></div>
+            <input type="hidden" id="kuponet-reason-preset" value="" />
+          </div>
+          <input type="text" id="kuponet-reason-custom" placeholder="Ose shkruani arsyen këtu…" autocomplete="off" style="flex:1;min-width:200px" />
+        </div>
+        <div style="margin-bottom:0.5rem">
+          <button type="button" class="btn btn-primary btn-sm" id="kuponet-btn-exchange">Ndërrim artikulli</button>
+        </div>
+        <div id="kuponet-exchange-panel" class="settings-card" hidden style="margin:0.75rem 0;padding:0.75rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+            <p id="kuponet-exchange-sub" style="margin:0;color:var(--ngjyr-muted);font-size:0.88rem">—</p>
+            <button type="button" class="btn btn-ghost btn-sm" id="kuponet-exchange-close">Mbyll</button>
+          </div>
+          <div id="kuponet-exchange-items"></div>
+          <button type="button" class="btn btn-primary btn-sm" id="kuponet-exchange-confirm" style="margin-top:10px">Konfirmo ndërrimin</button>
+        </div>
+        <div class="kuponet-table-wrap">
+          <table class="kuponet-items-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>NUIKF</th><th>Tipi</th><th>Nr. ditor</th><th>Totali</th>
+                <th>Data</th><th>Pagesa</th><th>ATK</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="kuponet-tbody">
+              <tr><td colspan="9" style="color:#a0a0b8">Hap tab-in për të ngarkuar…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="kuponet-msg" id="kuponet-msg"></div>
       </div>
     </section>
 
@@ -5735,6 +5844,8 @@
   <script src="/js/sales-invoices-ui.js?v=1"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
   <script src="/js/fiscal-offline-status.js?v=2"></script>
+  <script src="/js/hotel-paper-block-tab.js?v=2"></script>
+  <script src="/js/fiscal-receipts-tab.js?v=2"></script>
   <script src="/js/kontabilisti-atk-ui.js?v=6"></script>
   <script src="https://revolution-pos.com/js/qrcode.js?v=1"></script>
   <script>
@@ -5742,24 +5853,31 @@
     if (!user) throw new Error("");
 
     /**
-     * Cloud ID (legacy): pako_3=Pako1, pako_4=Pako2, pako_2=Pako3 Full, pako_5=Pako4 AI.
-     * Kontabilisti vetëm rank 4 (Full/AI) — i fshehur në Pako 1–2.
-     * Default pa tier → rank 2 (jo Full).
+     * Cloud ID → tier-rank 1–5 (Pako 1 Bazik … Pako 5 Premium).
+     * Default pa tier → rank 2 (Pako 2 Standard).
      */
-    const PACKAGE_TIER_RANK = { pako_1: 1, pako_3: 2, pako_4: 3, pako_2: 4, pako_5: 4 };
+    const PACKAGE_TIER_RANK = { pako_1: 1, pako_3: 2, pako_4: 3, pako_2: 4, pako_5: 5 };
     let _lastAppliedPackageTier = "";
     function applyPackageTier(tier, features) {
       const t = String(tier || "").trim().toLowerCase();
       let rank = PACKAGE_TIER_RANK[t] || 2;
-      /* features.accountant nga cloud — burimi i vërtetë për Kontabilistin */
+      /* features.accountant — Kontabilisti tab kërkon rank >= 4 */
       if (features && features.accountant === false && rank >= 4) {
-        rank = 3; /* Pro max — pa Kontabilist */
+        rank = 3;
       }
       if (features && features.accountant === true) {
         rank = Math.max(rank, 4);
       }
-      document.body.classList.remove("tier-rank-1", "tier-rank-2", "tier-rank-3", "tier-rank-4");
+      document.body.classList.remove(
+        "tier-rank-1",
+        "tier-rank-2",
+        "tier-rank-3",
+        "tier-rank-4",
+        "tier-rank-5"
+      );
       document.body.classList.add("tier-rank-" + rank);
+      const hasAiTier = t === "pako_5" || (features && features.ai === true);
+      document.body.classList.toggle("ai-package-tier", !!hasAiTier);
       if (t && t !== _lastAppliedPackageTier) {
         console.log("[admin] Pako:", t || "(bosh)", "→ tier-rank-" + rank, "accountant=", features?.accountant);
         _lastAppliedPackageTier = t;
@@ -6037,6 +6155,10 @@
       }
     }
 
+    window.tryOpenAdminPanel = function tryOpenAdminPanel(name) {
+      switchAdminPanel(name);
+    };
+
     function switchAdminPanel(name) {
       adminSettingsMode = false;
       showSettingsSubnavBar(false);
@@ -6067,6 +6189,8 @@
       if (name === "rezervime-dhomash") ngarkoRezervimeDhomash();
       if (name === "pastrimi") ngarkoAdminPastrimi();
       if (name === "qr-tavolinat") ngarkoHotelQrs();
+      if (name === "rezervime") ngarkoRezervimet();
+      if (name === "promocione") ngarkoPromocionet();
       if (name === "raportet") {
         if (!document.getElementById("raport-nga").value) applyRaportPreset("sot");
         ngarkoRaportet();
@@ -6075,7 +6199,8 @@
       applyHotelTabGateUi(name);
       if (name === "fiskalizimi" && isHotelTabGateUnlocked("fiskalizimi")) ngarkoFiscalizimin();
       if (name === "audit" && isHotelTabGateUnlocked("audit")) { /* audit log */ }
-      if (name === "paper-block") refreshPaperBlockUi().catch(() => {});
+      if (name === "paper-block") window.initHotelPaperBlockTab?.();
+      if (name === "kuponet-fiskale") window.initKuponetFiskaleTab?.();
       if (name === "licenca") {
         ngarkoLicencen();
         ngarkoTerminaletAdmin();
@@ -10005,26 +10130,34 @@
       const statusBadge = document.getElementById("ai-panel-status-badge");
       const statusText = document.getElementById("ai-panel-status-text");
       const cloudMsg = document.getElementById("ai-panel-cloud-msg");
-      const cloudDefault = "AI do të aktivizohet kur hoteli të lidhet me cloud";
+      const cloudDefault = "AI kërkon Cloud + Pako 4 (AI) (pako_5).";
       let active = false;
       try {
         const data = await api("/api/ai/status");
         active = !!data.enabled;
+        if (data.package_ai === true) {
+          document.body.classList.add("ai-package-tier");
+        }
         document.body.classList.toggle("ai-package-on", active);
         if (statusBadge) {
           statusBadge.textContent = active ? "Aktiv" : "Joaktiv";
           statusBadge.classList.toggle("ai-status-on", active);
           statusBadge.classList.toggle("ai-status-off", !active);
         }
+        const inactiveMsg =
+          data.gabim ||
+          (data.package_ai === false
+            ? "Pakoja aktuale nuk përfshin AI — te Super Admin zgjidhni «Pako 4 — AI» (pako_5)."
+            : cloudDefault);
         if (statusText) {
           statusText.textContent = active
             ? "Moduli AI është aktiv dhe i gatshëm për përdorim."
-            : (data.gabim || cloudDefault);
+            : inactiveMsg;
         }
         if (cloudMsg) {
           cloudMsg.textContent = active
-            ? "Hoteli është i lidhur me cloud — funksionet AI varen nga pakoja e licencës."
-            : cloudDefault;
+            ? "Hoteli është i lidhur me cloud — moduli AI është aktiv."
+            : inactiveMsg;
         }
         if (usageLine) {
           if (active) {
@@ -10041,7 +10174,7 @@
               usageLine.textContent = "";
             }
           } else {
-            usageLine.textContent = cloudDefault;
+            usageLine.textContent = inactiveMsg;
           }
         }
       } catch (err) {
@@ -12205,7 +12338,7 @@
         `<div class="checkout-bill-row"><span>Mysafiri</span><strong>${escMenuAttr(g.guest_name || "—")}</strong></div>` +
         `<div class="checkout-bill-row"><span>Telefoni</span><strong>${escMenuAttr(g.phone || "—")}</strong></div>` +
         `<div class="checkout-bill-row"><span>Persona</span><strong>${Number(g.persons) || 1}</strong></div>` +
-        `<div class="checkout-bill-row"><span>Netët</span><strong>${Number(b.nights) || 0} × ${formatEuro(b.price_per_night)}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Netët</span><strong>${Number(b.nights) || 0} × ${Number(b.persons ?? g.persons) || 1} persona × ${formatEuro(b.price_per_night)}</strong></div>` +
         `<div class="checkout-bill-row"><span>Dhoma</span><strong>${formatEuro(b.room_total)}</strong></div>` +
         `<div class="checkout-bill-row"><span>Porosi &amp; shërbime</span><strong>${formatEuro(b.charges_total)}</strong></div>` +
         chargeRows +
@@ -14910,7 +15043,7 @@
       const printWrap = document.getElementById("sef-print-mode-wrap");
       if (printWrap) printWrap.hidden = !active;
       if (active) {
-        refreshPaperBlockUi().catch(() => {});
+        window.initHotelPaperBlockTab?.();
       }
     }
 
@@ -15722,6 +15855,10 @@
     });
 
     function setPaperBlockMsg(text, ok) {
+      if (typeof window.setPaperBlockMsg === "function") {
+        window.setPaperBlockMsg(text, ok);
+        return;
+      }
       const msg = document.getElementById("paper-block-msg");
       if (!msg) return;
       msg.textContent = text || "";
@@ -15804,6 +15941,7 @@
         }
       }
     }
+    window.refreshOfflineComplianceUi = refreshOfflineComplianceUi;
 
     async function exportOfflineComplianceReport(type) {
       const data = await api("/api/fiscal/offline-compliance/export", {
@@ -15833,78 +15971,6 @@
       renderOfflineCompliance(data.compliance);
     }
 
-    function renderPaperBlockStatus(status) {
-      const box = document.getElementById("paper-block-box");
-      const list = document.getElementById("paper-block-list");
-      const issueWrap = document.getElementById("paper-block-issue-wrap");
-      if (!box) return;
-
-      const active = !!(status && status.active);
-      if (issueWrap) issueWrap.hidden = !active;
-
-      if (!status) {
-        box.hidden = true;
-        box.textContent = "";
-        if (list) list.innerHTML = "";
-        return;
-      }
-
-      if (status.active || status.pending_count > 0) {
-        box.hidden = false;
-        const lines = [];
-        if (status.active) {
-          const autoLine = status.auto_enabled
-            ? "AUTO — SEF ndaloi, u aktivizua automatikisht"
-            : "Modalitet AKTIV";
-          lines.push(`${autoLine} — batch: ${status.batch_id || "—"}`);
-          if (status.auto_reason) lines.push(`Arsye auto: ${status.auto_reason}`);
-          if (status.sef_last_failure_msg) lines.push(`Gabimi: ${status.sef_last_failure_msg}`);
-          lines.push(`Filloi: ${status.started_at || "—"} · ${status.hours_since_failure ?? 0}h`);
-          if (status.restore_deadline_hours != null && status.restore_deadline_hours > 0) {
-            lines.push(`Afati rikthimi SEF: ~${status.restore_deadline_hours}h`);
-          }
-          if (status.past_restore_48h) lines.push("KALUAR 48h — riktheni SEF-in urgjent!");
-          if (status.register_deadline_at) {
-            lines.push(`Afati regjistrim SEF: ${status.register_deadline_at.slice(0, 10)}`);
-          }
-          if (status.past_register_5d) {
-            lines.push("KALUAR afati 5 ditë — regjistroni kuponët në SEF!");
-          }
-        }
-        if (status.message) lines.push(status.message);
-        box.textContent = lines.join("\n");
-        box.style.borderColor =
-          status.level === "critical" ? "#ef4444" : status.level === "urgent" ? "#f0a030" : "#2e2e45";
-      } else {
-        box.hidden = true;
-        box.textContent = "";
-      }
-
-      if (list) {
-        const pending = (status.pending || []).slice(0, 20);
-        if (!pending.length) {
-          list.innerHTML = "<li>Nuk ka kuponë në pritje për bllokimin e letrës.</li>";
-        } else {
-          list.innerHTML = pending
-            .map(
-              (p) =>
-                `<li>${p.serial_no} · ${p.fiscal_date} · ${Number(p.total_amount).toFixed(2)} €</li>`
-            )
-            .join("");
-        }
-      }
-    }
-
-    async function refreshPaperBlockUi() {
-      try {
-        const data = await api("/api/fiscal-paper-block");
-        renderPaperBlockStatus(data.status);
-      } catch (e) {
-        renderPaperBlockStatus(null);
-      }
-      await refreshOfflineComplianceUi();
-    }
-
     document.getElementById("btn-comp-export-48h")?.addEventListener("click", () => {
       exportOfflineComplianceReport("48h").catch((e) => setPaperBlockMsg(e.message, false));
     });
@@ -15922,118 +15988,13 @@
       window.__hotelOfflineCompliancePoll = setInterval(() => {
         if (document.getElementById("panel-paper-block")?.classList.contains("active")) {
           refreshOfflineComplianceUi().catch(() => {});
+          window.refreshPaperBlockUi?.().catch(() => {});
         }
         if (typeof globalThis.refreshFiscalNetIndicator === "function") {
           globalThis.refreshFiscalNetIndicator();
         }
       }, 60000);
     }
-
-    document.getElementById("btn-paper-enable")?.addEventListener("click", async () => {
-      const ok = window.confirm(
-        "Aktivizoni bllokimin e letrës?\n\nPërdoreni vetëm kur SEF ndalon plotësisht.\nKuponët elektronikë do të bllokohen; shitjet regjistrohen me numër serik të bllokut fizik."
-      );
-      if (!ok) return;
-      try {
-        const data = await api("/api/fiscal-paper-block/enable", {
-          method: "POST",
-          body: JSON.stringify({ operator_name: "Admin" }),
-        });
-        setPaperBlockMsg("Bllokimi i letrës u aktivizua.", true);
-        renderPaperBlockStatus(data.status);
-      } catch (e) {
-        setPaperBlockMsg(e.message || "Gabim", false);
-      }
-    });
-
-    document.getElementById("btn-paper-disable")?.addEventListener("click", async () => {
-      if (!window.confirm("Çaktivizo bllokimin e letrës?")) return;
-      try {
-        const data = await api("/api/fiscal-paper-block/disable", {
-          method: "POST",
-          body: JSON.stringify({ operator_name: "Admin", force: false }),
-        });
-        setPaperBlockMsg("Bllokimi i letrës u çaktivizua.", true);
-        renderPaperBlockStatus(data.status);
-      } catch (e) {
-        const forceOk = window.confirm(
-          (e.message || "Gabim") +
-            "\n\nKa kuponë pa regjistruar. Çaktivizo GJITHSESI? (jo e rekomanduar)"
-        );
-        if (!forceOk) {
-          setPaperBlockMsg(e.message, false);
-          return;
-        }
-        try {
-          const data = await api("/api/fiscal-paper-block/disable", {
-            method: "POST",
-            body: JSON.stringify({ operator_name: "Admin", force: true }),
-          });
-          setPaperBlockMsg("U çaktivizua me force — regjistroni kuponët sa më shpejt.", false);
-          renderPaperBlockStatus(data.status);
-        } catch (e2) {
-          setPaperBlockMsg(e2.message, false);
-        }
-      }
-    });
-
-    document.getElementById("btn-paper-register-all")?.addEventListener("click", async () => {
-      const ok = window.confirm(
-        "Regjistroni të gjithë kuponët e bllokut letër në SEF dhe dërgo te ATK?"
-      );
-      if (!ok) return;
-      try {
-        const data = await api("/api/fiscal-paper-block/register-all", {
-          method: "POST",
-          body: JSON.stringify({ operator_name: "Admin" }),
-        });
-        setPaperBlockMsg(
-          `Përpunuar: ${data.processed} · Sukses: ${data.success} · Dështuar: ${data.failed}`,
-          data.failed === 0
-        );
-        refreshPaperBlockUi().catch(() => {});
-      } catch (e) {
-        setPaperBlockMsg(e.message, false);
-      }
-    });
-
-    document.getElementById("btn-paper-issue")?.addEventListener("click", async () => {
-      const serial = String(document.getElementById("paper-serial-no")?.value || "").trim();
-      const name = String(document.getElementById("paper-item-name")?.value || "").trim();
-      const qty = Number(document.getElementById("paper-item-qty")?.value || 1);
-      const price = Number(document.getElementById("paper-item-price")?.value || 0);
-      const payment = document.getElementById("paper-payment")?.value || "cash";
-      if (!serial) {
-        setPaperBlockMsg("Shkruani numrin serik të bllokut letër.", false);
-        return;
-      }
-      if (!name || !(price > 0)) {
-        setPaperBlockMsg("Përshkrimi dhe çmimi janë të detyrueshëm.", false);
-        return;
-      }
-      try {
-        const data = await api("/api/fiscal-paper-block/issue", {
-          method: "POST",
-          body: JSON.stringify({
-            serial_no: serial,
-            payment_method: payment,
-            operator_name: "Admin",
-            items: [{ name, quantity: qty, price, vat_norm: "E" }],
-          }),
-        });
-        const p = data.paper || {};
-        setPaperBlockMsg(
-          `U regjistrua · NR. SERIK: ${p.serial_no || serial} · Total: ${Number(p.total_amount || 0).toFixed(2)} €`,
-          true
-        );
-        document.getElementById("paper-serial-no").value = "";
-        document.getElementById("paper-item-name").value = "";
-        document.getElementById("paper-item-price").value = "";
-        refreshPaperBlockUi().catch(() => {});
-      } catch (e) {
-        setPaperBlockMsg(e.message, false);
-      }
-    });
 
     let fccOriginal = null;
 

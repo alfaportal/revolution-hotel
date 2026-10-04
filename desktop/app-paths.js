@@ -28,6 +28,52 @@ function publicOverlayRoot() {
   return null;
 }
 
+/** Vetëm këto skedarë lejohen nga public-overlay (sync-installed-public.ps1). */
+const PUBLIC_OVERLAY_ALLOW = new Set([
+  "kasa-recepcion.html",
+  "recepcion.html",
+  "login.html",
+  "css/recepcion-truffle.css",
+]);
+
+function normalizePublicRel(rel) {
+  return String(rel || "").replace(/\\/g, "/").replace(/^[/]+/, "");
+}
+
+function isPublicOverlayAllowed(rel) {
+  return PUBLIC_OVERLAY_ALLOW.has(normalizePublicRel(rel));
+}
+
+/** Heq admin.html / JS të vjetër nga overlay — ndryshe mbivendos Setup-in edhe pas reinstall. */
+function pruneStalePublicOverlay() {
+  const overlay = publicOverlayRoot();
+  if (!overlay || !fs.existsSync(overlay)) return;
+  const removeIfDisallowed = (abs, relFromOverlay) => {
+    if (isPublicOverlayAllowed(relFromOverlay)) return;
+    try {
+      fs.unlinkSync(abs);
+      console.warn("[public-overlay] hequr skedar i palejuar:", relFromOverlay);
+    } catch (e) {
+      console.warn("[public-overlay] prune:", relFromOverlay, e.message || e);
+    }
+  };
+  const walk = (dir, prefix) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
+      const abs = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(abs, rel);
+      else if (ent.isFile()) removeIfDisallowed(abs, rel);
+    }
+  };
+  walk(overlay, "");
+}
+
 function resolvePackagedPublicFile(segments) {
   if (!segments.length || segments[0] !== "public") return null;
   try {
@@ -36,7 +82,7 @@ function resolvePackagedPublicFile(segments) {
     const rel = segments.slice(1).join("/");
     if (!rel) return null;
     const overlay = publicOverlayRoot();
-    if (overlay) {
+    if (overlay && isPublicOverlayAllowed(rel)) {
       const overlayFile = path.join(overlay, rel);
       if (fs.existsSync(overlayFile)) return overlayFile;
     }
@@ -84,7 +130,7 @@ function listPublicStaticRoots() {
 }
 
 function resolvePublicFile(relativeName) {
-  const rel = String(relativeName || "").replace(/^[/\\]+/, "");
+  const rel = normalizePublicRel(relativeName);
   const packaged = resolvePackagedPublicFile(["public", rel]);
   if (packaged && fs.existsSync(packaged)) return packaged;
   const dev = path.join(__dirname, "public", rel);
@@ -97,4 +143,6 @@ module.exports = {
   joinContent,
   listPublicStaticRoots,
   resolvePublicFile,
+  pruneStalePublicOverlay,
+  isPublicOverlayAllowed,
 };

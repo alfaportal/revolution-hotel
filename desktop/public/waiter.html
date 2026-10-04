@@ -3059,7 +3059,7 @@
         `<div class="checkout-bill-row"><span>Mysafiri</span><strong>${escHtml(g.guest_name || "—")}</strong></div>` +
         `<div class="checkout-bill-row"><span>Telefoni</span><strong>${escHtml(g.phone || "—")}</strong></div>` +
         `<div class="checkout-bill-row"><span>Persona</span><strong>${Number(g.persons) || 1}</strong></div>` +
-        `<div class="checkout-bill-row"><span>Netët</span><strong>${Number(b.nights) || 0} × ${formatEuro(b.price_per_night)}</strong></div>` +
+        `<div class="checkout-bill-row"><span>Netët</span><strong>${Number(b.nights) || 0} × ${Number(b.persons ?? g.persons) || 1} persona × ${formatEuro(b.price_per_night)}</strong></div>` +
         `<div class="checkout-bill-row"><span>Dhoma</span><strong>${formatEuro(b.room_total)}</strong></div>` +
         `<div class="checkout-bill-row"><span>Porosi &amp; shërbime</span><strong>${formatEuro(b.charges_total)}</strong></div>` +
         chargeRows +

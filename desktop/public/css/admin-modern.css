@@ -130,11 +130,14 @@ body.admin-app {
 .admin-tabbar {
   flex-shrink: 0;
   display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
   background: #1a1a2e;
   border-bottom: 2px solid #2e2e45;
-  overflow-x: auto;
+  overflow-x: visible;
+  overflow-y: visible;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }

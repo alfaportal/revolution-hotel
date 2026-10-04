@@ -1,7 +1,17 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
-const { joinContent, listPublicStaticRoots, resolvePublicFile } = require("./app-paths");
+const {
+  joinContent,
+  listPublicStaticRoots,
+  resolvePublicFile,
+  pruneStalePublicOverlay,
+} = require("./app-paths");
+try {
+  pruneStalePublicOverlay();
+} catch (e) {
+  console.warn("[hotel] public-overlay prune:", e.message || e);
+}
 const os = require("os");
 const crypto = require("crypto");
 process.env.FISCAL_LOCAL_RUN = process.env.FISCAL_LOCAL_RUN || "1";
@@ -7382,20 +7392,20 @@ app.get("/api/fiscal/receipts/lookup", auth, adminOnly, (req, res) => {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
     }
-    const nuikf = String(req.query.nuikf || "")
-      .trim()
-      .toUpperCase();
-    if (!nuikf) throw new Error("NUIKF mungon");
+    const lookupInput = String(req.query.nuikf || req.query.serial_no || "").trim();
+    if (!lookupInput) throw new Error("NUIKF ose numri serik mungon");
     const { getOriginalReceipt, getReturnableItemsForReceipt } = require("./fiscal/fiscal-correction");
-    const items = getReturnableItemsForReceipt(nuikf);
+    const items = getReturnableItemsForReceipt(lookupInput);
     if (!items) {
       return res.status(404).json({
         ok: false,
-        error: "Kuponi origjinal (regular) nuk u gjet për këtë NUIKF",
-        gabim: "Kuponi origjinal (regular) nuk u gjet për këtë NUIKF",
+        error:
+          "Kuponi origjinal nuk u gjet (regular ose bllok letër i regjistruar në SEF)",
+        gabim:
+          "Kuponi origjinal nuk u gjet (regular ose bllok letër i regjistruar në SEF)",
       });
     }
-    const receipt = getOriginalReceipt(nuikf);
+    const receipt = getOriginalReceipt(lookupInput);
     res.json({
       ok: true,
       receipt: {
@@ -7598,8 +7608,21 @@ app.post("/api/fiscal/exchange", auth, adminOnly, async (req, res) => {
   }
 });
 
+/** Status i shkurtër për arka / recepsion (pa listë admin). */
+app.get("/api/fiscal/paper-block/active", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    if (!fiscalConfig.isFiscalEnabled()) {
+      return res.json({ ok: true, active: false });
+    }
+    const { isPaperBlockModeActive } = require("./fiscal/fiscal-paper-block");
+    res.json({ ok: true, active: isPaperBlockModeActive() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
 /** Checkout me bllok letër (Neni 45) */
-app.post("/api/fiscal/paper-block/checkout", auth, adminOnly, async (req, res) => {
+app.post("/api/fiscal/paper-block/checkout", auth, waiterOrRecepsion, async (req, res) => {
   try {
     const blocked = recordsGuardResponse(res);
     if (blocked) return blocked;
@@ -7682,6 +7705,20 @@ app.post("/api/fiscal/paper-block/checkout", auth, adminOnly, async (req, res) =
       operator_name: req.body?.operator_name || req.session?.emri || "Admin",
       operator_id: req.body?.operator_id || "ADMIN",
     });
+
+    if (req.body?.recepcion_kasa && typeof db.recordRecepcionKasaSale === "function") {
+      try {
+        const waiterName = String(req.session?.name || req.session?.emri || "Recepsion").trim();
+        db.recordRecepcionKasaSale({
+          items: req.body.items,
+          payment_method: req.body.payment_method || "cash",
+          payment_splits: req.body.payment_splits || null,
+          waiter_name: waiterName,
+        });
+      } catch (e) {
+        console.warn("[paper-block/checkout] recepcion kasa:", e.message);
+      }
+    }
 
     let printed = false;
     let printMessage = "";

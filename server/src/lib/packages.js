@@ -30,6 +30,11 @@ const PACKAGE_TIER_ALIASES = {
   "pako 4 ai profesionale": "pako_5",
   "pako 4 — ai profesionale": "pako_5",
   "pako 4 - ai profesionale": "pako_5",
+  "pako ai": "pako_5",
+  "pako 5": "pako_5",
+  "pako 5 (premium)": "pako_5",
+  "pako 5 premium": "pako_5",
+  premium: "pako_5",
 };
 
 const FULL_NO_AI = {

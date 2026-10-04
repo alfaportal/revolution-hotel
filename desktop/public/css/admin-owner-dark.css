@@ -54,6 +54,9 @@ body.admin-app .admin-logout:hover {
 body.admin-app .admin-tabbar {
   background: #1a1a2e !important;
   border-bottom: 2px solid #2e2e45 !important;
+  flex-wrap: wrap !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
 }
 body.admin-app .admin-tab-btn {
   color: #a0a0b8 !important;

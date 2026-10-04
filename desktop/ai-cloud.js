@@ -128,13 +128,24 @@ async function fetchAiStatus(db) {
     const data = await requestJson("GET", serverUrl, "/api/ai/status", null, {
       "X-License-Key": celesi,
     });
+    const packageAi = !!data.package_ai;
+    let gabim = null;
+    if (!packageAi) {
+      gabim =
+        "Pakoja e licencës nuk përfshin AI. Te Super Admin zgjidhni «Pako 4 — AI» (pako_5) për këtë klient, pastaj prisni sync (Cloud).";
+    } else if (!data.enabled && data.paused) {
+      gabim = "AI është i ndalur për momentin në server.";
+    } else if (!data.enabled) {
+      gabim = "AI nuk është i aktivizuar në server cloud.";
+    }
     return {
       ok: true,
       enabled: !!data.enabled,
       paused: !!data.paused,
       configured: !!data.configured,
-      package_ai: !!data.package_ai,
+      package_ai: packageAi,
       package_tier: data.package_tier || null,
+      gabim,
     };
   } catch (err) {
     return {

@@ -517,12 +517,36 @@ function renderDrawerMaxRegistersField(client, productLine) {
       </label>`;
 }
 
+/** Pako 1–5 — ID legacy në DB (pako_1, pako_3, pako_4, pako_2, pako_5). */
 const DRAWER_PAKO_OPTS = [
-  ["pako_3", "Pako 1"],
-  ["pako_4", "Pako 2"],
-  ["pako_2", "Pako 3"],
-  ["pako_5", "Pako 4 (AI)"],
+  ["pako_1", "Pako 1 — Bazik"],
+  ["pako_3", "Pako 2 — Standard"],
+  ["pako_4", "Pako 3 — Profesional"],
+  ["pako_2", "Pako 4 — Biznes + AI"],
+  ["pako_5", "Pako 5 — Premium"],
 ];
+
+function normalizeDrawerPackageTier(tier) {
+  const raw = String(tier || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\./g, "_");
+  if (DRAWER_PAKO_OPTS.some(([v]) => v === raw)) return raw;
+  const alias = {
+    pako_premium: "pako_5",
+    "pako ai": "pako_5",
+    "pako 5 (premium)": "pako_5",
+    "pako 5 premium": "pako_5",
+    premium: "pako_5",
+    bazik: "pako_1",
+    "pako 1": "pako_1",
+    "pako 2": "pako_3",
+    "pako 3": "pako_4",
+    "pako 4": "pako_2",
+  };
+  const spaced = raw.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  return alias[raw] || alias[spaced] || raw;
+}
 
 function selectOpts(options, selected) {
   const sel = String(selected || "");
@@ -674,7 +698,7 @@ async function openClientDetail(id, opts = {}) {
       <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>`
     : `<label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>
       <label>Veprimtaria (POS)<select id="dr-tipi">${selectOpts(DRAWER_TIPI_OPTS, c.tipi)}</select></label>
-      <label>Pako<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, c.package_tier)}</select></label>`;
+      <label>Paketa<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(c.package_tier))}</select></label>`;
 
   const maxRegField = renderDrawerMaxRegistersField(c, product);
 

@@ -914,7 +914,7 @@
     </section>
   </div>
 
-  <script src="/js/app.js?v=6"></script>
+  <script src="/js/app.js?v=7"></script>
   <script>
     (function guardRecepsionSession() {
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
@@ -941,6 +941,7 @@
     let activeRecepView = null;
     let primaryPay = "cash";
     let multiPay = false;
+    let paperBlockActive = false;
 
     function euro(n) {
       return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + " €";
@@ -1199,6 +1200,27 @@
       }
     }
 
+    function cartItemsForCheckout() {
+      return cart.map((l) => ({
+        service_id: l.service_id,
+        name: l.name,
+        price: l.price,
+        quantity: l.qty,
+        vat_norm: "E",
+      }));
+    }
+
+    async function refreshPaperBlockKasaUi() {
+      try {
+        const data = await api("/api/fiscal/paper-block/active");
+        paperBlockActive = !!data.active;
+      } catch {
+        paperBlockActive = false;
+      }
+      const btn = document.getElementById("btn-paguaj");
+      if (btn) btn.textContent = paperBlockActive ? "Paguaj (bllok letër)" : "Paguaj";
+    }
+
     async function paySale() {
       const msg = document.getElementById("msg");
       if (!shiftSummary?.open) {
@@ -1218,26 +1240,68 @@
       }
       msg.textContent = "Duke regjistruar…";
       try {
-        const body = {
-          items: cart.map((l) => ({
-            service_id: l.service_id,
-            name: l.name,
-            price: l.price,
-            quantity: l.qty,
-          })),
+        const items = cartItemsForCheckout();
+        const base = {
+          items,
           ...payPayload,
+          operator_name: user.emri || "Recepsion",
+          recepcion_kasa: true,
         };
-        const res = await api("/api/recepcion/kasa/pay", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+
+        if (paperBlockActive) {
+          let serialNo = null;
+          while (true) {
+            const entered = window.prompt(
+              "Numri serik i bllokut letër (obligativ para pagesës):",
+              ""
+            );
+            if (entered === null) {
+              msg.textContent = "Pagesa u anulua — mungon numri serik.";
+              return;
+            }
+            serialNo = String(entered).trim();
+            if (serialNo) break;
+            msg.textContent = "Numri serik i bllokut letër është i detyrueshëm.";
+          }
+          base.serial_no = serialNo;
+          let res = await api("/api/fiscal/paper-block/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...base, confirmed_over_1000: false }),
+          });
+          if (res.needs_confirm_over_1000) {
+            const ok = window.confirm(
+              `Totali është ${euro(res.total)} (mbi 1000 €).\nKonfirmoni finalizimin e transaksionit?`
+            );
+            if (!ok) {
+              msg.textContent = "Anuluar — mbi 1000€ pa konfirmim";
+              return;
+            }
+            res = await api("/api/fiscal/paper-block/checkout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...base, confirmed_over_1000: true }),
+            });
+          }
+          const p = res.paper || {};
+          msg.textContent =
+            `Bllok letër · ${euro(res.total)} · serik ${p.serial_no || serialNo}` +
+            (p.slip_text ? " · print u nis" : " · ruajtur lokalisht, dërgohet te ATK kur lidhet");
+        } else {
+          const res = await api("/api/recepcion/kasa/pay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(base),
+          });
+          msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+        }
+
         cart = [];
         setPrimaryPay("cash");
         document.getElementById("pay-received").value = "";
         renderCart();
         await loadShift();
+        await refreshPaperBlockKasaUi();
       } catch (e) {
         msg.textContent = e.message || "Gabim";
       }
@@ -1321,6 +1385,8 @@
       try {
         await loadCatalog();
         await loadShift();
+        await refreshPaperBlockKasaUi();
+        setInterval(() => refreshPaperBlockKasaUi().catch(() => {}), 60000);
         setPrimaryPay("cash");
         renderCart();
         renderCategoryNav();
