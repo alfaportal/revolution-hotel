@@ -1,11 +1,10 @@
 /**
  * QR për hotel — Room Service / Menyja / Shërbime (vetëm cloud).
- * Publik: https://revolution-pos.com/hotel/menu/{slug}?room=…
+ * Publik (cloud): https://revolution-pos.com/hotel/guest/room-service.html?room=…
  */
 const QRCode = require("qrcode");
 const {
   isLocalOrPrivateServerUrl,
-  buildPublicMenuUrl,
   buildHotelGuestPublicUrl,
   PUBLIC_HOTEL_ORIGIN,
 } = require("./cloud-server-url");
@@ -59,30 +58,26 @@ function isCloudQrBase(base) {
 function buildHotelQrUrls(base, roomNumber, slug = "") {
   const b = String(base || "").replace(/\/+$/, "");
   const roomRaw = String(roomNumber || "").trim();
-  const roomEnc = encodeURIComponent(roomRaw);
   const venueSlug = String(slug || "").trim();
 
   if (isCloudQrBase(b) && venueSlug) {
-    const tableSeg = roomRaw ? Math.max(1, Number(roomRaw.replace(/\D/g, "")) || 1) : 1;
-    const menuUrl = buildPublicMenuUrl(b, venueSlug, tableSeg);
-    const slugPart = venueSlug ? `&slug=${encodeURIComponent(venueSlug)}` : "";
-    const menuWithRoom = roomRaw ? `${menuUrl}?room=${roomEnc}${slugPart}` : menuUrl;
+    const roomServiceUrl = buildHotelGuestPublicUrl(b, "room-service", roomRaw, venueSlug);
     return {
-      room_service: menuWithRoom,
-      menu: menuWithRoom,
+      room_service: roomServiceUrl,
+      menu: roomServiceUrl,
       services: buildHotelGuestPublicUrl(b, "services", roomRaw, venueSlug),
     };
   }
 
   return {
-    room_service: room
-      ? `${b}/guest/room-service.html?room=${room}`
+    room_service: roomRaw
+      ? `${b}/guest/room-service.html?room=${encodeURIComponent(roomRaw)}`
       : `${b}/guest/room-service.html`,
-    menu: room
-      ? `${b}/guest/menu.html?room=${room}`
+    menu: roomRaw
+      ? `${b}/guest/menu.html?room=${encodeURIComponent(roomRaw)}`
       : `${b}/guest/menu.html`,
-    services: room
-      ? `${b}/guest/services.html?room=${room}`
+    services: roomRaw
+      ? `${b}/guest/services.html?room=${encodeURIComponent(roomRaw)}`
       : `${b}/guest/services.html`,
   };
 }

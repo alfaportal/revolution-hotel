@@ -94,12 +94,12 @@
   }
 
   function renderGuestMenu({ barEl, gridEl, items, categories, onSelect, formatEuro }) {
-    if (!barEl || !gridEl) return;
+    if (!gridEl) return;
     const fmt = typeof formatEuro === "function" ? formatEuro : (n) => Number(n || 0).toFixed(2) + " €";
     const list = Array.isArray(items) ? items.slice() : [];
     const cats = orderedCategories(list, categories);
     if (!cats.length) {
-      barEl.innerHTML = "";
+      if (barEl) barEl.innerHTML = "";
       gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj në menu restoranti.</p>';
       return;
     }
@@ -145,6 +145,7 @@
     }
 
     function buildBar() {
+      if (!barEl) return;
       barEl.innerHTML = "";
       for (const cat of cats) {
         const btn = document.createElement("button");

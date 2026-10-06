@@ -74,6 +74,40 @@ function localeLayoutLabels() {
   };
 }
 
+/** Produkte minibar në menu restoranti — kategori + artikuj me stok (vetëm nëse mungojnë). */
+function ensureMinibarMenuSeed(sqlGet, sqlRun) {
+  const catName = "Minibar";
+  const catRow = sqlGet(
+    "SELECT id FROM categories WHERE lower(trim(name)) = lower(?)",
+    [catName],
+  );
+  if (!catRow) {
+    sqlRun(
+      "INSERT INTO categories (name, sort_order, active, route) VALUES (?, ?, 1, 'bar')",
+      [catName, 45],
+    );
+  }
+  const products = [
+    ["Ujë 0.5L", 1.5, 10],
+    ["Coca-Cola", 2.0, 20],
+    ["Birra", 3.0, 30],
+    ["Çokollatë", 2.5, 40],
+    ["Chips", 2.0, 50],
+  ];
+  for (const [name, price, sort] of products) {
+    const existing = sqlGet(
+      "SELECT id FROM menu_items WHERE lower(trim(name)) = lower(?) AND lower(trim(category)) = lower(?)",
+      [name, catName],
+    );
+    if (existing) continue;
+    sqlRun(
+      `INSERT INTO menu_items (name, category, price, active, sort_order, stock_qty, low_stock_threshold, vat_category)
+       VALUES (?, ?, ?, 1, ?, 24, 4, '18')`,
+      [name, catName, price, sort],
+    );
+  }
+}
+
 /** Katalog default shërbimesh hoteli — shton vetëm emrat që mungojnë (nuk mbishkruan çmimet). */
 function ensureHotelServiceCatalogSeed(sqlGet, sqlRun, sqlAll) {
   let stockPhotoForCategoryName = () => "";
@@ -1393,6 +1427,88 @@ function initSchema() {
   );
 
   runSchemaMigration(
+    "hotel-suppliers-tables",
+    backupCtx,
+    () => !tableExists("suppliers"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS suppliers (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          name       TEXT NOT NULL,
+          phone      TEXT NOT NULL DEFAULT '',
+          email      TEXT NOT NULL DEFAULT '',
+          address    TEXT NOT NULL DEFAULT '',
+          nui        TEXT NOT NULL DEFAULT '',
+          vat_number TEXT NOT NULL DEFAULT '',
+          note       TEXT NOT NULL DEFAULT '',
+          active     INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+      `);
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS supplier_payments (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          supplier_id INTEGER NOT NULL,
+          invoice_id  INTEGER,
+          amount      REAL NOT NULL,
+          paid_at     TEXT NOT NULL,
+          note        TEXT NOT NULL DEFAULT '',
+          created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id)",
+      );
+      const names = sqlAll(
+        "SELECT DISTINCT trim(supplier) AS name FROM purchase_invoices WHERE trim(COALESCE(supplier, '')) <> ''",
+      );
+      for (const row of names) {
+        const n = String(row.name || "").trim();
+        if (!n) continue;
+        const ex = sqlGet(
+          "SELECT id FROM suppliers WHERE lower(trim(name)) = lower(?) LIMIT 1",
+          [n],
+        );
+        if (!ex) {
+          sqlRun("INSERT INTO suppliers (name, active) VALUES (?, 1)", [n]);
+        }
+      }
+    },
+  );
+
+  migrateAddColumns(
+    "purchase-invoices-supplier-id",
+    "purchase_invoices",
+    [["supplier_id", "INTEGER"]],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "hotel-suppliers-link-purchases",
+    backupCtx,
+    () => {
+      if (!tableExists("suppliers") || !tableExists("purchase_invoices")) return false;
+      const piCols = sqlAll("PRAGMA table_info(purchase_invoices)");
+      if (!piCols.some((c) => c.name === "supplier_id")) return false;
+      const row = sqlGet(
+        "SELECT 1 AS n FROM purchase_invoices WHERE supplier_id IS NULL AND trim(COALESCE(supplier, '')) <> '' LIMIT 1",
+      );
+      return !!row;
+    },
+    () => {
+      sqlRun(`
+        UPDATE purchase_invoices
+        SET supplier_id = (
+          SELECT s.id FROM suppliers s
+          WHERE lower(trim(s.name)) = lower(trim(purchase_invoices.supplier))
+        )
+        WHERE supplier_id IS NULL
+      `);
+    },
+  );
+
+  runSchemaMigration(
     "purchase-invoice-items-vat-rate",
     backupCtx,
     () => {
@@ -1474,6 +1590,9 @@ function initSchema() {
 
   try {
     ensureHotelServiceCatalogSeed(sqlGet, sqlRun, sqlAll);
+  } catch (_) { /* */ }
+  try {
+    ensureMinibarMenuSeed(sqlGet, sqlRun);
   } catch (_) { /* */ }
   // FR: rename default Albanian zone/table labels in existing DBs
   try {

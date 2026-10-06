@@ -4229,6 +4229,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
     const payInfo = resolvePaymentFromBody(req.body, expectedTotal);
     const order = db.closeTable(tableId, name, asAdmin, payInfo.payment_method, pricing, {
       allowAnyWaiter: asAdmin,
+      payment_splits: payInfo.payment_splits,
     });
     if (order) {
       const tNum = tableRow?.number || 0;
@@ -4349,6 +4350,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
     const payInfo = resolvePaymentFromBody(req.body, expectedTotal);
     const order = db.closeTable(tableId, waiterName, false, payInfo.payment_method, pricing, {
       allowAnyWaiter: true,
+      payment_splits: payInfo.payment_splits,
     });
     if (!order) {
       return res.status(400).json({ gabim: "Nuk ka porosi aktive për këtë tavolinë." });
@@ -4509,6 +4511,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
     const payInfo = resolvePaymentFromBody(req.body, expectedTotal);
     const result = db.closeTablePartial(tableId, waiterName, payInfo.payment_method, items, pricing, {
       allowAnyWaiter: true,
+      payment_splits: payInfo.payment_splits,
     });
     const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     const fiscalOrderId = result.fiscalOrderId;
@@ -5631,6 +5634,57 @@ app.get("/api/purchases/stats", auth, adminOnly, (_req, res) => {
   res.json(db.getPurchaseStats30Days());
 });
 
+app.get("/api/suppliers", auth, adminOnly, (req, res) => {
+  const activeOnly = req.query.active === "1" || req.query.active === "true";
+  const rows = db.listSuppliersWithBalance(activeOnly);
+  res.json({ ok: true, suppliers: rows });
+});
+
+app.get("/api/suppliers/:id", auth, adminOnly, (req, res) => {
+  try {
+    const row = db.getSupplierBalance(Number(req.params.id));
+    const payments = db.listSupplierPayments(row.id);
+    res.json({ ok: true, supplier: row, payments });
+  } catch (e) {
+    res.status(404).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/suppliers", auth, adminOnly, (req, res) => {
+  try {
+    const supplier = db.upsertSupplier(req.body || {});
+    auditReq(req, "Furnitor", supplier.name);
+    res.json({ ok: true, supplier: db.getSupplierBalance(supplier.id) });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.put("/api/suppliers/:id", auth, adminOnly, (req, res) => {
+  try {
+    const supplier = db.upsertSupplier({ ...(req.body || {}), id: Number(req.params.id) });
+    res.json({ ok: true, supplier: db.getSupplierBalance(supplier.id) });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/suppliers/:id/pay", auth, adminOnly, (req, res) => {
+  try {
+    const supplier = db.addSupplierPayment({
+      supplier_id: Number(req.params.id),
+      invoice_id: req.body?.invoice_id,
+      amount: req.body?.amount,
+      paid_at: req.body?.paid_at,
+      note: req.body?.note,
+    });
+    auditReq(req, "Pagesë furnitori", `${supplier.name} · ${Number(req.body?.amount || 0).toFixed(2)} €`);
+    res.json({ ok: true, supplier, payments: db.listSupplierPayments(supplier.id) });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
 app.get("/api/purchases/export/pdf", auth, adminOnly, (req, res) => {
   const { from, to, supplier } = req.query;
   const invoices = db.listPurchases({ from, to, supplier });
@@ -6336,9 +6390,18 @@ app.get("/api/guest/menu/:id/photo", mapGuestMenuPhoto);
 
 app.get("/api/guest/services/:id/photo", mapGuestServicePhoto);
 
-app.get("/api/guest/menu", (_req, res) => {
+app.get("/api/guest/menu", (req, res) => {
   try {
-    const { items, categories } = buildMenuCatalogPayload(true);
+    let { items, categories } = buildMenuCatalogPayload(true);
+    const categoryFilter = String(req.query.category || "").trim();
+    if (categoryFilter) {
+      const want = categoryFilter.toLowerCase();
+      items = items.filter(
+        (it) => String(it.category || "").trim().toLowerCase() === want,
+      );
+      categories = categories.filter((c) => String(c || "").trim().toLowerCase() === want);
+      if (!categories.length && items.length) categories = [categoryFilter];
+    }
     const settings = db.getSettings();
     res.json({
       ok: true,

@@ -3619,6 +3619,7 @@ function checkOutGuest(roomId, {
       total: paidTotal,
       receipt_number: `CO-${guest.id}`,
       payment_method: method,
+      payment_splits,
       staff_id: logMeta.staff_id,
       shift_id: logMeta.shift_id,
     });
@@ -6914,7 +6915,68 @@ function normalizePaymentMethod(raw, paymentSplits) {
     return v;
   }
   if (["karte", "kartë", "card", "kart"].includes(v)) return "karte";
+  if (["perzier", "përzier", "split"].includes(v)) return "mixed";
   return "cash";
+}
+
+function roundDailyLogMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function isDailyLogCardMethod(method) {
+  const m = String(method || "").trim().toLowerCase();
+  return ["karte", "card", "kart", "kartë", "debit_card", "credit_card"].includes(m);
+}
+
+function isDailyLogCashMethod(method) {
+  const m = String(method || "").trim().toLowerCase();
+  return m === "cash" || m === "para" || m === "";
+}
+
+/** Cash / kartë për daily_log — përputhet me normalizePaymentMethod dhe payment_splits. */
+function resolveDailyLogPaymentSplit(method, total, { payment_splits = null, cash_amount, card_amount } = {}) {
+  const t = roundDailyLogMoney(total);
+  const normalizedMethod = normalizePaymentMethod(method, payment_splits);
+
+  if (cash_amount != null || card_amount != null) {
+    const cash = roundDailyLogMoney(cash_amount ?? 0);
+    const card =
+      card_amount != null && String(card_amount).trim() !== ""
+        ? roundDailyLogMoney(card_amount)
+        : roundDailyLogMoney(t - cash);
+    return { cash_amount: cash, card_amount: card };
+  }
+
+  const isMixed = normalizedMethod === "mixed" || normalizedMethod === "perzier";
+  if (isMixed) {
+    const splits = Array.isArray(payment_splits) ? payment_splits : [];
+    if (splits.length >= 1) {
+      let cash = 0;
+      let card = 0;
+      for (const p of splits) {
+        const splitMethod = normalizePaymentMethod(p.method ?? p.id);
+        const amt = roundDailyLogMoney(p.amount);
+        if (amt <= 0) continue;
+        if (isDailyLogCardMethod(splitMethod)) card += amt;
+        else if (isDailyLogCashMethod(splitMethod)) cash += amt;
+        else cash += amt;
+      }
+      cash = roundDailyLogMoney(cash);
+      card = roundDailyLogMoney(card);
+      const assigned = roundDailyLogMoney(cash + card);
+      if (assigned !== t && splits.length) {
+        if (card > 0 && cash <= 0) cash = roundDailyLogMoney(t - card);
+        else if (cash > 0 && card <= 0) card = roundDailyLogMoney(t - cash);
+        else if (assigned < t) cash = roundDailyLogMoney(cash + (t - assigned));
+      }
+      return { cash_amount: cash, card_amount: card };
+    }
+  }
+
+  if (isDailyLogCardMethod(normalizedMethod)) {
+    return { cash_amount: 0, card_amount: t };
+  }
+  return { cash_amount: t, card_amount: 0 };
 }
 
 function paymentMethodLabel(method) {
@@ -6966,6 +7028,7 @@ function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash"
       total:         finalTotal,
       receipt_number: null,
       payment_method: method,
+      payment_splits: opts.payment_splits,
       staff_id: logMeta.staff_id,
       shift_id: logMeta.shift_id,
       subtotal,
@@ -7046,6 +7109,7 @@ function closeOrderById(orderId, waiterName, isAdmin = false, paymentMethod = "c
       promotion_name: promotionName,
       cloud_sale_id: order.cloud_order_id || null,
       order_id: order.id,
+      payment_splits: opts.payment_splits,
     });
     decrementMenuItemStock(parseOrderItems(order.items_json));
   })();
@@ -7156,6 +7220,7 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
       promotion_name: promotionName,
       cloud_sale_id: order.cloud_order_id || null,
       order_id: fiscalOrderId,
+      payment_splits: opts.payment_splits,
     });
     decrementMenuItemStock(removed);
 
@@ -7416,16 +7481,26 @@ function recordRecepcionKasaSale({
   const lines = Array.isArray(items) ? items : [];
   if (!lines.length) throw new Error("Shporta është bosh.");
   let subtotal = 0;
+  const stockItems = [];
   const logItems = lines.map((it) => {
     const qty = Math.max(1, Number(it.quantity) || 1);
     const price = Math.round((Number(it.price) || 0) * 100) / 100;
     subtotal += price * qty;
-    return {
+    const menuItemId =
+      it.menu_item_id != null && it.menu_item_id !== ""
+        ? Number(it.menu_item_id)
+        : null;
+    const row = {
       service_id: it.service_id != null ? Number(it.service_id) : null,
+      menu_item_id: menuItemId,
       name: String(it.name || "Shërbim"),
       quantity: qty,
       price,
     };
+    if (menuItemId) {
+      stockItems.push({ menu_item_id: menuItemId, name: row.name, quantity: qty });
+    }
+    return row;
   });
   const total = Math.round(subtotal * 100) / 100;
   if (total <= 0) throw new Error("Totali duhet të jetë më i madh se zero.");
@@ -7435,17 +7510,23 @@ function recordRecepcionKasaSale({
       : shiftMetaForWaiter(waiter_name);
   const method = normalizePaymentMethod(payment_method, payment_splits);
   const receipt_number = nextRecepcionKasaReceiptNumber();
-  addDailyLogEntry({
-    table_number: "Recepsion",
-    waiter_name: waiter_name || "Recepsion",
-    items_json: JSON.stringify(logItems),
-    total,
-    receipt_number,
-    payment_method: method,
-    staff_id: meta.staff_id,
-    shift_id: meta.shift_id,
-    subtotal: total,
-  });
+  sqlite.transaction(() => {
+    addDailyLogEntry({
+      table_number: "Recepsion",
+      waiter_name: waiter_name || "Recepsion",
+      items_json: JSON.stringify(logItems),
+      total,
+      receipt_number,
+      payment_method: method,
+      payment_splits,
+      staff_id: meta.staff_id,
+      shift_id: meta.shift_id,
+      subtotal: total,
+    });
+    if (stockItems.length) {
+      decrementMenuItemStock(stockItems);
+    }
+  })();
   return { receipt_number, total, payment_method: method };
 }
 
@@ -7834,14 +7915,26 @@ function attachCloudSaleToWaiterShift(cloudSaleId, waiterName) {
 }
 
 /** Vetëm shitjet e lidhura EKSPLICITISHT me këtë shift_id — asnjë supozim datë/emër. */
+const SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL = `
+      COALESCE(SUM(CASE
+        WHEN payment_method = 'cash' THEN total
+        WHEN payment_method IN ('mixed', 'perzier') THEN COALESCE(cash_amount, 0)
+        WHEN payment_method NOT IN ('karte', 'debit_card', 'credit_card') THEN COALESCE(cash_amount, total)
+        ELSE COALESCE(NULLIF(cash_amount, 0), 0)
+      END), 0) AS cash_total,
+      COALESCE(SUM(CASE
+        WHEN payment_method IN ('karte', 'debit_card', 'credit_card') THEN total
+        WHEN payment_method IN ('mixed', 'perzier') THEN COALESCE(card_amount, 0)
+        ELSE COALESCE(NULLIF(card_amount, 0), 0)
+      END), 0) AS card_total`;
+
 function computeShiftTotals(shiftId, staffId = null, waiterName = null) {
   const sid = Number(shiftId);
   const row = sqlite.prepare(`
     SELECT
       COUNT(*) AS order_count,
       COALESCE(SUM(total), 0) AS total_sales,
-      COALESCE(SUM(CASE WHEN payment_method = 'karte' THEN total ELSE 0 END), 0) AS card_total,
-      COALESCE(SUM(CASE WHEN payment_method != 'karte' THEN total ELSE 0 END), 0) AS cash_total,
+      ${SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL},
       COALESCE(SUM(discount_total), 0) AS discount_total
     FROM daily_log
     WHERE status = 'completed' AND shift_id = ?
@@ -7881,8 +7974,7 @@ function computeOrphanDailyLogTotals(staffId, waiterName = null) {
     SELECT
       COUNT(*) AS order_count,
       COALESCE(SUM(total), 0) AS total_sales,
-      COALESCE(SUM(CASE WHEN payment_method = 'karte' THEN total ELSE 0 END), 0) AS card_total,
-      COALESCE(SUM(CASE WHEN payment_method != 'karte' THEN total ELSE 0 END), 0) AS cash_total,
+      ${SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL},
       COALESCE(SUM(discount_total), 0) AS discount_total
     FROM daily_log
     WHERE shift_id IS NULL AND status = 'completed' AND (${parts.join(" OR ")})
@@ -9041,6 +9133,240 @@ function exportMenuText() {
   return txt;
 }
 
+function mapSupplierRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    name: String(row.name || "").trim(),
+    phone: String(row.phone || "").trim(),
+    email: String(row.email || "").trim(),
+    address: String(row.address || "").trim(),
+    nui: String(row.nui || "").trim(),
+    vat_number: String(row.vat_number || "").trim(),
+    note: String(row.note || "").trim(),
+    active: Number(row.active) ? 1 : 0,
+    created_at: row.created_at || "",
+  };
+}
+
+function listSuppliers(activeOnly = false) {
+  if (!sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='suppliers'").get()) {
+    return [];
+  }
+  const sql = activeOnly
+    ? "SELECT * FROM suppliers WHERE active = 1 ORDER BY lower(name)"
+    : "SELECT * FROM suppliers ORDER BY active DESC, lower(name)";
+  return sqlite.prepare(sql).all().map(mapSupplierRow);
+}
+
+function getSupplier(id) {
+  return mapSupplierRow(sqlite.prepare("SELECT * FROM suppliers WHERE id = ?").get(Number(id)));
+}
+
+function findSupplierByName(name) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return null;
+  return mapSupplierRow(
+    sqlite.prepare("SELECT * FROM suppliers WHERE lower(trim(name)) = ? LIMIT 1").get(n),
+  );
+}
+
+function upsertSupplier({
+  id,
+  name,
+  phone,
+  email,
+  address,
+  nui,
+  vat_number,
+  note,
+  active,
+} = {}) {
+  const nm = String(name || "").trim();
+  if (!nm) throw new Error("Shkruani emrin e furnitorit");
+  const payload = [
+    nm,
+    String(phone || "").trim().slice(0, 64),
+    String(email || "").trim().slice(0, 120),
+    String(address || "").trim().slice(0, 300),
+    String(nui || "").trim().slice(0, 64),
+    String(vat_number || "").trim().slice(0, 64),
+    String(note || "").trim().slice(0, 300),
+    active == null || Number(active) ? 1 : 0,
+  ];
+  const existingId = Number(id) || 0;
+  if (existingId) {
+    const row = getSupplier(existingId);
+    if (!row) throw new Error("Furnitori nuk u gjet");
+    sqlite.prepare(`
+      UPDATE suppliers
+      SET name = ?, phone = ?, email = ?, address = ?, nui = ?, vat_number = ?, note = ?, active = ?
+      WHERE id = ?
+    `).run(...payload, existingId);
+    return getSupplier(existingId);
+  }
+  const clash = findSupplierByName(nm);
+  if (clash) {
+    sqlite.prepare(`
+      UPDATE suppliers
+      SET phone = CASE WHEN trim(?) = '' THEN phone ELSE ? END,
+          email = CASE WHEN trim(?) = '' THEN email ELSE ? END,
+          address = CASE WHEN trim(?) = '' THEN address ELSE ? END,
+          nui = CASE WHEN trim(?) = '' THEN nui ELSE ? END,
+          vat_number = CASE WHEN trim(?) = '' THEN vat_number ELSE ? END,
+          note = CASE WHEN trim(?) = '' THEN note ELSE ? END,
+          active = 1
+      WHERE id = ?
+    `).run(
+      payload[1], payload[1],
+      payload[2], payload[2],
+      payload[3], payload[3],
+      payload[4], payload[4],
+      payload[5], payload[5],
+      payload[6], payload[6],
+      clash.id,
+    );
+    return getSupplier(clash.id);
+  }
+  const r = sqlite.prepare(`
+    INSERT INTO suppliers (name, phone, email, address, nui, vat_number, note, active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(...payload);
+  return getSupplier(r.lastInsertRowid);
+}
+
+function resolveSupplierForPurchase({
+  supplier_id,
+  supplier,
+  supplier_nui,
+  supplier_vat,
+} = {}) {
+  const sid = Number(supplier_id) || 0;
+  if (sid) {
+    const row = getSupplier(sid);
+    if (!row) throw new Error("Furnitori nuk u gjet");
+    const nui = String(supplier_nui || "").trim() || row.nui;
+    const vat = String(supplier_vat || "").trim() || row.vat_number;
+    if ((nui && nui !== row.nui) || (vat && vat !== row.vat_number)) {
+      upsertSupplier({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        email: row.email,
+        address: row.address,
+        nui,
+        vat_number: vat,
+        note: row.note,
+        active: 1,
+      });
+    }
+    return {
+      supplier_id: row.id,
+      supplier: row.name,
+      supplier_nui: nui,
+      supplier_vat: vat,
+    };
+  }
+  const name = String(supplier || "").trim();
+  if (!name) throw new Error("Shkruani emrin e furnizuesit");
+  const saved = upsertSupplier({
+    name,
+    nui: supplier_nui,
+    vat_number: supplier_vat,
+    active: 1,
+  });
+  return {
+    supplier_id: saved.id,
+    supplier: saved.name,
+    supplier_nui: String(supplier_nui || "").trim() || saved.nui,
+    supplier_vat: String(supplier_vat || "").trim() || saved.vat_number,
+  };
+}
+
+function supplierPurchasedTotal(supplierId, supplierName) {
+  const sid = Number(supplierId) || 0;
+  const name = String(supplierName || "").trim().toLowerCase();
+  const row = sqlite.prepare(`
+    SELECT COALESCE(SUM(total), 0) AS n
+    FROM purchase_invoices
+    WHERE status IN ('completed', 'adjustment')
+      AND (
+        ( ? > 0 AND supplier_id = ? )
+        OR ( ? <> '' AND supplier_id IS NULL AND lower(trim(supplier)) = ? )
+      )
+  `).get(sid, sid, name, name);
+  return Math.round((Number(row?.n) || 0) * 100) / 100;
+}
+
+function supplierPaidTotal(supplierId) {
+  const sid = Number(supplierId) || 0;
+  if (!sid) return 0;
+  if (!sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='supplier_payments'").get()) {
+    return 0;
+  }
+  const row = sqlite.prepare(
+    "SELECT COALESCE(SUM(amount), 0) AS n FROM supplier_payments WHERE supplier_id = ?",
+  ).get(sid);
+  return Math.round((Number(row?.n) || 0) * 100) / 100;
+}
+
+function getSupplierBalance(id) {
+  const row = getSupplier(id);
+  if (!row) throw new Error("Furnitori nuk u gjet");
+  const purchased = supplierPurchasedTotal(row.id, row.name);
+  const paid = supplierPaidTotal(row.id);
+  return {
+    ...row,
+    purchased,
+    paid,
+    balance: Math.round((purchased - paid) * 100) / 100,
+  };
+}
+
+function listSuppliersWithBalance(activeOnly = false) {
+  return listSuppliers(activeOnly).map((s) => {
+    const purchased = supplierPurchasedTotal(s.id, s.name);
+    const paid = supplierPaidTotal(s.id);
+    return {
+      ...s,
+      purchased,
+      paid,
+      balance: Math.round((purchased - paid) * 100) / 100,
+    };
+  });
+}
+
+function listSupplierPayments(supplierId) {
+  const sid = Number(supplierId);
+  if (!sid) return [];
+  return sqlite.prepare(`
+    SELECT * FROM supplier_payments WHERE supplier_id = ? ORDER BY paid_at DESC, id DESC
+  `).all(sid).map((r) => ({
+    id: Number(r.id),
+    supplier_id: Number(r.supplier_id),
+    invoice_id: r.invoice_id ? Number(r.invoice_id) : null,
+    amount: Math.round((Number(r.amount) || 0) * 100) / 100,
+    paid_at: String(r.paid_at || "").slice(0, 10),
+    note: String(r.note || ""),
+    created_at: r.created_at || "",
+  }));
+}
+
+function addSupplierPayment({ supplier_id, invoice_id, amount, paid_at, note } = {}) {
+  const sid = Number(supplier_id);
+  if (!sid || !getSupplier(sid)) throw new Error("Furnitori nuk u gjet");
+  const amt = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(amt) || amt <= 0) throw new Error("Shuma e pagesës duhet të jetë > 0");
+  const day = String(paid_at || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("Data e pagesës është e pavlefshme");
+  const invId = Number(invoice_id) || null;
+  sqlite.prepare(`
+    INSERT INTO supplier_payments (supplier_id, invoice_id, amount, paid_at, note)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(sid, invId, amt, day, String(note || "").trim().slice(0, 200));
+  return getSupplierBalance(sid);
+}
+
 function getPurchaseStats30Days() {
   const d = new Date();
   d.setDate(d.getDate() - 29);
@@ -9687,6 +10013,7 @@ function normalizePurchaseKind(v) {
 }
 
 function createPurchaseInvoice({
+  supplier_id,
   supplier,
   invoice_number,
   invoice_date,
@@ -9700,12 +10027,17 @@ function createPurchaseInvoice({
   purchase_kind,
   allow_duplicate,
 } = {}) {
-  const sup = String(supplier || "").trim();
-  if (!sup) throw new Error("Shkruani emrin e furnizuesit");
   const lines = Array.isArray(items) ? items : [];
   if (!lines.length) throw new Error("Shtoni të paktën një artikull");
-  const nuiStored = String(supplier_nui || "").trim().slice(0, 64);
-  const vatIdStored = String(supplier_vat || "").trim().slice(0, 64);
+  const resolved = resolveSupplierForPurchase({
+    supplier_id,
+    supplier,
+    supplier_nui,
+    supplier_vat,
+  });
+  const sup = resolved.supplier;
+  const nuiStored = String(resolved.supplier_nui || "").trim().slice(0, 64);
+  const vatIdStored = String(resolved.supplier_vat || "").trim().slice(0, 64);
   const headerFallbackRate = normalizePurchaseVatRate(vat_rate);
   const kindStored = normalizePurchaseKind(purchase_kind);
 
@@ -9789,9 +10121,9 @@ function createPurchaseInvoice({
         `
       INSERT INTO purchase_invoices (
         supplier, invoice_number, invoice_date, total, status,
-        supplier_nui, supplier_vat, vat_rate, purchase_kind
+        supplier_nui, supplier_vat, vat_rate, purchase_kind, supplier_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run(
@@ -9804,6 +10136,7 @@ function createPurchaseInvoice({
         vatIdStored,
         rateStored,
         kindStored,
+        resolved.supplier_id,
       );
     const invoiceId = r.lastInsertRowid;
     const ins = sqlite.prepare(`
@@ -11267,6 +11600,9 @@ function addDailyLogEntry({
   total,
   receipt_number,
   payment_method = "cash",
+  payment_splits = null,
+  cash_amount: cashOverride,
+  card_amount: cardOverride,
   status = "completed",
   staff_id = null,
   shift_id = null,
@@ -11284,13 +11620,18 @@ function addDailyLogEntry({
     : sqlite.prepare(`
     SELECT date('now','localtime') AS d, time('now','localtime') AS t
   `).get();
-  const method = normalizePaymentMethod(payment_method);
+  const method = normalizePaymentMethod(payment_method, payment_splits);
   const logStatus = status === "cancelled" ? "cancelled" : "completed";
   const gross = subtotal != null ? Number(subtotal) : Number(total);
   const disc = Number(discount_total) || 0;
   const src = inferDailyLogSource(receipt_number);
-  const cashAmt = method === "cash" ? Number(total) || 0 : 0;
-  const cardAmt = method === "card" ? Number(total) || 0 : 0;
+  const split = resolveDailyLogPaymentSplit(method, total, {
+    payment_splits,
+    cash_amount: cashOverride,
+    card_amount: cardOverride,
+  });
+  const cashAmt = split.cash_amount;
+  const cardAmt = split.card_amount;
   const ins = sqlite.prepare(`
     INSERT INTO daily_log (
       date, time, table_number, waiter_name, items_json, total, receipt_number, status,
@@ -12409,6 +12750,13 @@ function getVersionInfo() {
     exportReportText,
     exportMenuText,
     getPurchaseStats30Days,
+    listSuppliers,
+    listSuppliersWithBalance,
+    getSupplier,
+    getSupplierBalance,
+    upsertSupplier,
+    listSupplierPayments,
+    addSupplierPayment,
     listPurchases,
     getPurchaseInvoice,
     findPurchaseInvoiceDuplicate,

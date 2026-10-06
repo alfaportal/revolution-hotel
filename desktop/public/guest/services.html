@@ -10,22 +10,36 @@
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--txt); padding:1rem 1rem 6rem; }
     h1 { font-size:1.35rem; margin:0 0 0.35rem; }
+    h2 { font-size:1.05rem; margin:1.25rem 0 0.5rem; }
     .sub { color:var(--muted); margin:0 0 1rem; font-size:0.9rem; }
     .err { color:#fca5a5; } .ok { color:#86efac; }
+    .nav-links { margin:0 0 1rem; font-size:0.9rem; }
+    .nav-links a { color:var(--acc); font-weight:700; text-decoration:none; }
     .bar { position:fixed; left:0; right:0; bottom:0; background:#111827; border-top:1px solid #334155; padding:0.75rem 1rem; display:flex; gap:0.75rem; align-items:center; z-index:40; }
-    .bar strong { flex:1; }
-    .bar button { background:var(--acc); color:#fff; border:0; border-radius:10px; padding:0.7rem 1rem; font-weight:800; cursor:pointer; }
+    .bar strong { flex:1; font-size:0.85rem; line-height:1.3; }
+    .bar button { background:var(--acc); color:#fff; border:0; border-radius:10px; padding:0.7rem 1rem; font-weight:800; cursor:pointer; white-space:nowrap; }
+    #minibar-shell { margin-bottom:1rem; }
   </style>
 </head>
 <body>
   <h1 id="title">Shërbimet</h1>
   <p class="sub" id="sub">Shërbime hoteli — e njëjta si Admin → Shërbimet</p>
+  <p class="nav-links" id="food-link-wrap" hidden>
+    <a href="#" id="link-room-food">Porosit ushqim (room service)</a>
+  </p>
   <div id="msg" class="sub"></div>
   <div id="menu-shell" class="guest-menu-shell" hidden>
     <div class="menu-group-bar" id="cat-bar"></div>
     <div class="menu-photo-grid" id="svc-grid"></div>
   </div>
   <div id="list">Duke ngarkuar…</div>
+  <div id="minibar-block" hidden>
+    <h2>Minibar</h2>
+    <p class="sub" style="margin-top:0">Produkte në dhomë — shtohen te fatura juaj.</p>
+    <div id="minibar-shell" class="guest-menu-shell">
+      <div class="menu-photo-grid" id="minibar-grid"></div>
+    </div>
+  </div>
   <div class="bar">
     <strong id="cart-label">Shporta: 0.00 €</strong>
     <button type="button" id="btn-send">Porosit</button>
@@ -38,14 +52,34 @@
       const list = document.getElementById("list");
       const shell = document.getElementById("menu-shell");
       const msg = document.getElementById("msg");
-      const cart = G.createCart();
+      const serviceCart = G.createCart();
+      const minibarCart = G.createCart();
+
       document.getElementById("sub").textContent = G.room
-        ? `${G.orderModeLabel()} — menu restoranti (e njëjta si paneli)`
+        ? `${G.orderModeLabel()} — shërbime hoteli (spa, bazen, transport…)`
         : "Skanoni QR-në e dhomës suaj për shërbime hoteli.";
 
+      if (G.room) {
+        const foodWrap = document.getElementById("food-link-wrap");
+        const foodLink = document.getElementById("link-room-food");
+        if (foodWrap && foodLink) {
+          foodWrap.hidden = false;
+          const sq = G.guestSlug() ? `&slug=${encodeURIComponent(G.guestSlug())}` : "";
+          foodLink.href = `room-service.html?room=${encodeURIComponent(G.room)}${sq}`;
+        }
+      }
+
       function refreshCart() {
-        document.getElementById("cart-label").textContent =
-          `Shporta: ${G.fmt(cart.total())} (${cart.count()} shërbime)`;
+        const svcTotal = serviceCart.total();
+        const miniTotal = minibarCart.total();
+        const svcN = serviceCart.count();
+        const miniN = minibarCart.count();
+        const parts = [];
+        if (svcN) parts.push(`${svcN} shërbime · ${G.fmt(svcTotal)}`);
+        if (miniN) parts.push(`${miniN} minibar · ${G.fmt(miniTotal)}`);
+        document.getElementById("cart-label").textContent = parts.length
+          ? parts.join(" + ")
+          : "Shporta: 0.00 €";
       }
 
       function priceLabel(s) {
@@ -60,11 +94,36 @@
           if (val == null) return;
           const p = Number(val);
           if (!Number.isFinite(p) || p < 0) return;
-          cart.add({ ...s, price: p, price_mode: "variable" });
+          serviceCart.add({ ...s, price: p, price_mode: "variable" });
         } else {
-          cart.add(s);
+          serviceCart.add(s);
         }
         refreshCart();
+      }
+
+      async function loadMinibar() {
+        if (!G.room) return;
+        try {
+          const r = await fetch(G.withSlugQuery("/api/guest/menu?category=Minibar"));
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.gabim || "Gabim");
+          const items = d.items || [];
+          if (!items.length) return;
+          document.getElementById("minibar-block").hidden = false;
+          GuestMenuUI.renderGuestMenu({
+            barEl: null,
+            gridEl: document.getElementById("minibar-grid"),
+            items,
+            categories: ["Minibar"],
+            formatEuro: G.fmt,
+            onSelect: (it) => {
+              minibarCart.add(it);
+              refreshCart();
+            },
+          });
+        } catch (e) {
+          console.warn("[minibar]", e.message || e);
+        }
       }
 
       try {
@@ -79,39 +138,50 @@
         document.getElementById("title").textContent = (d.hotel_name || "Hotel") + " — Shërbime";
         const groups = d.groups || [];
         if (!groups.length && !(d.services || []).length) {
-          const hint = d.info ? `<p class="sub">${G.esc(d.info)}</p>` : "";
-          list.innerHTML = `<p class='err'>Nuk ka shërbime.</p>${hint}`;
-          return;
+          list.innerHTML = "<p class='sub'>Nuk ka shërbime të listuara — provoni minibar ose room service.</p>";
+        } else {
+          const normalizedGroups = groups.length
+            ? groups
+            : [{ id: null, name: "Të tjera", services: d.services || [] }];
+          list.hidden = true;
+          shell.hidden = false;
+          GuestMenuUI.renderGuestServices({
+            barEl: document.getElementById("cat-bar"),
+            gridEl: document.getElementById("svc-grid"),
+            groups: normalizedGroups,
+            priceLabel,
+            onAdd: addService,
+          });
         }
-        const normalizedGroups = groups.length
-          ? groups
-          : [{ id: null, name: "Të tjera", services: d.services || [] }];
-        list.hidden = true;
-        shell.hidden = false;
-        GuestMenuUI.renderGuestServices({
-          barEl: document.getElementById("cat-bar"),
-          gridEl: document.getElementById("svc-grid"),
-          groups: normalizedGroups,
-          priceLabel,
-          onAdd: addService,
-        });
+        await loadMinibar();
       } catch (e) {
         list.innerHTML = `<p class="err">${G.esc(e.message || "Gabim")}</p>`;
       }
 
       document.getElementById("btn-send").addEventListener("click", async () => {
         msg.className = "sub";
-        if (cart.isEmpty()) {
+        const hasSvc = !serviceCart.isEmpty();
+        const hasMini = !minibarCart.isEmpty();
+        if (!hasSvc && !hasMini) {
           msg.className = "sub err";
-          msg.textContent = "Shtoni shërbime në shportë.";
+          msg.textContent = "Shtoni shërbime ose produkte minibar.";
           return;
         }
         try {
-          const result = await G.submitServiceCart(cart, {});
-          cart.clear();
+          const notes = [];
+          if (hasSvc) {
+            const result = await G.submitServiceCart(serviceCart, {});
+            serviceCart.clear();
+            notes.push(result.message || "Shërbimet u dërguan.");
+          }
+          if (hasMini) {
+            const result = await G.submitMenuCart(minibarCart, {});
+            minibarCart.clear();
+            notes.push(result.message || "Minibari u shtua te fatura e dhomës.");
+          }
           refreshCart();
           msg.className = "sub ok";
-          msg.textContent = result.message || "Shërbimet u ruajtën.";
+          msg.textContent = notes.join(" ");
         } catch (e) {
           msg.className = "sub err";
           msg.textContent = e.message || "Gabim";
