@@ -755,6 +755,13 @@ if (!gotTheLock) {
         return;
       }
 
+      try {
+        const boot = require(path.join(__dirname, "auto-backup-boot.cjs"));
+        boot.ensureBackupHomeVisible(__dirname, { productName: "HOTEL" });
+      } catch (e) {
+        console.warn("[backup] visible home:", e.message || e);
+      }
+
       global.__hotelAutoRestoreMessage = "";
       try {
         const autoBackup = require(path.join(__dirname, "auto-backup"));
@@ -828,6 +835,51 @@ if (!gotTheLock) {
       }
       httpServer = started.server;
       hotelHttpStarted = started;
+      try {
+        const boot = require(path.join(__dirname, "auto-backup-boot.cjs"));
+        const dbPath = process.env.DB_PATH || database.DB_PATH || "";
+        const fiscalKeysPath = path.join(userData, "fiscal-keys");
+        if (dbPath) {
+          boot.startDesktopAutoBackup(__dirname, {
+            getPersistedBackupDir: () => {
+              try {
+                return String(database.getSetting?.("auto_backup_dir", "") || "").trim();
+              } catch {
+                return "";
+              }
+            },
+            setPersistedBackupDir: (dir) => {
+              try {
+                database.setSetting("auto_backup_dir", String(dir || "").trim());
+              } catch {
+                /* ignore */
+              }
+            },
+            dbPath,
+            fiscalKeysPath,
+            flushSave:
+              typeof database.flushDatabase === "function"
+                ? () => database.flushDatabase()
+                : undefined,
+            getSettingsSnapshot: () => {
+              try {
+                const cs =
+                  typeof database.getCloudSettings === "function"
+                    ? database.getCloudSettings()
+                    : {};
+                return {
+                  restaurant_name: database.getSetting("restaurant_name", ""),
+                  kitchen_slug: cs.kitchen_slug || database.getSetting("kitchen_slug", ""),
+                };
+              } catch {
+                return {};
+              }
+            },
+          });
+        }
+      } catch (e) {
+        console.warn("[backup] main auto-start:", e.message || e);
+      }
       if (global.__hotelAutoRestoreMessage) {
         try {
           dialog.showMessageBoxSync({

@@ -44,7 +44,9 @@ function localizeDefaultLayoutNames() {
   }
 }
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "restaurant.db");
+function getDbPath() {
+  return process.env.DB_PATH || path.join(__dirname, "restaurant.db");
+}
 
 function resolveAsarRoots() {
   const dir = String(__dirname || "");
@@ -90,7 +92,7 @@ whenReady = async () => {
     : path.join(__dirname, "db-engine.js");
   const { bootDatabase } = require(enginePath);
   inlineEngine = await bootDatabase({
-    dbPath: DB_PATH,
+    dbPath: getDbPath(),
     baseDir: roots.unpackedRoot || __dirname,
     resourcesPath: roots.resourcesPath || undefined,
     wasmDir: roots.unpackedRoot
@@ -126,6 +128,11 @@ whenReady = async () => {
     baselineStockReconcileDriftsOnce();
   } catch (e) {
     console.warn("[stock] baseline reconcile:", e.message);
+  }
+  try {
+    migrateStaffPinFourToSixOnce();
+  } catch (e) {
+    console.warn("[migrim-pin] startup:", e.message);
   }
   setTimeout(() => {
     try { ensureHotelServiceStockPhotos(); } catch { /* ignore */ }
@@ -8810,6 +8817,75 @@ function pinInUse(pin, excludeId = null) {
   return !!row;
 }
 
+const STAFF_PIN_MIGRATION_DONE_KEY = "pin_migration_done";
+
+/** Stafi i vjetër 4-shifror → 6 shifra (00 + PIN), një herë në nisje. */
+function migrateStaffPinFourToSixOnce() {
+  if (getSetting(STAFF_PIN_MIGRATION_DONE_KEY, "") === "1") {
+    return { skipped: true, migrated: 0 };
+  }
+  const rows = sqlite.prepare(
+    "SELECT id, name, pin FROM staff WHERE pin IS NOT NULL AND TRIM(pin) != ''",
+  ).all();
+  const fourDigit = (rows || []).filter((r) => /^\d{4}$/.test(String(r.pin || "").trim()));
+  if (!fourDigit.length) {
+    sqlite.prepare(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+    ).run(STAFF_PIN_MIGRATION_DONE_KEY, "1");
+    flushDatabase();
+    return { skipped: false, migrated: 0 };
+  }
+
+  const upd = sqlite.prepare("UPDATE staff SET pin = ? WHERE id = ?");
+  let migrated = 0;
+  const failures = [];
+
+  const pickSixDigitPin = (oldPin, staffId) => {
+    const base = String(oldPin || "").trim();
+    const padded = base.padStart(6, "0");
+    if (!pinInUse(padded, staffId)) return padded;
+    for (let attempt = 0; attempt < 64; attempt++) {
+      const suffix = String(crypto.randomInt(0, 100)).padStart(2, "0");
+      const candidate = `${base}${suffix}`;
+      if (/^\d{6}$/.test(candidate) && !pinInUse(candidate, staffId)) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  sqlite.transaction(() => {
+    for (const row of fourDigit) {
+      const id = Number(row.id);
+      const name = String(row.name || "").trim() || `#${id}`;
+      const oldPin = String(row.pin || "").trim();
+      const newPin = pickSixDigitPin(oldPin, id);
+      if (!newPin) {
+        failures.push({ id, name, oldPin });
+        continue;
+      }
+      upd.run(newPin, id);
+      migrated += 1;
+      console.log(
+        `[migrim-pin] Stafi ${name} (id=${id}): PIN 4→6 shifra (${oldPin} → ${newPin})`,
+      );
+    }
+    if (failures.length) {
+      throw new Error(
+        `PIN migrim: ${failures.length} punonjës pa PIN 6-shifror unik — rregulloni manualisht nga admin.`,
+      );
+    }
+    sqlite.prepare(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+    ).run(STAFF_PIN_MIGRATION_DONE_KEY, "1");
+  })();
+  flushDatabase();
+  if (migrated) {
+    console.log(`[migrim-pin] Përfundoi — ${migrated} punonjës u përditësuan.`);
+  }
+  return { skipped: false, migrated };
+}
+
 function addStaff(name, pin, staffRole = "kamarier") {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Shkruani emrin e kamarierit");
@@ -12496,7 +12572,9 @@ function getVersionInfo() {
 
   module.exports = {
     db,
-    DB_PATH,
+    get DB_PATH() {
+      return getDbPath();
+    },
     whenReady,
     flushDatabase,
     isSetupDone,

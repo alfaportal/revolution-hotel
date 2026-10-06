@@ -1,6 +1,6 @@
 {
   "name": "revolution-hotel",
-  "version": "1.0.655",
+  "version": "1.0.657",
   "description": "Revolution HOTEL — sistem lokal (një Setup, pako 3/4 nga telefoni)",
   "main": "main.js",
   "scripts": {
@@ -82,6 +82,8 @@
       "db-crypto.js",
       "hotel-backup.js",
       "auto-backup.js",
+      "auto-backup-location.cjs",
+      "auto-backup-boot.cjs",
       "auto-backup-restore-gate.js",
       "disk-monitor.js",
       "version-config.js",
@@ -119,6 +121,8 @@
       "db-crypto.js",
       "hotel-backup.js",
       "auto-backup.js",
+      "auto-backup-location.cjs",
+      "auto-backup-boot.cjs",
       "auto-backup-restore-gate.js",
       "disk-monitor.js",
       "printer.js",
