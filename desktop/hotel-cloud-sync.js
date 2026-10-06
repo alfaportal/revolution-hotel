@@ -182,6 +182,66 @@ async function pushReservationsToCloud(db) {
   return postSyncBatch(db, "/api/v1/hotel/reservations/sync", "reservations", reservations);
 }
 
+function mapServiceCategoryToCloud(row) {
+  return {
+    local_category_id: row.id,
+    id: row.id,
+    name: row.name,
+    icon: row.icon || "",
+    photo: row.photo || "",
+    sort_order: row.sort_order ?? 0,
+  };
+}
+
+function mapServiceToCloud(row) {
+  return {
+    local_service_id: row.id,
+    id: row.id,
+    local_category_id: row.category_id,
+    category_id: row.category_id,
+    name: row.name,
+    price: Number(row.price ?? 0) || 0,
+    price_mode: row.price_mode || "fixed",
+    vat_category: row.vat_category || "18",
+    icon: row.icon || "",
+    photo: row.photo || "",
+    sort_order: row.sort_order ?? 0,
+    active: row.active !== 0 && row.active !== false,
+  };
+}
+
+function ensureServicesCatalogReady(db) {
+  try {
+    if (typeof db.ensureHotelServiceStockPhotos === "function") db.ensureHotelServiceStockPhotos();
+    if (typeof db.ensureHotelServiceCategoryPhotos === "function") db.ensureHotelServiceCategoryPhotos();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function pushServiceCategoriesToCloud(db) {
+  if (typeof db.listHotelServiceCategories !== "function") {
+    return { ok: false, skipped: true, upserted: 0 };
+  }
+  ensureServicesCatalogReady(db);
+  const categories = db.listHotelServiceCategories().map(mapServiceCategoryToCloud);
+  return postSyncBatch(
+    db,
+    "/api/v1/hotel/service-categories/sync",
+    "service_categories",
+    categories,
+  );
+}
+
+async function pushServicesToCloud(db) {
+  if (typeof db.listHotelServices !== "function") {
+    return { ok: false, skipped: true, upserted: 0 };
+  }
+  ensureServicesCatalogReady(db);
+  const services = db.listHotelServices({ activeOnly: false }).map(mapServiceToCloud);
+  return postSyncBatch(db, "/api/v1/hotel/services/sync", "services", services);
+}
+
 function upsertRoomFromCloud(db, row) {
   const id = Number(row.local_room_id);
   if (!id) return false;
@@ -402,6 +462,8 @@ async function fullHotelSync(db) {
     charges: await pushChargesToCloud(db),
     housekeeping: await pushHousekeepingToCloud(db),
     reservations: await pushReservationsToCloud(db),
+    service_categories: await pushServiceCategoriesToCloud(db),
+    services: await pushServicesToCloud(db),
   };
 
   const pull = await pullHotelDataFromCloud(db);
@@ -428,6 +490,8 @@ module.exports = {
   pushChargesToCloud,
   pushHousekeepingToCloud,
   pushReservationsToCloud,
+  pushServiceCategoriesToCloud,
+  pushServicesToCloud,
   pullHotelDataFromCloud,
   fullHotelSync,
 };
