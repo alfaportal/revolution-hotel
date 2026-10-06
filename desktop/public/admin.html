@@ -3225,8 +3225,8 @@
             </select>
           </div>
           <div>
-            <label>PIN (4 shifra)</label>
-            <input type="text" id="staf-pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" required>
+            <label>PIN (6 shifra)</label>
+            <input type="text" id="staf-pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required>
           </div>
           <div style="flex:0">
             <label>&nbsp;</label>
@@ -3339,43 +3339,57 @@
       </div>
     </section>
 
-    <!-- AI — panel informues (funksionet aktivizohen me cloud + paketë AI) -->
+    <!-- AI (Pako 3 Premium) — i njëjti layout si KAFENE -->
     <section id="panel-ai" class="panel">
-      <div class="reports-panel-header">
+      <div class="purchases-panel-header">
         <div>
-          <h2 class="reports-panel-title">Asistenti AI</h2>
-          <p class="reports-panel-sub" style="margin:0.25rem 0 0;color:var(--ngjyr-muted);font-size:0.85rem">
-            Skanim, parashikim stoku dhe raporte inteligjente për hotelin
-          </p>
+          <h2 class="purchases-panel-title">AI</h2>
+          <p class="purchases-panel-sub">Pako 3 — Premium: skanim faturash, asistent dhe raporte</p>
         </div>
       </div>
-      <div class="card settings-card">
-        <div class="settings-card-head">
-          <span class="settings-hub-icon settings-hub-icon-cyan">AI</span>
-          <div>
-            <div class="settings-card-title">Statusi i AI</div>
-            <p class="settings-card-desc">Gjendja aktuale e modulit inteligjent</p>
-          </div>
+      <div class="card">
+        <div class="card-title">Kategoritë AI</div>
+        <p id="ai-usage-line">Duke ngarkuar përdorimin e tokenëve…</p>
+        <div class="ai-cat-grid">
+          <button type="button" class="ai-cat-btn" id="btn-receipt-scan-ai" title="Hap Blerjet për skanim fature">
+            <span class="ai-cat-icon" aria-hidden="true">🛒</span>
+            <strong>Skanim Faturash</strong>
+            <span>Hap Blerjet → foto → stok</span>
+          </button>
+          <button type="button" class="ai-cat-btn" id="btn-ai-cat-menu" title="Skano menynë">
+            <span class="ai-cat-icon" aria-hidden="true">🍽️</span>
+            <strong>Skanim Menuje</strong>
+            <span>Import artikujsh nga foto</span>
+          </button>
+          <button type="button" class="ai-cat-btn" id="btn-ai-cat-waiters" data-ai-panel="waiters">
+            <span class="ai-cat-icon" aria-hidden="true">👤</span>
+            <strong>Vlerësim Kamarierësh</strong>
+            <span>Refuzime &amp; rating</span>
+          </button>
+          <button type="button" class="ai-cat-btn" id="btn-ai-cat-stock" data-ai-panel="stock">
+            <span class="ai-cat-icon" aria-hidden="true">📦</span>
+            <strong>Parashikim Stoku</strong>
+            <span>30 ditë + rekomandime</span>
+          </button>
+          <button type="button" class="ai-cat-btn" id="btn-ai-cat-weekly" data-ai-panel="weekly">
+            <span class="ai-cat-icon" aria-hidden="true">📊</span>
+            <strong>Raport Javor</strong>
+            <span>Historiku + email</span>
+          </button>
+          <button type="button" class="ai-cat-btn" id="btn-ai-cat-assistant" data-ai-panel="assistant">
+            <span class="ai-cat-icon" aria-hidden="true">💬</span>
+            <strong>Asistent AI</strong>
+            <span>Chat me kategori</span>
+          </button>
         </div>
-        <div class="ai-panel-status-row">
-          <span id="ai-panel-status-badge" class="ai-status-badge ai-status-off">Joaktiv</span>
-          <span id="ai-panel-status-text" style="font-size:0.9rem;color:var(--ngjyr-muted)">Duke kontrolluar…</span>
-        </div>
-        <p id="ai-panel-cloud-msg" style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--ngjyr-muted)">
-          AI do të aktivizohet kur hoteli të lidhet me cloud.
-        </p>
-        <p id="ai-usage-line" style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--ngjyr-muted)"></p>
       </div>
-      <div class="card settings-card">
-        <div class="settings-card-title">Funksionet AI</div>
-        <p class="settings-card-desc" style="margin-bottom:0.35rem">Kur moduli aktivizohet, disponohen:</p>
-        <ul class="ai-feature-list">
-          <li><strong>Skanim menu</strong> — lexon foto/fletë menuje dhe krijon kategori e artikuj automatikisht.</li>
-          <li><strong>Skanim fature blerjeje</strong> — nxjerr artikuj nga fatura e furnizuesit për stok/blerje.</li>
-          <li><strong>Parashikim stoku</strong> — sugjeron çka të blini bazuar në shitjet dhe stokun aktual.</li>
-          <li><strong>Raport javor</strong> — përmbledhje automatike e shitjeve, stokut dhe trendeve.</li>
-          <li><strong>Asistent</strong> — pyetje në gjuhë natyrore për operacionet e hotelit (ditari, stok, raporte).</li>
-        </ul>
+      <div class="card" id="ai-detail-panel" hidden style="margin-top:1rem">
+        <div class="card-title-row" style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem">
+          <div class="card-title" id="ai-detail-title" style="margin:0">Detaje</div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-ai-detail-close">Mbyll</button>
+        </div>
+        <div id="ai-detail-actions" style="margin:0.75rem 0;display:flex;flex-wrap:wrap;gap:0.5rem"></div>
+        <div id="ai-detail-body" style="font-size:0.9rem;line-height:1.45;white-space:pre-wrap"></div>
       </div>
     </section>
 
@@ -10093,71 +10107,44 @@
     async function applyMenuAiUiState() {
       const scanBtn = document.getElementById("btn-menu-scan-ai");
       const usageLine = document.getElementById("ai-usage-line");
-      const statusBadge = document.getElementById("ai-panel-status-badge");
-      const statusText = document.getElementById("ai-panel-status-text");
-      const cloudMsg = document.getElementById("ai-panel-cloud-msg");
       const cloudDefault = "AI kërkon Cloud + Pako 3 — Premium (pako_3).";
-      let active = false;
       try {
         const data = await api("/api/ai/status");
-        active = !!data.enabled;
+        const active = !!data.enabled;
+        const needsUpgrade = !!data.configured && !data.paused && !data.package_ai;
         if (data.package_ai === true) {
           document.body.classList.add("ai-package-tier");
         }
         document.body.classList.toggle("ai-package-on", active);
-        if (statusBadge) {
-          statusBadge.textContent = active ? "Aktiv" : "Joaktiv";
-          statusBadge.classList.toggle("ai-status-on", active);
-          statusBadge.classList.toggle("ai-status-off", !active);
-        }
         const inactiveMsg =
           data.gabim ||
           (data.package_ai === false
             ? "Pakoja aktuale nuk përfshin AI — te Super Admin zgjidhni «Pako 3 — Premium» (pako_3)."
             : cloudDefault);
-        if (statusText) {
-          statusText.textContent = active
-            ? "Moduli AI është aktiv dhe i gatshëm për përdorim."
-            : inactiveMsg;
-        }
-        if (cloudMsg) {
-          cloudMsg.textContent = active
-            ? "Hoteli është i lidhur me cloud — moduli AI është aktiv."
-            : inactiveMsg;
-        }
-        if (usageLine) {
+        if (scanBtn) {
           if (active) {
-            try {
-              const u = await api("/api/ai/usage");
-              if (u.ok) {
-                usageLine.textContent =
-                  `Tokenë këtë muaj: ${Number(u.tokens_total || 0).toLocaleString("sq-AL")} · ` +
-                  `Kosto: ${Number(u.cost_eur_total || 0).toFixed(4)} € · Thirrje: ${Number(u.calls || 0)}`;
-              } else {
-                usageLine.textContent = u.gabim || "";
-              }
-            } catch {
-              usageLine.textContent = "";
-            }
+            scanBtn.hidden = false;
+            scanBtn.disabled = false;
+            scanBtn.title = "Skano menynë nga foto";
+          } else if (needsUpgrade) {
+            scanBtn.hidden = false;
+            scanBtn.disabled = true;
+            scanBtn.title = "Kërkon Pako 3 — Premium. Kontaktoni administratorin.";
           } else {
-            usageLine.textContent = inactiveMsg;
+            scanBtn.hidden = true;
+            scanBtn.disabled = false;
+            scanBtn.title = "";
           }
+        }
+        if (active) {
+          refreshAiUsageLine().catch(() => {});
+        } else if (usageLine) {
+          usageLine.textContent = inactiveMsg;
         }
       } catch (err) {
         document.body.classList.remove("ai-package-on");
-        if (statusBadge) {
-          statusBadge.textContent = "Joaktiv";
-          statusBadge.classList.add("ai-status-off");
-          statusBadge.classList.remove("ai-status-on");
-        }
-        if (statusText) statusText.textContent = err.message || cloudDefault;
-        if (cloudMsg) cloudMsg.textContent = cloudDefault;
-        if (usageLine) usageLine.textContent = cloudDefault;
-      }
-      if (scanBtn) {
-        scanBtn.hidden = !active;
-        scanBtn.disabled = !active;
-        scanBtn.title = active ? "" : cloudDefault;
+        if (scanBtn) scanBtn.hidden = true;
+        if (usageLine) usageLine.textContent = err.message || cloudDefault;
       }
     }
 
@@ -14489,10 +14476,10 @@
       const input = document.createElement("input");
       input.type="text";
       input.inputMode = "numeric";
-      input.maxLength = 4;
-      input.pattern = "[0-9]{4}";
+      input.maxLength = 6;
+      input.pattern = "[0-9]{6}";
       input.className = "pin-edit-input";
-      input.placeholder = "1234";
+      input.placeholder = "123456";
       cell.textContent = "";
       cell.appendChild(input);
       input.focus();
@@ -14503,9 +14490,9 @@
         if (done) return;
         done = true;
         const pin = input.value.trim();
-        if (!/^\d{4}$/.test(pin)) {
+        if (!/^\d{6}$/.test(pin)) {
           cell.textContent = orig;
-          alert("PIN duhet të jetë 4 shifra");
+          alert("PIN duhet të jetë 6 shifra");
           return;
         }
         try {
@@ -14513,7 +14500,7 @@
             method: "PUT",
             body: JSON.stringify({ pin }),
           });
-          cell.textContent = "••••";
+          cell.textContent = "••••••";
         } catch (err) {
           cell.textContent = orig;
           alert(err.message || "Gabim");
@@ -14536,8 +14523,8 @@
     document.getElementById("forma-staf").addEventListener("submit", async e => {
       e.preventDefault();
       const pin = document.getElementById("staf-pin").value.trim();
-      if (!/^\d{4}$/.test(pin)) {
-        alert("PIN duhet të jetë 4 shifra");
+      if (!/^\d{6}$/.test(pin)) {
+        alert("PIN duhet të jetë 6 shifra");
         return;
       }
       const created = await api("/api/staff", {

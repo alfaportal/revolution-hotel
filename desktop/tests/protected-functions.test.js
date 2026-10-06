@@ -39,7 +39,7 @@ let waiterSeq = 0;
 function openShiftForNewWaiter(prefix) {
   waiterSeq += 1;
   const name = `${prefix}-${waiterSeq}`;
-  const pin = String(1000 + waiterSeq); // unique 4-digit pin per waiter
+  const pin = String(100000 + waiterSeq).padStart(6, "0"); // unique 6-digit pin per waiter
   db.addStaff(name, pin);
   const staff = db.findStaffByName(name);
   db.openWaiterShiftWithCash(staff.id, 0);

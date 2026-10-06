@@ -1087,7 +1087,7 @@ async function pushCatalogAsync(db) {
     const menuItems = Number(parsed.menu_items) || localCount;
     const categories = Number(parsed.categories) || (payload.categories?.length || 0);
     const staffSynced = Number(parsed.staff) || 0;
-    const localStaffWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
+    const localStaffWithPin = (payload.staff || []).filter(s => /^\d{6}$/.test(String(s.pin || ""))).length;
     console.log(`Catalog sync OK — ${menuItems} artikuj, ${categories} kategori, ${staffSynced} kamarierë cloud`);
     if (localStaffWithPin && !staffSynced) {
       console.warn("[cloud] Kujdes: kamarierët me PIN nuk u sinkronizuan te cloud — pranimi i porosive QR dështon.");
@@ -1469,7 +1469,7 @@ async function pushStaffAsync(db) {
     };
   }
   const { cfg, payload } = buildCatalogPayload(db);
-  const localWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
+  const localWithPin = (payload.staff || []).filter(s => /^\d{6}$/.test(String(s.pin || ""))).length;
   if (!localWithPin) {
     return { ok: false, skipped: true, message: "Nuk ka kamarierë me PIN lokalisht." };
   }

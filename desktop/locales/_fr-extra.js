@@ -7,9 +7,9 @@ module.exports = {
 
   /* ── Long / sentence-level strings from _missing-ui.json ─────────────── */
 
-  "Linku shfaqet kur kamarieri ka PIN 4-shifror dhe emri përputhet me cloud-in (sinkronizohet automatikisht).": "Le lien s'affiche quand le serveur a un PIN à 4 chiffres et que le nom correspond au cloud (synchronisé automatiquement).",
+  "Linku shfaqet kur kamarieri ka PIN 6-shifror dhe emri përputhet me cloud-in (sinkronizohet automatikisht).": "Le lien s'affiche quand le serveur a un PIN à 6 chiffres et que le nom correspond au cloud (synchronisé automatiquement).",
   "Pa internet — shfaqen linket e ruajtura më parë (mund të jenë të vjetra).": "Sans internet — les liens enregistrés précédemment s'affichent (peuvent être obsolètes).",
-  "Plotësoni PIN-in (4 shifra) më sipër, pastaj kodin emergjence 6-shifror.": "Saisissez le PIN (4 chiffres) ci-dessus, puis le code d'urgence à 6 chiffres.",
+  "Plotësoni PIN-in (6 shifra) më sipër, pastaj kodin emergjence 6-shifror.": "Saisissez le PIN (6 chiffres) ci-dessus, puis le code d'urgence à 6 chiffres.",
   "[RFID] Skano kartelën u klikua — fusha u fokusua, gati për skanim": "[RFID] Scan carte cliqué — champ focalisé, prêt pour le scan",
   "Nuk u gjet asnjë port COM. Lidhni arkën me USB/serial.": "Aucun port COM trouvé. Connectez la caisse via USB/série.",
   "Modalitet zhvillimi (pa .exe) — licenca anashkalohet.": "Mode développement (sans .exe) — la licence est ignorée.",
@@ -20,7 +20,7 @@ module.exports = {
   "Printimi i pazarit është çaktivizuar nga pronari.": "L'impression du rapport de vacation est désactivée par le propriétaire.",
   "p.sh. Salcë domate, mozzarella, speca, proshutë…": "ex. Sauce tomate, mozzarella, poivrons, jambon…",
   "Tavolina u mbyll — shitja është regjistruar.\\n\\n": "Table clôturée — vente enregistrée.\\n\\n",
-  "Shkruani 4 shifra PIN (ose përdorni tastierën).": "Saisissez le PIN à 4 chiffres (ou utilisez le clavier).",
+  "Shkruani 6 shifra PIN (ose përdorni tastierën).": "Saisissez le PIN à 6 chiffres (ou utilisez le clavier).",
   "Hap dialogun e printimit të Windows (PDF)?\\n\\n": "Ouvrir la boîte de dialogue d'impression Windows (PDF) ?\\n\\n",
   "Kodi RFID duhet të ketë të paktën 4 karaktere": "Le code RFID doit comporter au moins 4 caractères",
   "Tavolina u mbyll dhe shitja u regjistrua.\\n\\n": "Table clôturée et vente enregistrée.\\n\\n",

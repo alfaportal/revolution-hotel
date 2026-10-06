@@ -37,13 +37,18 @@ PA LEJEN KONKRETE dhe DYHERE të Naserit. Pa përjashtim.
 
 ---
 
-## RREGULLI #0 (E PËRJETSHME) — ZERO CLOUD / ZERO INTERNET
-**NDALOHET: Zero Supabase, zero cloud, zero server i jashtëm. Vetëm SQLite lokal. Kjo rregull nuk ndryshohet pa miratimin eksplicit të pronarit.**
+## RREGULLI #0 — Burimi i së vërtetës & cloud (HOTEL desktop)
 
-- Është E NDALUAR lidhja me Supabase, cloud, Railway, revolution-pos.com, ose çdo server të jashtëm.
-- Hoteli (hotel-system / Revolution HOTEL) punon VETËM me SQLite lokal.
-- Mos shto URL, API keys, sync, ose thirrje rrjeti për cloud derisa pronari ta lejojë eksplicitisht me shkrim.
-- Kjo nuk ndryshon «përkohësisht» dhe nuk anashkalohet me env / fallback / «vetëm test».
+**Desktop (Electron / `hotel-system/desktop`):** burimi kryesor operativ mbetet **SQLite lokal** — recepsion, tavolina, stok, fiskalizim LAN, offline-first.
+
+**Cloud aktiv (jo «zero cloud»):** produkti përdor **`revolution-hotel-server`** (Supabase/Railway) dhe URL publike **`https://revolution-pos.com/hotel/...`** (prefix `/hotel`, jo Railway në UI):
+
+- **Licencë / paketa** — heartbeat, tier (`pako_1`–`pako_3`), features.
+- **PMS sync** — `hotel-cloud-sync.js` / relay: dhoma, mysafirë, rezervime, housekeeping (sipas konfigurimit).
+- **Shitje & porosi** — `pushSale`, porosi web/guest/kiosk, sinkronim staf/menu/stok drejt cloud kur master relay është aktiv.
+- **Linka stafi / QR** — `buildHotelStaffLinks`, guest room service (`/api/guest/*` në cloud).
+
+**Rregulla për agjentin:** mos ndrysho URL bridge, secrets, ose skema sync **pa leje dyfishe** (shiko edhe `.cursorrules` §4). Mos shto varësi të reja cloud pa urdhër. Railway / `*.up.railway.app` vetëm backend — klienti sheh `revolution-pos.com/hotel/...`.
 
 ## RREGULLI #1 (KRYESORE) — MBROJTJA ANTI-VJEDHJE
 ASNJËHERË mos thyaj / mos dobëso mbrojtjet: asar, Electron fuses, obfuscation (`npm run build`), DevTools off në prod, `integrity-check`, `security-alert` (njoftime), hardware-lock license, pre-commit + pre-build gates.

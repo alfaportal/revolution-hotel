@@ -14,7 +14,6 @@ const TIER_LABELS = Object.freeze({
 const LEGACY_READ = Object.freeze({
   pako_3: "pako_1",
   pako_4: "pako_2",
-  pako_2: "pako_3",
   pako_5: "pako_3",
   pako_premium: "pako_3",
 });

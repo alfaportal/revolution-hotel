@@ -163,8 +163,10 @@
               </button>
             </div>
             <div class="pin-panel-wrap pin-panel-inline" id="pin-panel">
-              <p class="pin-hint" id="pin-hint-login">Shkruani PIN-in (4 shifra) ose skanoni kartelën RFID</p>
+              <p class="pin-hint" id="pin-hint-login">Shkruani PIN-in (6 shifra) ose skanoni kartelën RFID</p>
               <div class="pin-display" id="pin-display" aria-hidden="true">
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
                 <span class="pin-dot"></span>
                 <span class="pin-dot"></span>
                 <span class="pin-dot"></span>
@@ -652,7 +654,7 @@
         if (emergencyRole === "kamarier") {
           body.staff_id = emergencyStaffId;
           // PIN opsional — vetëm nëse e kanë shkruar ende (jo i detyrueshëm)
-          if (pinValue.length === 4) body.pin = pinValue;
+          if (pinValue.length === 6) body.pin = pinValue;
         }
         const data = await api("/api/login/emergency", {
           method: "POST",
@@ -770,8 +772,8 @@
         if (sub) {
           sub.textContent =
             bound === "recepsion"
-              ? "Terminal recepsioni — shkruani PIN-in (4 shifra)."
-              : "Terminal restorant — shkruani PIN-in (4 shifra).";
+              ? "Terminal recepsioni — shkruani PIN-in (6 shifra)."
+              : "Terminal restorant — shkruani PIN-in (6 shifra).";
         }
       } catch {
         /* ignore */
@@ -801,10 +803,10 @@
       const hint = document.getElementById("pin-hint-login");
       if (hint) {
         hint.textContent = personalStaffName
-          ? `Shkruani PIN-in tuaj (4 shifra) — ${personalStaffName}`
+          ? `Shkruani PIN-in tuaj (6 shifra) — ${personalStaffName}`
           : (mode === "recepsion"
-            ? "Shkruani PIN-in e recepsionit (4 shifra)"
-            : "Shkruani PIN-in tuaj (4 shifra)");
+            ? "Shkruani PIN-in e recepsionit (6 shifra)"
+            : "Shkruani PIN-in tuaj (6 shifra)");
       }
       const venueMark = document.getElementById("brand-venue-mark");
       if (venueMark) venueMark.hidden = false;
@@ -846,7 +848,7 @@
       try {
         const wData = await fetch("/api/login/waiters").then((r) => r.json()).catch(() => ({}));
         const waiters = Array.isArray(wData.waiters) ? wData.waiters : [];
-        const withPin = waiters.filter((x) => String(x.pin || x.pin_code || "").trim().length === 4);
+        const withPin = waiters.filter((x) => String(x.pin || x.pin_code || "").trim().length === 6);
         const roleLabel = selectedPinLoginMode === "recepsion" ? "recepsion" : "kamarierë";
         foot.textContent = `${withPin.length || waiters.length} staf ${roleLabel} me PIN · Prek ekranin një herë për zile/dridhje edhe me telefon të mbyllur`;
         foot.hidden = false;
@@ -1005,7 +1007,7 @@
     }
 
     async function provoPinLogin() {
-      if (pinBusy || pinValue.length !== 4) return;
+      if (pinBusy || pinValue.length !== 6) return;
       pinBusy = true;
       shfaqGabim(gabimEl, "");
       const pinToSend = pinValue;
@@ -1078,10 +1080,10 @@
     }
 
     function shtoShifer(d) {
-      if (pinBusy || pinValue.length >= 4) return;
+      if (pinBusy || pinValue.length >= 6) return;
       pinValue += d;
       perditesoPinDisplay();
-      if (pinValue.length === 4) provoPinLogin();
+      if (pinValue.length === 6) provoPinLogin();
     }
 
     function bindPinActionBtn(id, handler) {
@@ -1097,14 +1099,14 @@
     }
     bindPinActionBtn("pin-pastro", resetPin);
     bindPinActionBtn("pin-hyr", () => {
-      if (pinValue.length === 4) provoPinLogin();
-      else shfaqGabim(gabimEl, "Shkruani 4 shifra PIN (ose përdorni tastierën).");
+      if (pinValue.length === 6) provoPinLogin();
+      else shfaqGabim(gabimEl, "Shkruani 6 shifra PIN (ose përdorni tastierën).");
     });
 
     // Kamarieri fut PIN-in nga tastiera fizike ose skanon kartelën RFID (lexuesit RFID
     // shkruajnë kodin si tastierë, shumë shpejt, e pasuar nga Enter). Të dyja rrugët
     // kalojnë nga ky handler, prandaj grumbullojmë çdo shtypje në kbdBuffer dhe vendosim
-    // në Enter (ose pas një pauze të shkurtër) nëse është PIN 4-shifror apo kod kartele.
+    // në Enter (ose pas një pauze të shkurtër) nëse është PIN 6-shifror apo kod kartele.
     function handleAdminRfidKeydown(e) {
       if (isEmergencyModalOpen() || isAdminPasswordFocused()) return false;
       if (adminCardBusy || pinBusy) return false;
@@ -1154,13 +1156,13 @@
           e.preventDefault();
           e.stopPropagation();
           kbdBuffer += e.key;
-          if (/^\d$/.test(e.key) && pinValue.length < 4) {
+          if (/^\d$/.test(e.key) && pinValue.length < 6) {
             pinValue += e.key;
             perditesoPinDisplay();
           }
           clearTimeout(kbdIdleTimer);
           kbdIdleTimer = setTimeout(() => {
-            if (kbdBuffer.length === 4 && pinValue.length === 4) {
+            if (kbdBuffer.length === 6 && pinValue.length === 6) {
               pastroKbdBuffer();
               provoPinLogin();
             }
@@ -1176,9 +1178,9 @@
           clearTimeout(kbdIdleTimer);
           const buf = kbdBuffer;
           kbdBuffer = "";
-          if (buf.length > 4) {
+          if (buf.length > 6) {
             provoKarteLogin(buf);
-          } else if (pinValue.length === 4) {
+          } else if (pinValue.length === 6) {
             provoPinLogin();
           }
         }
@@ -1288,7 +1290,7 @@
         personalStaffId = data.staff_id;
         personalStaffName = data.name || "";
         if (hint && personalStaffName) {
-          hint.textContent = `Link personal — ${personalStaffName}. Shkruani PIN-in tuaj (4 shifra).`;
+          hint.textContent = `Link personal — ${personalStaffName}. Shkruani PIN-in tuaj (6 shifra).`;
         }
       } catch {
         personalWebToken = "";

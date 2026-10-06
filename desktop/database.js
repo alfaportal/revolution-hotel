@@ -258,7 +258,7 @@ function replaceStaffFromMaster(staffList) {
     if (role !== "kamarier" && role !== "recepsion") continue;
     incoming.set(name, {
       name,
-      pin: /^\d{4}$/.test(pinRaw) ? pinRaw : null,
+      pin: /^\d{6}$/.test(pinRaw) ? pinRaw : null,
       card_uid: card || null,
       active: s.active ? 1 : 0,
       staff_role: role,
@@ -8745,7 +8745,7 @@ function shiftMetaForWaiter(waiterName) {
 
 function validatePin(pin) {
   const p = String(pin ?? "").trim();
-  if (!/^\d{4}$/.test(p)) throw new Error("PIN duhet të jetë 4 shifra");
+  if (!/^\d{6}$/.test(p)) throw new Error("PIN duhet të jetë 6 shifra");
   return p;
 }
 

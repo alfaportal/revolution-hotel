@@ -423,8 +423,8 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     if (!pinTrim) {
       throw Object.assign(new Error("Vendosni PIN-in e kamarierit që e pranon porosinë."), { status: 400 });
     }
-    if (!/^\d{4}$/.test(pinTrim)) {
-      throw Object.assign(new Error("PIN duhet të jetë 4 shifra."), { status: 400 });
+    if (!/^\d{6}$/.test(pinTrim)) {
+      throw Object.assign(new Error("PIN duhet të jetë 6 shifra."), { status: 400 });
     }
     staff = db.findStaffByPin(pinTrim);
     if (!staff) {
@@ -621,8 +621,8 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     if (!pinTrim) {
       throw Object.assign(new Error("Vendosni PIN-in e kamarierit që e refuzon porosinë."), { status: 400 });
     }
-    if (!/^\d{4}$/.test(pinTrim)) {
-      throw Object.assign(new Error("PIN duhet të jetë 4 shifra."), { status: 400 });
+    if (!/^\d{6}$/.test(pinTrim)) {
+      throw Object.assign(new Error("PIN duhet të jetë 6 shifra."), { status: 400 });
     }
     staff = db.findStaffByPin(pinTrim);
     if (!staff) {
@@ -1074,8 +1074,8 @@ function terminalRegisterNumber() {
 }
 
 function isFullPackageTier(tier) {
-  const t = String(tier || "").trim();
-  return t === "pako_3" || t === "pako_5" || t === "pako_premium";
+  const { normalizeHotelTier } = require("./package-tier-map");
+  return normalizeHotelTier(tier) === "pako_3";
 }
 
 function normalizeStaffName(name) {
@@ -1976,7 +1976,7 @@ app.post("/api/login", (req, res) => {
   }
 
   if (roli === "kamarier") {
-    return res.status(400).json({ gabim: "Kamarierët hyjnë vetëm me PIN (4 shifra)" });
+    return res.status(400).json({ gabim: "Kamarierët hyjnë vetëm me PIN (6 shifra)" });
   }
 
   res.status(400).json({ gabim: "Zgjidhni rolin: Admin ose Kamarier" });
@@ -2166,7 +2166,7 @@ app.post("/api/login/emergency", async (req, res) => {
       let staff = staffId ? db.getStaff().find(s => s.id === staffId && s.active) : null;
       if (!staff) {
         const pin = String(req.body.pin || "").trim();
-        if (/^\d{4}$/.test(pin)) {
+        if (/^\d{6}$/.test(pin)) {
           staff = db.findStaffByPin(pin);
         }
       }
@@ -2216,8 +2216,8 @@ app.post("/api/login/pin", async (req, res) => {
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
   const webToken = String(req.body.web_token || req.body.w || "").trim();
   const loginMode = db.normalizeStaffRole(req.body.login_mode || req.body.mode || "kamarier");
-  if (!/^\d{4}$/.test(pin)) {
-    return res.status(400).json({ gabim: "PIN duhet të jetë 4 shifra" });
+  if (!/^\d{6}$/.test(pin)) {
+    return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra" });
   }
   try {
     const staff = db.findStaffByPin(pin);
@@ -2240,7 +2240,7 @@ app.post("/api/login/pin", async (req, res) => {
 
     const sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
     const sess = createSession(sessionRole, staff.name, staff.id);
-    auditActivity(staff.name, sessionRole, "Hyrje PIN", "4 shifra");
+    auditActivity(staff.name, sessionRole, "Hyrje PIN", "6 shifra");
     logFiscalLoginAudit(req, staff.name, staff.id);
 
     return res.json({
@@ -2639,7 +2639,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     const pin = String(req.body?.pin || req.body?.waiter_pin || "").trim();
     let trustedStaff = null;
 
-    if (/^\d{4}$/.test(pin)) {
+    if (/^\d{6}$/.test(pin)) {
       const pinStaff = db.findStaffByPin(pin);
       if (!pinStaff) {
         return res.status(401).json({ ok: false, gabim: "PIN i gabuar!" });
@@ -2654,7 +2654,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
         return res.status(401).json({ ok: false, gabim: "Sesioni i kamarierit nuk u gjet." });
       }
     } else {
-      return res.status(400).json({ ok: false, gabim: "Vendosni PIN-in tuaj (4 shifra)." });
+      return res.status(400).json({ ok: false, gabim: "Vendosni PIN-in tuaj (6 shifra)." });
     }
 
     const fallbackOrders = Array.isArray(req.body?.orders) ? req.body.orders : [];
@@ -2699,7 +2699,7 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
     const pin = String(req.body?.pin || req.body?.waiter_pin || "").trim();
     let trustedStaff = null;
 
-    if (/^\d{4}$/.test(pin)) {
+    if (/^\d{6}$/.test(pin)) {
       const pinStaff = db.findStaffByPin(pin);
       if (!pinStaff) {
         return res.status(401).json({ ok: false, gabim: "PIN i gabuar!" });
@@ -2714,7 +2714,7 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
         return res.status(401).json({ ok: false, gabim: "Sesioni i kamarierit nuk u gjet." });
       }
     } else {
-      return res.status(400).json({ ok: false, gabim: "Vendosni PIN-in tuaj (4 shifra)." });
+      return res.status(400).json({ ok: false, gabim: "Vendosni PIN-in tuaj (6 shifra)." });
     }
 
     const reason = String(req.body?.reason || req.body?.refuse_reason || "").trim();
@@ -5540,8 +5540,8 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
   const { name, pin } = req.body;
   const staff_role = db.normalizeStaffRole(req.body?.staff_role || req.body?.role || "kamarier");
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e kamarierit" });
-  if (!/^\d{4}$/.test(String(pin ?? "").trim())) {
-    return res.status(400).json({ gabim: "PIN duhet të jetë 4 shifra" });
+  if (!/^\d{6}$/.test(String(pin ?? "").trim())) {
+    return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra" });
   }
   try {
     const created = db.addStaff(name, pin, staff_role);
@@ -5557,7 +5557,7 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
 
 app.put("/api/staff/:id/pin", auth, adminOnly, (req, res) => {
   const { pin } = req.body;
-  if (!pin) return res.status(400).json({ gabim: "Shkruani PIN-in (4 shifra)" });
+  if (!pin) return res.status(400).json({ gabim: "Shkruani PIN-in (6 shifra)" });
   try {
     const id = Number(req.params.id);
     db.updateStaffPin(id, pin);
