@@ -1,5 +1,7 @@
 /**
- * fiscal/fiscal-test-coupon-data.js — kupon provë me ≥5 artikuj (testim i brendshëm).
+ * fiscal/fiscal-test-coupon-data.js — Hapi 3: kupon provë me ≥5 artikuj.
+ * Testim i brendshëm i modulit fiskal — PA dërgim HTTP te serveri ATK.
+ * Çmimet dhe sasitë ruhen me 4 presje (Neni 25); printimi vizual mbetet 2 presje.
  */
 const {
   round4,
@@ -13,8 +15,13 @@ const {
 } = require("./fiscal-vat");
 
 const MIN_ATK_TEST_ITEMS = 5;
+/** Alias — e njëjta kufi për testimin e brendshëm */
 const MIN_INTERNAL_TEST_ITEMS = MIN_ATK_TEST_ITEMS;
 
+/**
+ * Katalog i artikujve provë — burim i vetëm për kuponët testues (print + self-test).
+ * Norma D/E, sasi dhe çmime me deri 4 presje.
+ */
 const ATK_TEST_COUPON_CATALOG = Object.freeze([
   { name: "Kafe Espresso", qty: 1.25, unit_price: 1.2345, vat_norm: "D" },
   { name: "Uje mineral 0.5L", qty: 2.5, unit_price: 0.875, vat_norm: "D" },
@@ -23,13 +30,16 @@ const ATK_TEST_COUPON_CATALOG = Object.freeze([
   { name: "Leng portokalli", qty: 3, unit_price: 1.1111, vat_norm: "E" },
 ]);
 
+/** Kontrollon që vlera ka max 4 presje dhjetore (para round4). */
 function assertMaxFourDecimals(value, label) {
   const s = String(value);
   const dot = s.indexOf(".");
   if (dot === -1) return;
   const frac = s.slice(dot + 1);
   if (frac.length > FISCAL_DECIMAL_PLACES) {
-    throw new Error(`${label}: max ${FISCAL_DECIMAL_PLACES} presje, morëm "${s}"`);
+    throw new Error(
+      `${label}: max ${FISCAL_DECIMAL_PLACES} presje, morëm "${s}"`
+    );
   }
 }
 
@@ -57,10 +67,13 @@ function buildTestCouponItem(raw) {
 function assertMinAtkTestItems(items) {
   const n = Array.isArray(items) ? items.length : 0;
   if (n < MIN_ATK_TEST_ITEMS) {
-    throw new Error(`Kupon provë: duhen min ${MIN_ATK_TEST_ITEMS} artikuj, morëm ${n}`);
+    throw new Error(
+      `Kupon provë: duhen min ${MIN_ATK_TEST_ITEMS} artikuj, morëm ${n}`
+    );
   }
 }
 
+/** Validon strukturën e kuponit test (≥5 artikuj unikë, 4 dec, totalet). */
 function validateInternalTestCouponStructure(items) {
   const list = Array.isArray(items) ? items : [];
   assertMinAtkTestItems(list);
@@ -94,10 +107,12 @@ function validateInternalTestCouponStructure(items) {
   };
 }
 
+/** Artikujt normalizuar (4 dec) — printTestFiscalCoupon + self-test. */
 function getAtkTestCouponItems() {
   return ATK_TEST_COUPON_CATALOG.map(buildTestCouponItem);
 }
 
+/** Alias — testim i brendshëm, pa ATK HTTP */
 function getInternalTestCouponItems() {
   return getAtkTestCouponItems();
 }
@@ -132,6 +147,7 @@ function computeAtkTestCouponTotals(items) {
   };
 }
 
+/** 2 presje — për të verifikuar tekstin e printuar (fiscal-print.js). */
 function formatUnitPricePrintCheck(price) {
   const n = Math.round(round4(price) * 100) / 100;
   return n.toFixed(2);
@@ -154,6 +170,10 @@ function buildAtkTestOrderData(opts = {}) {
   };
 }
 
+/**
+ * Paketë e plotë për testim lokal — orderData + fiscalMeta + totalet.
+ * Nuk thërret fiscal-atk-api dhe nuk bën HTTP te ATK.
+ */
 function buildInternalTestCouponBundle(settings = {}, opts = {}) {
   const items = opts.items || getInternalTestCouponItems();
   validateInternalTestCouponStructure(items);
@@ -168,9 +188,9 @@ function buildInternalTestCouponBundle(settings = {}, opts = {}) {
   const fiscalMeta = {
     taxpayer_nui: settings.taxpayer_nui || opts.taxpayer_nui || "123456789",
     taxpayer_name:
-      settings.taxpayer_legal_name || opts.taxpayer_legal_name || "Test Hotel",
+      settings.taxpayer_legal_name || opts.taxpayer_legal_name || "Test Biznes",
     taxpayer_legal_name:
-      settings.taxpayer_legal_name || opts.taxpayer_legal_name || "Test Hotel",
+      settings.taxpayer_legal_name || opts.taxpayer_legal_name || "Test Biznes",
     taxpayer_address: settings.taxpayer_address || opts.taxpayer_address || "Prishtine",
     taxpayer_vat: settings.taxpayer_vat_number || opts.taxpayer_vat || "",
     unit_name: settings.unit_name || opts.unit_name || "Njësia Test",

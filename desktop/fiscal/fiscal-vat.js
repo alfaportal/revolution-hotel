@@ -1,8 +1,8 @@
 /**
  * fiscal/fiscal-vat.js — HAPI 3: normat TVSH me shkronja (A/B/C/D/E).
- * Përdoret VETËM kur isFiscalEnabled()=true. Nuk prek kalkulimet ekzistuese.
+ * Hapi 2: çmimet, sasitë dhe totalet me 4 presje dhjetore (Neni 25 / ATK).
  *
- * Residual rounding (last/largest group): pas rrumbullakimit 2-dec të çdo
+ * Residual rounding (last/largest group): pas rrumbullakimit 4-dec të çdo
  * grupi, kompenson diferencën që shuma e TVSH + Total pa TVSH = Total ekzakt.
  */
 const { isFiscalEnabled } = require("./fiscal-config");
@@ -15,37 +15,17 @@ function netLineAmountSafe(item) {
 /** Valuta fiskale — gjithmonë EUR */
 const CURRENCY = "EUR";
 
-/** Presje dhjetore fiskale (4 dec — ATK / Neni 25) */
+/** Presje dhjetore fiskale (Hapi 2) */
 const FISCAL_DECIMAL_PLACES = 4;
 const FISCAL_DECIMAL_FACTOR = 10000;
 
-function round4(n) {
-  return Math.round((Number(n) || 0) * FISCAL_DECIMAL_FACTOR) / FISCAL_DECIMAL_FACTOR;
-}
-
-function normalizeQty(qty) {
-  const n = round4(Number(qty ?? 1) || 0);
-  return n > 0 ? n : 1;
-}
-
-function normalizeUnitPrice(item) {
-  const price = Number(
-    item?.unit_price ?? item?.unitPrice ?? item?.price ?? item?.cmimi ?? 0
-  );
-  return round4(Number.isFinite(price) ? price : 0);
-}
-
-function lineTotalAmount(qty, unitPrice) {
-  return round4(normalizeQty(qty) * round4(unitPrice));
-}
-
 /** Norma TVSH: shkronjë → përqindje */
 const VAT_RATES = Object.freeze({
-  A: 0, // përjashtuar nga TVSH
-  B: 0, // rezervuar (përdorim i ardhshëm)
-  C: 0, // normë tjetër (përcaktohet nga ATK më vonë)
-  D: 8, // 8% TVSH
-  E: 18, // 18% TVSH
+  A: 0,
+  B: 0,
+  C: 0,
+  D: 8,
+  E: 18,
 });
 
 const VAT_LETTERS = Object.freeze(["A", "B", "C", "D", "E"]);
@@ -56,8 +36,8 @@ function assertFiscalOn() {
   return isFiscalEnabled();
 }
 
-function round2(n) {
-  return Math.round((Number(n) || 0) * 100) / 100;
+function round4(n) {
+  return Math.round((Number(n) || 0) * FISCAL_DECIMAL_FACTOR) / FISCAL_DECIMAL_FACTOR;
 }
 
 /** Rrumbullakim në cent (€0.01) — shpërndarje karroce, ATK line totals. */
@@ -65,18 +45,22 @@ function round2Money(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
-function isZeroDelta(delta) {
-  return Math.abs(Number(delta) || 0) < 0.00005;
+/** Alias për kompatibilitet brenda modulit fiskal — tani = round4. */
+function round2(n) {
+  return round4(n);
 }
 
 function emptyBreakdown() {
   return { A: 0, B: 0, C: 0, D: 0, E: 0 };
 }
 
+function isZeroDelta(delta) {
+  return Math.abs(Number(delta) || 0) < 0.00005;
+}
+
 /**
  * Residual / last-group adjustment: shuma e grupeve të rrumbullakuara
- * barazohet me targetTotal (2 decimale).
- * Preferon grupin me vlerën më të madhe; në barazim — shkronjën e fundit.
+ * barazohet me targetTotal (4 decimale).
  */
 function applyResidualRounding(breakdown, targetTotal) {
   const out = emptyBreakdown();
@@ -111,10 +95,6 @@ function applyResidualRounding(breakdown, targetTotal) {
   return out;
 }
 
-/**
- * Merr përqindjen (0, 8, 18), kthen shkronjën (A, D, E).
- * 0 → A; 8 → D; 18 → E; tjera → C (normë e panjohur / ATK).
- */
 function getVatNormLetter(ratePct) {
   if (!assertFiscalOn()) return null;
   const rate = Number(ratePct);
@@ -125,9 +105,6 @@ function getVatNormLetter(ratePct) {
   return "C";
 }
 
-/**
- * Merr shkronjën (A–E), kthen përqindjen.
- */
 function getVatRate(letter) {
   if (!assertFiscalOn()) return null;
   const key = String(letter || "")
@@ -159,8 +136,22 @@ function resolveItemLetter(item) {
     const letter = getVatNormLetter(rate);
     if (letter) return letter;
   }
-  // Default fiskal: 18% (E) kur mungon norma
   return "E";
+}
+
+function normalizeQty(qty) {
+  return round4(Number(qty ?? 1) || 0);
+}
+
+function normalizeUnitPrice(item) {
+  const price = Number(
+    item?.unit_price ?? item?.unitPrice ?? item?.price ?? item?.cmimi ?? 0
+  );
+  return round4(Number.isFinite(price) ? price : 0);
+}
+
+function lineTotalAmount(qty, unitPrice) {
+  return round4(normalizeQty(qty) * round4(unitPrice));
 }
 
 function lineAmount(item) {
@@ -171,6 +162,7 @@ function lineAmount(item) {
 
 /**
  * Vlera e rreshtit me TVSH pas zbritjes/shtesës së rreshtit dhe pjesës së karrocës.
+ * Ruaj price/unit_price bruto për print — përdor fiscal_line_total ose cart_*_share.
  */
 function lineAmountAfterCart(item) {
   if (!item || typeof item !== "object") return 0;
@@ -187,7 +179,10 @@ function lineAmountAfterCart(item) {
 }
 
 /**
- * Shpërndan zbritjen/shtesën e karrocës proporcionalisht te artikujt (penny rounding në rreshtin e fundit).
+ * Shpërndan zbritjen/shtesën e karrocës proporcionalisht te artikujt.
+ * Secili rresht rrumbullakohet në cent (2 dec); artikulli i fundit merr mbetjen
+ * (penny rounding) që shuma e fiscal_line_total = totali real pas zbritjes.
+ * Nuk ndryshon price/unit_price — shton cart_discount_share, fiscal_line_total.
  */
 function distributeCartAdjustment(items, cartDiscount = 0, cartSurcharge = 0) {
   const list = Array.isArray(items) ? items : [];
@@ -267,9 +262,6 @@ function distributeCartAdjustment(items, cartDiscount = 0, cartSurcharge = 0) {
   return result;
 }
 
-/**
- * Merr listën e artikujve, kthen { A, B, C, D, E } — shuma e rreshtave (turnover/gross) për çdo normë.
- */
 function calculateVatBreakdown(items) {
   if (!assertFiscalOn()) return null;
   const raw = emptyBreakdown();
@@ -288,17 +280,6 @@ function calculateVatBreakdown(items) {
   return applyResidualRounding(rounded, round4(grossTotal));
 }
 
-/**
- * Llogarit tatimin TVSH për grup (jo bazën/turnover).
- * 1) Tatim i saktë për artikull → grumbullo për A–E
- * 2) Rrumbullako çdo grup në 2 decimale
- * 3) Residual te grupi më i madh (ose i fundit) që
- *    sum(TVSH) + Total pa TVSH = Total (ekzakt)
- *
- * @param {Array} items
- * @param {{ totalAmount?: number, totalWithoutTax?: number }} [opts]
- * @returns {{ tax: object, totalTax: number, totalWithoutTax: number, total: number }|null}
- */
 function calculateVatTaxBreakdown(items, opts = {}) {
   if (!assertFiscalOn()) return null;
   let list = Array.isArray(items) ? items : [];
@@ -361,54 +342,59 @@ function calculateVatTaxBreakdown(items, opts = {}) {
   };
 }
 
-/**
- * Gjithmonë 2 presje dhjetore (1.2→"1.20", 3→"3.00").
- * Nuk kthen null — që kuponët të mos rrjedhin me Number.toString() të gjatë.
- */
-function money2(value) {
+/** Format 4 presje — shuma fiskale. */
+function money4(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return "0.00";
-  return (Math.round(n * 100) / 100).toFixed(2);
-}
-
-/**
- * Çmimi për njësi me 4 presje dhjetore (Neni 25) — p.sh. "1.5000".
- * TOTALI mbetet me money2 / formatTotal (2 presje).
- */
-function formatUnitPrice(price) {
-  const n = Number(price);
   if (!Number.isFinite(n)) return "0.0000";
-  return (Math.round(n * 10000) / 10000).toFixed(4);
+  return round4(n).toFixed(FISCAL_DECIMAL_PLACES);
 }
 
-/**
- * Totali me 2 presje dhjetore (p.sh. "1.50").
- */
+/** Alias brenda modulit fiskal — tani 4 presje. */
+function money2(value) {
+  return money4(value);
+}
+
+/** Çmimi për njësi — 4 presje (Neni 25). */
+function formatUnitPrice(price) {
+  return money4(price);
+}
+
+/** Sasia — 4 presje kur nuk është e plotë; e plotë mbetet pa .0000 nëse integer. */
+function formatQty(qty) {
+  const n = normalizeQty(qty);
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(FISCAL_DECIMAL_PLACES);
+}
+
+/** Totali i rreshtit / kuponit — 4 presje. */
 function formatTotal(amount) {
-  return money2(amount);
+  return money4(amount);
 }
 
 module.exports = {
   CURRENCY,
   FISCAL_DECIMAL_PLACES,
+  FISCAL_DECIMAL_FACTOR,
   VAT_RATES,
   VAT_LETTERS,
   EMPTY_BREAKDOWN,
   getVatNormLetter,
   getVatRate,
   resolveItemLetter,
-  round2,
   round4,
+  round2,
+  round2Money,
   normalizeQty,
   normalizeUnitPrice,
   lineTotalAmount,
   lineAmountAfterCart,
   distributeCartAdjustment,
-  round2Money,
   applyResidualRounding,
   calculateVatBreakdown,
   calculateVatTaxBreakdown,
+  money4,
   money2,
   formatUnitPrice,
+  formatQty,
   formatTotal,
 };

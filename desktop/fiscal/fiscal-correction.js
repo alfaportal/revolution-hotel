@@ -11,10 +11,12 @@ const {
 } = require("./fiscal-numbering");
 const { generateFiscalReceipt } = require("./fiscal-print");
 const { syncLanguageFromSettings } = require("./fiscal-i18n");
-const { calculateVatBreakdown, calculateVatTaxBreakdown, round4 } = require("./fiscal-vat");
+const { calculateVatBreakdown, calculateVatTaxBreakdown, round4, lineTotalAmount } = require("./fiscal-vat");
 const { logFiscalAction } = require("./fiscal-audit");
 const { insertFiscalReceipt, getFiscalReceiptById } = require("./fiscal-db");
+const { getFiscalTodayParts } = require("./fiscal-time-sync");
 const { attachChainToFiscalData } = require("./fiscal-hash-chain");
+const { ATK_CORRECTION_REF_ERROR } = require("./atk-model-builder");
 
 const CORRECTION_TYPES = Object.freeze(["cancel", "return", "storno"]);
 const CORRECTABLE_ORIGINAL_TYPES = Object.freeze(["regular", "paper_block"]);
@@ -34,16 +36,7 @@ function assertFiscalOn() {
 }
 
 function todayParts() {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(d.getFullYear());
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return {
-    fiscal_date: `${dd}.${mm}.${yyyy}`,
-    fiscal_time: `${hh}:${mi}`,
-  };
+  return getFiscalTodayParts();
 }
 
 function parseItemsJson(raw) {
@@ -110,6 +103,9 @@ function getRemainingQuantityForItem(originalItem, returnedMap) {
   return Math.max(0, round4(origQty - alreadyReturned));
 }
 
+/**
+ * Artikujt e kuponit origjinal me sasitë e mbetura (pas kthimeve të mëparshme).
+ */
 function getReturnableItemsForReceipt(nuikf) {
   const original = getOriginalReceipt(nuikf);
   if (!original) return null;
@@ -156,6 +152,7 @@ function rowToReceipt(row) {
     receipt_type: row.receipt_type,
     original_nuikf: row.original_nuikf,
     daily_number: row.daily_number,
+    total_number: row.total_number,
     fiscal_date: row.fiscal_date,
     fiscal_time: row.fiscal_time,
     operator_name: row.operator_name,
@@ -305,6 +302,11 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     );
   }
 
+  const origCouponRef = Number(original.total_number) || 0;
+  if (!origCouponRef) {
+    throw new Error(ATK_CORRECTION_REF_ERROR);
+  }
+
   if ((type === "cancel" || type === "storno") && hasCorrection(original.nuikf)) {
     throw new Error("Ky kupon ka tashmë korrigjim — anulimi/storno nuk lejohet përsëri");
   }
@@ -317,7 +319,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     if (!selected.length) {
       throw new Error("Për kthim malli zgjidhni të paktën një artikull");
     }
-    // Validim: sasia ≤ origjinale (sipas emrit+çmimit)
+    const returnedMap = getReturnedQuantitiesByItem(original.nuikf);
     for (const sel of selected) {
       if (sel.quantity <= 0) {
         throw new Error(`Sasia e pavlefshme për: ${sel.name}`);
@@ -330,8 +332,11 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
       if (!match) {
         throw new Error(`Artikulli nuk është në kuponin origjinal: ${sel.name}`);
       }
-      if (sel.quantity > match.quantity + 1e-9) {
-        throw new Error(`Sasia e kthimit tejkalon origjinalin për: ${sel.name}`);
+      const remaining = getRemainingQuantityForItem(match, returnedMap);
+      if (sel.quantity > remaining + 1e-9) {
+        throw new Error(
+          `Sasia e kthimit tejkalon të mbeturën për: ${sel.name} (max ${remaining})`
+        );
       }
     }
     correctionItems = selected;
@@ -341,9 +346,9 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   }
 
   const settings = getFiscalSettings();
-  const subtotal = Math.round(sumItems(correctionItems) * 100) / 100;
+  const subtotal = round4(sumItems(correctionItems));
   const discount = 0;
-  const totalAmount = subtotal;
+  const totalAmount = round4(subtotal);
   const taxResult = calculateVatTaxBreakdown(correctionItems, {
     totalAmount,
   }) || {
@@ -355,8 +360,8 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   const totalTax = Number(taxResult.totalTax) || 0;
   const totalWithoutTax =
     taxResult.totalWithoutTax != null
-      ? Number(taxResult.totalWithoutTax)
-      : Math.round((totalAmount - totalTax) * 100) / 100;
+      ? round4(taxResult.totalWithoutTax)
+      : round4(totalAmount - totalTax);
 
   // turnover breakdown (për referencë); printi përdor vat_breakdown tatim
   try {
@@ -463,6 +468,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     sef_id: sefId,
     receipt_type: type,
     original_nuikf: original.nuikf,
+    correction_reason: reasonText,
     is_offline: false,
     fiscal_date,
     fiscal_time,
@@ -516,6 +522,10 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   };
 }
 
+/**
+ * Tekst i pastër për fushën Arsyeja në kupon korrigjues (ndërrim artikulli).
+ * Shmang karakteret × · → € që printeri termik i shfaq si "?".
+ */
 function buildExchangeCorrectionReason(selectedOld, saleItems) {
   const uniq = (items, key = "name") => {
     const seen = new Set();
@@ -550,7 +560,8 @@ module.exports = {
   getOriginalReceipt,
   hasCorrection,
   getCorrectionHistory,
-  createCorrectionReceipt,
   getReturnableItemsForReceipt,
+  getReturnedQuantitiesByItem,
+  createCorrectionReceipt,
   buildExchangeCorrectionReason,
 };

@@ -132,6 +132,7 @@ function listFiscalReceipts(limit = 500) {
 
 /**
  * Rigjeneron tekstin e kuponit nga rreshti WRITE-ONCE (pa INSERT të ri).
+ * Ruhet NUIKF/SEF/numrat origjinale — nuk thërret generateNUIKF nëse NUIKF është valid.
  */
 function buildFiscalReceiptTextFromRow(row) {
   const items = parseJson(row.items_json, []);
@@ -195,6 +196,10 @@ function buildFiscalReceiptTextFromRow(row) {
   return text;
 }
 
+/**
+ * Shton shënimin e qartë "KOPJE E KUPONIT" (header pas emrit + footer).
+ * Nuk ndryshon NUIKF / përmbajtjen fiskale — vetëm shënimi i kopjes.
+ */
 function markReceiptTextAsCopy(printText) {
   const banner = "^B^CKOPJE E KUPONIT";
   const rule = "^C==============================";
@@ -213,6 +218,9 @@ function markReceiptTextAsCopy(printText) {
   return lines.join("\n");
 }
 
+/**
+ * Teksti i plotë i kuponit (si do printohej), pa printim.
+ */
 function getFiscalReceiptPreview(id) {
   if (!isFiscalEnabled()) return null;
 
@@ -237,6 +245,7 @@ function getFiscalReceiptPreview(id) {
   };
 }
 
+/** Preview + QR PNG (base64) për Print Preview në ekran — pa printim letre. */
 async function getFiscalReceiptPreviewWithQr(id) {
   const preview = getFiscalReceiptPreview(id);
   if (!preview) return null;
@@ -251,12 +260,13 @@ async function getFiscalReceiptPreviewWithQr(id) {
   try {
     const { generateFiscalQR } = require("./fiscal-qr");
     const settings = getFiscalSettings();
-    const qr = await generateFiscalQR({
-      nuikf: preview.nuikf,
-      total_amount: preview.total_amount,
-      fiscal_date: preview.fiscal_date,
-      taxpayer_nui: preview.taxpayer_nui || settings.taxpayer_nui,
-    });
+    const row = loadReceiptRow(id);
+    const qrInput = buildFiscalQrInputFromReceiptRow(row);
+    if (qrInput && !qrInput.taxpayer_nui) {
+      qrInput.taxpayer_nui = settings.taxpayer_nui || "";
+      qrInput.nui = qrInput.taxpayer_nui;
+    }
+    const qr = qrInput ? await generateFiscalQR(qrInput) : null;
     if (qr?.png_base64) {
       out.qr_png_base64 = qr.png_base64;
       out.qr_verify_url = qr.verify_url || null;
@@ -283,6 +293,29 @@ function loadReceiptRow(id) {
   return row;
 }
 
+/** Objekt për generateFiscalQR — i njëjti form si shitja normale (signPayload + total/nui). */
+function buildFiscalQrInputFromReceiptRow(row) {
+  if (!row || typeof row !== "object") return null;
+  const totalAmount = Number(row.total_amount) || 0;
+  const taxpayerNui = String(row.taxpayer_nui || "").trim();
+  return {
+    nuikf: row.nuikf,
+    total_amount: totalAmount,
+    fiscal_date: row.fiscal_date,
+    fiscal_time: row.fiscal_time,
+    taxpayer_nui: taxpayerNui,
+    sef_id: row.sef_id,
+    daily_number: row.daily_number,
+    total_number: row.total_number,
+    receipt_type: row.receipt_type,
+    total: totalAmount,
+    nui: taxpayerNui,
+  };
+}
+
+/**
+ * Reprint i kuponit origjinal (pa shënimin KOPJE) — PA INSERT të ri.
+ */
 function prepareFiscalReceiptReprint(id) {
   const row = loadReceiptRow(id);
   return {
@@ -297,6 +330,9 @@ function prepareFiscalReceiptReprint(id) {
   };
 }
 
+/**
+ * Përgatit kopjen e kuponit për printim — PA INSERT / PA kupon të ri fiskal.
+ */
 function prepareFiscalReceiptCopy(id) {
   const row = loadReceiptRow(id);
   const originalText = buildFiscalReceiptTextFromRow(row);
@@ -317,6 +353,7 @@ module.exports = {
   listFiscalReceipts,
   getFiscalReceiptPreview,
   getFiscalReceiptPreviewWithQr,
+  buildFiscalQrInputFromReceiptRow,
   prepareFiscalReceiptCopy,
   prepareFiscalReceiptReprint,
   markReceiptTextAsCopy,

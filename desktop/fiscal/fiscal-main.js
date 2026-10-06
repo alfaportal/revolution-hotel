@@ -35,18 +35,18 @@ const {
   validateFiscalReceiptInsert,
   getFiscalReceiptById,
 } = require("./fiscal-db");
-const { attachChainToFiscalData } = require("./fiscal-hash-chain");
 const {
   isFiscalMemoryOnly,
   isAtkTransmissionBlocked,
   memGetReceiptBySaleId,
 } = require("./fiscal-test-mode-store");
+const { getFiscalTodayParts, getFiscalNowMs, formatFiscalDateTimeLocal } = require("./fiscal-time-sync");
+const { attachChainToFiscalData } = require("./fiscal-hash-chain");
 const {
-  getFiscalTodayParts,
-  getFiscalNowMs,
-  formatFiscalDateTimeLocal,
-  syncClockFromNetwork,
-} = require("./fiscal-time-sync");
+  getAtkTestCouponItems,
+  computeAtkTestCouponTotals,
+  validateInternalTestCouponStructure,
+} = require("./fiscal-test-coupon-data");
 
 /** ATK ktheu HTTP error (4xx/5xx) — operatori e sheh; kuponi printohet me QR + OFFLINE (Neni 28). */
 const ATK_REFUSED_PRINT_MSG =
@@ -58,6 +58,7 @@ function isAtkHttpError(sendResult) {
   return Number.isFinite(status) && status >= 400;
 }
 
+/** Rregjeneron tekstin e kuponit me banner OFFLINE për print pas dështimit ATK. */
 function applyOfflinePrintBanner(orderData, fiscalData) {
   fiscalData.is_offline = true;
   fiscalData.print_offline_banner = true;
@@ -86,18 +87,6 @@ function getSqlite() {
 
 function getDbApi() {
   return require("../database");
-}
-
-function tryBackfillDailyLogReceipt(orderId, { nuikf, fiscal_receipt_id } = {}) {
-  try {
-    const dbApi = getDbApi();
-    if (typeof dbApi.backfillDailyLogReceiptForOrder === "function") {
-      return dbApi.backfillDailyLogReceiptForOrder(orderId, { nuikf, fiscal_receipt_id });
-    }
-  } catch (e) {
-    console.warn("[fiscal-main] daily_log backfill:", e.message);
-  }
-  return { updated: 0 };
 }
 
 /** addon = kupon normal + fiskal; replace = vetëm fiskal (default). */
@@ -158,26 +147,44 @@ function parseItems(raw) {
   }
 }
 
+function normalizeDiscountMeta(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const type = String(raw.type || "")
+    .trim()
+    .toLowerCase();
+  const value = Number(raw.value);
+  if (!type || type === "none" || !Number.isFinite(value) || value <= 0) return null;
+  return { type, value };
+}
+
+function pickLineDiscountMeta(item) {
+  if (!item || typeof item !== "object") return null;
+  const fromObj = normalizeDiscountMeta(item.line_discount);
+  if (fromObj) return fromObj;
+  return normalizeDiscountMeta({
+    type: item.discount_type,
+    value: item.discount_value,
+  });
+}
+
+function pickLineSurchargeMeta(item) {
+  if (!item || typeof item !== "object") return null;
+  const fromObj = normalizeDiscountMeta(item.line_surcharge);
+  if (fromObj) return fromObj;
+  return normalizeDiscountMeta({
+    type: item.surcharge_type,
+    value: item.surcharge_value,
+  });
+}
+
 function parseOrderPayload(raw) {
   if (Array.isArray(raw)) {
-    return {
-      items: raw,
-      cart_surcharge_amount: 0,
-      cart_discount_amount: 0,
-      cart_discount: null,
-      payment_splits: [],
-    };
+    return { items: raw, cart_surcharge_amount: 0, cart_discount_amount: 0, cart_discount: null, payment_splits: [] };
   }
   try {
     const p = typeof raw === "string" ? JSON.parse(raw || "{}") : raw || {};
     if (Array.isArray(p)) {
-      return {
-        items: p,
-        cart_surcharge_amount: 0,
-        cart_discount_amount: 0,
-        cart_discount: null,
-        payment_splits: [],
-      };
+      return { items: p, cart_surcharge_amount: 0, cart_discount_amount: 0, cart_discount: null, payment_splits: [] };
     }
     return {
       items: Array.isArray(p.items) ? p.items : [],
@@ -187,13 +194,7 @@ function parseOrderPayload(raw) {
       payment_splits: Array.isArray(p.payment_splits) ? p.payment_splits : [],
     };
   } catch {
-    return {
-      items: [],
-      cart_surcharge_amount: 0,
-      cart_discount_amount: 0,
-      cart_discount: null,
-      payment_splits: [],
-    };
+    return { items: [], cart_surcharge_amount: 0, cart_discount_amount: 0, cart_discount: null, payment_splits: [] };
   }
 }
 
@@ -225,36 +226,6 @@ function resolveItemVatNorm(item, vatByMenuId) {
   }
 
   return "E";
-}
-
-function normalizeDiscountMeta(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  const type = String(raw.type || "")
-    .trim()
-    .toLowerCase();
-  const value = Number(raw.value);
-  if (!type || type === "none" || !Number.isFinite(value) || value <= 0) return null;
-  return { type, value };
-}
-
-function pickLineDiscountMeta(item) {
-  if (!item || typeof item !== "object") return null;
-  const fromObj = normalizeDiscountMeta(item.line_discount);
-  if (fromObj) return fromObj;
-  return normalizeDiscountMeta({
-    type: item.discount_type,
-    value: item.discount_value,
-  });
-}
-
-function pickLineSurchargeMeta(item) {
-  if (!item || typeof item !== "object") return null;
-  const fromObj = normalizeDiscountMeta(item.line_surcharge);
-  if (fromObj) return fromObj;
-  return normalizeDiscountMeta({
-    type: item.surcharge_type,
-    value: item.surcharge_value,
-  });
 }
 
 function loadMenuVatMap(items) {
@@ -304,6 +275,8 @@ function normalizeItems(items) {
     const unitPrice = normalizeUnitPrice(item);
     const lineDiscMeta = pickLineDiscountMeta(item);
     const lineSurMeta = pickLineSurchargeMeta(item);
+    const { resolveItemUnitCategory } = require("./fiscal-item-meta");
+    const meta = resolveItemUnitCategory(item, { authoritativeDb: true });
     const normalized = {
       name: String(item.name || item.emri || "-").trim(),
       quantity: qty,
@@ -319,7 +292,10 @@ function normalizeItems(items) {
       vat_category: String(rate),
       vat_rate: rate,
       vat_percent: rate,
-      menu_item_id: item.menu_item_id ?? null,
+      menu_item_id: item.menu_item_id ?? item.product_id ?? null,
+      product_id: item.product_id ?? item.menu_item_id ?? null,
+      unit_code: meta.unit_code,
+      category_code: meta.category_code,
     };
     if (lineDiscMeta) normalized.line_discount = lineDiscMeta;
     if (lineSurMeta) normalized.line_surcharge = lineSurMeta;
@@ -349,6 +325,24 @@ function taxFromBreakdown(items, turnoverBreak, opts = {}) {
 /** Shmang printimin dyfish brenda 5 s (recovery + checkout). */
 let lastFiscalPrintKey = "";
 let lastFiscalPrintAt = 0;
+
+/** e-kuponi — poshtë logos RKS/MF (jo në fund të tekstit para QR). */
+function buildEkuponiEscPosAfterLogo(db) {
+  const { resolvePrintWidth } = require("./fiscal-print");
+  const { t, syncLanguageFromSettings } = require("./fiscal-i18n");
+  const { pad, prepareCp1252Text, encodeCp1252 } = require("../receipt-text");
+  syncLanguageFromSettings(db.getSetting("language", "sq"));
+  const w = resolvePrintWidth();
+  const line = prepareCp1252Text(pad(t("e_kuponi"), w, "center"));
+  return Buffer.concat([
+    Buffer.from([0x1b, 0x4d, 0x00]),
+    Buffer.from([0x1d, 0x21, 0x00]),
+    Buffer.from([0x1b, 0x61, 0x01]),
+    encodeCp1252(line),
+    Buffer.from("\n", "ascii"),
+    Buffer.from([0x1b, 0x61, 0x00]),
+  ]);
+}
 
 async function printFiscalBundle(printText, qrResult, printOpts = {}) {
   const printer = require("../printer");
@@ -384,9 +378,12 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
       lastFiscalPrintAt = now;
     }
 
+    const { normalizePrintDensity } = require("../receipt-text");
+    const printDensity = normalizePrintDensity(database.getSetting("printer_density", "10"));
+
     let logo = null;
     try {
-      logo = getFiscalLogoForPrint();
+      logo = getFiscalLogoForPrint({ printDensity });
     } catch (e) {
       console.warn("[fiscal-main] Logo:", e.message);
     }
@@ -396,6 +393,7 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
     );
     const logoAttached = !!(logo && logo.buffer && logo.buffer.length);
 
+    // Rikuperimi pas mungesës së rrymës: lejo print edhe nëse QR mungon në retry
     const guard = validateReceiptBeforePrint(printText, {
       qrAttached: isRecovery ? true : qrAttached,
       logoAttached: isRecovery ? true : logoAttached,
@@ -417,6 +415,7 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
           /* */
         }
       }
+      // ASNJË fallback print — formati i pavlefshëm nuk del në printer
       return {
         printed: false,
         printMessage: printMsg,
@@ -426,41 +425,51 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
     const tysso = await printer.isTyssoReceiptPrinter(database);
 
     let textForPrint = printText;
+    // QR printohet veç si binary (raster i qendruar) — ASCII vetëm nëse nuk ka QR binary
     if (tysso && qrResult?.ascii && !qrAttached) {
       textForPrint = `${printText}\n${String(qrResult.ascii).trim()}\n`;
     }
 
-    const textBuf = buildEscPosFromPlainText(textForPrint, tysso
-      ? { cut: false, keepAlbanian: true, dark: false, fiscalEmphasized: false }
-      : {
-          cut: false,
-          dark: true,
-          fiscalEmphasized: true,
-          allowDoubleSize: false,
-          keepAlbanian: true,
-        });
+    // Tekst kupon — print i lehtë (pa double-strike / bold të rëndë); QR+logo veç.
+    const printerName = database.getSetting("printer_name", "") || "";
+    const textBuf = buildEscPosFromPlainText(textForPrint, {
+      cut: false,
+      keepAlbanian: true,
+      dark: false,
+      fiscalEmphasized: false,
+      lightPrint: true,
+      allowDoubleSize: false,
+      fiscalFontA1: true,
+      printDensity,
+      printerName,
+    });
     const parts = [textBuf];
 
     if (qrAttached) {
       try {
-        const { buildFiscalQrEscPosBuffer } = require("./fiscal-qr");
-        const qrBuf = buildFiscalQrEscPosBuffer(qrResult, { moduleSize: tysso ? 3 : 4 });
-        if (qrBuf && qrBuf.length) parts.push(qrBuf);
+        const { buildFiscalQrEscPosBuffer, getFiscalQrPrintOpts } = require("./fiscal-qr");
+        const qrBuf = buildFiscalQrEscPosBuffer(
+          qrResult,
+          getFiscalQrPrintOpts({ printDensity }),
+        );
+        if (qrBuf && qrBuf.length) {
+          console.log('[QR-DEBUG] qrBuf length:', qrBuf.length, 'bytes');
+          parts.push(qrBuf);
+        } else {
+          console.error('[QR-DEBUG] qrBuf is NULL or EMPTY — QR nuk printohet!');
+        }
       } catch (e) {
         console.warn("[fiscal-main] QR print:", e.message);
       }
     }
 
-    if (logoAttached) {
+    // Logo RKS/MF — bitmap ESC/POS (160×80) si kërkesa ATK
+    if (logoAttached && logo?.buffer?.length) {
+      if (qrAttached) {
+        parts.push(Buffer.from([0x1b, 0x64, 0x01]));
+      }
       parts.push(logo.buffer);
-    }
-
-    try {
-      const { resolvePrintWidth, divider } = require("./fiscal-print");
-      const w = resolvePrintWidth();
-      parts.push(Buffer.from(`\n${divider("=", w)}\n`, "ascii"));
-    } catch {
-      parts.push(Buffer.from("\n==========================================\n", "ascii"));
+      parts.push(buildEkuponiEscPosAfterLogo(database));
     }
 
     let full = Buffer.concat(parts);
@@ -472,8 +481,122 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
     printMethod = send?.method || send?.output || "";
   } catch (e) {
     printMessage = e.message || "Printimi fiskal dështoi";
+    // Pa fallback plain-text — ruaj ESC/POS + guard (Rregulli #15)
   }
   return { printed, printMessage, printMethod };
+}
+
+/**
+ * Printim Raporti X / Z / periodik — i njëjti fund si kuponi fiskal:
+ * tekst ESC/POS → QR (CitizenCoupon + ECDSA) → logo RKS/MF → vijë mbyllëse → cut.
+ */
+async function printFiscalReportText(printText, printOpts = {}) {
+  const printer = require("../printer");
+  const database = require("../database");
+  const {
+    buildEscPosFromPlainText,
+    appendEscPosCut,
+    bufferHasEscPosCut,
+  } = require("../receipt-text");
+  const { getFiscalLogoForPrint } = require("./fiscal-logo");
+  const {
+    buildFiscalQrEscPosBuffer,
+    generateFiscalReportQR,
+    getFiscalQrPrintOpts,
+  } = require("./fiscal-qr");
+
+  let printed = false;
+  let printMessage = "";
+  const station = printOpts.station || "bar";
+  try {
+    if (!printText) {
+      return { printed: false, printMessage: "Teksti i raportit fiskal është bosh" };
+    }
+
+    let qrResult = printOpts.qrResult || null;
+    if (!qrResult && printOpts.reportDetails) {
+      try {
+        qrResult = await generateFiscalReportQR(printOpts.reportDetails, {
+          reportMode: printOpts.reportMode || printOpts.reportDetails.mode,
+          operatorId: printOpts.operatorId || "POS",
+        });
+      } catch (e) {
+        console.warn("[fiscal-main] QR raport:", e.message);
+      }
+    }
+
+    const { normalizePrintDensity } = require("../receipt-text");
+    const printDensity = normalizePrintDensity(database.getSetting("printer_density", "10"));
+
+    let logo = null;
+    try {
+      logo = getFiscalLogoForPrint({ printDensity });
+    } catch (e) {
+      console.warn("[fiscal-main] Logo raport:", e.message);
+    }
+    const logoAttached = !!(logo && logo.buffer && logo.buffer.length);
+    const qrAttached = !!(
+      qrResult &&
+      (qrResult.escpos_base64 || qrResult.payload || qrResult.png_base64 || qrResult.png_buffer)
+    );
+
+    const printerName = database.getSetting("printer_name", "") || "";
+    const textBuf = buildEscPosFromPlainText(printText, {
+      cut: false,
+      keepAlbanian: true,
+      dark: false,
+      fiscalEmphasized: false,
+      lightPrint: true,
+      allowDoubleSize: false,
+      fiscalFontA1: true,
+      printDensity,
+      printerName,
+    });
+    const parts = [textBuf];
+
+    if (qrAttached) {
+      try {
+        const qrBuf = buildFiscalQrEscPosBuffer(
+          qrResult,
+          getFiscalQrPrintOpts({ printDensity }),
+        );
+        if (qrBuf && qrBuf.length) parts.push(qrBuf);
+      } catch (e) {
+        console.warn("[fiscal-main] QR raport print:", e.message);
+      }
+    }
+
+    // Logo RKS/MF — bitmap ESC/POS (160×80), poshtë QR-së
+    if (logoAttached && logo?.buffer?.length) {
+      if (qrAttached) {
+        parts.push(Buffer.from([0x1b, 0x64, 0x01]));
+      }
+      parts.push(logo.buffer);
+      parts.push(buildEkuponiEscPosAfterLogo(database));
+    }
+
+    let full = Buffer.concat(parts);
+    if (!bufferHasEscPosCut(full)) {
+      full = appendEscPosCut(full);
+    }
+    const { printerName: receiptPrinter, paper } = await printer.ensureReceiptPrinter(
+      database,
+      station,
+    );
+    await printer.printEscPosReceiptAt(full.toString("base64"), database, station);
+    printed = true;
+    return {
+      printed: true,
+      printMessage: "",
+      printer: receiptPrinter,
+      paper,
+      output: "escpos-fiscal-report",
+      station,
+    };
+  } catch (e) {
+    printMessage = e.message || "Printimi i raportit fiskal dështoi";
+  }
+  return { printed, printMessage };
 }
 
 function insertOnlineReceipt(row) {
@@ -563,7 +686,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   const order = sqlite.prepare(`SELECT * FROM orders WHERE id = ?`).get(id);
   if (!order) throw new Error("Porosia nuk u gjet");
 
-  // Idempotencë: mos krijo kupon të dytë për të njëjtën porosi (retry/double-submit)
+  // Idempotencë: mos krijo kupon të dytë — por rifillo printimin nëse pending i hapur
   if (Number(order.is_fiscalized) === 1 && order.fiscal_receipt_id && !memoryOnly) {
     const existing = sqlite
       .prepare(`SELECT id, nuikf, sef_id, daily_number FROM fiscal_receipts WHERE id = ?`)
@@ -589,10 +712,6 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
           const resumed = await recovery.resumePendingPrint(pending, {
             skip_print: !!opts.skip_print,
           });
-          tryBackfillDailyLogReceipt(id, {
-            nuikf: existing.nuikf,
-            fiscal_receipt_id: existing.id,
-          });
           return {
             ok: true,
             already_fiscalized: true,
@@ -609,10 +728,6 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       } catch (re) {
         console.warn("[fiscal-main] recovery resume:", re.message);
       }
-      tryBackfillDailyLogReceipt(id, {
-        nuikf: existing.nuikf,
-        fiscal_receipt_id: existing.id,
-      });
       return {
         ok: true,
         already_fiscalized: true,
@@ -630,7 +745,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     const memExisting = memGetReceiptBySaleId(id);
     if (memExisting) {
       console.log(
-        "[fiscal-main] FISCAL_MEMORY_ONLY — kupon in-memory ekziston për orderId=",
+        "[fiscal-main] TEST_MODE — kupon in-memory ekziston për orderId=",
         id,
         "nuikf=",
         memExisting.nuikf
@@ -638,13 +753,14 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       return {
         ok: true,
         already_fiscalized: true,
+        atk_test_mode: true,
         fiscal_local: true,
         fiscal_receipt_id: memExisting.id,
         nuikf: memExisting.nuikf,
         sef_id: memExisting.sef_id,
         daily_number: memExisting.daily_number,
         printed: false,
-        printMessage: "FISCAL_MEMORY_ONLY — kuponi mbetet vetëm në memorie (session)",
+        printMessage: "ATK TEST_MODE — kuponi mbetet vetëm në memorie (session)",
       };
     }
   }
@@ -720,6 +836,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     paymentSplits = [{ method: payment, amount: totalAmount }];
   }
 
+  // Zbritje/shtesë karroce → shpërndarje proporcionale; TVSH nga çmimet pas zbritjes
   const fiscalItems = distributeCartAdjustment(items, discount, surcharge);
 
   const turnoverBreak = calculateVatBreakdown(fiscalItems) || {
@@ -736,14 +853,9 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   const totalTax = Number(taxResult.totalTax) || 0;
   const totalWithoutTax =
     taxResult.totalWithoutTax != null
-      ? Number(taxResult.totalWithoutTax)
-      : Math.round((totalAmount - totalTax) * 100) / 100;
+      ? round4(taxResult.totalWithoutTax)
+      : round4(totalAmount - totalTax);
 
-  try {
-    await syncClockFromNetwork();
-  } catch (e) {
-    console.warn("[fiscal-main] time sync:", e.message);
-  }
   const { fiscal_date, fiscal_time } = todayParts();
   const taxpayerNui =
     settings.taxpayer_nui || settings.developer_nui || "";
@@ -842,7 +954,9 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   let atkError = "";
   let atkAuto = false;
   let atkTestMode = atkBlocked;
+  /** ATK dështoi — print me banner OFFLINE + radhë ridërgimi (Neni 28). */
   let atkAllowRetryPrint = false;
+  /** Vetëm për mesazh operatori (HTTP 4xx/5xx) — nuk bllokon printin. */
   let atkRefused = false;
 
   const qrPayload = JSON.stringify({
@@ -1026,11 +1140,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     );
   }
 
-  tryBackfillDailyLogReceipt(id, {
-    nuikf,
-    fiscal_receipt_id: fiscalReceiptId,
-  });
-
+  // Checkpoint: kuponi u krijua — nëse ndërpritet printimi, rifillohet pa INSERT të ri
   try {
     if (pendingId && printText) {
       recovery.markCouponReady(pendingId, {
@@ -1043,6 +1153,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
     console.warn("[fiscal-main] markCouponReady:", e.message);
   }
 
+  // ATK para printimit — dërgo kur i lidhur (atk_send_allowed=1); pa varet nga auto-send.
   if (!isOffline && !atkBlocked && fiscalReceiptId && !memoryOnly) {
     const { sendReceiptToAtk } = require("./fiscal-offline");
     try {
@@ -1170,8 +1281,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   } else if (!opts.skip_print && isOffline && hasInternet) {
     printResult = {
       printed: false,
-      printMessage:
-        "Kuponi në radhë — ATK i paarritshëm (ka internet, pa printim offline).",
+      printMessage: "Kuponi në radhë — ATK i paarritshëm (ka internet, pa printim offline).",
     };
   }
 
@@ -1282,7 +1392,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
 }
 
 /**
- * Kupon fiskal provë (dummy) — printon në printer termik, pa INSERT në DB.
+ * Kupon fiskal provë (dummy) — printon në printer termik, pa INSERT në DB, pa HTTP te ATK.
  * Vetëm kur fiscal ON.
  */
 async function printTestFiscalCoupon() {
@@ -1295,24 +1405,14 @@ async function printTestFiscalCoupon() {
     settings.language === "sr" ? "sr" : "sq"
   );
   console.log("[fiscal-main] printTestFiscalCoupon language=", receiptLang);
-  const items = normalizeItems([
-    { name: "Kafe Espresso", quantity: 1, price: 1.5, vat_norm: "E" },
-    { name: "Uje 0.5L", quantity: 2, price: 1.0, vat_norm: "E" },
-    { name: "Croissant", quantity: 1, price: 1.8, vat_norm: "E" },
-  ]);
-  const total = items.reduce(
-    (s, it) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
-    0
-  );
-  const totalRounded = Math.round(total * 100) / 100;
-  const vatBreak = calculateVatBreakdown(items) || { A: 0, B: 0, C: 0, D: 0, E: totalRounded };
-  const taxResult = taxFromBreakdown(items, vatBreak, { totalAmount: totalRounded });
-  const tax = taxResult.tax;
-  const taxTotal = Number(taxResult.totalTax) || 0;
-  const totalWithoutTax =
-    taxResult.totalWithoutTax != null
-      ? Number(taxResult.totalWithoutTax)
-      : Math.round((totalRounded - taxTotal) * 100) / 100;
+  const rawItems = getAtkTestCouponItems();
+  validateInternalTestCouponStructure(rawItems);
+  const items = normalizeItems(rawItems);
+  const totals = computeAtkTestCouponTotals(items);
+  const totalRounded = totals.total;
+  const tax = totals.tax;
+  const taxTotal = Number(totals.totalTax) || 0;
+  const totalWithoutTax = totals.totalWithoutTax;
   const nuikf = assertValidNuikf(generateNUIKF());
   const { fiscal_date, fiscal_time } = todayParts();
   // Mos rrit numrin ditor — kupon prove pa INSERT
@@ -1382,78 +1482,6 @@ async function printTestFiscalCoupon() {
   }
 
   return { ok: true, message: "U printua", nuikf, printed: true };
-}
-
-/**
- * Printim Raporti X / Z / Periodik — i njëjti fund si kuponi fiskal:
- * tekst ESC/POS → logo RKS/MF → vijë mbyllëse → cut (pa QR, pa guard kupon).
- */
-async function printFiscalReportText(printText, printOpts = {}) {
-  const printer = require("../printer");
-  const database = require("../database");
-  const {
-    buildEscPosFromPlainText,
-    appendEscPosCut,
-    bufferHasEscPosCut,
-  } = require("../receipt-text");
-  const { getFiscalLogoForPrint } = require("./fiscal-logo");
-
-  let printed = false;
-  let printMessage = "";
-  const station = printOpts.station || "bar";
-  try {
-    if (!printText) {
-      return { printed: false, printMessage: "Teksti i raportit fiskal është bosh" };
-    }
-
-    let logo = null;
-    try {
-      logo = getFiscalLogoForPrint();
-    } catch (e) {
-      console.warn("[fiscal-main] Logo raport:", e.message);
-    }
-    const logoAttached = !!(logo && logo.buffer && logo.buffer.length);
-
-    const textBuf = buildEscPosFromPlainText(printText, {
-      cut: false,
-      dark: true,
-      fiscalEmphasized: true,
-      allowDoubleSize: false,
-      keepAlbanian: true,
-    });
-    const parts = [textBuf];
-
-    if (logoAttached) {
-      parts.push(logo.buffer);
-    }
-
-    try {
-      const { resolvePrintWidth, divider } = require("./fiscal-print");
-      const w = resolvePrintWidth();
-      parts.push(Buffer.from(`\n${divider("=", w)}\n`, "ascii"));
-    } catch {
-      parts.push(Buffer.from("\n==========================================\n", "ascii"));
-    }
-
-    let full = Buffer.concat(parts);
-    if (!bufferHasEscPosCut(full)) {
-      full = appendEscPosCut(full);
-    }
-    const { printerName, paper } = await printer.ensureReceiptPrinter(database, station);
-    await printer.printEscPosReceiptAt(full.toString("base64"), database, station);
-    printed = true;
-    return {
-      printed: true,
-      printMessage: "",
-      printer: printerName,
-      paper,
-      output: "escpos-fiscal-report",
-      station,
-    };
-  } catch (e) {
-    printMessage = e.message || "Printimi i raportit fiskal dështoi";
-  }
-  return { printed, printMessage };
 }
 
 module.exports = {

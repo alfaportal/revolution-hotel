@@ -1,5 +1,5 @@
 /**
- * fiscal/fiscal-line-discount.js — zbritje për rresht artikulli (4 dec).
+ * fiscal/fiscal-line-discount.js — Hapi 4: zbritje për rresht artikulli (4 dec).
  * Përdoret nga atk-model-builder për CouponItem.discount dhe totalDiscount.
  */
 const { round4, lineTotalAmount, normalizeQty, normalizeUnitPrice } = require("./fiscal-vat");
@@ -27,12 +27,17 @@ function resolveLineSurchargeAmount(item) {
   return n < 0 ? 0 : n;
 }
 
+/** Vlera bruto e rreshtit: sasia × çmimi njësi (4 dec). */
 function grossLineAmount(item) {
   const qty = normalizeQty(item?.quantity ?? item?.qty ?? 1);
-  const unit = normalizeUnitPrice(item);
+  const baseRaw = item?.base_price ?? item?.basePrice;
+  const base = Number(baseRaw);
+  const unit =
+    Number.isFinite(base) && base > 0 ? round4(base) : normalizeUnitPrice(item);
   return lineTotalAmount(qty, unit);
 }
 
+/** Vlera neto e rreshtit pas zbritjes/shtesës së rreshtit (4 dec). */
 function netLineAmount(item) {
   const gross = grossLineAmount(item);
   const discount = resolveLineDiscountAmount(item);
@@ -46,6 +51,10 @@ function sumLineDiscountAmounts(items) {
   return round4(list.reduce((s, it) => s + resolveLineDiscountAmount(it), 0));
 }
 
+/**
+ * totalDiscount i PosCoupon = zbritja e kuponit + shuma e zbritjeve për rresht.
+ * discount_amount në receipt = zbritja e karrocës (jo e rreshtit).
+ */
 function computeCouponTotalDiscount(receiptRow, items) {
   const list = Array.isArray(items) ? items : [];
   const cartDiscount = round4(Number(receiptRow?.discount_amount ?? 0) || 0);

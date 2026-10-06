@@ -1,7 +1,8 @@
 /**
- * ATK — default LOKAL (pa HTTP). Aktivizohet vetëm me HOTEL_ATK_SEND_ALLOWED=1 ose atk_send_allowed=1.
+ * ATK_TEST_MODE — mjedisi TEST (fiskalizimi-test.atk-ks.org); HTTP lejohet kur FISCAL_LOCAL_RUN=0.
+ * FISCAL_LOCAL_RUN=1 — profil lokal; ATK HTTP i bllokuar plotësisht.
  */
-const { isFiscalLocalRun } = require("./fiscal-local-env");
+const { isFiscalLocalRun, isAtkHost } = require("./fiscal-local-env");
 
 function isLocalPrintOnly() {
   try {
@@ -11,18 +12,6 @@ function isLocalPrintOnly() {
     return true;
   } catch {
     return true;
-  }
-}
-
-function isAtkSendAllowedByOwner() {
-  if (/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
-    return true;
-  }
-  try {
-    const database = require("../database");
-    return database.getSetting("atk_send_allowed", "0") === "1";
-  } catch {
-    return false;
   }
 }
 
@@ -41,11 +30,32 @@ function isAtkTestMode() {
   }
 }
 
+/** true vetëm kur pronari e lejon me HOTEL/BIZNES env ose settings atk_send_allowed=1. */
+function isAtkSendAllowedByOwner() {
+  if (/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
+    return true;
+  }
+  if (/^1|true|yes|on$/i.test(String(process.env.BIZNES_ATK_SEND_ALLOWED || "").trim())) {
+    return true;
+  }
+  try {
+    const database = require("../database");
+    return database.getSetting("atk_send_allowed", "0") === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** true → asnjë HTTP te serveri ATK (default deri urdhër pronari). */
 function isAtkTransmissionBlocked() {
   if (!isAtkSendAllowedByOwner()) return true;
   return isFiscalLocalRun();
 }
 
+/**
+ * Vetëm self-test / CI: kuponët mbeten në memorie (pa SQLite).
+ * LOKAL (FISCAL_LOCAL_RUN) + ATK_TEST_MODE bllokojnë HTTP, por ruajnë në DB.
+ */
 function isFiscalMemoryOnly() {
   const v = process.env.FISCAL_MEMORY_ONLY;
   if (v !== undefined && v !== null && String(v).trim() !== "") {
@@ -259,7 +269,9 @@ function memListOpenPending() {
 function memGetNextDailyNumber() {
   const today = todayLocalYmd();
   const lastZ = mem.lastZDate ? String(mem.lastZDate).slice(0, 10) : "";
-  const lastDaily = mem.lastDailyNumberDate ? String(mem.lastDailyNumberDate).slice(0, 10) : "";
+  const lastDaily = mem.lastDailyNumberDate
+    ? String(mem.lastDailyNumberDate).slice(0, 10)
+    : "";
   const counter = Number(mem.dailyCounter) || 0;
   let next;
 
@@ -320,6 +332,7 @@ function memPurgeNonFiscalAudit(keepActions) {
   return { deleted: Math.max(0, before - mem.audit.length) };
 }
 
+/** Për listën e kuponëve kur ATK_TEST_MODE — kuponët janë vetëm në memorie. */
 function memListReceiptSummaries(limit = 500) {
   const lim = Math.min(2000, Math.max(1, Number(limit) || 500));
   return [...mem.receipts.values()]
@@ -343,8 +356,10 @@ function memListReceiptSummaries(limit = 500) {
 }
 
 module.exports = {
-  isAtkTestMode,
+  isFiscalLocalRun,
+  isAtkHost,
   isLocalPrintOnly,
+  isAtkTestMode,
   isAtkSendAllowedByOwner,
   isAtkTransmissionBlocked,
   isFiscalMemoryOnly,

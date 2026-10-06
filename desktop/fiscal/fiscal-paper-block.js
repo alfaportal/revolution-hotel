@@ -97,6 +97,7 @@ function assertFiscalOn() {
 }
 
 function normalizeItems(items) {
+  const { resolveItemUnitCategory } = require("./fiscal-item-meta");
   return (Array.isArray(items) ? items : []).map((item) => {
     const letter = String(item.vat_norm || item.vat_letter || "E")
       .trim()
@@ -104,6 +105,7 @@ function normalizeItems(items) {
     const L = /^[A-E]$/.test(letter) ? letter : "E";
     const qty = normalizeQty(item.quantity ?? item.qty ?? 1);
     const unitPrice = normalizeUnitPrice(item);
+    const meta = resolveItemUnitCategory(item, { authoritativeDb: true });
     return {
       name: String(item.name || "-").trim(),
       quantity: qty,
@@ -112,6 +114,10 @@ function normalizeItems(items) {
       unit_price: unitPrice,
       vat_norm: L,
       vat_letter: L,
+      product_id: item.product_id ?? item.menu_item_id ?? meta.product_id ?? null,
+      menu_item_id: item.menu_item_id ?? item.product_id ?? meta.product_id ?? null,
+      unit_code: meta.unit_code,
+      category_code: meta.category_code,
     };
   });
 }
@@ -141,27 +147,8 @@ function isPaperBlockModeActive() {
 }
 
 function isAutoPaperBlockEligible() {
-  if (!isFiscalEnabled()) return false;
-  if (isPaperBlockModeActive()) return false;
-  try {
-    const { isFiscalMemoryOnly } = require("./fiscal-test-mode-store");
-    if (isFiscalMemoryOnly()) return false;
-  } catch {
-    /* ignore */
-  }
-  try {
-    const { isFiscalLocalRun } = require("./fiscal-local-env");
-    if (isFiscalLocalRun()) return false;
-  } catch {
-    /* ignore */
-  }
-  try {
-    const { isAtkTransmissionBlocked } = require("./fiscal-test-mode-store");
-    if (isAtkTransmissionBlocked()) return false;
-  } catch {
-    /* ignore */
-  }
-  return true;
+  // SEF test / POS — auto-bllokim letre i çaktivizuar (vetëm manual nga Cilësimet nëse duhet).
+  return false;
 }
 
 function isCriticalSefFailure(err) {
@@ -412,10 +399,10 @@ function getPaperBlockStatus() {
   let message = null;
   if (active && pending.length && past_register_5d) {
     level = "critical";
-    message = "Neni 45.6 — regjistroni urgjent kuponët e bllokut letër në SEF";
+    message = "Regjistroni urgjent kuponët e bllokut letër në SEF";
   } else if (active && past_restore_48h) {
     level = "urgent";
-    message = "Neni 45.5 — riktheni SEF-in ose siguroni pajisje të re (48h)";
+    message = "Riktheni SEF-in ose siguroni pajisje të re (48h)";
   } else if (active) {
     level = "warning";
     const autoFlag = getSetting(SETTING_AUTO, "0") === "1";
@@ -447,7 +434,7 @@ function getPaperBlockStatus() {
     past_register_5d,
     level,
     message,
-    legal_basis: "Udhëzim Administrativ MF 01/2026 — Neni 45",
+    legal_basis: "Udhëzim Administrativ MF 01/2026",
   };
 }
 
@@ -512,8 +499,16 @@ function disablePaperBlockMode(operatorName, opts = {}) {
   return getPaperBlockStatus();
 }
 
+/** Nisje — çaktivizo bllokimin auto (mos ndërprej pagesën normale). */
+function resetAutoPaperBlockOnStartup() {
+  if (!isPaperBlockModeActive()) return;
+  if (getSetting(SETTING_AUTO, "0") !== "1") return;
+  disablePaperBlockMode("SYSTEM", { force: true });
+  console.log("[fiscal-paper-block] auto-bllokim u çaktivizua në nisje");
+}
+
 /**
- * Regjistron kupon të lëshuar nga blloku fizik letër (numër serik i printuar).
+ * Lëshon kupon bllok letër (Neni 45).
  */
 function issuePaperBlockCoupon(payload) {
   assertFiscalOn();
@@ -615,7 +610,7 @@ function generatePaperBlockSlipText(row, copy = "merchant") {
   const w = 42;
   const lines = [];
   const hr = "-".repeat(w);
-  lines.push("^C^BBLLOK LETRE — NENI 45");
+  lines.push("^C^BBLLOK LETRE");
   lines.push(`^B${settings.taxpayer_legal_name || "Biznesi"}`);
   lines.push(settings.taxpayer_address || "");
   lines.push(`NUI: ${settings.taxpayer_nui || "—"}`);
@@ -686,20 +681,24 @@ async function registerPaperBlockInSef(paperId, opts = {}) {
   const sefId = getSefIdentifier() || "";
   const dailyNumber = getNextDailyNumber();
   const totalNumber = getNextTotalNumber();
+  const taxpayerNui = settings.taxpayer_nui || settings.developer_nui || "";
+  const totalAmount = Number(paper.total_amount) || 0;
+
+  const signPayload = {
+    nuikf,
+    total_amount: totalAmount,
+    fiscal_date: paper.fiscal_date,
+    fiscal_time: paper.fiscal_time,
+    taxpayer_nui: taxpayerNui,
+    sef_id: sefId,
+    daily_number: dailyNumber,
+    total_number: totalNumber,
+    receipt_type: "paper_block",
+  };
 
   let signature = null;
   try {
-    signature = signReceipt({
-      nuikf,
-      total_amount: paper.total_amount,
-      fiscal_date: paper.fiscal_date,
-      fiscal_time: paper.fiscal_time,
-      taxpayer_nui: settings.taxpayer_nui,
-      sef_id: sefId,
-      daily_number: dailyNumber,
-      total_number: totalNumber,
-      receipt_type: "paper_block",
-    });
+    signature = signReceipt(signPayload);
   } catch (e) {
     console.warn("[fiscal-paper-block] sign:", e.message);
   }
@@ -707,10 +706,9 @@ async function registerPaperBlockInSef(paperId, opts = {}) {
   let qrPayload = JSON.stringify({ paper_block: true, serial: paper.serial_no });
   try {
     const qr = await generateFiscalQR({
-      nuikf,
-      total_amount: paper.total_amount,
-      fiscal_date: paper.fiscal_date,
-      taxpayer_nui: settings.taxpayer_nui,
+      ...signPayload,
+      total: totalAmount,
+      nui: taxpayerNui,
     });
     if (qr?.payload) qrPayload = qr.payload;
   } catch (e) {
@@ -821,6 +819,7 @@ async function registerAllPaperBlockInSef(opts = {}) {
 }
 
 module.exports = {
+  HOURS_48,
   isPaperBlockModeActive,
   getPaperBlockStatus,
   enablePaperBlockMode,
@@ -837,6 +836,7 @@ module.exports = {
   runPaperBlockMonitorTick,
   startPaperBlockMonitor,
   stopPaperBlockMonitor,
+  resetAutoPaperBlockOnStartup,
   isCriticalSefFailure,
   HOURS_48,
   DAYS_5_AFTER_48H,

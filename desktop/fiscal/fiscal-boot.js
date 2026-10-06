@@ -1,5 +1,5 @@
 /**
- * fiscal/fiscal-boot.js — profil nisjeje fiskale + sinkronizim ATK nga settings (parity BIZNES).
+ * fiscal/fiscal-boot.js — profil nisjeje fiskale + sinkronizim ATK nga settings.
  */
 const { getLocalRunStatus } = require("./fiscal-local-env");
 
@@ -21,6 +21,7 @@ function readAtkUrlFromDb(database) {
 
 /**
  * Lexon atk_send_allowed / atk_auto_send nga DB ose env dhe vendos FISCAL_LOCAL_RUN.
+ * Thirret pas initDatabase() dhe pas ruajtjes së cilësimeve ATK.
  */
 function syncAtkTransmissionFromSettings(database) {
   const db = database || require("../database");
@@ -28,7 +29,7 @@ function syncAtkTransmissionFromSettings(database) {
     envTruthy("HOTEL_ATK_SEND_ALLOWED") ||
     envTruthy("BIZNES_ATK_SEND_ALLOWED") ||
     db.getSetting("atk_send_allowed", "0") === "1";
-
+  // DB fiton mbi env — operatori e fik nga Cilësimet (s-atk-auto); default ON ("1")
   const dbAutoSend = db.getSetting("atk_auto_send");
   let autoSend =
     dbAutoSend != null
@@ -66,7 +67,9 @@ function syncAtkTransmissionFromSettings(database) {
   process.env.ATK_AUTO_SEND = "0";
   db.setSetting("atk_send_allowed", "0");
   if (!autoSend) db.setSetting("atk_auto_send", "0");
-  console.log("[fiscal-boot] ATK HTTP=BLOCKED — bëni onboarding («Lidhu me ATK») pas plotësimit të fushave");
+  console.log(
+    "[fiscal-boot] ATK HTTP=BLOCKED — bëni onboarding («Lidhu me ATK») pas plotësimit të fushave"
+  );
   return { allowed: false, autoSend: false, environment: isTestHost ? "TEST" : "LIVE" };
 }
 
@@ -79,6 +82,7 @@ function applyStartupFiscalProfile() {
   }
 }
 
+/** Pas initDatabase — sinkronizo env me settings (mos e fshi lejen e pronarit). */
 function applyLocalRunDatabaseLockdown() {
   try {
     syncAtkTransmissionFromSettings(require("../database"));
@@ -93,12 +97,18 @@ function applyLocalRunDatabaseLockdown() {
   }
 }
 
+/**
+ * Teste të brendshme pas nisjes së serverit — jo-bllokuese për UI.
+ */
 function scheduleStartupSelfTest(delayMs = 2500) {
   const ms = Math.max(500, Number(delayMs) || 2500);
   setTimeout(async () => {
     try {
       const { isFiscalEnabled } = require("./fiscal-config");
-      if (!isFiscalEnabled()) return;
+      if (!isFiscalEnabled()) {
+        console.log("[fiscal-boot] self-test anashkaluar — fiscal OFF");
+        return;
+      }
       const { runFiscalSelfTest } = require("./fiscal-self-test");
       const report = await runFiscalSelfTest({ print: false });
       const s = report.summary || {};

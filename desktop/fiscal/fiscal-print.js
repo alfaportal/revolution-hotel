@@ -1157,6 +1157,7 @@ function resolveSefUnitAndPos(fiscal, order) {
 function appendAtkHeader(lines, width, ctx) {
   // ^B mbetet në tekst për guard ATK; me lightPrint nuk shtohet ESC bold i rëndë.
   lines.push(`${ATK_TITLE_CENTER}^B${pad(String(ctx.brandName).toUpperCase(), width, "center")}`);
+  atkGap(lines, 1);
   appendAtkCenterLine(lines, `${t("atk_taxpayer")}: ${legalNameDisplay(ctx.legalName)}`, width);
   if (ctx.unitName) {
     appendAtkCenterLine(lines, `${t("atk_unit_name")}: ${ctx.unitName}`, width);
@@ -1170,7 +1171,15 @@ function appendAtkHeader(lines, width, ctx) {
   appendAtkCenterLine(lines, `${t("atk_nf_nui")}: ${ctx.nui || "-"}`, width);
   appendAtkCenterLine(lines, `${t("atk_vat_number")}: ${ctx.vatNo || "-"}`, width);
   appendAtkRule(lines, width);
-  lines.push(formatAtkWorkerLine(ctx.operatorName, ctx.posId, width));
+}
+
+/** Punëtori, pastaj një rresht bosh, pastaj KUPON FISKAL (mos të ngjiten). */
+function appendAtkTitleAndOperator(lines, width, receiptType, operatorName, posId) {
+  lines.push(formatAtkWorkerLine(operatorName, posId, width));
+  atkGap(lines, 1);
+  lines.push(
+    `${ATK_TITLE_CENTER}${pad(couponTitleForReceiptType(receiptType), width, "center")}`
+  );
 }
 
 function legalNameDisplay(name) {
@@ -1480,7 +1489,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
     posId,
   });
 
-  lines.push(`${ATK_TITLE_CENTER}${pad(couponTitleForReceiptType(receiptType), w, "center")}`);
+  appendAtkTitleAndOperator(lines, w, receiptType, operatorName, posId);
   if (resolvePrintOfflineBanner(order, fiscal)) {
     appendOfflineBanner(lines, w);
   }

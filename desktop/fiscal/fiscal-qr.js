@@ -41,10 +41,10 @@ const QR_PAYLOAD_MAX_ATK = 2048;
 const QR_PAYLOAD_MAX_LEGACY = 700;
 
 /** PNG i mprehtë; raster termik ~20 mm (160 dots @ 203 DPI) — skanueshmëri ATK. */
-const FISCAL_QR_PNG_WIDTH = 320;
-const FISCAL_QR_MAX_WIDTH_DOTS = 160;
-const FISCAL_QR_MAX_HEIGHT_DOTS = 160;
-const FISCAL_QR_MODULE_SIZE = 4;
+const FISCAL_QR_PNG_WIDTH = 256;
+const FISCAL_QR_MAX_WIDTH_DOTS = 128;
+const FISCAL_QR_MAX_HEIGHT_DOTS = 128;
+const FISCAL_QR_MODULE_SIZE = 3;
 /** Binarizim QR raster — si 1.0.10 (78): zi/bardhë pa gray në module. */
 const FISCAL_QR_BLACK_LUM_MAX = 78;
 const FISCAL_QR_ALPHA_MIN = 96;
@@ -53,7 +53,6 @@ function getFiscalQrPrintOpts(extra = {}) {
   const {
     normalizePrintDensity,
     blackLumMaxFromPrintDensity,
-    qrDarkHexFromPrintDensity,
   } = require("../receipt-text");
   const printDensity =
     extra.printDensity != null ? normalizePrintDensity(extra.printDensity) : null;
@@ -70,9 +69,10 @@ function getFiscalQrPrintOpts(extra = {}) {
   } catch {
     /* */
   }
+  const { isRongtaPrinterName } = require("../receipt-text");
+  /** Si instaluesi 1.0.10: native QR kur errësira ≥8; raster i plotë poshtë 8 / Rongta. */
   let preferNativeQr =
     extra.preferNativeQr != null ? !!extra.preferNativeQr : d >= 8;
-  const { isRongtaPrinterName } = require("../receipt-text");
   if (isRongtaPrinterName(printerName) && d <= 7) {
     preferNativeQr = false;
   }
@@ -84,7 +84,7 @@ function getFiscalQrPrintOpts(extra = {}) {
     alphaMin,
     printDensity: d,
     printerName,
-    /** Si 1.0.10 për errësira ≥8; raster + dither për 1–7 (PNG #000 ishte gjithmonë zi). */
+    /** Native GS ( k — skanueshmëri ATK (si 1.0.10); raster vetëm kur errësira ≤7 / Rongta. */
     preferNativeQr,
     solidRaster: true,
     ...extra,
@@ -96,7 +96,18 @@ function getFiscalQrPrintOpts(extra = {}) {
   };
 }
 
+function bufferHasNativeEscPosQr(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 4) return false;
+  for (let i = 0; i <= buf.length - 3; i += 1) {
+    if (buf[i] === 0x1d && buf[i + 1] === 0x28 && buf[i + 2] === 0x6b) return true;
+  }
+  return false;
+}
+
+/** Si 1.0.10: mos shto ESC 7 / GS E para GS ( k — prish skanimin ATK. */
 function withQrPrintDensity(buffer, printDensity) {
+  if (!buffer || !buffer.length) return buffer;
+  if (bufferHasNativeEscPosQr(buffer)) return buffer;
   const { prependPrintDensityEscPos } = require("../receipt-text");
   let printerName = "";
   try {
@@ -309,7 +320,7 @@ function buildEscPosQrCommands(data, moduleSize = 4) {
   return Buffer.concat([
     buildQrCenterPrefix(),
     qrBody,
-    Buffer.from("\n\n", "ascii"),
+    Buffer.from("\n", "ascii"),
     Buffer.from([0x1d, 0x4c, 0x00, 0x00]),
     Buffer.from([0x1b, 0x61, 0x00]),
   ]);

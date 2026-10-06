@@ -3,7 +3,6 @@
  *
  * Çdo kupon: Payload, Current Hash, Previous Hash, Integrity Check.
  * Previous Hash = hash-i i kuponit të menjëhershëm paraprak (zinxhir auditimi ATK).
- *
  */
 const crypto = require("crypto");
 const { round4, normalizeQty, normalizeUnitPrice } = require("./fiscal-vat");
@@ -74,6 +73,9 @@ function stableStringify(value) {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
 }
 
+/**
+ * Payload kanonik për hash — vetëm fusha fiskale të kuponit.
+ */
 function buildReceiptChainPayload(row) {
   const r = row && typeof row === "object" ? row : {};
   return {
@@ -161,6 +163,9 @@ function verifyReceiptChainIntegrity(row) {
   };
 }
 
+/**
+ * Llogarit fushat e zinxhirit për një rresht kupon (para INSERT).
+ */
 function applyHashChainToReceipt(row, sqlite) {
   const payload = buildReceiptChainPayload(row);
   const previousHash = getPreviousChainHash(sqlite);
@@ -268,10 +273,10 @@ module.exports = {
   buildReceiptChainPayload,
   computeChainHash,
   applyHashChainToReceipt,
-  recordChainHashAfterInsert,
   verifyReceiptChainIntegrity,
   verifyFullChain,
   attachChainToFiscalData,
+  recordChainHashAfterInsert,
   getPreviousChainHash,
   formatHashShort,
   stableStringify,

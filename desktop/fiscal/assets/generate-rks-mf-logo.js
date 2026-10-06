@@ -9,7 +9,11 @@ const zlib = require("zlib");
 const OUT_W = 160;
 const OUT_H = 80;
 
-const REF = path.join(__dirname, "rks-mf-stema-source.png");
+const REF = path.join(
+  process.env.USERPROFILE || "",
+  ".cursor/projects/c-Users-1-Desktop-firmat-biznes/assets",
+  "c__Users_1_AppData_Roaming_Cursor_User_workspaceStorage_empty-window_images_Screenshot_2026-08-04_194554-9ece7e4b-93dd-4524-8bac-0906d2821d46.png",
+);
 
 function crc32(buf) {
   let c = 0xffffffff;
@@ -230,118 +234,6 @@ function extractShieldBw(img) {
   return { width: sw, height: sh, mask };
 }
 
-/** Mburojë procedurale (ATK) kur mungon rks-mf-stema-source.png — outline + 6 yje + hartë e thjeshtuar. */
-function buildProceduralShield() {
-  const w = 58;
-  const h = 68;
-  const mask = Buffer.alloc(w * h);
-
-  function inShield(x, y, inset = 0) {
-    const cx = w / 2;
-    const top = 3 + inset;
-    const bottom = h - 3 - inset;
-    if (y < top || y > bottom) return false;
-    const ny = (y - top) / (bottom - top);
-    const nx = (x - cx) / (w / 2);
-    let maxHalf;
-    if (ny <= 0.58) {
-      maxHalf = 0.9 - inset * 0.02 - 0.08 * Math.pow(ny - 0.3, 2);
-    } else {
-      const t = (ny - 0.58) / 0.42;
-      maxHalf = 0.86 * (1 - t) - inset * 0.015;
-    }
-    return Math.abs(nx) <= Math.max(0.02, maxHalf);
-  }
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const outer = inShield(x, y, 0);
-      const inner = inShield(x, y, 2.8);
-      if (!outer) continue;
-      if (!inner) {
-        mask[y * w + x] = 1;
-        continue;
-      }
-      mask[y * w + x] = 0;
-    }
-  }
-
-  // 6 yje (rreth harku sipër)
-  const starR = 2;
-  for (let i = 0; i < 6; i++) {
-    const ang = Math.PI * (0.15 + (0.7 * i) / 5);
-    const sx = Math.round(w / 2 + Math.cos(ang) * 16);
-    const sy = Math.round(14 + Math.sin(ang) * 5);
-    for (let dy = -starR; dy <= starR; dy++) {
-      for (let dx = -starR; dx <= starR; dx++) {
-        if (dx * dx + dy * dy <= starR * starR + 1) {
-          const xx = sx + dx;
-          const yy = sy + dy;
-          if (xx >= 0 && yy >= 0 && xx < w && yy < h && inShield(xx, yy, 3)) {
-            mask[yy * w + xx] = 1;
-          }
-        }
-      }
-    }
-  }
-
-  // Hartë e thjeshtuar (siluetë Kosovë)
-  const mapPts = [
-    [0.38, 0.42],
-    [0.48, 0.38],
-    [0.62, 0.4],
-    [0.7, 0.48],
-    [0.66, 0.58],
-    [0.52, 0.62],
-    [0.4, 0.56],
-    [0.34, 0.48],
-  ];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const nx = x / w;
-      const ny = y / h;
-      if (ny < 0.36 || ny > 0.68 || nx < 0.32 || nx > 0.72) continue;
-      let inside = false;
-      for (let i = 0, j = mapPts.length - 1; i < mapPts.length; j = i++) {
-        const xi = mapPts[i][0];
-        const yi = mapPts[i][1];
-        const xj = mapPts[j][0];
-        const yj = mapPts[j][1];
-        if (yi > ny !== yj > ny && nx < ((xj - xi) * (ny - yi)) / (yj - yi + 1e-9) + xi) {
-          inside = !inside;
-        }
-      }
-      if (inside && inShield(x, y, 3.5)) mask[y * w + x] = 1;
-    }
-  }
-
-  // Shqiponjë e thjeshtuar (dy koka + trup)
-  const eagleY = Math.floor(h * 0.62);
-  for (let y = eagleY; y < h - 8; y++) {
-    for (let x = 20; x < 38; x++) {
-      const dx = Math.abs(x - 29);
-      const dy = y - eagleY;
-      if (dx <= 7 - dy * 0.15 && inShield(x, y, 4)) mask[y * w + x] = 1;
-    }
-  }
-  for (const [ex, ey] of [
-    [22, eagleY + 2],
-    [36, eagleY + 2],
-  ]) {
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        if (Math.abs(dx) + Math.abs(dy) <= 3) {
-          const xx = ex + dx;
-          const yy = ey + dy;
-          if (inShield(xx, yy, 4)) mask[yy * w + xx] = 1;
-        }
-      }
-    }
-  }
-
-  return { width: w, height: h, mask };
-}
-
 /** Font 5×7 — trashësi për termik (RKS/MF lexohen në letër). */
 const FONT = {
   R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
@@ -399,7 +291,20 @@ function composeLogo(shield) {
   const scale = targetH / shield.height;
   const dw = Math.max(1, Math.round(shield.width * scale));
   const dh = Math.max(1, Math.round(shield.height * scale));
-  const ox = 1;
+
+  const gapShieldText = 5;
+  const textAreaMax = OUT_W - 2;
+  let scaleT = Math.floor(textAreaMax / 20);
+  while (scaleT > 2 && 2 * 7 * scaleT + 3 > 68) scaleT--;
+  scaleT = Math.max(3, Math.min(scaleT, 5));
+  const letterGap = Math.max(3, Math.floor(scaleT * 0.85) + 1);
+  const lineGap = Math.max(2, Math.floor(scaleT * 0.55));
+  const lineW = 3 * 5 * scaleT + 2 * letterGap + 3;
+  const blockH = 2 * 7 * scaleT + lineGap;
+
+  // Qendër: mburojë + RKS/MF si një bllok në mes të kanavacës 160×80
+  const totalW = dw + gapShieldText + lineW;
+  const ox = Math.max(0, Math.floor((OUT_W - totalW) / 2));
   const oy = Math.floor((OUT_H - dh) / 2);
 
   for (let y = 0; y < dh; y++) {
@@ -421,19 +326,7 @@ function composeLogo(shield) {
     }
   }
 
-  // RKS / MF — të trasha/të zeza, brenda max 20×10mm
-  const textLeft = ox + dw + 5;
-  const textWidth = OUT_W - textLeft - 2;
-  let scaleT = Math.floor(textWidth / 20);
-  while (scaleT > 2 && 2 * 7 * scaleT + 3 > 68) scaleT--;
-  scaleT = Math.max(3, Math.min(scaleT, 5));
-
-  // +1 nga blitGlyph: hapësirë mes germave që mos të ngjiten
-  const letterGap = Math.max(3, Math.floor(scaleT * 0.85) + 1);
-  const lineGap = Math.max(2, Math.floor(scaleT * 0.55));
-  const lineW = 3 * 5 * scaleT + 2 * letterGap + 3;
-  const blockH = 2 * 7 * scaleT + lineGap;
-  const tx = textLeft + Math.max(0, Math.floor((textWidth - lineW) / 2));
+  const tx = ox + dw + gapShieldText;
   const ty = Math.floor((OUT_H - blockH) / 2);
   drawTextBlock(out, ["RKS", "MF"], tx, ty, scaleT, lineGap, letterGap);
 
@@ -466,53 +359,35 @@ function encodePng(rgba) {
   ]);
 }
 
-function generateRksMfLogo(outPath = path.join(__dirname, "logo_rks_mf.png")) {
-  let shield;
-  if (fs.existsSync(REF)) {
-    const img = decodePngRgba(REF);
-    shield = extractShieldBw(img);
-    console.log("shield (stema-source)", { w: shield.width, h: shield.height });
-  } else {
-    shield = buildProceduralShield();
-    console.log("shield (procedural ATK)", { w: shield.width, h: shield.height });
-  }
-  const rgba = composeLogo(shield);
-  fs.writeFileSync(outPath, encodePng(rgba));
-
-  let minX = OUT_W;
-  let maxX = 0;
-  let minY = OUT_H;
-  let maxY = 0;
-  for (let y = 0; y < OUT_H; y++) {
-    for (let x = 0; x < OUT_W; x++) {
-      if (rgba[(y * OUT_W + x) * 4] > 40) continue;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  const inkW = maxX - minX + 1;
-  const inkH = maxY - minY + 1;
-  if (inkW < MIN_W_DOTS || inkH < MIN_H_DOTS) {
-    console.warn(
-      `[logo] ink ${inkW}x${inkH} dots — ATK min ${MIN_W_DOTS}x${MIN_H_DOTS} (do të shkallëzohet në print)`
-    );
-  }
-  return { outPath, inkW, inkH, width: OUT_W, height: OUT_H };
+if (!fs.existsSync(REF)) {
+  console.error("Mungon fotoja e stemës:", REF);
+  process.exit(1);
 }
 
-const MIN_W_DOTS = Math.round(15 * 8);
-const MIN_H_DOTS = Math.round(8 * 8);
+const img = decodePngRgba(REF);
+const shield = extractShieldBw(img);
+console.log("shield", { w: shield.width, h: shield.height });
+const rgba = composeLogo(shield);
+const out = path.join(__dirname, "logo_rks_mf.png");
+fs.writeFileSync(out, encodePng(rgba));
 
-module.exports = { generateRksMfLogo, OUT_W, OUT_H };
-
-if (require.main === module) {
-  const result = generateRksMfLogo();
-  console.log("OK", result.outPath);
-  console.log("ink fill", {
-    w: result.inkW,
-    h: result.inkH,
-    mm: [(result.inkW / 8).toFixed(1), (result.inkH / 8).toFixed(1)],
-  });
+// sa mbush ink
+let minX = OUT_W;
+let maxX = 0;
+let minY = OUT_H;
+let maxY = 0;
+for (let y = 0; y < OUT_H; y++) {
+  for (let x = 0; x < OUT_W; x++) {
+    if (rgba[(y * OUT_W + x) * 4] > 40) continue;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
 }
+console.log("OK", out);
+console.log("ink fill", {
+  w: maxX - minX + 1,
+  h: maxY - minY + 1,
+  mm: [((maxX - minX + 1) / 8).toFixed(1), ((maxY - minY + 1) / 8).toFixed(1)],
+});

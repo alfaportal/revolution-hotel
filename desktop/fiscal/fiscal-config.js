@@ -30,6 +30,7 @@ const EDITABLE_KEYS = [
   "atk_api_url",
   "fiscalization_number",
   "sef_code",
+  "atk_spec_version",
 ];
 
 const DEFAULTS = {
@@ -46,16 +47,18 @@ const DEFAULTS = {
   unit_phone: "",
   pos_id: "",
   fiscalization_number: "",
+  application_id: "",
+  atk_spec_version: "MF-01/2026",
   sef_code: "",
   developer_nui: "811314567",
   sef_identifier: "",
   certificate_path: "",
   private_key_path: "",
   atk_api_url: "https://fiskalizimi-test.atk-ks.org",
-  application_id: "",
   daily_receipt_counter: 0,
   total_receipt_counter: 0,
   last_z_report_date: "",
+  last_daily_number_date: "",
   language: "sq",
   created_at: null,
   updated_at: null,
@@ -97,6 +100,11 @@ function normalizeRow(row) {
     unit_phone: row.unit_phone != null ? String(row.unit_phone) : "",
     pos_id: row.pos_id != null ? String(row.pos_id) : "",
     fiscalization_number: row.fiscalization_number != null ? String(row.fiscalization_number) : "",
+    application_id: row.application_id != null ? String(row.application_id) : "",
+    atk_spec_version:
+      row.atk_spec_version != null && String(row.atk_spec_version).trim()
+        ? String(row.atk_spec_version).trim()
+        : "MF-01/2026",
     sef_code: row.sef_code != null ? String(row.sef_code) : "",
     developer_nui: row.developer_nui != null ? String(row.developer_nui) : "811314567",
     sef_identifier: row.sef_identifier != null ? String(row.sef_identifier) : "",
@@ -106,10 +114,11 @@ function normalizeRow(row) {
       row.atk_api_url != null && String(row.atk_api_url).trim()
         ? String(row.atk_api_url).trim()
         : "https://fiskalizimi-test.atk-ks.org",
-    application_id: row.application_id != null ? String(row.application_id) : "",
     daily_receipt_counter: Number(row.daily_receipt_counter) || 0,
     total_receipt_counter: Number(row.total_receipt_counter) || 0,
     last_z_report_date: row.last_z_report_date != null ? String(row.last_z_report_date) : "",
+    last_daily_number_date:
+      row.last_daily_number_date != null ? String(row.last_daily_number_date) : "",
     language: row.language === "sr" ? "sr" : "sq",
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
@@ -250,6 +259,8 @@ function saveFiscalSettings(data) {
     `ALTER TABLE fiscal_settings ADD COLUMN application_id TEXT`,
     `ALTER TABLE fiscal_settings ADD COLUMN atk_api_url TEXT`,
     `ALTER TABLE fiscal_settings ADD COLUMN fiscalization_number TEXT`,
+    `ALTER TABLE fiscal_settings ADD COLUMN atk_spec_version TEXT DEFAULT 'MF-01/2026'`,
+    `ALTER TABLE fiscal_settings ADD COLUMN last_daily_number_date TEXT`,
   ]) {
     try {
       sqlite.prepare(colSql).run();
@@ -323,6 +334,7 @@ function saveFiscalSettings(data) {
         fiscalization_number = ?,
         sef_code = ?,
         application_id = ?,
+        atk_spec_version = ?,
         updated_at = datetime('now','localtime')
       WHERE id = 1`
     )
@@ -343,7 +355,8 @@ function saveFiscalSettings(data) {
       next.atk_api_url || "https://fiskalizimi-test.atk-ks.org",
       next.fiscalization_number || null,
       next.sef_code || null,
-      next.application_id || null
+      next.application_id || null,
+      next.atk_spec_version || "MF-01/2026"
     );
 
   // Sinkronizo cache i18n nga DB (pa rishkruar)

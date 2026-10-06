@@ -4,13 +4,14 @@
  */
 const crypto = require("crypto");
 const { isFiscalEnabled } = require("./fiscal-config");
-const { getFiscalNow } = require("./fiscal-time-sync");
 const {
   isFiscalMemoryOnly,
   memGetNextDailyNumber,
   memGetNextTotalNumber,
   memResetDailyCounter,
 } = require("./fiscal-test-mode-store");
+const { getFiscalLocalYmd, getFiscalNow } = require("./fiscal-time-sync");
+const { round4 } = require("./fiscal-vat");
 
 const ALPHANUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const NUIKF_LEN = 16;
@@ -37,6 +38,7 @@ function ensureSettingsRow(sqlite) {
 }
 
 function todayLocalYmd() {
+  if (isFiscalEnabled()) return getFiscalLocalYmd();
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -49,11 +51,22 @@ function assertFiscalOn() {
   return true;
 }
 
+function ensureLastDailyNumberDateColumn(sqlite) {
+  try {
+    sqlite
+      .prepare(
+        `ALTER TABLE fiscal_settings ADD COLUMN last_daily_number_date TEXT`
+      )
+      .run();
+  } catch {
+    /* already exists */
+  }
+}
+
 /**
  * Numri i radhës ditor (1, 2, 3...).
- * Rrit daily_receipt_counter; nëse data ≠ last_z_report_date → fillon nga 1.
- * Kur fillon dita e re, përditësohet last_z_report_date=sot që numërimi të vazhdojë 2,3,...
- * (resetDailyCounter e vendos counter=0 + last_z=sot pas raportit Z).
+ * Përditëson vetëm daily_receipt_counter + last_daily_number_date.
+ * last_z_report_date ndryshon VETËM nga resetDailyCounter() (raporti Z).
  */
 function getNextDailyNumber() {
   if (!assertFiscalOn()) return null;
@@ -61,24 +74,33 @@ function getNextDailyNumber() {
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
+  ensureLastDailyNumberDateColumn(sqlite);
 
   const row = sqlite
     .prepare(
-      `SELECT daily_receipt_counter, last_z_report_date FROM fiscal_settings WHERE id = 1`
+      `SELECT daily_receipt_counter, last_z_report_date, last_daily_number_date
+       FROM fiscal_settings WHERE id = 1`
     )
     .get();
 
   const today = todayLocalYmd();
   const lastZ = row?.last_z_report_date ? String(row.last_z_report_date).slice(0, 10) : "";
+  const lastDaily = row?.last_daily_number_date
+    ? String(row.last_daily_number_date).slice(0, 10)
+    : "";
+  const counter = Number(row?.daily_receipt_counter) || 0;
   let next;
-  let setDate = lastZ;
 
-  if (!lastZ || lastZ !== today) {
-    // Ditë e re që nga Z / dita e fundit e numërimit → fillo nga 1
+  if (lastZ === today) {
+    // Periudhë pas Z-së së sotme (counter u resetua në 0)
+    next = counter + 1;
+    if (next < 1) next = 1;
+  } else if (lastDaily !== today) {
+    // Ditë kalendarike e re — Z e vjetër ose pa Z sot
     next = 1;
-    setDate = today;
   } else {
-    next = (Number(row.daily_receipt_counter) || 0) + 1;
+    // I njëjti ditë, Z nuk është bërë sot
+    next = counter + 1;
     if (next < 1) next = 1;
   }
 
@@ -86,11 +108,11 @@ function getNextDailyNumber() {
     .prepare(
       `UPDATE fiscal_settings SET
         daily_receipt_counter = ?,
-        last_z_report_date = ?,
+        last_daily_number_date = ?,
         updated_at = datetime('now','localtime')
       WHERE id = 1`
     )
-    .run(next, setDate);
+    .run(next, today);
 
   return next;
 }
@@ -106,6 +128,7 @@ function resetDailyCounter() {
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
+  ensureLastDailyNumberDateColumn(sqlite);
   const today = todayLocalYmd();
 
   sqlite
@@ -113,10 +136,11 @@ function resetDailyCounter() {
       `UPDATE fiscal_settings SET
         daily_receipt_counter = 0,
         last_z_report_date = ?,
+        last_daily_number_date = ?,
         updated_at = datetime('now','localtime')
       WHERE id = 1`
     )
-    .run(today);
+    .run(today, today);
 
   return true;
 }
@@ -277,7 +301,7 @@ function getSefIdentifier() {
 }
 
 function round2(n) {
-  return Math.round((Number(n) || 0) * 100) / 100;
+  return round4(n);
 }
 
 /**
@@ -486,7 +510,8 @@ function getPeriodicFiscalReport(fromDate, toDate, operatorName, operatorId) {
   if (!assertFiscalOn()) return null;
 
   const { from, to } = parseDateRange(fromDate, toDate);
-  ensureSettingsRow(getSqlite());
+  const sqlite = getSqlite();
+  ensureSettingsRow(sqlite);
 
   const acc = accumulateReceiptsInRange(from, to);
 
@@ -684,12 +709,28 @@ function onDailySummaryPrinted(operatorName, operatorId) {
     offline_count: 0,
   };
 
+  let rfdCreated = 0;
+  try {
+    const ctr = sqlite
+      .prepare(`SELECT total_receipt_counter FROM fiscal_settings WHERE id = 1`)
+      .get();
+    const cnt = sqlite.prepare(`SELECT COUNT(*) AS c FROM fiscal_receipts`).get();
+    rfdCreated = Math.max(
+      Number(ctr?.total_receipt_counter) || 0,
+      Number(cnt?.c) || 0
+    );
+  } catch {
+    rfdCreated = Number(acc.coupon_count) || 0;
+  }
+
   const details = {
     source: "daily_summary",
     mode: "Z",
     ...acc,
     daily_receipt_counter_before: Number(settingsRow?.daily_receipt_counter) || 0,
+    rfd_created_count: rfdCreated,
     reset_applied: false,
+    day_already_closed: alreadyClosedToday,
     official_close: true,
   };
 

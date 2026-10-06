@@ -51,6 +51,7 @@ const FISCAL_AUDIT_EXPORT_ACTIONS = Object.freeze([...ALLOWED_ACTIONS]);
 
 const AUDIT_PURGE_FLAG = "audit_legacy_noise_purged_v2";
 
+/** Çelësat shtesë (settings SQLite) + meta fiskale jo-EDITABLE por të audituara. */
 const FISCAL_APP_SETTING_KEYS = Object.freeze([
   "atk_auto_send",
   "atk_send_allowed",
@@ -74,6 +75,30 @@ const SETTING_AUDIT_IGNORE_KEYS = Object.freeze(
   new Set(["id", "created_at", "updated_at"])
 );
 
+/** Etiketa shqip për fushat e cilësimeve në audit (eksport CSV/PDF). */
+const SETTING_FIELD_LABELS = Object.freeze({
+  atk_spec_version: "Versioni i specifikimeve ATK",
+  taxpayer_nui: "NUI",
+  taxpayer_nf: "NF",
+  taxpayer_vat_number: "Nr. TVSH",
+  taxpayer_legal_name: "Emri ligjor",
+  taxpayer_address: "Adresa",
+  unit_number: "Nr. njësisë ARBK",
+  unit_name: "Emri i njësisë",
+  unit_phone: "Telefoni i njësisë",
+  pos_id: "POS ID",
+  application_id: "Application ID",
+  fiscalization_number: "Kodi fiskalizimit",
+  atk_api_url: "URL ATK",
+  language: "Gjuha e kuponit",
+  fiscal_enabled: "Fiskalizimi aktiv",
+});
+
+function formatSettingFieldLabel(field) {
+  const key = String(field || "").trim();
+  return SETTING_FIELD_LABELS[key] || key;
+}
+
 function getSqlite() {
   const database = require("../database");
   if (!database || !database.db) {
@@ -86,6 +111,7 @@ function getDocumentsDir() {
   const home = os.homedir();
   const docs = path.join(home, "Documents");
   if (fs.existsSync(docs)) return docs;
+  // Fallback
   const alt = path.join(home, "Dokumentet");
   if (fs.existsSync(alt)) return alt;
   fs.mkdirSync(docs, { recursive: true });
@@ -101,6 +127,9 @@ function normalizeDateBound(value, endOfDay) {
   return s;
 }
 
+/**
+ * INSERT write-once në fiscal_audit_log.
+ */
 function isSensitiveSettingKey(key) {
   return SENSITIVE_SETTING_KEY_RE.test(String(key || ""));
 }
@@ -138,24 +167,22 @@ function buildSettingChangeEntries(before, after, keys) {
   return changes;
 }
 
+/** Gjendje e plotë fiskale + settings app për diff audit. */
 function snapshotFiscalSettingsState(database) {
-  const dbMod = database || require("../database");
-  let row = {};
-  if (typeof dbMod.getFiscalSettingsRow === "function") {
-    row = dbMod.getFiscalSettingsRow() || {};
-  } else {
-    row = require("./fiscal-config").getFiscalSettings() || {};
-  }
+  const db = database || require("../database");
+  const row = db.getFiscalSettingsRow() || {};
   const snap = { ...row };
   snap.fiscal_enabled = !!row.fiscal_enabled;
-  if (typeof dbMod.getSetting === "function") {
-    snap.atk_auto_send = dbMod.getSetting("atk_auto_send", "0");
-    snap.atk_send_allowed = dbMod.getSetting("atk_send_allowed", "0");
-    snap.atk_test_mode = dbMod.getSetting("atk_test_mode", "0");
-  }
+  snap.atk_auto_send = db.getSetting("atk_auto_send", "0");
+  snap.atk_send_allowed = db.getSetting("atk_send_allowed", "0");
+  snap.atk_test_mode = db.getSetting("atk_test_mode", "0");
   return snap;
 }
 
+/**
+ * Regjistron setting_changed — fusha, vlera e vjetër/e re (pa vlera sensitive).
+ * Kthen null nëse nuk ka ndryshime.
+ */
 function logFiscalSettingsChanged(opts = {}) {
   const before = opts.before && typeof opts.before === "object" ? opts.before : {};
   const after = opts.after && typeof opts.after === "object" ? opts.after : {};
@@ -193,9 +220,6 @@ function logFiscalSettingsChanged(opts = {}) {
   }
 }
 
-/**
- * INSERT write-once në fiscal_audit_log.
- */
 function logFiscalAction(action, details, operatorName, operatorId) {
   const act = String(action || "")
     .trim()
@@ -205,8 +229,7 @@ function logFiscalAction(action, details, operatorName, operatorId) {
       `Veprim i panjohur audit: ${action}. Lejohen: ${ALLOWED_ACTIONS.join(", ")}`
     );
   }
-  // Login audit: gjithmonë (edhe kur SEF UI është OFF) — gati për certifikim.
-  if (act !== "login" && !SYSTEM_ACTIONS.has(act) && !isFiscalEnabled()) return null;
+  if (!SYSTEM_ACTIONS.has(act) && !isFiscalEnabled()) return null;
 
   if (isFiscalMemoryOnly()) {
     return memLogAudit(act, details, operatorName, operatorId);
@@ -267,7 +290,7 @@ function reinstallAuditWriteOnceTriggers(sqlite) {
 }
 
 /**
- * Fshin një herë rreshtat test/debug — mbaj vetëm veprime fiskale reale.
+ * Fshin një herë rreshtat test/debug (2026-07-16 etj.) — mbaj vetëm veprime fiskale reale.
  */
 function purgeLegacyAuditNoise() {
   if (isFiscalMemoryOnly()) {
@@ -392,29 +415,36 @@ function pickAuditSaveDialog(format, parentWindow) {
 }
 
 /**
- * Eksport CSV. Pa targetPath → null. Kthen shtegun ose null.
+ * Eksport CSV. Pa targetPath → dialog Save As. Kthen shtegun ose null (anulim).
  */
 function exportAuditCSV(fromDate, toDate, targetPath) {
   if (!isFiscalEnabled()) return null;
 
   const rows = getAuditLog(fromDate, toDate) || [];
   const header = [
-    "id",
-    "created_at",
-    "action",
-    "operator_name",
-    "operator_id",
+    "Data",
+    "Ora",
+    "Veprimi",
+    "NUIKF",
+    "Shuma Totale",
+    "Statusi ATK",
+    "Operatori",
+    "Detaje",
     "details_json",
   ];
   const lines = [header.join(",")];
   for (const r of rows) {
+    const mapped = mapAuditRowToExport(r);
     lines.push(
       [
-        r.id,
-        r.created_at,
-        r.action,
-        r.operator_name,
-        r.operator_id,
+        mapped.data,
+        mapped.ora,
+        mapped.veprimi,
+        mapped.nuikf,
+        mapped.shuma_totale,
+        mapped.status_atk,
+        mapped.operatori,
+        mapped.detaje,
         r.details_json || JSON.stringify(r.details || {}),
       ]
         .map(csvEscape)
@@ -519,38 +549,89 @@ function formatCorrectionTypeLabel(type) {
   return type ? String(type) : "—";
 }
 
+const PDF_HASH_PREVIEW_LEN = 20;
+
+function shortenHashForPdf(value) {
+  const s = String(value || "").trim();
+  if (!s) return null;
+  if (s.length <= PDF_HASH_PREVIEW_LEN) return s;
+  return `${s.slice(0, PDF_HASH_PREVIEW_LEN)}...`;
+}
+
+function lookupChainFieldsByNuikf(nuikf) {
+  const key = String(nuikf || "")
+    .trim()
+    .toUpperCase();
+  if (!key) return null;
+  if (isFiscalMemoryOnly()) return null;
+  try {
+    const sqlite = getSqlite();
+    return (
+      sqlite
+        .prepare(
+          `SELECT chain_current_hash, chain_previous_hash, chain_integrity_ok
+           FROM fiscal_receipts
+           WHERE nuikf = ?
+           LIMIT 1`
+        )
+        .get(key) || null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function resolveChainFieldsForAudit(details) {
+  const d = details && typeof details === "object" ? details : {};
+  let current = d.chain_current_hash ?? null;
+  let previous = d.chain_previous_hash ?? null;
+  let integrity = d.chain_integrity_ok ?? null;
+
+  if (!current && d.nuikf) {
+    const row = lookupChainFieldsByNuikf(d.nuikf);
+    if (row) {
+      current = row.chain_current_hash ?? null;
+      previous = row.chain_previous_hash ?? null;
+      integrity = row.chain_integrity_ok ?? null;
+    }
+  }
+
+  return { current, previous, integrity };
+}
+
+function formatChainHashDetail(details) {
+  const { current, previous, integrity } = resolveChainFieldsForAudit(details);
+  const parts = [];
+  const currentShort = shortenHashForPdf(current);
+  const previousShort = shortenHashForPdf(previous);
+  if (currentShort) parts.push(`Hash: ${currentShort}`);
+  if (previousShort) parts.push(`Hash paraprak: ${previousShort}`);
+  if (integrity != null && integrity !== "") {
+    const ok =
+      Number(integrity) === 1 || integrity === true || String(integrity).toLowerCase() === "true";
+    parts.push(`Integriteti: ${ok ? 1 : 0}`);
+  }
+  return parts.length ? parts.join(", ") : null;
+}
+
 function formatAuditActionLabel(action) {
   const key = String(action || "").trim().toLowerCase();
   const labels = {
     receipt_created: "Kupon i krijuar",
     receipt_sent: "Dërguar te ATK",
     receipt_emailed: "Kupon me email",
+    setting_changed: "Ndryshim cilësimi",
     correction_created: "Korrigjim",
     z_report: "Raporti Z",
+    z_report_generated: "Raporti Z (PDF/lokal)",
     x_report: "Raporti X",
-    periodic_report: "Raport periodik",
-    short_periodic_report: "Raport periodik i shkurtër",
-    monthly_memory_report: "Raport mujor memory",
     offline_start: "Offline filloi",
     offline_end: "Offline mbaroi",
-    offline_deadline_48h: "Afat 48h offline",
-    offline_deadline_day10: "Afat ditë 10 offline",
-    atk_notification_ack: "Konfirmim njoftim ATK",
     backup_created: "Backup",
+    backup_restored: "Rikthim backup",
     power_recovery: "Rikuperim energjie",
   };
   return labels[key] || key || "—";
-}
-
-function formatAuditDetailFallback(details) {
-  const d = details && typeof details === "object" ? details : {};
-  const parts = [];
-  for (const [key, value] of Object.entries(d)) {
-    if (value == null || value === "") continue;
-    if (typeof value === "object") continue;
-    parts.push(`${key}: ${value}`);
-  }
-  return parts.length ? parts.join(", ") : "—";
 }
 
 function formatAuditDetailText(row) {
@@ -559,12 +640,11 @@ function formatAuditDetailText(row) {
 
   if (action === "receipt_created") {
     const parts = [
-      d.nuikf ? `NUIKF: ${d.nuikf}` : null,
-      d.total != null ? `Totali: ${formatAuditMoney(d.total)} EUR` : null,
       d.payment_method ? `Pagesa: ${formatAuditPayment(d.payment_method)}` : null,
       d.daily_number != null ? `Nr. ditor: ${d.daily_number}` : null,
       d.offline ? "Offline: Po" : null,
       d.local_only ? "Lokal: Po" : null,
+      formatChainHashDetail(d),
     ].filter(Boolean);
     return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
   }
@@ -576,11 +656,12 @@ function formatAuditDetailText(row) {
       d.original_nuikf ? `Origjinal: ${d.original_nuikf}` : null,
       d.total != null ? `Totali: ${formatAuditMoney(d.total)} EUR` : null,
       d.reason ? `Arsyeja: ${d.reason}` : null,
+      formatChainHashDetail(d),
     ].filter(Boolean);
     return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
   }
 
-  if (action === "x_report" || action === "z_report") {
+  if (action === "x_report" || action === "z_report" || action === "z_report_generated") {
     const parts = [
       d.date ? `Data: ${d.date}` : null,
       d.coupon_count != null
@@ -596,8 +677,18 @@ function formatAuditDetailText(row) {
 
   if (action === "receipt_sent") {
     const parts = [
-      d.nuikf ? `NUIKF: ${d.nuikf}` : null,
       d.transaction_id ? `TX: ${d.transaction_id}` : null,
+      d.fiscal_receipt_id != null ? `ID kupon: ${d.fiscal_receipt_id}` : null,
+    ].filter(Boolean);
+    return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
+  }
+
+  if (action === "receipt_send_failed") {
+    const parts = [
+      d.error ? `Gabim: ${d.error}` : null,
+      d.status != null ? `HTTP: ${d.status}` : null,
+      d.queued_for_retry ? "Radhë retry: Po" : null,
+      d.atk_refused ? "Print i bllokuar: Po" : null,
     ].filter(Boolean);
     return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
   }
@@ -608,6 +699,22 @@ function formatAuditDetailText(row) {
       d.email ? `Email: ${d.email}` : null,
     ].filter(Boolean);
     return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
+  }
+
+  if (action === "setting_changed") {
+    const changes = Array.isArray(d.changes) ? d.changes : [];
+    if (changes.length) {
+      const summary = changes
+        .slice(0, 8)
+        .map((c) => {
+          const label = formatSettingFieldLabel(c.field);
+          if (c.redacted) return `${label}: ndryshuar`;
+          return `${label}: ${String(c.old ?? "—")} → ${String(c.new ?? "—")}`;
+        })
+        .join("; ");
+      return changes.length > 8 ? `${summary}; (+${changes.length - 8} fusha)` : summary;
+    }
+    return d.source ? `Burimi: ${d.source}` : formatAuditDetailFallback(d);
   }
 
   if (action === "offline_start" || action === "offline_end") {
@@ -623,6 +730,17 @@ function formatAuditDetailText(row) {
     return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
   }
 
+  if (action === "backup_restored") {
+    const from = d.restored_from ? path.basename(String(d.restored_from)) : null;
+    const parts = [
+      from ? `Nga: ${from}` : d.restored_from ? `Nga: ${d.restored_from}` : null,
+      d.keys_restored != null ? `Çelësat: ${d.keys_restored ? "Po" : "Jo"}` : null,
+      d.safety_dir ? `Safety: ${path.basename(String(d.safety_dir))}` : null,
+      d.needs_restart ? "Rinisje e nevojshme" : null,
+    ].filter(Boolean);
+    return parts.length ? parts.join(", ") : formatAuditDetailFallback(d);
+  }
+
   if (action === "power_recovery") {
     const parts = [
       d.nuikf ? `NUIKF: ${d.nuikf}` : null,
@@ -633,6 +751,17 @@ function formatAuditDetailText(row) {
   }
 
   return formatAuditDetailFallback(d);
+}
+
+function formatAuditDetailFallback(details) {
+  const d = details && typeof details === "object" ? details : {};
+  const parts = [];
+  for (const [key, value] of Object.entries(d)) {
+    if (value == null || value === "") continue;
+    if (typeof value === "object") continue;
+    parts.push(`${key}: ${value}`);
+  }
+  return parts.length ? parts.join(", ") : "—";
 }
 
 const RECEIPT_AUDIT_ACTIONS = Object.freeze(
@@ -687,6 +816,7 @@ function extractAuditAtkStatus(action, details) {
   return "";
 }
 
+/** Rresht i eksportit me kolona fikse (CSV / PDF). */
 function mapAuditRowToExport(row) {
   const d = row?.details && typeof row.details === "object" ? row.details : {};
   const { data, ora } = splitAuditDateTime(row?.created_at);
@@ -762,6 +892,33 @@ function buildAuditPdfLines(rows, fromDate, toDate) {
   return lines;
 }
 
+/** PDF Type1 Courier = 1 byte/shkronjë (WinAnsi). UTF-8 shumë-byte (p.sh. ë) prish leximin. */
+function toPdfLatin1Text(text) {
+  return String(text ?? "")
+    .normalize("NFC")
+    .replace(/\u20AC/g, "\x80")
+    .replace(/…/g, "...")
+    .replace(/[""„]/g, '"')
+    .replace(/[''‚]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/[^\x00-\xFF]/g, "?");
+}
+
+function escapePdfLiteralString(text) {
+  const latin = toPdfLatin1Text(text);
+  let out = "";
+  for (let i = 0; i < latin.length; i++) {
+    const ch = latin[i];
+    const code = latin.charCodeAt(i);
+    if (ch === "\\") out += "\\\\";
+    else if (ch === "(") out += "\\(";
+    else if (ch === ")") out += "\\)";
+    else if (code >= 0x20 && code <= 0x7E) out += ch;
+    else out += ch;
+  }
+  return out;
+}
+
 /** PDF minimal (tekst) pa dependency të jashtëm — A4, shumë faqe, word wrap. */
 function buildSimplePdf(lines) {
   const pageWidth = PDF_PAGE_WIDTH;
@@ -787,16 +944,14 @@ function buildSimplePdf(lines) {
   addObj("<< /Type /Catalog /Pages 2 0 R >>");
   addObj("PAGES_PLACEHOLDER");
 
-  const fontId = addObj("<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>");
+  const fontId = addObj(
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>"
+  );
   const pageIds = [];
+  const contentIds = [];
 
   for (const pageLines of pages) {
-    const escaped = pageLines.map((ln) =>
-      String(ln)
-        .replace(/\\/g, "\\\\")
-        .replace(/\(/g, "\\(")
-        .replace(/\)/g, "\\)")
-    );
+    const escaped = pageLines.map((ln) => escapePdfLiteralString(ln));
     let y = pageHeight - margin - fontSize;
     const streamParts = [`BT /F1 ${fontSize} Tf 0 Tg`];
     for (const ln of escaped) {
@@ -806,8 +961,9 @@ function buildSimplePdf(lines) {
     streamParts.push("ET");
     const stream = streamParts.join("\n");
     const contentId = addObj(
-      `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`
+      `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`
     );
+    contentIds.push(contentId);
     const pageId = addObj(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] ` +
         `/Contents ${contentId} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >> >>`
@@ -821,10 +977,10 @@ function buildSimplePdf(lines) {
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   for (let i = 0; i < objects.length; i++) {
-    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    offsets.push(Buffer.byteLength(pdf, "latin1"));
     pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
   }
-  const xrefPos = Buffer.byteLength(pdf, "utf8");
+  const xrefPos = Buffer.byteLength(pdf, "latin1");
   pdf += `xref\n0 ${objects.length + 1}\n`;
   pdf += "0000000000 65535 f \n";
   for (let i = 1; i <= objects.length; i++) {
@@ -832,11 +988,26 @@ function buildSimplePdf(lines) {
   }
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
   pdf += `startxref\n${xrefPos}\n%%EOF\n`;
-  return Buffer.from(pdf, "utf8");
+  return Buffer.from(pdf, "latin1");
+}
+
+/** Ruaj tekst raporti (Z/X/periodik) si PDF minimal — pa dialog. */
+function writeTextReportPdf(plainText, targetPath) {
+  const filePath = String(targetPath || "").trim();
+  if (!filePath) throw new Error("Shtegu PDF mungon");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, buildTextReportPdfBuffer(plainText));
+  return filePath;
+}
+
+/** PDF minimal (tekst monospace) — buffer për email / bashkëngjitje. */
+function buildTextReportPdfBuffer(plainText) {
+  const lines = String(plainText || "").split(/\r?\n/);
+  return buildSimplePdf(lines);
 }
 
 /**
- * Eksport PDF. Pa targetPath → null. Kthen shtegun ose null.
+ * Eksport PDF. Pa targetPath → dialog Save As. Kthen shtegun ose null (anulim).
  */
 function exportAuditPDF(fromDate, toDate, targetPath) {
   if (!isFiscalEnabled()) return null;
@@ -850,18 +1021,6 @@ function exportAuditPDF(fromDate, toDate, targetPath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, buildSimplePdf(lines));
   return filePath;
-}
-
-function writeTextReportPdf(plainText, targetPath) {
-  const filePath = String(targetPath || "").trim();
-  if (!filePath) throw new Error("Shtegu PDF mungon");
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, buildSimplePdf(String(plainText || "").split(/\r?\n/)));
-  return filePath;
-}
-
-function buildTextReportPdfBuffer(plainText) {
-  return buildSimplePdf(String(plainText || "").split(/\r?\n/));
 }
 
 module.exports = {

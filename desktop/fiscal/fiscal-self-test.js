@@ -489,7 +489,6 @@ function testAtkItemUnitCategory() {
   const name = "6b. ATK UNIT/CATEGORY";
   try {
     const database = require("../database");
-    const { buildCouponItems } = require("./atk-model-builder");
     const { enrichItemsUnitCategory } = require("./fiscal-item-meta");
 
     let miell = null;
@@ -501,43 +500,43 @@ function testAtkItemUnitCategory() {
       if (!miell || miell.unit_code !== "KGN") {
         return fail(name, "Miell 1kg mungon ose unit !== KGN në katalog");
       }
-      const preview = database.previewSaleTotals({
-        items: [{ product_id: miell.id, quantity: 1 }],
-      });
-      const atkLine = buildCouponItems(preview.items)[0];
-      if (atkLine.unit !== "KGN" || atkLine.type !== miell.category_code) {
-        return fail(
-          name,
-          `Miell payload: unit=${atkLine.unit} type=${atkLine.type} (pritet KGN/${miell.category_code})`
-        );
-      }
-      if (fanta) {
-        const p2 = database.previewSaleTotals({
-          items: [{ product_id: fanta.id, quantity: 1 }],
-        });
-        const atkFanta = buildCouponItems(p2.items)[0];
-        if (atkFanta.unit !== "LTR") {
-          return fail(name, `Fanta payload unit=${atkFanta.unit} (pritet LTR)`);
-        }
-      }
     } else {
-      miell = { id: 1, name: "Miell 1kg", unit_code: "KGN", category_code: "TT" };
-      const enriched = enrichItemsUnitCategory([
-        {
-          name: "Miell 1kg",
-          product_id: 1,
-          quantity: 1,
-          price: 0.8,
-          unit_price: 0.8,
-          vat_norm: "D",
-        },
-      ]);
-      const atkLine = buildCouponItems(enriched)[0];
-      if (atkLine.unit !== "KGN" || atkLine.type !== "TT") {
-        return fail(name, `HOTEL meta: unit=${atkLine.unit} type=${atkLine.type}`);
+      miell = { id: 0, name: "Miell 1kg", unit_code: "KGN", category_code: "TT" };
+    }
+    const preview =
+      typeof database.previewSaleTotals === "function"
+        ? database.previewSaleTotals({
+            items: [{ product_id: miell.id, quantity: 1 }],
+          })
+        : {
+            items: enrichItemsUnitCategory([
+              {
+                name: "Miell 1kg",
+                product_id: miell.id,
+                quantity: 1,
+                price: 0.8,
+                unit_price: 0.8,
+                vat_norm: "D",
+              },
+            ]),
+          };
+    const { buildCouponItems } = require("./atk-model-builder");
+    const atkLine = buildCouponItems(preview.items)[0];
+    if (atkLine.unit !== "KGN" || atkLine.type !== miell.category_code) {
+      return fail(
+        name,
+        `Miell payload: unit=${atkLine.unit} type=${atkLine.type} (pritet KGN/${miell.category_code})`
+      );
+    }
+    if (fanta) {
+      const p2 = database.previewSaleTotals({
+        items: [{ product_id: fanta.id, quantity: 1 }],
+      });
+      const atkFanta = buildCouponItems(p2.items)[0];
+      if (atkFanta.unit !== "LTR") {
+        return fail(name, `Fanta payload unit=${atkFanta.unit} (pritet LTR)`);
       }
     }
-
     const stale = {
       name: "Miell 1kg",
       product_id: miell.id,
@@ -1150,35 +1149,26 @@ function testOver1000Gate() {
   const name = "15. OVER 1000 EUR";
   try {
     const db = require("../database");
-    let bigTotal;
-    let smallTotal;
-    if (typeof db.previewSaleTotals === "function") {
-      const big = db.previewSaleTotals({
-        items: [{ name: "BIG", price: 1001, quantity: 1, vat_norm: "E" }],
-      });
-      const small = db.previewSaleTotals({
-        items: [{ name: "SMALL", price: 100, quantity: 1, vat_norm: "E" }],
-      });
-      bigTotal = big?.total;
-      smallTotal = small?.total;
-    } else {
-      bigTotal = 1001;
-      smallTotal = 100;
+    const big = db.previewSaleTotals({
+      items: [{ name: "BIG", price: 1001, quantity: 1, vat_norm: "E" }],
+    });
+    const small = db.previewSaleTotals({
+      items: [{ name: "SMALL", price: 100, quantity: 1, vat_norm: "E" }],
+    });
+    if (!big || big.total <= 1000) {
+      return fail(name, `total i madh=${big?.total} (pritur >1000)`);
     }
-    if (!bigTotal || bigTotal <= 1000) {
-      return fail(name, `total i madh=${bigTotal} (pritur >1000)`);
+    if (!small || small.total > 1000) {
+      return fail(name, `total i vogël=${small?.total} (pritur ≤1000)`);
     }
-    if (!smallTotal || smallTotal > 1000) {
-      return fail(name, `total i vogël=${smallTotal} (pritur ≤1000)`);
-    }
-    const needsConfirm = bigTotal > 1000;
-    const noConfirm = smallTotal <= 1000;
+    const needsConfirm = big.total > 1000;
+    const noConfirm = small.total <= 1000;
     if (!needsConfirm || !noConfirm) {
       return fail(name, "logjika needs_confirm_over_1000");
     }
     return ok(
       name,
-      `${Number(bigTotal).toFixed(2)}€ → konfirmim, ${Number(smallTotal).toFixed(2)}€ → jo`
+      `${big.total.toFixed(2)}€ → konfirmim, ${small.total.toFixed(2)}€ → jo`
     );
   } catch (e) {
     return fail(name, e.message);

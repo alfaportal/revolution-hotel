@@ -17,18 +17,10 @@ const { insertFiscalReceipt, getFiscalReceiptById } = require("./fiscal-db");
 const { getOriginalReceipt } = require("./fiscal-correction");
 const { signReceipt } = require("./fiscal-crypto");
 const { generateFiscalQR } = require("./fiscal-qr");
-const { sendPosCouponToAtk, getAtkStatus } = require("./fiscal-atk-api");
-const { markReceiptSent } = require("./fiscal-offline");
+const { sendReceiptToAtk, markReceiptSent } = require("./fiscal-offline");
+const { getAtkStatus } = require("./fiscal-atk-api");
 const { isAtkTransmissionBlocked } = require("./fiscal-test-mode-store");
-const { isAtkCommunicationForbidden, blockAtkCommunicationResult } = require("./fiscal-atk-guard");
 const { logFiscalAction } = require("./fiscal-audit");
-
-async function sendReceiptToAtk(row) {
-  if (isAtkCommunicationForbidden()) {
-    return blockAtkCommunicationResult("atk-discount-e2e");
-  }
-  return sendPosCouponToAtk(row);
-}
 
 const E2E_MARKER = "__atk_discount_e2e__";
 
@@ -290,9 +282,34 @@ function resolveE2eInput(opts = {}) {
   const rawItems = Array.isArray(opts.items) ? opts.items : [];
 
   if (!useSample && rawItems.length > 0) {
-    throw new Error(
-      "Burimi «shporta» nuk mbështetet te HOTEL — përdorni kupon ekzistues (NUIKF) ose shembull statik"
+    const database = require("../database");
+    const preview = database.previewSaleTotals({
+      items: rawItems,
+      cart_discount: opts.cart_discount || null,
+      cart_surcharge: opts.cart_surcharge || null,
+    });
+    const items = preview.items.map((it) => ({ ...it, [E2E_MARKER]: true }));
+    const totals = computeTotalsFromItems(
+      items,
+      preview.discount_total,
+      preview.surcharge_total
     );
+    const paymentMethod = String(opts.payment_method || "cash").trim() || "cash";
+    let paymentSplits = Array.isArray(opts.payment_splits)
+      ? opts.payment_splits.filter((p) => Number(p?.amount) > 0)
+      : null;
+    if (!paymentSplits?.length && paymentMethod === "mixed") {
+      paymentSplits = samplePaymentSplits(totals.totalAmount);
+    }
+    return {
+      source: "cart",
+      items,
+      totals,
+      paymentMethod,
+      paymentSplits,
+      cart_discount_meta: opts.cart_discount || null,
+      cart_surcharge_meta: opts.cart_surcharge || null,
+    };
   }
 
   if (truthyFlag(opts.require_cart)) {
@@ -413,13 +430,6 @@ function buildPreviewPayload(settings, input) {
 }
 
 function assertCanSendToAtk(settings) {
-  if (isAtkCommunicationForbidden()) {
-    return {
-      allowed: false,
-      reason: "HOTEL: komunikimi me ATK i ndaluar — asnjë kupon nuk dërgohet te ATK.",
-      forbidden: true,
-    };
-  }
   const atk = getAtkStatus();
   if (isAtkTransmissionBlocked()) {
     return {
