@@ -205,13 +205,20 @@ async function pushLicenseUiFromCloud() {
     st = {};
   }
   const key = cloud.readStoredLicense(app) || "";
-  const snap = JSON.stringify({ key: key.slice(-8), data_skadimit: st.data_skadimit || null });
+  const snap = JSON.stringify({
+    key: key.slice(-8),
+    data_skadimit: st.data_skadimit || null,
+    package_tier: st.package_tier || null,
+    features: st.features || null,
+  });
   if (snap === _licenseUiSnap) return;
   _licenseUiSnap = snap;
   broadcastToAllWindows("license:package-updated", {
     expires_at: st.data_skadimit || null,
     data_skadimit: st.data_skadimit || null,
     offline_ok: !!st.offline_ok,
+    package_tier: st.package_tier || null,
+    features: st.features || null,
   });
   if (key) broadcastToAllWindows("license:key-updated", { celesi: key });
 }

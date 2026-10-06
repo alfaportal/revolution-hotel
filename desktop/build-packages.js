@@ -1,6 +1,6 @@
 /**
  * Ndërton instalues Revolution HOTEL në dist/ (ekzekuto nga desktop/ ose npm run build në rrënjë):
- *   Një Setup (Pako 4 / Full+AI). Pako 3 ndryshohet nga telefoni (cloud license), jo Setup i dytë.
+ *   Një Setup (default Pako 3 — Premium). Pako 1/2 nga cloud license (Super Admin).
  *
  * Përdorimi:
  *   node build-packages.js             # Windows KS — një Setup
@@ -36,11 +36,11 @@ if (BUILD_MAC && BUILD_LINUX) {
 // Pako (pa AI) | Pako AI
 const PACKAGES_KS = [
   {
-    key: "4",
-    tier: "pako_5",
-    newTier: "pako_4",
+    key: "3",
+    tier: "pako_3",
+    newTier: "pako_3",
     ai: true,
-    suffix: "p4",
+    suffix: "p3",
     productName: "Revolution HOTEL",
     shortcutName: "Revolution HOTEL",
     artifactName: "Revolution HOTEL Setup.${ext}",
@@ -52,11 +52,11 @@ const PACKAGES_KS = [
 
 const PACKAGES_FR = [
   {
-    key: "4",
-    tier: "pako_5",
-    newTier: "pako_4",
+    key: "3",
+    tier: "pako_3",
+    newTier: "pako_3",
     ai: true,
-    suffix: "fr.p4",
+    suffix: "fr.p3",
     productName: "Revolution HOTEL France",
     shortcutName: "Revolution HOTEL France",
     artifactName: "Revolution HOTEL France Setup.${ext}",
@@ -68,7 +68,7 @@ const PACKAGES_FR = [
 
 const PACKAGES = BUILD_FR ? PACKAGES_FR : PACKAGES_KS;
 
-const DEFAULT_TIER = { tier: "pako_5", newTier: "pako_4", ai: true, label: "4" };
+const DEFAULT_TIER = { tier: "pako_3", newTier: "pako_3", ai: true, label: "3" };
 const DEFAULT_REGION = {
   region: "ks",
   locale: "sq",

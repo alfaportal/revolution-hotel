@@ -48,7 +48,9 @@ function isLicenseApiPath(reqPath) {
 function resolveCloudRequestPath(reqPath) {
   const p = String(reqPath || "").trim();
   if (!p) return p;
-  return hotelCloudApiPath(p);
+  const result = hotelCloudApiPath(p);
+  console.log("[cloud-health] resolveCloudRequestPath →", { in: p, out: result });
+  return result;
 }
 
 
@@ -327,6 +329,8 @@ async function requestJsonWithFallback(method, path, payload, options = {}) {
 
   for (const baseUrl of order) {
     try {
+      const resolvedUrl = new URL(apiPath, String(baseUrl).replace(/\/$/, "") + "/").href;
+      console.log("[cloud-http]", method, resolvedUrl);
       const res = await requestJsonOnce(method, baseUrl, apiPath, payload, timeoutMs, extraHeaders);
       if (res.status < 500 || method === "GET") {
         activeServerUrl = baseUrl;

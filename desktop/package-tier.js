@@ -1,7 +1,7 @@
-/** Tier baked by build-packages.js (tier=legacy cloud/UI, newTier=Pako 1–4) */
+/** Tier lokal (dev pa build) — Premium; cloud mund ta ulë. */
 module.exports = {
-  "tier": "pako_5",
-  "label": "4",
-  "newTier": "pako_4",
-  "ai": true
+  tier: "pako_3",
+  label: "3",
+  newTier: "pako_3",
+  ai: true,
 };

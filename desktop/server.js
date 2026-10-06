@@ -1074,17 +1074,18 @@ function terminalRegisterNumber() {
 }
 
 function isFullPackageTier(tier) {
-  return String(tier || "").trim() === "pako_5";
+  const t = String(tier || "").trim();
+  return t === "pako_3" || t === "pako_5" || t === "pako_premium";
 }
 
 function normalizeStaffName(name) {
   return String(name || "").trim().toLowerCase().normalize("NFC");
 }
 
-/** Linket e kamarierëve: Standard+ (pako_3 / pako_4 / pako_5). */
+/** Linket e stafit — të 3 pakot HOTEL. */
 function canShowKdsStaffLinks() {
   const t = String(VERSION.packageTier || "").trim();
-  return t === "pako_3" || t === "pako_4" || t === "pako_5";
+  return t === "pako_1" || t === "pako_2" || t === "pako_3";
 }
 
 function isCloudWaiterDisabledSetting() {
@@ -1209,6 +1210,16 @@ function isLocalStaffEntryPath(pathname) {
   return /^\/[a-z0-9-]+\/[a-z0-9-]+\/(kamarier|recepsion)(?:\/\d{3})?$/.test(p);
 }
 
+/** Statikë + API minimale për faqen e hyrjes stafi në WiFi (telefon). */
+function isLocalStaffLoginAsset(pathname) {
+  const p = String(pathname || "").toLowerCase();
+  if (p.startsWith("/css/") || p.startsWith("/js/") || p.startsWith("/img/")) return true;
+  if (p === "/api/venue-logo" || p === "/api/locale" || p === "/api/setup/status") return true;
+  if (p === "/api/login/staff-wifi-links") return true;
+  if (p.startsWith("/api/login/") || p.startsWith("/api/cloud/")) return true;
+  return false;
+}
+
 function renderWaiterCodeErrorPage(message) {
   const text = String(message || "Kodi nuk ekziston.").replace(/</g, "&lt;");
   return `<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kodi i pavlefshëm</title><style>body{font-family:system-ui,sans-serif;background:#0b1526;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:1.5rem;text-align:center}p{max-width:22rem;line-height:1.5;color:rgba(255,255,255,.85)}</style></head><body><p>${text}</p></body></html>`;
@@ -1233,9 +1244,27 @@ function serveStaffLoginPage(res, mode, entry = {}) {
     staff_id: entry.staff_id != null ? String(entry.staff_id) : "",
     waiter_hint: entry.waiter_hint != null ? String(entry.waiter_hint) : "",
   };
-  const inject = `<script>window.__STAFF_WIFI_ENTRY__=${JSON.stringify(payload)};</script>\n`;
+  const staffUiClass = loginMode === "recepsion" ? "login-mode-staff-recepsion" : "login-mode-staff-kamarier";
+  let staffCssInline = "";
+  try {
+    staffCssInline = fs.readFileSync(joinContent("public", "css", "login-staff-wifi.css"), "utf8");
+  } catch {
+    /* fallback: link /css/login-staff-wifi.css */
+  }
+  const headInject = [
+    `<script>window.__STAFF_WIFI_ENTRY__=${JSON.stringify(payload)};(function(){document.documentElement.classList.add("login-mode-staff","${staffUiClass}");})();</script>`,
+    staffCssInline ? `<style id="hotel-staff-login-critical">${staffCssInline}</style>` : "",
+  ].filter(Boolean).join("\n");
+  html = html.replace("</head>", `${headInject}\n</head>`);
+  html = html.replace(
+    '<body class="staff-login-screen">',
+    '<body class="staff-login-screen staff-wifi-lan">',
+  );
   const marker = '<script src="/js/i18n-client.js"></script>';
-  html = html.includes(marker) ? html.replace(marker, `${marker}\n${inject}`) : inject + html;
+  if (!html.includes("window.__STAFF_WIFI_ENTRY__")) {
+    const inject = `<script>window.__STAFF_WIFI_ENTRY__=${JSON.stringify(payload)};</script>\n`;
+    html = html.includes(marker) ? html.replace(marker, `${marker}\n${inject}`) : inject + html;
+  }
   res.type("html").send(html);
 }
 
@@ -1329,6 +1358,10 @@ function cloudSyncLinksPayload(settings, status) {
     local_recepsion_url: getLocalRecepsionUrl(),
     local_waiter_tipi: venue.tipi,
     local_waiter_slug: venue.slug,
+    local_staff_wifi: {
+      kamarier: getLocalWaiterUrl() || "",
+      recepsion: getLocalRecepsionUrl() || "",
+    },
   };
 }
 
@@ -1680,6 +1713,7 @@ app.use((req, res, next) => {
   if (isLocalElectronHost(req)) return next();
   const pathLower = String(req.path || "").toLowerCase();
   if (isLocalStaffEntryPath(pathLower)) return next();
+  if (isLocalStaffLoginAsset(pathLower)) return next();
   if (pathLower === "/login.html") {
     const mode = String(req.query.mode || "").toLowerCase();
     if (mode === "kamarier" || mode === "recepsion") return next();
@@ -1743,6 +1777,25 @@ app.get("/api/venue-logo", (_req, res) => {
   const venue = String(db.getSetting("venue_logo_data_url", "") || "").trim();
   if (venue) return res.json({ ok: true, logo: venue });
   return res.json({ ok: true, logo: null });
+});
+
+/** Linket WiFi për restorant (kamarier) dhe recepsion — pa auth (vetëm LAN). */
+app.get("/api/login/staff-wifi-links", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  if (!db.isSetupDone()) {
+    return res.status(503).json({ ok: false, gabim: "Konfigurimi nuk është përfunduar." });
+  }
+  const venue = resolveLocalVenueSegments();
+  const kamarier_url = getLocalWaiterUrl() || "";
+  const recepsion_url = getLocalRecepsionUrl() || "";
+  res.json({
+    ok: true,
+    tipi: venue.tipi,
+    slug: venue.slug,
+    kamarier_url,
+    recepsion_url,
+    local_staff_wifi: { kamarier: kamarier_url, recepsion: recepsion_url },
+  });
 });
 
 /** Meny publike — /menu/{slug}/{tavolina} (si restoranti). */
@@ -2904,6 +2957,13 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
     });
 
     setImmediate(() => {
+      const slug = String(db.getSetting("kitchen_slug", "") || "").trim();
+      const key = String(db.getSetting("kitchen_key", "") || "").trim();
+      console.log("[shift-email] server: pas closeWaiterShift, nis email cloud", {
+        slug,
+        keyPresent: Boolean(key),
+        waiter: closed.waiter_name,
+      });
       notifyShiftCloseEmail(db, closed).catch(err => {
         console.warn("[shift-close-email]", err.message || err);
       });

@@ -1576,6 +1576,7 @@
   <script src="/js/app.js?v=6"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/order-alarm-sound.js"></script>
+  <script src="/js/staff-order-alert.js"></script>
   <script src="/js/cloud-status.js"></script>
   <script src="/js/menu-pos.js?v=8"></script>
   <script src="/js/waiter-calculator.js?v=3"></script>
@@ -1659,7 +1660,20 @@
       }
     }
 
-    function luajTingullPorosieWaiter() {
+    function luajTingullPorosieWaiter(repeatOnly) {
+      const n = waiterOnlineOrders.length;
+      if (typeof window.staffOrderAlert === "function") {
+        if (repeatOnly) {
+          window.staffOrderAlertRepeat?.();
+          return;
+        }
+        window.staffOrderAlert({
+          title: n === 1 ? "Porosi e re!" : `${n} porosi të reja!`,
+          body: "Hap ekranin e kamarierit dhe pranoje porosinë.",
+          tag: "waiter-online-pending",
+        });
+        return;
+      }
       dridhPorosieWaiter();
       if (typeof window.playOrderAlarmSound === "function") {
         window.playOrderAlarmSound();
@@ -1917,7 +1931,7 @@
           if (!waiterOnlinePopOpen) hapWaiterOnlinePop();
           if (!waiterOnlineAlarmTimer) {
             waiterOnlineAlarmTimer = setInterval(() => {
-              if (waiterOnlineOrders.length) luajTingullPorosieWaiter();
+              if (waiterOnlineOrders.length) luajTingullPorosieWaiter(true);
             }, 12000);
           }
         } else if (pending <= 0 && waiterOnlineAlarmTimer) {

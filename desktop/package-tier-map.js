@@ -1,38 +1,22 @@
 /**
- * Revolution HOTEL — një Setup (Pako 4). Pako 3/4 ndryshohen nga telefoni (cloud).
- *
- * E RE (newTier)                CLOUD / LEGACY ID
- * ──────────────                ─────────────────
- * pako_3  (Pako — pa AI)                  pako_2
- * pako_4  (Pako AI)                       pako_5
+ * Revolution HOTEL — 3 pako: pako_1 (Bazik), pako_2 (Standard), pako_3 (Premium).
  */
 
-const LEGACY_BASIC = "pako_2";
+const PACKAGE_TIERS = Object.freeze(["pako_1", "pako_2", "pako_3"]);
 
-const NEW_TIERS = Object.freeze(["pako_1", "pako_2", "pako_3", "pako_4"]);
-
-/** Radha e butonave në Super Admin (ID legacy që ruhen në DB). */
-const ADMIN_LEGACY_ORDER = Object.freeze(["pako_3", "pako_4", "pako_2", "pako_5"]);
-
-const NEW_TO_LEGACY = Object.freeze({
-  pako_1: "pako_3",
-  pako_2: "pako_4",
-  pako_3: "pako_2",
-  pako_4: "pako_5",
+const TIER_LABELS = Object.freeze({
+  pako_1: "Pako 1 — Bazik",
+  pako_2: "Pako 2 — Standard",
+  pako_3: "Pako 3 — Premium",
 });
 
-const LEGACY_TO_NEW = Object.freeze({
+/** Lexim i vjetër DB — vetëm derisa të migrohet. */
+const LEGACY_READ = Object.freeze({
   pako_3: "pako_1",
   pako_4: "pako_2",
   pako_2: "pako_3",
-  pako_5: "pako_4",
-});
-
-const TIER_LABELS = Object.freeze({
-  pako_1: "Pako",
-  pako_2: "Pako",
-  pako_3: "Pako",
-  pako_4: "Pako AI",
+  pako_5: "pako_3",
+  pako_premium: "pako_3",
 });
 
 function normalizeTierKey(tier) {
@@ -42,78 +26,51 @@ function normalizeTierKey(tier) {
     .replace(/\./g, "_");
 }
 
-function isNewTierKey(tier) {
-  return NEW_TIERS.includes(normalizeTierKey(tier));
-}
-
-/**
- * Normalizo në numërimin e ri (pako_1…pako_4).
- * Stringjet pako_2…pako_5 trajtohen si LEGACY (cloud/UI e vjetër).
- */
-function toNewTier(tier) {
+function normalizeHotelTier(tier) {
   const t = normalizeTierKey(tier);
-  if (LEGACY_TO_NEW[t]) return LEGACY_TO_NEW[t];
-  if (isNewTierKey(t)) return t;
-  return "pako_1";
+  if (PACKAGE_TIERS.includes(t)) return t;
+  return LEGACY_READ[t] || "pako_1";
 }
 
-/** Lexo newTier nga package-tier.js i bake-uar (nëse ekziston). */
+function toNewTier(tier) {
+  return normalizeHotelTier(tier);
+}
+
+function toLegacyTier(tier) {
+  return normalizeHotelTier(tier);
+}
+
+function isAiPackage(tier) {
+  return normalizeHotelTier(tier) === "pako_3";
+}
+
+function isRemovedBasic(_tier) {
+  return false;
+}
+
+function labelForTier(tier) {
+  return TIER_LABELS[normalizeHotelTier(tier)] || TIER_LABELS.pako_1;
+}
+
+function labelForLegacyTier(tier) {
+  return labelForTier(tier);
+}
+
 function bakedNewTier() {
   try {
     const pkg = require("./package-tier");
-    if (pkg && pkg.newTier) return normalizeTierKey(pkg.newTier);
-    if (pkg && pkg.ai === true) return "pako_4";
+    if (pkg && pkg.tier) return normalizeHotelTier(pkg.tier);
   } catch {
     /* ignore */
   }
   return null;
 }
 
-/** Për API/cloud që ende pret pako_2…pako_5. */
-function toLegacyTier(tier) {
-  const n = toNewTier(tier);
-  return NEW_TO_LEGACY[n] || "pako_3";
-}
-
-/**
- * AI: legacy pako_2 (Biznes + AI), pako_5 (Premium), ose newTier pako_4 / features.ai.
- */
-function isAiPackage(tier) {
-  const t = normalizeTierKey(tier);
-  if (t === "pako_2" || t === "pako_4" || t === "pako_5") return true;
-  if (t === "pako_1" || t === "pako_3") return false;
-  const baked = bakedNewTier();
-  if (baked) return baked === "pako_4";
-  try {
-    const pkg = require("./package-tier");
-    if (pkg && pkg.ai === true) return true;
-    if (pkg && pkg.ai === false) return false;
-  } catch {
-    /* ignore */
-  }
-  return false;
-}
-
-function isRemovedBasic(tier) {
-  return normalizeTierKey(tier) === LEGACY_BASIC;
-}
-
-function labelForTier(tier) {
-  return TIER_LABELS[toNewTier(tier)] || "Pako";
-}
-
-function labelForLegacyTier(legacyTier) {
-  return labelForTier(legacyTier);
-}
-
 module.exports = {
-  NEW_TIERS,
-  ADMIN_LEGACY_ORDER,
-  NEW_TO_LEGACY,
-  LEGACY_TO_NEW,
+  PACKAGE_TIERS,
   TIER_LABELS,
   normalizeTierKey,
-  isNewTierKey,
+  normalizeHotelTier,
   toNewTier,
   toLegacyTier,
   bakedNewTier,

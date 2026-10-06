@@ -24,6 +24,6 @@ module.exports = {
     voidWithReason: true,
     auditTrail: true,
     registerToggle: true,
-    ai: true, // vetëm kur package-tier = pako_4
+    ai: true, // vetëm kur package-tier = pako_3 (Premium)
   },
 };

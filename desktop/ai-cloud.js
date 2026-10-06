@@ -5,10 +5,10 @@ const cloudHealth = require("./cloud-health");
 const { hotelCloudApiPath } = require("./cloud-server-url");
 
 /**
- * Master switch për AI në HOTEL (si Kafene — gate real: paketa + çelësi licencë).
+ * Master switch për AI në HOTEL (gate: Pako 3 — Premium / pako_3).
  */
 const AI_ENABLED = true;
-const AI_DISABLED_MSG = "AI kërkon internet dhe çelës licencë (Pako AI).";
+const AI_DISABLED_MSG = "AI kërkon internet dhe çelësin e licencës (Pako 3 — Premium).";
 
 function normalizeKey(k) {
   return String(k || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -53,36 +53,36 @@ async function requestJson(method, _baseUrl, path, payload, headers = {}) {
 }
 
 function accountantForTier(tier) {
-  const { toNewTier } = require("./package-tier-map");
-  const n = toNewTier(tier);
-  /* Kontabilisti vetëm Pako 3 Full + Pako 4 AI — JO Pako 1–2 */
-  return n === "pako_3" || n === "pako_4";
+  const { normalizeHotelTier } = require("./package-tier-map");
+  return normalizeHotelTier(tier) === "pako_3";
 }
 
 function localFeaturesForTier(tier) {
-  const { isAiPackage, bakedNewTier } = require("./package-tier-map");
-  /* Prefero pakën nga heartbeat/cloud — jo bake — që UI ndryshon pa restart */
+  const { isAiPackage, bakedNewTier, normalizeHotelTier } = require("./package-tier-map");
+  const norm = (t) => normalizeHotelTier(t);
   try {
     const eapp = electronApp();
     if (eapp) {
       const license = require("./license");
       const rec = license.readActivationRecord(eapp);
       if (rec?.features && typeof rec.features === "object") {
+        const pkg = norm(rec.package_tier || tier);
         const ai =
           typeof rec.features.ai === "boolean"
             ? !!rec.features.ai
-            : isAiPackage(rec.package_tier || tier);
+            : isAiPackage(pkg);
         const accountant =
           typeof rec.features.accountant === "boolean"
             ? !!rec.features.accountant
-            : accountantForTier(rec.package_tier || tier);
+            : accountantForTier(pkg);
         if (!AI_ENABLED) return { ai: false, accountant };
         return { ai, accountant };
       }
       if (rec?.package_tier) {
+        const pkg = norm(rec.package_tier);
         return {
-          ai: AI_ENABLED && isAiPackage(rec.package_tier),
-          accountant: accountantForTier(rec.package_tier),
+          ai: AI_ENABLED && isAiPackage(pkg),
+          accountant: accountantForTier(pkg),
         };
       }
     }
@@ -90,16 +90,17 @@ function localFeaturesForTier(tier) {
     /* ignore */
   }
   if (tier) {
+    const pkg = norm(tier);
     return {
-      ai: AI_ENABLED && isAiPackage(tier),
-      accountant: accountantForTier(tier),
+      ai: AI_ENABLED && isAiPackage(pkg),
+      accountant: accountantForTier(pkg),
     };
   }
   const baked = bakedNewTier();
   if (baked) {
     return {
-      ai: AI_ENABLED && baked === "pako_4",
-      accountant: baked === "pako_3" || baked === "pako_4",
+      ai: AI_ENABLED && baked === "pako_3",
+      accountant: baked === "pako_3",
     };
   }
   return { ai: false, accountant: false };
@@ -130,32 +131,25 @@ async function fetchAiStatus(db) {
     const data = await requestJson("GET", serverUrl, "/api/ai/status", null, {
       "X-License-Key": celesi,
     });
-    const packageAi = !!data.package_ai;
-    let gabim = null;
-    if (!packageAi) {
-      gabim =
-        "Pakoja e licencës nuk përfshin AI. Te Super Admin zgjidhni «Pako 4 — AI» (pako_5) për këtë klient, pastaj prisni sync (Cloud).";
-    } else if (!data.enabled && data.paused) {
-      gabim = "AI është i ndalur për momentin në server.";
-    } else if (!data.enabled) {
-      gabim = "AI nuk është i aktivizuar në server cloud.";
-    }
     return {
       ok: true,
       enabled: !!data.enabled,
       paused: !!data.paused,
       configured: !!data.configured,
-      package_ai: packageAi,
+      package_ai: !!data.package_ai,
       package_tier: data.package_tier || null,
-      gabim,
     };
   } catch (err) {
+    const msg =
+      err.code === "PACKAGE_AI_REQUIRED"
+        ? "Pakoja e licencës nuk përfshin AI. Te Super Admin zgjidhni «Pako 3 — Premium» (pako_3)."
+        : err.message || "Nuk u lidh me serverin AI.";
     return {
       ok: false,
       enabled: false,
       configured: false,
       package_ai: false,
-      gabim: err.message || "Nuk u lidh me serverin AI.",
+      gabim: msg,
     };
   }
 }
@@ -242,7 +236,6 @@ function buildQuery(query = {}) {
   return s ? `?${s}` : "";
 }
 
-/** Owner AI routes — autentifikim me license key (i njëjti si scan). */
 async function fetchOwnerAi(db, path, { query } = {}) {
   if (!AI_ENABLED) {
     const err = new Error(AI_DISABLED_MSG);
@@ -275,6 +268,8 @@ module.exports = {
   AI_ENABLED,
   AI_DISABLED_MSG,
   getAiCloudConfig,
+  requestJson,
+  accountantForTier,
   localFeaturesForTier,
   fetchAiStatus,
   scanMenuFromCloud,

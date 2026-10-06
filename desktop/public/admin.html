@@ -1723,51 +1723,25 @@
     }
   </style>
   <!--
-    Paketa/tier UI gating — vetëm show/hide, asnjë logjikë biznesi.
-    body.tier-rank-1…5 nga applyPackageTier(): pako_1→1, pako_3→2, pako_4→3, pako_2→4, pako_5→5.
-    Rifreskohet çdo 15s nga /api/license (heartbeat). !important mban fshehjen.
+    HOTEL — 3 pako: pako_1→tier-rank-1, pako_2→2, pako_3→3.
+    Rifreskohet nga /api/license (heartbeat) + license:package-updated.
   -->
   <style id="tier-gating">
-    /* Pako 1 — Bazik */
-    body.tier-rank-1 [data-panel="menuja"], body.tier-rank-1 #panel-menuja,
-    body.tier-rank-1 [data-panel="stoku"], body.tier-rank-1 #panel-stoku,
+    /* Pako 1 — Bazik: fsheh Shërbimet, Promocione, Kontabilisti, AI */
     body.tier-rank-1 [data-panel="sherbimet"], body.tier-rank-1 #panel-sherbimet,
-    body.tier-rank-1 [data-panel="rezervime-dhomash"], body.tier-rank-1 #panel-rezervime-dhomash,
-    body.tier-rank-1 [data-panel="mysafiret"], body.tier-rank-1 #panel-mysafiret,
-    body.tier-rank-1 [data-panel="qr-tavolinat"], body.tier-rank-1 #panel-qr-tavolinat,
-    body.tier-rank-1 [data-panel="blerjet"], body.tier-rank-1 #panel-blerjet,
     body.tier-rank-1 [data-panel="promocione"], body.tier-rank-1 #panel-promocione,
-    body.tier-rank-1 [data-panel="rezervime"], body.tier-rank-1 #panel-rezervime,
-    body.tier-rank-1 [data-panel="faturat"], body.tier-rank-1 #panel-faturat,
     body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
-    body.tier-rank-1 [data-panel="ai"], body.tier-rank-1 #panel-ai,
-    body.tier-rank-1 #low-stock-banner {
+    body.tier-rank-1 [data-panel="ai"], body.tier-rank-1 #panel-ai {
       display: none !important;
     }
-    /* Pako 2 — Standard */
-    body.tier-rank-2 [data-panel="rezervime-dhomash"], body.tier-rank-2 #panel-rezervime-dhomash,
-    body.tier-rank-2 [data-panel="mysafiret"], body.tier-rank-2 #panel-mysafiret,
-    body.tier-rank-2 [data-panel="qr-tavolinat"], body.tier-rank-2 #panel-qr-tavolinat,
-    body.tier-rank-2 [data-panel="blerjet"], body.tier-rank-2 #panel-blerjet,
-    body.tier-rank-2 [data-panel="promocione"], body.tier-rank-2 #panel-promocione,
-    body.tier-rank-2 [data-panel="rezervime"], body.tier-rank-2 #panel-rezervime,
-    body.tier-rank-2 [data-panel="faturat"], body.tier-rank-2 #panel-faturat,
+    /* Pako 2 — Standard: fsheh Kontabilisti, AI */
     body.tier-rank-2 [data-panel="kontabilisti"], body.tier-rank-2 #panel-kontabilisti,
     body.tier-rank-2 [data-panel="ai"], body.tier-rank-2 #panel-ai {
       display: none !important;
     }
-    /* Pako 3 — Profesional */
-    body.tier-rank-3 [data-panel="promocione"], body.tier-rank-3 #panel-promocione,
-    body.tier-rank-3 [data-panel="rezervime"], body.tier-rank-3 #panel-rezervime,
-    body.tier-rank-3 [data-panel="faturat"], body.tier-rank-3 #panel-faturat,
-    body.tier-rank-3 [data-panel="kontabilisti"], body.tier-rank-3 #panel-kontabilisti,
-    body.tier-rank-3 [data-panel="ai"], body.tier-rank-3 #panel-ai {
-      display: none !important;
-    }
-    /* Pako 4 — Biznes (+ AI): tab AI nga ai-package-tier (pako_2 / pako_5) */
-    /* tier-rank-5: asgjë nuk fshihet nga pakoja (Ditari etj.) */
+    /* Pako 3 — Premium: krejt tab-et (AI edhe ai-package-tier) */
 
-    /* Tab AI vetëm kur pakoja ka AI (pako_2, pako_5 / features.ai) */
+    /* Tab AI — pako_3 / features.ai */
     body:not(.ai-package-tier) [data-panel="ai"],
     body:not(.ai-package-tier) #panel-ai {
       display: none !important;
@@ -3799,7 +3773,7 @@
         <button type="button" class="settings-hub-btn" data-settings-go="cloud">
           <span class="settings-hub-icon settings-hub-icon-cyan">L</span>
           <strong>Linke stafi</strong>
-          <span>Kamarier, kuzhinë, bar, takeaway — kopjo për çdo punonjës</span>
+          <span>Kamarier &amp; recepsion (WiFi), kuzhinë, bar — kopjo linkun</span>
         </button>
       </div>
 
@@ -4852,7 +4826,9 @@
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-local-recepsion-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-recepsion-url">Kopjo</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-open-local-recepsion-url">Hap</button>
             </div>
+            <p id="cloud-local-recepsion-hint" class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)"></p>
           </div>
           <div class="fiscal-field-row" id="cloud-row-kitchen">
             <label>Kuzhina (ekran porosish)</label>
@@ -5849,32 +5825,24 @@
     const user = kerkonHyrje("admin");
     if (!user) throw new Error("");
 
-    /**
-     * Cloud ID → tier-rank 1–5 (Pako 1 Bazik … Pako 5 Premium).
-     * Default pa tier → rank 2 (Pako 2 Standard).
-     */
-    const PACKAGE_TIER_RANK = { pako_1: 1, pako_3: 2, pako_4: 3, pako_2: 4, pako_5: 5 };
+    /** pako_1 / pako_2 / pako_3 → tier-rank 1–3 */
+    const PACKAGE_TIER_RANK = { pako_1: 1, pako_2: 2, pako_3: 3 };
+    const LEGACY_TIER_TO_RANK = {
+      pako_3: 1,
+      pako_4: 2,
+      pako_2: 3,
+      pako_5: 3,
+      pako_premium: 3,
+    };
     let _lastAppliedPackageTier = "";
     function applyPackageTier(tier, features) {
       const t = String(tier || "").trim().toLowerCase();
-      let rank = PACKAGE_TIER_RANK[t] || 2;
-      /* features.accountant — Kontabilisti tab kërkon rank >= 4 */
-      if (features && features.accountant === false && rank >= 4) {
-        rank = 3;
-      }
-      if (features && features.accountant === true) {
-        rank = Math.max(rank, 4);
-      }
-      document.body.classList.remove(
-        "tier-rank-1",
-        "tier-rank-2",
-        "tier-rank-3",
-        "tier-rank-4",
-        "tier-rank-5"
-      );
+      let rank = PACKAGE_TIER_RANK[t] || LEGACY_TIER_TO_RANK[t] || 1;
+      if (features && features.accountant === true) rank = Math.max(rank, 3);
+      if (features && features.accountant === false && rank >= 3) rank = 2;
+      document.body.classList.remove("tier-rank-1", "tier-rank-2", "tier-rank-3");
       document.body.classList.add("tier-rank-" + rank);
-      const hasAiTier =
-        t === "pako_2" || t === "pako_5" || (features && features.ai === true);
+      const hasAiTier = t === "pako_3" || (features && features.ai === true);
       document.body.classList.toggle("ai-package-tier", !!hasAiTier);
       if (t && t !== _lastAppliedPackageTier) {
         console.log("[admin] Pako:", t || "(bosh)", "→ tier-rank-" + rank, "accountant=", features?.accountant);
@@ -10128,7 +10096,7 @@
       const statusBadge = document.getElementById("ai-panel-status-badge");
       const statusText = document.getElementById("ai-panel-status-text");
       const cloudMsg = document.getElementById("ai-panel-cloud-msg");
-      const cloudDefault = "AI kërkon Cloud + Pako 4 (AI) (pako_5).";
+      const cloudDefault = "AI kërkon Cloud + Pako 3 — Premium (pako_3).";
       let active = false;
       try {
         const data = await api("/api/ai/status");
@@ -10145,7 +10113,7 @@
         const inactiveMsg =
           data.gabim ||
           (data.package_ai === false
-            ? "Pakoja aktuale nuk përfshin AI — te Super Admin zgjidhni «Pako 4 — AI» (pako_5)."
+            ? "Pakoja aktuale nuk përfshin AI — te Super Admin zgjidhni «Pako 3 — Premium» (pako_3)."
             : cloudDefault);
         if (statusText) {
           statusText.textContent = active
@@ -16938,12 +16906,21 @@
       toggleRow("cloud-row-waiter", false);
       toggleRow("cloud-row-reception", false);
 
-      const localWaiterUrl = s.local_waiter_url || "";
-      const localRecepsionUrl = s.local_recepsion_url || "";
+      const localWaiterUrl = s.local_waiter_url || s.local_staff_wifi?.kamarier || "";
+      let localRecepsionUrl = s.local_recepsion_url || s.local_staff_wifi?.recepsion || "";
+      if (!localRecepsionUrl && localWaiterUrl) {
+        localRecepsionUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/recepsion$1");
+      }
       setVal("cloud-local-waiter-url", localWaiterUrl);
       setVal("cloud-local-recepsion-url", localRecepsionUrl);
       toggleRow("cloud-row-local-waiter", !!localWaiterUrl);
-      toggleRow("cloud-row-local-recepsion", !!localRecepsionUrl);
+      toggleRow("cloud-row-local-recepsion", !!(localRecepsionUrl || localWaiterUrl));
+      const recepHint = document.getElementById("cloud-local-recepsion-hint");
+      if (recepHint) {
+        recepHint.textContent = localRecepsionUrl
+          ? "Tablet recepsioni — i njëjti WiFi si PC; hyrje me PIN recepsioni (roli Recepsion te Stafi)."
+          : "";
+      }
       const venue = String(emriRestorantit || s.client_name || "").trim();
       const wLbl = document.getElementById("cloud-local-waiter-label");
       const rLbl = document.getElementById("cloud-local-recepsion-label");
@@ -17009,6 +16986,10 @@
     });
     document.getElementById("btn-copy-local-recepsion-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-local-recepsion-url", this);
+    });
+    document.getElementById("btn-open-local-recepsion-url")?.addEventListener("click", function () {
+      const url = document.getElementById("cloud-local-recepsion-url")?.value || "";
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
     });
     document.getElementById("btn-copy-waiter-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-waiter-url", this);
@@ -18320,7 +18301,14 @@
       }, 30000);
       if (location.hash === "#licenca") switchAdminPanel("licenca");
       if (window.hotelElectron && typeof window.hotelElectron.onLicensePackageUpdated === "function") {
-        window.hotelElectron.onLicensePackageUpdated(() => ngarkoLicencen().catch(() => {}));
+        window.hotelElectron.onLicensePackageUpdated((payload) => {
+          ngarkoLicencen().catch(() => {});
+          if (payload?.package_tier) {
+            applyPackageTier(payload.package_tier, payload.features);
+          } else {
+            refreshPackageTierFromLicense().catch(() => {});
+          }
+        });
         window.hotelElectron.onLicenseKeyUpdated(() => ngarkoLicencen().catch(() => {}));
       }
       initDitariDateInputs();

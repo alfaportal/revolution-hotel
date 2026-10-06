@@ -53,6 +53,7 @@
     const el = document.getElementById(elementId);
     if (!el) return;
     const delayMs = Number(opts && opts.delayMs) || 0;
+    const poll = opts && opts.poll === false ? false : true;
 
     const tick = async () => {
       if (tick._busy) return;
@@ -68,6 +69,6 @@
 
     if (delayMs > 0) setTimeout(tick, delayMs);
     else tick();
-    setInterval(tick, POLL_MS);
+    if (poll) setInterval(tick, POLL_MS);
   };
 })();

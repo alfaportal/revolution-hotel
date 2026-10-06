@@ -1,6 +1,6 @@
 /** Konfigurimi i versionit — Revolution HOTEL (menu default për instalim të ri) */
 const { version: pkgVersion } = require("./package.json");
-let PACKAGE = { tier: "pako_5", label: "4" };
+let PACKAGE = { tier: "pako_3", label: "3" };
 try {
   PACKAGE = require("./package-tier");
 } catch {
@@ -49,7 +49,7 @@ const _exports = {
   appVersion: pkgVersion,
   versionLabel: "Revolution HOTEL",
   appType: "hotel",
-  packageTier: PACKAGE.tier || "pako_5",
+  packageTier: PACKAGE.tier || "pako_3",
   packageLabel: PACKAGE.label || "4",
   defaultTableCount: 10,
   SEED_PRICED_CATEGORIES,

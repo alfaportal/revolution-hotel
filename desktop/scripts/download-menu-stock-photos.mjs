@@ -68,8 +68,11 @@ function fetchBuffer(url, redirects = 0) {
 }
 
 async function main() {
-  const target = path.join(root, "HOTEL", "public", "menu-stock");
-  fs.mkdirSync(target, { recursive: true });
+  const targets = [
+    path.join(root, "hotel-system", "desktop", "public", "menu-stock"),
+    path.join(root, "revolution-hotel-server", "public", "menu-stock"),
+  ];
+  for (const dir of targets) fs.mkdirSync(dir, { recursive: true });
 
   let ok = 0;
   let fail = 0;
@@ -78,9 +81,11 @@ async function main() {
     try {
       const buf = await fetchBuffer(url);
       if (buf.length < 800) throw new Error("skedar shumë i vogël");
-      fs.writeFileSync(path.join(target, file), buf);
-      const svgPath = path.join(target, file.replace(/\.jpg$/, ".svg"));
-      if (fs.existsSync(svgPath)) fs.unlinkSync(svgPath);
+      for (const dir of targets) {
+        fs.writeFileSync(path.join(dir, file), buf);
+        const svgPath = path.join(dir, file.replace(/\.jpg$/, ".svg"));
+        if (fs.existsSync(svgPath)) fs.unlinkSync(svgPath);
+      }
       console.log(`OK (${Math.round(buf.length / 1024)} KB)`);
       ok++;
     } catch (err) {
@@ -88,8 +93,10 @@ async function main() {
       fail++;
     }
   }
-  for (const f of fs.readdirSync(target)) {
-    if (f.endsWith(".svg")) fs.unlinkSync(path.join(target, f));
+  for (const dir of targets) {
+    for (const f of fs.readdirSync(dir)) {
+      if (f.endsWith(".svg")) fs.unlinkSync(path.join(dir, f));
+    }
   }
   console.log(`\n${ok} foto reale OK, ${fail} dështuan.\n`);
   if (fail) process.exitCode = 1;

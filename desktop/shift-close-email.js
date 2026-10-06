@@ -16,12 +16,19 @@ function parseJsonSafe(raw) {
 async function notifyShiftCloseEmail(db, closed) {
   if (!db || !closed) return { ok: false, skipped: true, reason: "missing_data" };
   if (!cloudSync.isCloudConfigured(db)) {
+    console.log("[shift-email] skip: cloud_not_configured");
     return { ok: true, skipped: true, reason: "cloud_not_configured" };
   }
 
   const slug = String(db.getSetting("kitchen_slug", "") || "").trim();
   const key = String(db.getSetting("kitchen_key", "") || "").trim();
+  console.log("[shift-email] duke dërguar...", {
+    slug,
+    keyPresent: Boolean(key),
+    keyLen: key.length,
+  });
   if (!slug || !key) {
+    console.log("[shift-email] skip: missing_kitchen_access", { slug: slug || "(bosh)" });
     return { ok: true, skipped: true, reason: "missing_kitchen_access" };
   }
 
@@ -51,6 +58,12 @@ async function notifyShiftCloseEmail(db, closed) {
   };
 
   const path = `/api/waiter/${encodeURIComponent(slug)}/shift-close-email?key=${encodeURIComponent(key)}`;
+  console.log(
+    "[shift-email] path:",
+    path.replace(/key=[^&]+/, "key=***"),
+    "body:",
+    JSON.stringify(payload).substring(0, 200),
+  );
   const res = await cloudHealth.requestJsonWithFallback("POST", path, payload, {
     timeoutMs: 12000,
     headers: {
@@ -60,6 +73,7 @@ async function notifyShiftCloseEmail(db, closed) {
   });
 
   const parsed = parseJsonSafe(res.data);
+  console.log("[shift-email] përgjigje:", { status: res.status, parsed });
   if (res.status >= 400 || parsed.ok === false) {
     throw new Error(parsed.gabim || `shift-close-email HTTP ${res.status}`);
   }

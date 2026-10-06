@@ -1,0 +1,315 @@
+/* Kritike për /…/kamarier|recepsion — inline në HTML + /css/login-staff-wifi.css (KAFENE model) */
+
+html.login-mode-staff-kamarier,
+html.login-mode-staff-recepsion,
+html.login-mode-staff-kamarier body.staff-login-screen,
+html.login-mode-staff-recepsion body.staff-login-screen {
+  background: #0b1526;
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: manipulation;
+}
+
+html.login-mode-staff-kamarier .staff-login-screen,
+html.login-mode-staff-recepsion .staff-login-screen {
+  min-height: 100dvh;
+  height: auto;
+  background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(30, 58, 95, 0.45), transparent 55%), #0b1526;
+}
+
+html.login-mode-staff-kamarier .staff-login-shell,
+html.login-mode-staff-recepsion .staff-login-shell {
+  flex-direction: column;
+  max-width: 440px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  width: 100%;
+}
+
+html.login-mode-staff-kamarier .staff-brand,
+html.login-mode-staff-recepsion .staff-brand {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  background: transparent;
+  padding: 1.35rem 1.25rem 0.35rem;
+  text-align: center;
+}
+
+html.login-mode-staff-kamarier .staff-brand::before,
+html.login-mode-staff-kamarier .staff-brand::after,
+html.login-mode-staff-recepsion .staff-brand::before,
+html.login-mode-staff-recepsion .staff-brand::after {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+html.login-mode-staff-kamarier .staff-brand-inner,
+html.login-mode-staff-recepsion .staff-brand-inner {
+  height: auto;
+  align-items: center;
+}
+
+html.login-mode-staff-kamarier .staff-brand-logo-wrap,
+html.login-mode-staff-recepsion .staff-brand-logo-wrap {
+  margin-bottom: 0.65rem;
+}
+
+html.login-mode-staff-kamarier .staff-brand-logo-img,
+html.login-mode-staff-recepsion .staff-brand-logo-img {
+  width: 76px;
+  margin: 0 auto;
+  border-radius: 12px;
+  display: block;
+}
+
+html.login-mode-staff-kamarier .staff-brand-tag,
+html.login-mode-staff-recepsion .staff-brand-tag {
+  margin: 0 0 0.65rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+html.login-mode-staff-kamarier #cloud-status-pill,
+html.login-mode-staff-recepsion #cloud-status-pill {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  padding: 0.2rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+  min-width: 5.25rem;
+  min-height: 1.65rem;
+  box-sizing: border-box;
+}
+
+html.login-mode-staff-kamarier #cloud-status-pill.cloud-status-offline,
+html.login-mode-staff-kamarier #cloud-status-pill.cloud-status-bad,
+html.login-mode-staff-recepsion #cloud-status-pill.cloud-status-offline,
+html.login-mode-staff-recepsion #cloud-status-pill.cloud-status-bad {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde68a;
+}
+
+html.login-mode-staff-kamarier .staff-brand-venue-mark,
+html.login-mode-staff-recepsion .staff-brand-venue-mark {
+  display: block !important;
+  margin: 0 auto 0.45rem;
+}
+
+html.login-mode-staff-kamarier .staff-brand-venue,
+html.login-mode-staff-recepsion .staff-brand-venue {
+  text-transform: none;
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0 0 0.2rem;
+  color: #fff;
+}
+
+html.login-mode-staff-kamarier .staff-brand-sub,
+html.login-mode-staff-recepsion .staff-brand-sub {
+  display: block !important;
+  margin: 0 0 0.85rem;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+html.login-mode-staff-kamarier .staff-brand-foot,
+html.login-mode-staff-recepsion .staff-brand-foot {
+  margin-top: 0;
+  padding-top: 0;
+  align-items: center;
+}
+
+html.login-mode-staff-kamarier .staff-brand-powered,
+html.login-mode-staff-recepsion .staff-brand-powered {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.38);
+  margin-bottom: 0;
+}
+
+html.login-mode-staff-kamarier #brand-app-version,
+html.login-mode-staff-recepsion #brand-app-version {
+  display: none !important;
+}
+
+html.login-mode-staff-kamarier .staff-main,
+html.login-mode-staff-recepsion .staff-main {
+  flex: 0 0 auto;
+  background: transparent;
+  padding: 0.5rem 1.25rem 1.75rem;
+  overflow: visible;
+}
+
+html.login-mode-staff-kamarier .staff-main-head,
+html.login-mode-staff-kamarier .login-col-admin,
+html.login-mode-staff-kamarier .login-col-divider,
+html.login-mode-staff-kamarier #btn-online-orders,
+html.login-mode-staff-kamarier #btn-emergency-waiter,
+html.login-mode-staff-kamarier #login-rfid-section,
+html.login-mode-staff-kamarier #login-staff-role-pick,
+html.login-mode-staff-kamarier .login-emergency-link,
+html.login-mode-staff-recepsion .staff-main-head,
+html.login-mode-staff-recepsion .login-col-admin,
+html.login-mode-staff-recepsion .login-col-divider,
+html.login-mode-staff-recepsion #btn-online-orders,
+html.login-mode-staff-recepsion #btn-emergency-waiter,
+html.login-mode-staff-recepsion #login-rfid-section,
+html.login-mode-staff-recepsion #login-staff-role-pick,
+html.login-mode-staff-recepsion .login-emergency-link {
+  display: none !important;
+}
+
+html.login-mode-staff-kamarier .login-split,
+html.login-mode-staff-recepsion .login-split {
+  display: block;
+  min-height: 0;
+}
+
+html.login-mode-staff-kamarier .login-col-waiters,
+html.login-mode-staff-recepsion .login-col-waiters {
+  width: 100%;
+  padding: 0;
+}
+
+html.login-mode-staff-kamarier .pin-panel-wrap,
+html.login-mode-staff-recepsion .pin-panel-wrap {
+  max-width: none;
+}
+
+html.login-mode-staff-kamarier .pin-hint,
+html.login-mode-staff-recepsion .pin-hint {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.88rem;
+  margin-bottom: 1.1rem;
+  text-align: center;
+}
+
+html.login-mode-staff-kamarier .pin-display,
+html.login-mode-staff-recepsion .pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+html.login-mode-staff-kamarier .pin-dot,
+html.login-mode-staff-recepsion .pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+}
+
+html.login-mode-staff-kamarier .pin-dot.filled,
+html.login-mode-staff-recepsion .pin-dot.filled {
+  background: #fff;
+  border-color: #fff;
+}
+
+html.login-mode-staff-kamarier .numpad,
+html.login-mode-staff-recepsion .numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+html.login-mode-staff-kamarier .numpad-btn,
+html.login-mode-staff-recepsion .numpad-btn {
+  min-height: 62px;
+  font-size: 1.45rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  touch-action: manipulation;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+html.login-mode-staff-kamarier .numpad-btn:active,
+html.login-mode-staff-recepsion .numpad-btn:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+html.login-mode-staff-kamarier .numpad-btn.action,
+html.login-mode-staff-recepsion .numpad-btn.action {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1.15rem;
+}
+
+html.login-mode-staff-kamarier .numpad-btn.empty,
+html.login-mode-staff-recepsion .numpad-btn.empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.login-mode-staff-kamarier .pin-actions,
+html.login-mode-staff-recepsion .pin-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0.85rem;
+  width: 100%;
+}
+
+html.login-mode-staff-kamarier .btn-pin-clear,
+html.login-mode-staff-recepsion .btn-pin-clear {
+  display: none !important;
+}
+
+html.login-mode-staff-kamarier .btn-pin-enter,
+html.login-mode-staff-recepsion .btn-pin-enter {
+  flex: none;
+  width: 100%;
+  min-height: 54px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 1.12rem;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+}
+
+html.login-mode-staff-kamarier .btn-pin-enter {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+}
+
+html.login-mode-staff-recepsion .btn-pin-enter {
+  background: linear-gradient(180deg, #ff9a2e 0%, #f97316 100%);
+  box-shadow: 0 8px 24px rgba(249, 115, 22, 0.35);
+}
+
+html.login-mode-staff-kamarier .staff-login-foot,
+html.login-mode-staff-recepsion .staff-login-foot {
+  display: block !important;
+  text-align: center;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.32);
+  margin: 1.25rem 0 0;
+  padding: 0 0.5rem;
+}
+
+html.login-mode-staff-kamarier .staff-main .alert-error,
+html.login-mode-staff-recepsion .staff-main .alert-error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}

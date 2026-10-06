@@ -739,6 +739,7 @@
 
   <script src="/js/app.js?v=6"></script>
   <script src="/js/order-alarm-sound.js"></script>
+  <script src="/js/staff-order-alert.js"></script>
   <script>
     /* Recepsion: pa kyçje pas mosveprimit — vetëm butoni DIL (app.js WAITER_LOCK_MS 30s). */
     window.aktivizoKyçjenTerminaleKamarier = function recepNoIdleTerminalLock() {};
@@ -803,7 +804,20 @@
       }
     }
 
-    function luajTingullPorosiRecep() {
+    function luajTingullPorosiRecep(repeatOnly) {
+      const n = recepGuestServiceOrders.length;
+      if (typeof window.staffOrderAlert === "function") {
+        if (repeatOnly) {
+          window.staffOrderAlertRepeat?.();
+          return;
+        }
+        window.staffOrderAlert({
+          title: n === 1 ? "Kërkesë shërbimi!" : `${n} kërkesa shërbimesh!`,
+          body: "Hap recepsionin dhe pranoje kërkesën nga QR.",
+          tag: "recep-guest-service-pending",
+        });
+        return;
+      }
       dridhPorosiRecep();
       if (typeof window.playOrderAlarmSound === "function") {
         window.playOrderAlarmSound();
@@ -929,7 +943,7 @@
           if (!recepOnlinePopOpen) hapRecepGuestServicePop();
           if (!recepOnlineAlarmTimer) {
             recepOnlineAlarmTimer = setInterval(() => {
-              if (recepGuestServiceOrders.length) luajTingullPorosiRecep();
+              if (recepGuestServiceOrders.length) luajTingullPorosiRecep(true);
             }, 12000);
           }
         } else if (pending <= 0 && recepOnlineAlarmTimer) {

@@ -943,4 +943,8 @@ tr:active td { background: #f8fafc; }
 
 .staff-brand-foot .cloud-status-pill {
   margin-top: 0.65rem;
+  min-width: 5.25rem;
+  min-height: 1.65rem;
+  justify-content: center;
+  box-sizing: border-box;
 }
