@@ -755,6 +755,36 @@ if (!gotTheLock) {
         return;
       }
 
+      global.__hotelAutoRestoreMessage = "";
+      try {
+        const autoBackup = require(path.join(__dirname, "auto-backup"));
+        const dbPath = process.env.DB_PATH;
+        const fiscalKeysPath = path.join(userData, "fiscal-keys");
+        const restore = autoBackup.maybeRestoreOnStartup({
+          targetDbPath: dbPath,
+          targetKeysPath: fiscalKeysPath,
+          licenseActive: isProd,
+          skipLicenseCheck: !isProd,
+        });
+        if (restore?.restored && restore.message) {
+          global.__hotelAutoRestoreMessage = restore.message;
+        } else if (restore?.code === "license_required") {
+          try {
+            dialog.showMessageBoxSync({
+              type: "warning",
+              title: APP_NAME,
+              message: "Rikthim backup",
+              detail: restore.error || autoBackup.LICENSE_RESTORE_MESSAGE,
+              buttons: ["OK"],
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (e) {
+        console.warn("[backup] startup restore:", e.message || e);
+      }
+
       // DB in-process (db-engine) — await whenReady para serverit
       const database = require("./database");
       try {
@@ -798,6 +828,20 @@ if (!gotTheLock) {
       }
       httpServer = started.server;
       hotelHttpStarted = started;
+      if (global.__hotelAutoRestoreMessage) {
+        try {
+          dialog.showMessageBoxSync({
+            type: "info",
+            title: APP_NAME,
+            message: "Rikthim nga backup",
+            detail: String(global.__hotelAutoRestoreMessage),
+            buttons: ["OK"],
+          });
+        } catch {
+          /* ignore */
+        }
+        global.__hotelAutoRestoreMessage = "";
+      }
       await mountHotelMainWindow(started, userData);
 
       /* security-alert: njoftime lokale (queue); cloud post dështon në silent në hotel offline */

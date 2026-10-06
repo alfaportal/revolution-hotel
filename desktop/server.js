@@ -1089,7 +1089,7 @@ function canShowKdsStaffLinks() {
 }
 
 function isCloudWaiterDisabledSetting() {
-  return true;
+  return false;
 }
 
 function resolveStaffWaiterUrl(_cloudWaiter, _staffRow) {
@@ -1133,10 +1133,52 @@ function pickLanIPv4Address() {
   return candidates[0]?.ip || null;
 }
 
+function getLocalServerPort() {
+  return Number(process.env.ACTUAL_PORT || process.env.PORT || 3001) || 3001;
+}
+
 function getLocalLanBaseUrl() {
-  const port = process.env.ACTUAL_PORT || process.env.PORT || 3001;
+  const port = getLocalServerPort();
   const ip = pickLanIPv4Address();
   return ip ? `http://${ip}:${port}`.replace(/\/+$/, "") : null;
+}
+
+function sanitizeLanHostname(name) {
+  return String(name || "")
+    .trim()
+    .replace(/[^\w.-]/g, "")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+}
+
+/** URL waiter.html pa IP — NetBIOS / mDNS (telefoni duhet në të njëjtin WiFi). */
+function getLocalWaiterHostnamePanelUrls() {
+  const port = getLocalServerPort();
+  const suffix = "/waiter.html";
+  const out = [];
+  const pc = sanitizeLanHostname(os.hostname());
+  if (pc) {
+    out.push({
+      id: "pc-name",
+      label: `Emri i PC-së (${pc})`,
+      url: `http://${pc}:${port}${suffix}`,
+    });
+  }
+  out.push({
+    id: "revolution-hotel-local",
+    label: "revolution-hotel.local",
+    url: `http://revolution-hotel.local:${port}${suffix}`,
+  });
+  return out;
+}
+
+function buildLocalWaiterLanLinkPayload() {
+  return {
+    local_waiter_panel_url: getLocalWaiterPanelUrl(),
+    local_lan_ip: pickLanIPv4Address() || "",
+    local_server_port: getLocalServerPort(),
+    local_waiter_hostname_urls: getLocalWaiterHostnamePanelUrls(),
+  };
 }
 
 function getLocalServerBaseUrl() {
@@ -1189,6 +1231,13 @@ function getLocalWaiterUrl() {
   const suffix = localStaffPathSuffix("kamarier");
   if (!base || !suffix) return null;
   return `${base}${suffix}`;
+}
+
+/** Panel kamarier LAN — hyrje me PIN (pas login.html ose direkt nëse sesioni ekziston). */
+function getLocalWaiterPanelUrl() {
+  const base = getLocalLanBaseUrl() || getLocalServerBaseUrl();
+  if (!base) return null;
+  return `${String(base).replace(/\/+$/, "")}/waiter.html`;
 }
 
 function getLocalRecepsionUrl() {
@@ -1346,6 +1395,7 @@ function cloudSyncLinksPayload(settings, status) {
     client_name: status.client_name || settings.cloud_client_name || "",
     kitchen_slug: String(slug || "").trim(),
     kitchen_key: String(key || "").trim(),
+    local_base_url: getLocalServerBaseUrl(),
     links_ready: !!(waiter_url || bar_url || kitchen_url || kiosk_url || public_page_url || getLocalWaiterUrl()),
     waiter_url,
     reception_url,
@@ -1355,6 +1405,7 @@ function cloudSyncLinksPayload(settings, status) {
     public_page_url,
     cloud_waiter_disabled: cloudDisabled,
     local_waiter_url: getLocalWaiterUrl(),
+    ...buildLocalWaiterLanLinkPayload(),
     local_recepsion_url: getLocalRecepsionUrl(),
     local_waiter_tipi: venue.tipi,
     local_waiter_slug: venue.slug,
@@ -1795,7 +1846,14 @@ app.get("/api/login/staff-wifi-links", (_req, res) => {
     kamarier_url,
     recepsion_url,
     local_staff_wifi: { kamarier: kamarier_url, recepsion: recepsion_url },
+    ...buildLocalWaiterLanLinkPayload(),
   });
+});
+
+/** Linke LAN kamarier — rifreskim i shpejtë (QR / IP) pa cloud sync të plotë. */
+app.get("/api/admin/local-waiter-links", auth, adminOnly, (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.json({ ok: true, ...buildLocalWaiterLanLinkPayload() });
 });
 
 /** Meny publike — /menu/{slug}/{tavolina} (si restoranti). */
@@ -2302,10 +2360,11 @@ app.delete("/api/waiter-codes/:code", auth, adminOnly, (req, res) => {
 });
 
 app.get("/api/settings/cloud-waiter-status", auth, adminOnly, (_req, res) => {
+  const disabled = isCloudWaiterDisabledSetting();
   res.json({
     ok: true,
-    disabled: true,
-    cloud_waiter_disabled: "true",
+    disabled,
+    cloud_waiter_disabled: disabled ? "true" : "false",
   });
 });
 
@@ -5495,19 +5554,22 @@ app.post("/api/admin/reports/waiter/:shiftId/print", auth, adminOnly, async (req
 app.get("/api/staff", auth, adminOnly, async (_req, res) => {
   const staff = db.getStaffForAdmin();
   const kdsEnabled = canShowKdsStaffLinks();
+  const cloudWaiterOn = !isCloudWaiterDisabledSetting();
   let cloudWaiters = [];
-  if (kdsEnabled) {
+  if (cloudWaiterOn) {
     try {
       await cloudSync.pushStaffAsync(db);
     } catch {
       /* ignore */
     }
+  }
+  if (kdsEnabled || cloudWaiterOn) {
     try {
       cloudWaiters = await license.fetchWaitersList(electronApp());
     } catch {
       cloudWaiters = [];
     }
-    if (!cloudWaiters.length) {
+    if (cloudWaiterOn && !cloudWaiters.length) {
       try {
         await cloudSync.pushStaffAsync(db);
         cloudWaiters = await license.fetchWaitersList(electronApp());
@@ -5526,7 +5588,7 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
     cloud_waiter_disabled: isCloudWaiterDisabledSetting(),
     staff: staff.map(s => {
       const full = staffById.get(Number(s.id)) || null;
-      const cw = kdsEnabled && !isCloudWaiterDisabledSetting() ? byName.get(normalizeStaffName(s.name)) : null;
+      const cw = cloudWaiterOn ? byName.get(normalizeStaffName(s.name)) : null;
       return {
         ...s,
         waiter_url: resolveStaffWaiterUrl(cw, full),
@@ -9621,6 +9683,103 @@ app.get("/api/system/disk-status", auth, adminOnly, (_req, res) => {
   }
 });
 
+function resolveAutoBackupPaths() {
+  const dbPath = db.DB_PATH || process.env.DB_PATH || "";
+  const dataDir = dbPath ? path.dirname(dbPath) : "";
+  return {
+    dbPath,
+    fiscalKeysPath: dataDir ? path.join(dataDir, "fiscal-keys") : "",
+  };
+}
+
+function collectAutoBackupSettingsSnapshot() {
+  const cs = typeof db.getCloudSettings === "function" ? db.getCloudSettings() : {};
+  return {
+    biz_name: typeof db.getBusinessName === "function" ? db.getBusinessName() : "",
+    restaurant_name: db.getSetting("restaurant_name", ""),
+    kitchen_slug: cs.kitchen_slug || db.getSetting("kitchen_slug", ""),
+    cloud_license_key: cs.cloud_license_key || db.getSetting("cloud_license_key", ""),
+    cloud_client_id: cs.cloud_client_id || db.getSetting("cloud_client_id", ""),
+    device_id: cs.device_id || db.getSetting("device_id", ""),
+  };
+}
+
+app.get("/api/auto-backup/status", auth, adminOnly, (_req, res) => {
+  try {
+    const autoBackup = require("./auto-backup");
+    res.json({ ok: true, ...autoBackup.getBackupStatus() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/auto-backup/catalog", auth, adminOnly, (_req, res) => {
+  try {
+    const autoBackup = require("./auto-backup");
+    res.json(autoBackup.listRestoreCatalog());
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/auto-backup/run-now", auth, adminOnly, (_req, res) => {
+  try {
+    const autoBackup = require("./auto-backup");
+    const paths = resolveAutoBackupPaths();
+    const result = autoBackup.runBackupCycle({
+      dbPath: paths.dbPath,
+      fiscalKeysPath: paths.fiscalKeysPath,
+      flushSave: typeof db.flushDatabase === "function" ? () => db.flushDatabase() : undefined,
+      getSettingsSnapshot: collectAutoBackupSettingsSnapshot,
+    });
+    res.json({ ok: !!result.ok, ...result });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/auto-backup/restore", auth, adminOnly, async (req, res) => {
+  try {
+    const gate = require("./auto-backup-restore-gate");
+    if (!(await gate.isLicenseActiveForDataRestore(electronApp()))) {
+      return res.status(403).json({
+        ok: false,
+        gabim: gate.MESSAGE,
+        license_required: true,
+      });
+    }
+    const autoBackup = require("./auto-backup");
+    const paths = resolveAutoBackupPaths();
+    if (!paths.dbPath) {
+      return res.status(400).json({ ok: false, gabim: "DB_PATH mungon." });
+    }
+    const sourceType = String(req.body?.source_type || req.body?.sourceType || "latest").trim();
+    const sourceId = String(req.body?.source_id || req.body?.sourceId || "latest").trim();
+    const result = autoBackup.restoreFromBackup({
+      targetDbPath: paths.dbPath,
+      targetKeysPath: paths.fiscalKeysPath,
+      source_type: sourceType,
+      source_id: sourceId,
+    });
+    if (!result.restored) {
+      return res.status(400).json({ ok: false, gabim: result.error || "Restore dështoi." });
+    }
+    auditActivity(
+      String(req.session?.emri || "Admin"),
+      req.session?.role || "admin",
+      "Rikthim auto-backup",
+      `${sourceType}/${sourceId} · ${result.restored_at || ""}`,
+    );
+    res.json({
+      ok: true,
+      message: result.message,
+      restart_required: true,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/backup/run", auth, adminOnly, (req, res) => {
   try {
     const { runBackup, pickBackupFolderDialog } = require("./hotel-backup");
@@ -9709,6 +9868,21 @@ function onServerListening(server, port) {
     try {
       cloudAutoSync.startCloudAutoSync(db);
     } catch (_) {}
+    try {
+      const autoBackup = require("./auto-backup");
+      const paths = resolveAutoBackupPaths();
+      if (paths.dbPath) {
+        autoBackup.startAutoBackup({
+          dbPath: paths.dbPath,
+          fiscalKeysPath: paths.fiscalKeysPath,
+          intervalMs: 60 * 1000,
+          flushSave: typeof db.flushDatabase === "function" ? () => db.flushDatabase() : undefined,
+          getSettingsSnapshot: collectAutoBackupSettingsSnapshot,
+        });
+      }
+    } catch (e) {
+      console.warn("[backup] auto-start:", e.message);
+    }
     try {
       const terminalSync = require("./terminal-sync");
       terminalLanSyncInstance = terminalSync.createTerminalLanSync({
