@@ -44,12 +44,11 @@ function isLicenseApiPath(reqPath) {
   return /^\/api\/v1\/license\//.test(p);
 }
 
-/** Licenca HOTEL — gjithmonë përmes /hotel/api/... te revolution-hotel-server. */
+/** Krejt API cloud HOTEL — https://revolution-pos.com/hotel/api/... (proxy te revolution-hotel-server). */
 function resolveCloudRequestPath(reqPath) {
   const p = String(reqPath || "").trim();
   if (!p) return p;
-  if (isLicenseApiPath(p)) return hotelCloudApiPath(p);
-  return p;
+  return hotelCloudApiPath(p);
 }
 
 
