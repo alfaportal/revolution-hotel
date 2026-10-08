@@ -3,27 +3,28 @@ const { isAiPaused } = require("../lib/aiConfig");
 
 /**
  * Skanim fature BLERJEJE (Blerjet → kontrollo → Regjistro → stok).
- * Formati tipik KS (DISKONT DESAR etj.): Njesia=copë, Sasia=copa, Cmimi=çmim/copë.
- * Mos e trajto si pako×24 nëse fatura thotë copë.
+ * Formate: Revolution (11 kolona TVSH) ose furnizues KS (DISKONT etj.).
  */
 const EXTRACT_PROMPT =
-  "Lexo këtë Faturë Shitje të FURNIZUESIT (p.sh. DISKONT DESAR) drejtuar kafenesë/restorantit (blerësi).\n" +
-  "Kolonat tipike: Nr | Barkodi | Pershkrimi | Njesia | Sasia | Cmimi | Rabati | Tatimi | Vlera Pa TVSH | TVSH | Vlera Me TVSH.\n" +
-  "RREGULLA KRITIKE:\n" +
-  "1) Lexo Njesia SAKTËSISHT nga fatura. Nëse shkruan «copë» / «cope» → unit=\"copë\". Vetëm nëse shkruan «Pako»/«Pakë» → unit=\"pako\".\n" +
-  "2) quantity = kolonën Sasia (numri siç duket: 40.00 → 40). MOS e shumëzo, MOS e ndaj.\n" +
-  "3) unit_price = kolonën Cmimi (çmimi për 1 njësi: 1 copë ose 1 pako). JO «Vlera Me TVSH».\n" +
-  "4) line_total = kolonën «Vlera Me TVSH» e atij rreshti.\n" +
-  "5) pieces_per_pack: nëse unit=\"copë\" → GJITHMONË 1. Nëse unit=\"pako\" → sa copë ka 1 pako (nga emri «24 cop» ose 24 për pije).\n" +
-  "6) name = Pershkrimi SAKTËSISHT si në faturë (p.sh. Ujë Mineral 0.50l, Coca-Cola 0.25l).\n" +
-  "7) MOS invento rreshta. MOS përfshi TVSH/total/subtotal si artikull.\n" +
-  "8) supplier = emri i firmës së sipërme (DISKONT…), JO emri i kafenesë blerëse.\n" +
-  "9) supplier_nui = NUI / Nr. unik identifikues / Nr. biznesi i FURNIZUESIT (vetëm shifra, p.sh. 810xxxxxx). JO NUI i blerësit.\n" +
-  "10) supplier_vat = Nr. TVSH i furnizuesit nëse duket (p.sh. XK…). Nëse nuk ka → \"\".\n" +
-  "11) vat_rate = norma dominante e TVSH në faturë: 18, 8 ose 0. Nga kolona Tatimi / % TVSH / totalet. Nëse e paqartë → 18.\n" +
-  "invoice_number (p.sh. 2024-400), invoice_date YYYY-MM-DD, total_with_vat = «Vlera për pagesë».\n" +
-  "Përgjigju VETËM me JSON (pa markdown):\n" +
-  '{"supplier":"DISKONT DESAR SH.P.K.","supplier_nui":"810123456","supplier_vat":"","vat_rate":18,"invoice_number":"2024-400","invoice_date":"2024-05-13","total_with_vat":277.72,"items":[{"name":"Ujë Mineral 0.50l","quantity":20,"unit":"copë","unit_price":0.25,"line_total":5.90,"pieces_per_pack":1},{"name":"Coca-Cola 0.25l","quantity":2,"unit":"copë","unit_price":0.60,"line_total":1.42,"pieces_per_pack":1}]}';
+  "Lexo faturën e FURNIZUESIT drejtuar hotelit/restorantit (blerje stoku).\n" +
+  "Formati Revolution (11 kolona — mapo saktë):\n" +
+  "Nr | Përshkrimi | Njësia | Sasia | Çmimi pa TVSH | Zbritja % | Çmimi me TVSH | Shuma pa TVSH | TVSH % | Shuma TVSH | Totali me TVSH\n" +
+  "Format tjetër (DISKONT etj.): Nr | Pershkrimi | Njesia | Sasia | Cmimi | Rabati | Tatimi | Vlera Pa TVSH | TVSH | Vlera Me TVSH.\n" +
+  "\n" +
+  "Për ÇDO rresht artikulli DUHET të kesh 4 fusha numerike (mos i përziej neto/bruto):\n" +
+  "• unit_price = Çmimi pa TVSH (neto / copë ose / njësi) — kolona «Çmimi pa TVSH».\n" +
+  "• unit_price_gross = Çmimi me TVSH (bruto / copë ose / njësi) — kolona «Çmimi me TVSH».\n" +
+  "• line_net = Shuma pa TVSH e rreshtit — kolona «Shuma pa TVSH» / Vlera Pa TVSH.\n" +
+  "• line_total = Totali me TVSH i rreshtit — kolona «Totali me TVSH» / Vlera Me TVSH.\n" +
+  "Në format DISKONT: Cmimi≈unit_price neto; llogarit unit_price_gross dhe line_total me TVSH nëse duhet.\n" +
+  "\n" +
+  "Tjetër: quantity = Sasia (si në faturë). unit: copë|pako|kg|l. pieces_per_pack: 1 për copë; për pako → copë në pako.\n" +
+  "name = Përshkrimi i saktë. vat_rate rresht: 0|8|18 nga TVSH %. MOS rreshta TVSH/total/subtotal si artikull.\n" +
+  "supplier = furnizuesi (jo blerësi). supplier_nui, supplier_vat. Header vat_rate. invoice_number, invoice_date YYYY-MM-DD.\n" +
+  "total_with_vat = totali për pagesë ME TVSH.\n" +
+  "\n" +
+  "Përgjigju VETËM me JSON (pa markdown). Shembull items:\n" +
+  '{"supplier":"Furnizues SH.P.K.","supplier_nui":"810123456","supplier_vat":"","vat_rate":18,"invoice_number":"SH-2026-0005","invoice_date":"2026-10-07","total_with_vat":95.72,"items":[{"name":"Red Bull 250ml","quantity":20,"unit":"copë","unit_price":1.69,"unit_price_gross":1.99,"line_net":33.80,"line_total":39.80,"pieces_per_pack":1,"vat_rate":18}]}';
 
 function normalizeSupplierNui(raw) {
   const digits = String(raw || "").replace(/\D/g, "");
@@ -109,7 +110,31 @@ function normalizeInvoiceItems(rawItems) {
     const quantity = parseNumber(entry?.quantity ?? entry?.sasia ?? entry?.qty ?? entry?.amount);
     const unit = normalizeUnit(entry?.unit ?? entry?.njesia ?? entry?.njësia ?? "copë");
     const unit_price = parseNumber(
-      entry?.unit_price ?? entry?.price ?? entry?.cmimi ?? entry?.cost ?? entry?.unit_cost,
+      entry?.unit_price ??
+        entry?.unit_price_net ??
+        entry?.price_net ??
+        entry?.cmimi_pa_tvsh ??
+        entry?.price ??
+        entry?.cmimi ??
+        entry?.cost ??
+        entry?.unit_cost,
+    );
+    const unit_price_gross = parseNumber(
+      entry?.unit_price_gross ??
+        entry?.price_gross ??
+        entry?.cmimi_me_tvsh ??
+        entry?.gross_unit_price ??
+        entry?.unit_gross_price ??
+        entry?.cmimi_bruto ??
+        entry?.price_with_vat,
+    );
+    const line_net = parseNumber(
+      entry?.line_net ??
+        entry?.shuma_pa_tvsh ??
+        entry?.vlera_pa_tvsh ??
+        entry?.net_line ??
+        entry?.line_net_amount ??
+        entry?.shuma_net,
     );
     if (quantity == null || quantity <= 0) continue;
 
@@ -118,7 +143,24 @@ function normalizeInvoiceItems(rawItems) {
       unit,
       entry?.pieces_per_pack ?? entry?.copa_ne_pako ?? entry?.pieces,
     );
-    const line_total = parseNumber(entry?.line_total ?? entry?.vlera ?? entry?.value);
+    const line_total = parseNumber(
+      entry?.line_total ??
+        entry?.totali_me_tvsh ??
+        entry?.vlera_me_tvsh ??
+        entry?.line_gross ??
+        entry?.vlera ??
+        entry?.value ??
+        entry?.total,
+    );
+    let priceNet = unit_price != null && unit_price >= 0 ? unit_price : 0;
+    if (!(priceNet > 0) && line_net != null && line_net > 0 && quantity > 0) {
+      priceNet = Math.round((line_net / quantity) * 10000) / 10000;
+    }
+    const lineVatRaw = parseNumber(entry?.vat_rate ?? entry?.tvsh ?? entry?.vat);
+    const vat_rate =
+      lineVatRaw != null && (lineVatRaw === 0 || lineVatRaw === 8 || lineVatRaw === 18)
+        ? lineVatRaw
+        : undefined;
 
     const key = `${name.toLowerCase()}|${quantity}|${unit}|${pieces_per_pack}`;
     if (seen.has(key)) continue;
@@ -127,9 +169,12 @@ function normalizeInvoiceItems(rawItems) {
       name,
       quantity,
       unit,
-      unit_price: unit_price != null && unit_price >= 0 ? unit_price : 0,
+      unit_price: priceNet,
       pieces_per_pack,
+      ...(unit_price_gross != null && unit_price_gross >= 0 ? { unit_price_gross } : {}),
+      ...(line_net != null && line_net >= 0 ? { line_net } : {}),
       ...(line_total != null && line_total >= 0 ? { line_total } : {}),
+      ...(vat_rate != null ? { vat_rate } : {}),
     });
   }
 
@@ -155,7 +200,19 @@ function extractJsonPayload(text) {
   }
 }
 
-function buildTotalsCheck(items, invoiceTotal) {
+function qtyPriceMatchesLineTotal(qty, unitPrice, lineTotal, vatPercent = 18) {
+  const net = Math.round(qty * unitPrice * 100) / 100;
+  const got = Math.round(lineTotal * 100) / 100;
+  if (!(net > 0) || !(got > 0)) return true;
+  const vat = normalizeScanVatRate(vatPercent);
+  const tol = Math.max(0.06, net * 0.02);
+  if (Math.abs(net - got) <= tol) return true;
+  const gross = Math.round(net * (1 + vat / 100) * 100) / 100;
+  return Math.abs(gross - got) <= tol;
+}
+
+function buildTotalsCheck(items, invoiceTotal, vatRate = 18) {
+  const headerVat = normalizeScanVatRate(vatRate);
   const linesSum = items.reduce((sum, it) => {
     if (it.line_total != null && Number.isFinite(it.line_total)) {
       return sum + it.line_total;
@@ -181,9 +238,14 @@ function buildTotalsCheck(items, invoiceTotal) {
 
   for (const it of items) {
     if (it.line_total == null || it.unit_price == null) continue;
-    const expected = Math.round(it.quantity * it.unit_price * 100) / 100;
+    const qty = Number(it.quantity) || 0;
+    const price = Number(it.unit_price) || 0;
     const got = Math.round(it.line_total * 100) / 100;
-    if (Math.abs(expected - got) > Math.max(0.3, expected * 0.15)) {
+    const lineVat = normalizeScanVatRate(
+      it.vat_rate != null && it.vat_rate !== "" ? it.vat_rate : headerVat,
+    );
+    if (!qtyPriceMatchesLineTotal(qty, price, got, lineVat)) {
+      const expected = Math.round(qty * price * 100) / 100;
       warnings.push(
         `Rreshti «${it.name}»: sasia×çmimi (${expected.toFixed(2)}) ≠ vlera rreshtit (${got.toFixed(2)}).`,
       );
@@ -280,7 +342,10 @@ async function scanInvoiceFromImage({ mime, base64 }) {
   const invoiceTotal = parseNumber(
     payload.total_with_vat ?? payload.total ?? payload.grand_total ?? payload.totali,
   );
-  const totals_check = buildTotalsCheck(items, invoiceTotal);
+  const headerVat = normalizeScanVatRate(
+    payload.vat_rate ?? payload.tvsh_percent ?? payload.tax_rate ?? payload.tatimi ?? 18,
+  );
+  const totals_check = buildTotalsCheck(items, invoiceTotal, headerVat);
 
   return {
     document_type: "stock_purchase",

@@ -13,6 +13,26 @@ function normalizeReceiptVatCategory(v) {
   return "18";
 }
 
+function normalizeReceiptVatPercent(v, fallback = 18) {
+  const n = Number(v);
+  if (n === 0 || n === 8 || n === 18) return n;
+  const fb = Number(fallback);
+  if (fb === 0 || fb === 8 || fb === 18) return fb;
+  return 18;
+}
+
+/** Cmimi neto + vlera me TVSH — mos raporto gabim kur ndryshimi është vetëm TVSH. */
+function qtyPriceMatchesLineTotal(qty, unitPrice, lineTotal, vatPercent = 18) {
+  const net = Math.round(qty * unitPrice * 100) / 100;
+  const got = Math.round(lineTotal * 100) / 100;
+  if (!(net > 0) || !(got > 0)) return true;
+  const vat = normalizeReceiptVatPercent(vatPercent);
+  const tol = Math.max(0.06, net * 0.02);
+  if (Math.abs(net - got) <= tol) return true;
+  const gross = Math.round(net * (1 + vat / 100) * 100) / 100;
+  return Math.abs(gross - got) <= tol;
+}
+
 /** Fjalë të përgjithshme — nuk mjafton vetëm këto për matching. */
 const STOP_TOKENS = new Set([
   "mineral", "minerale", "natyral", "natyrale", "natural", "uje", "water",
@@ -217,6 +237,34 @@ function normalizeInvoiceDateFromScan(rawDate, invoiceNumber) {
   return "";
 }
 
+function normalizeScannedLineItem(entry) {
+  if (!entry || typeof entry !== "object") return entry;
+  const scan_name = String(entry.scan_name || entry.name || entry.emri || "").trim();
+  const name = scan_name || String(entry.name || entry.emri || "").trim();
+  const quantity = packMath.parseEuroNumber(entry.quantity ?? entry.sasia);
+  let unit_price = packMath.parseEuroNumber(
+    entry.unit_price ?? entry.price ?? entry.cmimi ?? entry.pack_price,
+  );
+  const line_net = packMath.parseEuroNumber(
+    entry.line_net ?? entry.shuma_pa_tvsh ?? entry.vlera_pa_tvsh,
+  );
+  const line_total = packMath.parseEuroNumber(
+    entry.line_total ?? entry.vlera_me_tvsh ?? entry.vlera ?? entry.total,
+  );
+  if (!(unit_price > 0) && line_net > 0 && quantity > 0) {
+    unit_price = Math.round((line_net / quantity) * 10000) / 10000;
+  }
+  const out = {
+    ...entry,
+    scan_name: scan_name || name,
+    name: name || scan_name,
+    unit_price: Number.isFinite(unit_price) && unit_price >= 0 ? unit_price : 0,
+  };
+  if (line_net > 0) out.line_net = Math.round(line_net * 100) / 100;
+  if (line_total > 0) out.line_total = Math.round(line_total * 100) / 100;
+  return out;
+}
+
 function normalizeScannedInvoicePayload(data) {
   if (!data || typeof data !== "object") return data;
   const invoice_number = String(data.invoice_number || "").trim() || data.invoice_number;
@@ -225,7 +273,10 @@ function normalizeScannedInvoicePayload(data) {
     normalized || (String(data.invoice_date || "").trim().slice(0, 10).match(/^\d{4}-\d{2}-\d{2}$/)
       ? String(data.invoice_date).slice(0, 10)
       : data.invoice_date);
-  return { ...data, invoice_number, invoice_date };
+  const items = Array.isArray(data.items)
+    ? data.items.map((it) => normalizeScannedLineItem(it))
+    : data.items;
+  return { ...data, invoice_number, invoice_date, items };
 }
 
 async function scanReceipt(db, { photo }) {
@@ -246,6 +297,7 @@ function validateReceiptScanApply(
     totals_check,
     allow_duplicate,
     allow_owner_override,
+    vat_rate,
   } = {},
   db,
 ) {
@@ -298,7 +350,7 @@ function validateReceiptScanApply(
   if (!lines.length) errors.push("Nuk ka artikuj me sasi > 0 për regjistrim.");
 
   for (let i = 0; i < lines.length; i += 1) {
-    const raw = lines[i];
+    const raw = normalizeScannedLineItem(lines[i]);
     const label = String(raw.name || raw.emri || `Rreshti ${i + 1}`).trim() || `Rreshti ${i + 1}`;
     const converted = packMath.convertPackToPieces(raw);
     if (!converted.ok) {
@@ -320,12 +372,27 @@ function validateReceiptScanApply(
     const aiLine = packMath.parseEuroNumber(
       raw.line_total ?? raw.vlera ?? raw.total ?? raw.vlera_me_tvsh,
     );
+    const lineNetAi = packMath.parseEuroNumber(raw.line_net ?? raw.shuma_pa_tvsh ?? raw.vlera_pa_tvsh);
+    if (lineNetAi > 0) {
+      const netCalc =
+        converted.line_net != null
+          ? converted.line_net
+          : Math.round(converted.packs * converted.pack_price * 100) / 100;
+      if (Math.abs(netCalc - lineNetAi) > Math.max(0.06, netCalc * 0.02)) {
+        errors.push(
+          `«${label}»: shuma pa TVSH (${netCalc.toFixed(2)} €) ≠ fatura (${lineNetAi.toFixed(2)} €).`,
+        );
+      }
+    }
     if (Number.isFinite(aiLine) && aiLine > 0) {
-      const diff = Math.abs(converted.line_total - aiLine);
-      if (diff > 0.06) {
+      const lineVat = normalizeReceiptVatPercent(
+        raw.vat_rate != null && raw.vat_rate !== "" ? raw.vat_rate : vat_rate,
+        vat_rate,
+      );
+      if (!qtyPriceMatchesLineTotal(converted.packs, converted.pack_price, aiLine, lineVat)) {
         errors.push(
           `«${label}»: sasia × çmimi (${converted.line_total.toFixed(2)} €) ≠ vlera në faturë (${aiLine.toFixed(2)} €). ` +
-            "Korrigjo sasinë, njesinë, copa/pako ose çmimin.",
+            "Korrigjo sasinë, copa/pako ose çmimin (neto vs me TVSH).",
         );
       }
     }
@@ -389,6 +456,7 @@ function applyReceiptToStock(db, {
       totals_check,
       allow_duplicate,
       allow_owner_override,
+      vat_rate,
     },
     db,
   );
@@ -409,7 +477,8 @@ function applyReceiptToStock(db, {
   let created = 0;
   let matched = 0;
 
-  for (const raw of lines) {
+  for (const rawLine of lines) {
+    const raw = normalizeScannedLineItem(rawLine);
     const converted = packMath.convertPackToPieces(raw);
     if (!converted.ok) {
       skipped.push({ name: converted.name, reason: converted.reason || "i pavlefshëm" });
@@ -425,9 +494,11 @@ function applyReceiptToStock(db, {
           category,
           price: sellPrice > 0 ? sellPrice : 0,
           vat_category:
-            raw.vat_rate != null && raw.vat_rate !== ""
-              ? normalizeReceiptVatCategory(raw.vat_rate)
-              : "18",
+            converted.vat_rate != null && converted.vat_rate !== ""
+              ? normalizeReceiptVatCategory(converted.vat_rate)
+              : raw.vat_rate != null && raw.vat_rate !== ""
+                ? normalizeReceiptVatCategory(raw.vat_rate)
+                : "18",
         });
         created += 1;
       } catch (err) {
@@ -438,11 +509,19 @@ function applyReceiptToStock(db, {
       matched += 1;
     }
 
+    const lineVat =
+      converted.vat_rate != null && converted.vat_rate !== ""
+        ? converted.vat_rate
+        : raw.vat_rate != null && raw.vat_rate !== ""
+          ? raw.vat_rate
+          : undefined;
+
     purchaseItems.push({
       menu_item_id: menuItemId,
       quantity: converted.quantity,
       unit_price: converted.unit_price >= 0 ? converted.unit_price : 0,
-      vat_rate: raw.vat_rate != null && raw.vat_rate !== "" ? raw.vat_rate : undefined,
+      ...(converted.line_net != null ? { line_net: converted.line_net } : {}),
+      vat_rate: lineVat,
     });
     conversions.push({
       name: converted.name,
@@ -451,7 +530,11 @@ function applyReceiptToStock(db, {
       pieces_per_pack: converted.pieces_per_pack,
       pieces: converted.quantity,
       pack_price: converted.pack_price,
+      pack_price_gross: converted.pack_price_gross,
+      line_net: converted.line_net,
+      line_total: converted.line_total,
       unit_price: converted.unit_price,
+      vat_rate: lineVat,
     });
   }
 

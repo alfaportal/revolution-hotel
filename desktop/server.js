@@ -4793,7 +4793,7 @@ app.post("/api/admin/rebuild-register", auth, adminOnly, async (req, res) => {
   }
 });
 
-/* Rivendos si të re — fshin krejt userData lokale dhe rinis Electron (licenca mbahet). */
+/* Rivendos si të re — fshin DB + sidecar, licenca mbetet, rinis Electron. */
 app.post("/api/admin/factory-reset", auth, adminOnly, (req, res) => {
   try {
     const confirm = String(req.body?.confirm || "").trim();
@@ -9684,11 +9684,21 @@ app.get("/api/system/disk-status", auth, adminOnly, (_req, res) => {
 });
 
 function resolveAutoBackupPaths() {
-  const dbPath = db.DB_PATH || process.env.DB_PATH || "";
+  const dbPath = process.env.DB_PATH || db.DB_PATH || "";
   const dataDir = dbPath ? path.dirname(dbPath) : "";
   return {
     dbPath,
     fiscalKeysPath: dataDir ? path.join(dataDir, "fiscal-keys") : "",
+  };
+}
+
+function autoBackupPersistOpts(extra = {}) {
+  return {
+    getPersistedBackupDir: () => db.getSetting("auto_backup_dir", ""),
+    setPersistedBackupDir: (dir) => {
+      db.setSetting("auto_backup_dir", String(dir || "").trim());
+    },
+    ...extra,
   };
 }
 
@@ -9707,7 +9717,7 @@ function collectAutoBackupSettingsSnapshot() {
 app.get("/api/auto-backup/status", auth, adminOnly, (_req, res) => {
   try {
     const autoBackup = require("./auto-backup");
-    res.json({ ok: true, ...autoBackup.getBackupStatus() });
+    res.json({ ok: true, ...autoBackup.getBackupStatus(autoBackupPersistOpts()) });
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
   }
@@ -9716,7 +9726,7 @@ app.get("/api/auto-backup/status", auth, adminOnly, (_req, res) => {
 app.get("/api/auto-backup/catalog", auth, adminOnly, (_req, res) => {
   try {
     const autoBackup = require("./auto-backup");
-    res.json(autoBackup.listRestoreCatalog());
+    res.json(autoBackup.listRestoreCatalog(autoBackupPersistOpts()));
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
   }
@@ -9726,12 +9736,14 @@ app.post("/api/auto-backup/run-now", auth, adminOnly, (_req, res) => {
   try {
     const autoBackup = require("./auto-backup");
     const paths = resolveAutoBackupPaths();
-    const result = autoBackup.runBackupCycle({
-      dbPath: paths.dbPath,
-      fiscalKeysPath: paths.fiscalKeysPath,
-      flushSave: typeof db.flushDatabase === "function" ? () => db.flushDatabase() : undefined,
-      getSettingsSnapshot: collectAutoBackupSettingsSnapshot,
-    });
+    const result = autoBackup.runBackupCycle(
+      autoBackupPersistOpts({
+        dbPath: paths.dbPath,
+        fiscalKeysPath: paths.fiscalKeysPath,
+        flushSave: typeof db.flushDatabase === "function" ? () => db.flushDatabase() : undefined,
+        getSettingsSnapshot: collectAutoBackupSettingsSnapshot,
+      }),
+    );
     res.json({ ok: !!result.ok, ...result });
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
@@ -9755,12 +9767,14 @@ app.post("/api/auto-backup/restore", auth, adminOnly, async (req, res) => {
     }
     const sourceType = String(req.body?.source_type || req.body?.sourceType || "latest").trim();
     const sourceId = String(req.body?.source_id || req.body?.sourceId || "latest").trim();
-    const result = autoBackup.restoreFromBackup({
-      targetDbPath: paths.dbPath,
-      targetKeysPath: paths.fiscalKeysPath,
-      source_type: sourceType,
-      source_id: sourceId,
-    });
+    const result = autoBackup.restoreFromBackup(
+      autoBackupPersistOpts({
+        targetDbPath: paths.dbPath,
+        targetKeysPath: paths.fiscalKeysPath,
+        source_type: sourceType,
+        source_id: sourceId,
+      }),
+    );
     if (!result.restored) {
       return res.status(400).json({ ok: false, gabim: result.error || "Restore dështoi." });
     }
@@ -9872,13 +9886,15 @@ function onServerListening(server, port) {
       const autoBackup = require("./auto-backup");
       const paths = resolveAutoBackupPaths();
       if (paths.dbPath) {
-        autoBackup.startAutoBackup({
-          dbPath: paths.dbPath,
-          fiscalKeysPath: paths.fiscalKeysPath,
-          intervalMs: 60 * 1000,
-          flushSave: typeof db.flushDatabase === "function" ? () => db.flushDatabase() : undefined,
-          getSettingsSnapshot: collectAutoBackupSettingsSnapshot,
-        });
+        autoBackup.startAutoBackup(
+          autoBackupPersistOpts({
+            dbPath: paths.dbPath,
+            fiscalKeysPath: paths.fiscalKeysPath,
+            intervalMs: 60 * 1000,
+            flushSave: typeof db.flushDatabase === "function" ? () => db.flushDatabase() : undefined,
+            getSettingsSnapshot: collectAutoBackupSettingsSnapshot,
+          }),
+        );
       }
     } catch (e) {
       console.warn("[backup] auto-start:", e.message);

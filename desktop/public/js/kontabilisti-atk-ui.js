@@ -76,6 +76,10 @@
       .join("");
   }
 
+  function formatAtkTotalsLine(prefix, t) {
+    return `${prefix} · [9]=${euro(t.box9)} · [10c]=${euro(t.box10c)} · [12]=${euro(t.box12)} · [K1]=${euro(t.boxK1)} · [14]=${euro(t.box14)} · [K2]=${euro(t.boxK2)} · [30]=${euro(t.box30)}`;
+  }
+
   async function loadSalesVat() {
     const { from, to } = globalRange();
     const data = await api(
@@ -83,25 +87,52 @@
     );
     const body = document.getElementById("kont-atk-shitje-body");
     const rows = data.rows || [];
-    if (!body) return;
-    if (!rows.length) {
-      body.innerHTML =
-        '<tr><td colspan="9" class="purchases-empty">Nuk ka shitje në këtë periudhë</td></tr>';
-    } else {
-      body.innerHTML = rows
-        .map(
-          (r) => `<tr>
+    if (body) {
+      if (!rows.length) {
+        body.innerHTML =
+          '<tr><td colspan="9" class="purchases-empty">Nuk ka shitje B2C në këtë periudhë</td></tr>';
+      } else {
+        body.innerHTML = rows
+          .map(
+            (r) => `<tr>
         <td>${r.nr}</td><td>${esc(r.date)}</td><td>${esc(r.invoice_number || "—")}</td>
         <td>${euro(r.box9)}</td><td>${euro(r.box12)}</td><td>${euro(r.boxK1)}</td>
         <td>${euro(r.box14)}</td><td>${euro(r.boxK2)}</td><td>${euro(r.box30)}</td>
       </tr>`,
-        )
-        .join("");
+          )
+          .join("");
+      }
     }
-    const t = data.totals || {};
+    const tb2c = document.getElementById("kont-atk-shitje-b2c-totals");
+    if (tb2c) tb2c.textContent = formatAtkTotalsLine("NËNTOTALI A (B2C)", data.totals_b2c || {});
+
+    const b2bBody = document.getElementById("kont-atk-shitje-b2b-body");
+    const b2bRows = data.rows_b2b || [];
+    if (b2bBody) {
+      if (!b2bRows.length) {
+        b2bBody.innerHTML =
+          '<tr><td colspan="12" class="purchases-empty">Nuk ka fatura A4 finalizuar në këtë periudhë</td></tr>';
+      } else {
+        b2bBody.innerHTML = b2bRows
+          .map(
+            (r) => `<tr>
+          <td>${r.nr}</td><td>${esc(r.date)}</td><td>${esc(r.invoice_number)}</td>
+          <td>${esc(r.buyer_name || "—")}</td><td>${esc(r.buyer_fiscal || "—")}</td>
+          <td>${euro(r.base18)}</td><td>${euro(r.vat18)}</td>
+          <td>${euro(r.base8)}</td><td>${euro(r.vat8)}</td>
+          <td>${euro(r.base0)}</td><td>${euro(r.vat_total)}</td><td>${euro(r.gross)}</td>
+        </tr>`,
+          )
+          .join("");
+      }
+    }
+    const tb2b = document.getElementById("kont-atk-shitje-b2b-totals");
+    if (tb2b) tb2b.textContent = formatAtkTotalsLine("NËNTOTALI B (B2B)", data.totals_b2b || {});
+
     const totEl = document.getElementById("kont-atk-shitje-totals");
+    const t = data.totals || {};
     if (totEl) {
-      totEl.textContent = `TOTALI · [9]=${euro(t.box9)} · [10c]=${euro(t.box10c)} · [12]=${euro(t.box12)} · [K1]=${euro(t.boxK1)} · [14]=${euro(t.box14)} · [K2]=${euro(t.boxK2)} · [30]=${euro(t.box30)}`;
+      totEl.textContent = `TOTALI I PËRGJITHSHËM (A + B) · ${formatAtkTotalsLine("", t).replace(/^ · /, "")}`;
     }
   }
 

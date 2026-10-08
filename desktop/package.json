@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/protected-functions.test.js",
+    "test": "node tests/run-all.js",
     "prebuild": "node scripts/pre-build-check.js",
     "fiscal:logo": "node fiscal/assets/generate-rks-mf-logo.js",
     "build": "node scripts/download-menu-stock-photos.mjs && node build-packages.js",

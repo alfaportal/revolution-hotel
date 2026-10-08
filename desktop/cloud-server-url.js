@@ -1,7 +1,7 @@
 /**
  * Revolution HOTEL — URL publike (i njëjti format si restoranti POS).
  * Meny/QR: https://revolution-pos.com/menu/{slug}/{tavolina}
- * Stafi:   https://revolution-pos.com/waiter/{slug}?key=…
+ * Stafi:   https://revolution-pos.com/hotel/{slug}/kamarier?key=…
  */
 const crypto = require("crypto");
 const PUBLIC_HOTEL_ORIGIN = "https://revolution-pos.com";
@@ -154,8 +154,17 @@ function buildPublicMenuUrl(baseUrl, slug, tableNumber = 1) {
   return `${base}${HOTEL_WEB_PREFIX}/menu/${encodeURIComponent(s)}/${table}`;
 }
 
+/** Rol i brendshëm (waiter) → segment publik hotel (kamarier). */
+const HOTEL_PUBLIC_STAFF_SEGMENT = {
+  waiter: "kamarier",
+  reception: "recepsion",
+  bar: "bar",
+  kitchen: "kuzhina",
+  housekeeping: "sherbimi",
+};
+
 /**
- * Stafi — /{roli}/{slug}?key=… (si restoranti, pa prefix /hotel/)
+ * Stafi — https://revolution-pos.com/hotel/{slug}/{roli}?key=…
  */
 function buildStaffAccessLink(baseUrl, slug, key, role, extraQuery = "") {
   const s = normalizeSlug(slug);
@@ -163,7 +172,8 @@ function buildStaffAccessLink(baseUrl, slug, key, role, extraQuery = "") {
   const r = String(role || "").trim().toLowerCase();
   if (!s || !base || !STAFF_ACCESS_ROLES.has(r)) return "";
 
-  let url = `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(r)}/${encodeURIComponent(s)}`;
+  const publicSeg = HOTEL_PUBLIC_STAFF_SEGMENT[r] || r;
+  let url = `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}/${encodeURIComponent(publicSeg)}`;
   const params = new URLSearchParams();
   const k = String(key || "").trim();
   if (k) params.set("key", k);
@@ -268,7 +278,7 @@ function buildWaiterKdsUrl(slug, key, webToken) {
   return buildAccessLink(null, s, key, "waiter", extra);
 }
 
-/** https://revolution-pos.com/waiter/{slug}?key={key}&w={token} */
+/** https://revolution-pos.com/hotel/{slug}/kamarier?key={key}&w={token} */
 function buildWaiterPersonalUrl(slug, key, webToken) {
   const s = normalizeSlug(slug);
   const token = String(webToken || "").trim();

@@ -1721,6 +1721,92 @@
         min-height: 44px;
       }
     }
+
+    /* Blerje / skanim fature — tabela 11 kolona (inv-lines) */
+    #modal-receipt-scan.table-modal {
+      align-items: flex-start;
+      padding: 0.75rem;
+      overflow-y: auto;
+      z-index: 10050;
+    }
+    #modal-receipt-scan .table-modal-content.purchase-modal-content.menu-scan-modal-content {
+      max-width: min(1520px, calc(100vw - 1rem)) !important;
+      width: min(1520px, calc(100vw - 1rem)) !important;
+      max-height: calc(100vh - 1rem);
+    }
+    #modal-purchase.table-modal {
+      align-items: flex-start;
+      padding: 0.75rem;
+      overflow-y: auto;
+    }
+    #modal-purchase .table-modal-content.purchase-modal-content {
+      max-width: min(1520px, calc(100vw - 1rem)) !important;
+      width: min(1520px, calc(100vw - 1rem)) !important;
+      max-height: calc(100vh - 1rem);
+    }
+    .receipt-scan-table-scroll {
+      overflow: auto;
+      max-width: 100%;
+      max-height: min(52vh, 520px);
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 8px;
+    }
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines,
+    #modal-purchase table.inv-lines.hotel-inv-lines {
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 0.74rem;
+    }
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines th,
+    #modal-purchase table.inv-lines.hotel-inv-lines th,
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines td,
+    #modal-purchase table.inv-lines.hotel-inv-lines td {
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      padding: 0.28rem 0.3rem;
+      vertical-align: middle;
+      overflow: hidden;
+    }
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines th,
+    #modal-purchase table.inv-lines.hotel-inv-lines th {
+      background: #4a4a4a;
+      color: #fff;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.12;
+      white-space: normal;
+      font-size: 0.68rem;
+    }
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines td.c,
+    #modal-purchase table.inv-lines.hotel-inv-lines td.c,
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines th:nth-child(1),
+    #modal-purchase table.inv-lines.hotel-inv-lines th:nth-child(1) { text-align: center; }
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines td.n,
+    #modal-purchase table.inv-lines.hotel-inv-lines td.n { text-align: right; }
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines input,
+    #modal-purchase table.inv-lines.hotel-inv-lines input,
+    #modal-receipt-scan table.inv-lines.hotel-inv-lines select,
+    #modal-purchase table.inv-lines.hotel-inv-lines select {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      font-size: 0.74rem;
+    }
+    #modal-purchase .purchase-inv-desc-cell select,
+    #modal-receipt-scan .receipt-scan-desc-cell input {
+      min-width: 0;
+    }
+    .receipt-scan-warnings {
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 8px;
+      background: rgba(234, 179, 8, 0.12);
+      border: 1px solid rgba(234, 179, 8, 0.35);
+      font-size: 0.8rem;
+      color: var(--ngjyr-text);
+    }
   </style>
   <!--
     HOTEL — 3 pako: pako_1→tier-rank-1, pako_2→2, pako_3→3.
@@ -2051,6 +2137,19 @@
       font-weight: 700;
       text-align: right;
       color: #fff;
+    }
+    body.admin-app #panel-kontabilisti .kont-subsec-title {
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ngjyr-muted);
+      margin: 0.75rem 0 0.35rem;
+    }
+    body.admin-app #panel-kontabilisti .kont-grand-total {
+      margin-top: 0.85rem;
+      font-size: 0.92rem;
+      color: #ff6b35;
     }
     body.admin-app #panel-kontabilisti .kont-decl-grid {
       display: grid;
@@ -3450,6 +3549,7 @@
             </div>
           </div>
           <p class="kont-sec-note">SHITJET − BLERJET − SHPENZIMET = FITIMI</p>
+          <p class="kont-sec-note" id="kont-bilanc-shitje-split">Shitje B2C (kasë + hotel): 0.00 € · Shitje B2B (fatura A4): 0.00 €</p>
           <div class="dashboard-kpi-row" id="kont-bilanc-kpi">
             <div class="dashboard-kpi"><div class="dashboard-kpi-label">SHITJET (PA TVSH)</div><div class="dashboard-kpi-val" id="kont-bilanc-shitje">0.00 €</div></div>
             <div class="dashboard-kpi"><div class="dashboard-kpi-label">BLERJET (PA TVSH)</div><div class="dashboard-kpi-val" id="kont-bilanc-blerje">0.00 €</div></div>
@@ -3472,7 +3572,8 @@
               <button type="button" class="btn btn-ghost btn-sm" data-atk-print="sales-vat">Printo</button>
             </div>
           </div>
-          <p class="kont-sec-note">Kolonat sipas librit zyrtar — kutizat [9]…[30]. B2C: blerësi zakonisht bosh.</p>
+          <p class="kont-sec-note">Seksioni A = shitje kasë + hotel (daily_log, dhoma, shërbime). Seksioni B = faturat A4 finalizuar (final / printed / emailed). Kutizat [9]…[30] — totali A+B.</p>
+          <h4 class="kont-subsec-title">Seksioni A — Shitje B2C</h4>
           <div class="kont-table-scroll">
             <table class="kont-atk-table">
               <thead>
@@ -3483,7 +3584,20 @@
               <tbody id="kont-atk-shitje-body"><tr><td colspan="9" class="purchases-empty">—</td></tr></tbody>
             </table>
           </div>
-          <div class="kont-atk-totals" id="kont-atk-shitje-totals"></div>
+          <div class="kont-atk-totals" id="kont-atk-shitje-b2c-totals"></div>
+          <h4 class="kont-subsec-title" style="margin-top:1rem">Seksioni B — Shitje B2B (fatura A4)</h4>
+          <div class="kont-table-scroll">
+            <table class="kont-atk-table">
+              <thead>
+                <tr>
+                  <th>Nr</th><th>Data</th><th>Nr. faturës</th><th>Klienti</th><th>NUI</th><th>Baza 18%</th><th>TVSH 18%</th><th>Baza 8%</th><th>TVSH 8%</th><th>Baza 0%</th><th>TVSH tot.</th><th>Totali</th>
+                </tr>
+              </thead>
+              <tbody id="kont-atk-shitje-b2b-body"><tr><td colspan="12" class="purchases-empty">—</td></tr></tbody>
+            </table>
+          </div>
+          <div class="kont-atk-totals" id="kont-atk-shitje-b2b-totals"></div>
+          <div class="kont-atk-totals kont-grand-total" id="kont-atk-shitje-totals"></div>
           <input type="hidden" id="kont-shitje-nga"><input type="hidden" id="kont-shitje-deri">
         </div>
       </div>
@@ -3968,10 +4082,27 @@
         <div id="hotel-disk-status" class="settings-field-hint" style="margin-bottom:0.75rem"></div>
         <div class="settings-form-actions settings-form-actions-inline">
           <button type="button" class="btn btn-ghost" id="btn-hotel-backup" style="min-width:220px">Backup në USB / Folder</button>
+          <button type="button" class="btn btn-ghost" id="btn-hotel-restore-auto-backup" style="min-width:220px">Rikthe backup (Desktop)</button>
           <div class="fiscal-save-msg" id="msg-hotel-backup"></div>
         </div>
+        <p id="auto-backup-status-line" class="settings-field-hint" style="margin-top:0.65rem"></p>
       </div>
     </section>
+
+    <div id="modal-restore-backup" class="table-modal" hidden>
+      <div class="table-modal-backdrop" id="restore-backup-backdrop"></div>
+      <div class="table-modal-content" style="max-width:32rem">
+        <h2>Rikthe backup</h2>
+        <p class="table-modal-sub">Zgjidhni kopjen nga Desktop\Revolution Backup\HOTEL (ose folderi që keni zhvendosur)</p>
+        <label for="restore-backup-select">Backup</label>
+        <select id="restore-backup-select" style="width:100%;margin:0.5rem 0 1rem"></select>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button type="button" class="btn btn-primary" id="btn-restore-backup-confirm">Rikthe</button>
+          <button type="button" class="btn btn-ghost" id="btn-restore-backup-cancel">Anulo</button>
+        </div>
+        <p id="restore-backup-msg" class="fiscal-save-msg"></p>
+      </div>
+    </div>
 
     <!-- FISKALIZIMI (tab kryesor) -->
     <section id="panel-fiskalizimi" class="panel">
@@ -4764,7 +4895,7 @@
         <pre id="repair-wizard-step-result"></pre>
         <div id="repair-wizard-step4-actions" hidden style="margin:0 0 10px">
           <button type="button" class="btn btn-warning btn-sm" id="btn-repair-wizard-restore">Backup në USB / folder</button>
-          <p class="settings-field-hint" style="margin:0.35rem 0 0">HOTEL nuk ka rikthim automatik DB — krijoni backup, pastaj riktheni manualisht nëse duhet.</p>
+          <p class="settings-field-hint" style="margin:0.35rem 0 0">Backup automatik çdo minutë te Desktop\Revolution Backup\HOTEL (afër ikonës; rotacion 3 kopje). Rikthim: Siguri &amp; backup ose nisje automatik nëse DB mungon.</p>
         </div>
         <div class="table-modal-actions" style="justify-content:flex-end;flex-wrap:wrap;gap:8px">
           <button type="button" class="btn btn-ghost btn-sm" id="btn-repair-wizard-retry">Provë përsëri</button>
@@ -4817,11 +4948,12 @@
         <div class="fiscal-save-msg" id="msg-cloud"></div>
         <div id="web-app-links" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--ngjyr-border)">
           <p style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem">
-            Linket për stafin — format si restoranti: <strong>revolution-pos.com/menu/emri-hotelit/1</strong>
+            Kamarier: <strong>WiFi</strong> (http://IP:3001/waiter.html) dhe <strong>cloud</strong>
+            (revolution-pos.com/hotel/emri-hotelit/kamarier) — të dyja me PIN; porositë shkojnë te i njëjti POS.
           </p>
           <p id="cloud-links-hint" style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem"></p>
           <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
-            <label>Kamarierë (cloud — i çaktivizuar)</label>
+            <label>Kamarierë (cloud — internet)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-waiter-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-waiter-url">Kopjo</button>
@@ -4834,6 +4966,16 @@
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-waiter-url">Kopjo</button>
             </div>
             <p id="cloud-local-waiter-reach-hint" class="links-hint hidden" style="margin:0.35rem 0 0;color:var(--ngjyr-danger)"></p>
+            <div id="cloud-local-waiter-qr-block" style="margin:0.65rem 0 0;display:flex;flex-wrap:wrap;align-items:flex-start;gap:0.75rem">
+              <img id="cloud-local-waiter-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR kamarier WiFi" hidden>
+              <div style="flex:1;min-width:12rem">
+                <p id="cloud-local-waiter-qr-hint" class="links-hint" style="margin:0 0 0.5rem;font-size:0.8rem;color:var(--ngjyr-muted)">
+                  Skanoni QR me telefonin (i njëjti WiFi si PC) — pa shkruar IP. QR përditësohet kur ndryshon rrjeti.
+                </p>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-print-local-waiter-qr" hidden>Printo QR</button>
+              </div>
+            </div>
+            <div id="cloud-local-waiter-hostnames" hidden style="margin-top:0.65rem"></div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-local-recepsion">
             <label id="cloud-local-recepsion-label">Recepsioni — WiFi lokal</label>
@@ -5662,6 +5804,7 @@
         <img id="receipt-scan-preview-2" alt="Foto 2 fature">
       </div>
       <div id="receipt-scan-status" class="fiscal-save-msg"></div>
+      <div id="receipt-scan-warnings" class="receipt-scan-warnings" hidden></div>
       <div id="receipt-scan-loading" class="menu-scan-loading" hidden>Duke skanuar faturën…</div>
       <div id="receipt-scan-results" class="menu-scan-results" hidden>
         <div class="purchase-form-grid">
@@ -5694,30 +5837,31 @@
             </select>
           </div>
         </div>
-        <div class="menu-scan-table-wrap" style="margin-top:0.75rem">
-          <table class="menu-scan-table">
+        <div class="receipt-scan-table-scroll" style="margin-top:0.75rem">
+          <table class="inv-lines hotel-inv-lines receipt-scan-inv-lines">
             <thead>
               <tr>
-                <th>Emri (si në faturë)</th>
+                <th>Nr</th>
+                <th>Përshkrimi</th>
+                <th>Pako</th>
                 <th>Sasia</th>
-                <th>Njësia</th>
-                <th>Copa/pako</th>
-                <th>Çmimi</th>
-                <th title="Norma TVSH për këtë rresht">TVSH</th>
-                <th>Copa (stok)</th>
-                <th>Çmim/copë</th>
+                <th>Çmimi<br>pa TVSH</th>
+                <th>Zbritja<br>%</th>
+                <th>Çmimi<br>me TVSH</th>
+                <th>Shuma<br>pa TVSH</th>
+                <th>TVSH<br>%</th>
+                <th>Shuma<br>TVSH</th>
+                <th>Totali<br>me TVSH</th>
               </tr>
             </thead>
             <tbody id="receipt-scan-items-body"></tbody>
           </table>
         </div>
         <p style="margin:0.5rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">
-          Nëse fatura thotë <strong>copë</strong> (DISKONT etj.): Sasia shkon drejt në stok (copa/pako=1).
-          Vetëm nëse thotë <strong>pako</strong>: Sasia × Copa/pako = stoku.
-          <strong>TVSH:</strong> ndaj 8% (ushqim) dhe 18% (pije/të tjera) për rresht — Kontabilisti llogarit [45]/[K2] automatikisht.
+          Kolonat si faturë. Ndrysho <strong>Pako</strong> dhe <strong>Sasia</strong> (copë totale) — stoku llogaritet automatikisht.
+          <strong>TVSH:</strong> 8% / 18% për rresht — Kontabilisti llogarit hyrjen automatikisht.
         </p>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
-          <button type="button" class="btn btn-ghost" id="btn-receipt-scan-calc-packs">Llogarit pako → copa</button>
           <button type="button" class="btn btn-primary" id="btn-receipt-scan-apply">Regjistro në Stok</button>
         </div>
       </div>
@@ -5773,25 +5917,25 @@
           <input type="text" id="purchase-notes" placeholder="p.sh. korrigjim sasi / faturë e vjetër">
         </div>
       </div>
-      <div class="purchase-lines-head">
-        <strong>Artikujt</strong>
-        <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
-          <button type="button" class="btn btn-ghost btn-sm" id="btn-purchase-add-line">+ Shto rresht</button>
-        </div>
+      <div style="display:flex;justify-content:flex-end;margin:0.5rem 0 0.35rem">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-purchase-add-line">+ Shto rresht</button>
       </div>
       <div id="purchase-cat-filter" class="product-cat-filter purchase-cat-filter" role="tablist" aria-label="Filtro produktet sipas kategorisë" style="display:flex;flex-wrap:nowrap;gap:0.4rem;overflow-x:auto;margin:0.35rem 0 0.65rem;padding:0.15rem 0;min-height:2rem"></div>
-      <div class="purchase-lines-wrap">
-        <table class="purchase-lines-table">
+      <div class="purchase-lines-wrap receipt-scan-table-scroll" style="margin-top:0.35rem">
+        <table class="inv-lines hotel-inv-lines purchase-inv-lines">
           <thead>
             <tr>
-              <th>Kategoria</th>
-              <th>Produkti</th>
-              <th title="Sa pako komplet">PAKO</th>
-              <th title="Sa copë ka 1 pako">SASIA</th>
-              <th title="Çmimi i pakos — si të duash">Çmimi</th>
-              <th title="Norma TVSH për këtë rresht">TVSH</th>
-              <th>Totali</th>
-              <th></th>
+              <th>Nr</th>
+              <th>Përshkrimi</th>
+              <th>Pako</th>
+              <th>Sasia</th>
+              <th>Çmimi<br>pa TVSH</th>
+              <th>Zbritja<br>%</th>
+              <th>Çmimi<br>me TVSH</th>
+              <th>Shuma<br>pa TVSH</th>
+              <th>TVSH<br>%</th>
+              <th>Shuma<br>TVSH</th>
+              <th>Totali<br>me TVSH</th>
             </tr>
           </thead>
           <tbody id="purchase-lines-body"></tbody>
@@ -6128,6 +6272,7 @@
         ngarkoArkenFiskale();
       }
       if (name === "cloud") ngarkoCloudSync();
+      else stopLocalWaiterLanPoll();
       if (name === "faqja-publike") loadAdminPublicPage().catch((err) => alert(err.message || "Gabim"));
       if (name === "restorant") {
         ngarkoMenaxhimTavolinash();
@@ -7260,6 +7405,7 @@
       document.getElementById("raport-nga").value = sot;
       document.getElementById("raport-deri").value = sot;
       applyRaportPreset("sot");
+      void ngarkoAutoBackupStatus();
     }
 
     async function printoNgaApi(cale, body) {
@@ -8203,8 +8349,110 @@
         pack_qty: purchaseMode === "adjustment" ? 0 : 1,
         pieces_per_pack: 1,
         pack_price: "",
+        price_gross: "",
+        discount_pct: 0,
+        line_sasia: "",
         vat_rate: [0, 8, 18].includes(defaultVat) ? defaultVat : 18,
       };
+    }
+
+    /** Llogaritje e përbashkët 11 kolona (si MARKET market-inv-lines-shared). */
+    function hotelInvoiceLineAmounts(opts) {
+      const vat = normalizePurchaseLineVat(opts.vat_rate ?? 18);
+      const disc = Math.min(100, Math.max(0, Number(opts.discount_pct) || 0));
+      const fDisc = 1 - disc / 100;
+      const sasia = Number(opts.sasia) || 0;
+      const priceNet = Number(opts.priceNet) || 0;
+      const priceGross = Math.round(priceNet * (1 + vat / 100) * 100) / 100;
+      const sumNet = Math.round(sasia * priceNet * fDisc * 100) / 100;
+      const sumVat = Math.round(sumNet * (vat / 100) * 100) / 100;
+      const sumGross = Math.round((sumNet + sumVat) * 100) / 100;
+      return { sasia, priceNet, priceGross, sumNet, sumVat, sumGross, disc, vat };
+    }
+
+    function purchaseLineSasiaForInvoice(line) {
+      if (line.line_sasia !== "" && line.line_sasia != null && Number.isFinite(Number(line.line_sasia))) {
+        return Number(line.line_sasia);
+      }
+      return purchaseLineStockQty(line);
+    }
+
+    function purchaseInvoiceLineAmounts(line) {
+      return hotelInvoiceLineAmounts({
+        sasia: purchaseLineSasiaForInvoice(line),
+        priceNet: purchaseLineNetPerPiece(line),
+        discount_pct: line.discount_pct,
+        vat_rate: line.vat_rate,
+      });
+    }
+
+    function syncPurchaseLineFromDom(idx, sourceEl) {
+      const line = purchaseLines[idx];
+      if (!line) return;
+      const sasiaInp = document.querySelector(`.purchase-line-sasia[data-idx="${idx}"]`);
+      const netInp = document.querySelector(`.purchase-line-price-net[data-idx="${idx}"]`);
+      const discInp = document.querySelector(`.purchase-line-discount[data-idx="${idx}"]`);
+      const packInp = document.querySelector(`.purchase-line-packs[data-idx="${idx}"]`);
+      const vatSel = document.querySelector(`.purchase-line-vat[data-idx="${idx}"]`);
+      const prodSel = document.querySelector(`.purchase-line-product[data-idx="${idx}"]`);
+      const src = sourceEl?.classList || { contains: () => false };
+      if (prodSel) {
+        line.menu_item_id = prodSel.value;
+        const item = menuItemsCache.find((m) => String(m.id) === prodSel.value);
+        if (item) {
+          line.category = String(item.category || "").trim();
+          if (line.price_gross === "" || line.price_gross == null) {
+            line.price_gross = Number(item.price) || 0;
+          }
+          line.vat_rate = normalizePurchaseLineVat(item.vat_category);
+        }
+      }
+      if (vatSel) line.vat_rate = normalizePurchaseLineVat(vatSel.value);
+      const pack_qty = Number(packInp?.value);
+      const qSasia = Number(sasiaInp?.value);
+      if (src.contains("purchase-line-packs")) {
+        if (Number.isFinite(pack_qty)) line.pack_qty = pack_qty;
+        if (Number.isFinite(qSasia) && qSasia >= 0) {
+          line.line_sasia = qSasia;
+          if (line.pack_qty > 0) {
+            line.pieces_per_pack = Math.round((qSasia / line.pack_qty) * 1000) / 1000;
+          }
+        } else {
+          line.line_sasia = purchaseLineStockQty(line);
+        }
+      } else if (src.contains("purchase-line-sasia")) {
+        if (Number.isFinite(qSasia) && qSasia >= 0) line.line_sasia = qSasia;
+        const pack = Number(line.pack_qty) || 0;
+        if (line.line_sasia > 0 && pack > 0) {
+          line.pieces_per_pack = Math.round((line.line_sasia / pack) * 1000) / 1000;
+        }
+      } else {
+        if (Number.isFinite(pack_qty)) line.pack_qty = pack_qty;
+        if (Number.isFinite(qSasia) && qSasia >= 0) line.line_sasia = qSasia;
+      }
+      const net = Number(netInp?.value);
+      if (Number.isFinite(net) && net >= 0) {
+        const vat = normalizePurchaseLineVat(line.vat_rate ?? 18);
+        line.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
+        line.pack_price = "";
+      }
+      const disc = Number(discInp?.value);
+      if (Number.isFinite(disc)) line.discount_pct = Math.min(100, Math.max(0, disc));
+    }
+
+    function updatePurchaseInvoiceRowUi(idx) {
+      const tr = document.querySelector(`#purchase-lines-body tr[data-line="${idx}"]`);
+      const line = purchaseLines[idx];
+      if (!tr || !line) return;
+      const amt = purchaseInvoiceLineAmounts(line);
+      const set = (sel, text) => {
+        const el = tr.querySelector(sel);
+        if (el) el.textContent = text;
+      };
+      set(".purchase-inv-price-gross-cell", amt.priceGross.toFixed(2));
+      set(".purchase-inv-sum-net", amt.sumNet.toFixed(2));
+      set(".purchase-inv-sum-vat", amt.sumVat.toFixed(2));
+      set(".purchase-inv-sum-gross", formatEuro(amt.sumGross));
     }
 
     function normalizePurchaseLineVat(v) {
@@ -8231,23 +8479,41 @@
       return Math.round(packs * ppp * 1000) / 1000;
     }
 
-    function purchaseLinePackPrice(line) {
-      const p = Number(line.pack_price);
-      return Number.isFinite(p) ? p : 0;
+    function purchaseLineVatFactor(line) {
+      const r = normalizePurchaseLineVat(line.vat_rate);
+      return r > 0 ? r / 100 : 0;
     }
 
-    /** Totali rreshtit = PAKO × Çmim/pako. */
+    /** Çmimi me TVSH për 1 copë. */
+    function purchaseLineGrossPerPiece(line) {
+      const g = Number(line.price_gross);
+      if (Number.isFinite(g) && line.price_gross !== "" && line.price_gross != null) return g;
+      const legacyPack = Number(line.pack_price);
+      const ppp = Number(line.pieces_per_pack) || 1;
+      if (Number.isFinite(legacyPack) && legacyPack >= 0) {
+        return ppp > 0 ? legacyPack / ppp : legacyPack;
+      }
+      return 0;
+    }
+
+    function purchaseLineNetPerPiece(line) {
+      const gross = purchaseLineGrossPerPiece(line);
+      const f = purchaseLineVatFactor(line);
+      if (f <= 0) return Math.round(gross * 10000) / 10000;
+      return Math.round((gross / (1 + f)) * 10000) / 10000;
+    }
+
+    /** Totali rreshtit (me TVSH) = PAKO × SASIA × çmimi_me_tvsh/copë. */
     function purchaseLineTotal(line) {
       const packs = Number(line.pack_qty) || 0;
-      return Math.round(packs * purchaseLinePackPrice(line) * 100) / 100;
+      const ppp = Number(line.pieces_per_pack) || 0;
+      const gross = purchaseLineGrossPerPiece(line);
+      return Math.round(packs * ppp * gross * 100) / 100;
     }
 
-    /** Çmim/copë për API / stok / kontabilist. */
+    /** Çmim/copë me TVSH për API — createPurchaseInvoice pret bruto. */
     function purchaseLineUnitPrice(line) {
-      const ppp = Number(line.pieces_per_pack);
-      const packPrice = purchaseLinePackPrice(line);
-      if (!Number.isFinite(ppp) || ppp <= 0) return packPrice;
-      return Math.round((packPrice / ppp) * 10000) / 10000;
+      return Math.round(purchaseLineGrossPerPiece(line) * 10000) / 10000;
     }
 
     async function refreshAfterPurchaseSave() {
@@ -8396,17 +8662,13 @@
     }
 
     function updatePurchaseLineTotalsUi() {
-      document.querySelectorAll("#purchase-lines-body tr[data-line]").forEach((tr) => {
-        const idx = Number(tr.dataset.line);
-        const cell = tr.querySelector(".purchase-line-total");
-        if (cell && purchaseLines[idx]) cell.textContent = formatEuro(purchaseLineTotal(purchaseLines[idx]));
-      });
+      purchaseLines.forEach((_, idx) => updatePurchaseInvoiceRowUi(idx));
       recalcPurchaseGrandTotal();
     }
 
     function recalcPurchaseGrandTotal() {
       let sum = 0;
-      for (const line of purchaseLines) sum += purchaseLineTotal(line);
+      for (const line of purchaseLines) sum += purchaseInvoiceLineAmounts(line).sumGross;
       const el = document.getElementById("purchase-grand-total");
       if (el) el.textContent = formatEuro(Math.round(sum * 100) / 100);
     }
@@ -8416,80 +8678,56 @@
       if (!tbody) return;
       const isAdj = purchaseMode === "adjustment";
       tbody.innerHTML = purchaseLines.map((line, idx) => {
-        const packs = line.pack_qty !== "" && line.pack_qty != null ? line.pack_qty : "";
-        const ppp = line.pieces_per_pack !== "" && line.pieces_per_pack != null ? line.pieces_per_pack : "";
-        const price = line.pack_price !== "" && line.pack_price != null ? line.pack_price : "";
-        const lineTotal = purchaseLineTotal(line);
         const lineCat = String(line.category || "").trim() || (() => {
           const sel = (menuItemsCache || []).find((m) => String(m.id) === String(line.menu_item_id));
           return sel ? String(sel.category || "").trim() : (purchaseCatFilter || "");
         })();
         if (!line.category && lineCat) line.category = lineCat;
+        const amt = purchaseInvoiceLineAmounts(line);
+        const packs = line.pack_qty !== "" && line.pack_qty != null ? line.pack_qty : "";
+        const netVal = purchaseLineNetPerPiece(line);
+        const disc = line.discount_pct != null ? line.discount_pct : 0;
+        const delBtn =
+          purchaseLines.length > 1
+            ? `<button type="button" class="btn btn-ghost btn-sm purchase-line-remove purchase-line-remove-inline" data-idx="${idx}" title="Fshi rreshtin">×</button>`
+            : "";
         return `
           <tr data-line="${idx}">
-            <td><select class="purchase-line-cat" data-idx="${idx}">${purchaseLineCatOptions(lineCat)}</select></td>
-            <td><select class="purchase-line-product" data-idx="${idx}">${purchaseProductOptionsHtml(line)}</select></td>
-            <td><input type="number" class="purchase-line-packs" data-idx="${idx}" ${isAdj ? 'step="any"' : 'min="0" step="any"'} value="${packs}" placeholder="PAKO" title="Sa pako komplet" aria-label="PAKO" style="width:4.5rem;text-align:center;font-weight:700"></td>
-            <td><input type="number" class="purchase-line-ppp" data-idx="${idx}" min="1" step="1" value="${ppp}" placeholder="SASIA" title="Sa copë ka 1 pako" aria-label="SASIA" style="width:5.5rem;text-align:center;font-weight:700"></td>
-            <td><input type="number" class="purchase-line-price" data-idx="${idx}" min="0" step="any" value="${price}" placeholder="0.00" title="Çmimi i pakos — shkruaj si të duash" aria-label="Çmimi" style="width:6rem"></td>
-            <td>${purchaseLineVatSelectHtml(idx, line.vat_rate)}</td>
-            <td class="purchase-line-total">${formatEuro(lineTotal)}</td>
-            <td>${purchaseLines.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm purchase-line-remove" data-idx="${idx}">×</button>` : ""}</td>
+            <td class="c">${idx + 1}${delBtn}</td>
+            <td class="purchase-inv-desc-cell">
+              <select class="purchase-line-product" data-idx="${idx}">${purchaseProductOptionsHtml(line)}</select>
+            </td>
+            <td class="c purchase-inv-pako-cell"><input type="number" class="purchase-line-packs" data-idx="${idx}" ${isAdj ? 'step="any"' : 'min="0" step="any"'} value="${packs}" title="Pako" aria-label="Pako"></td>
+            <td class="n"><input type="number" class="purchase-line-sasia" data-idx="${idx}" ${isAdj ? 'step="any"' : 'min="0" step="any"'} value="${amt.sasia}" title="Sasia (copë totale)"></td>
+            <td class="n"><input type="number" class="purchase-line-price-net" data-idx="${idx}" min="0" step="any" value="${netVal ? netVal : ""}" title="Çmimi pa TVSH / copë"></td>
+            <td class="n"><input type="number" class="purchase-line-discount" data-idx="${idx}" min="0" max="100" step="any" value="${disc}" title="Zbritja %"></td>
+            <td class="n purchase-inv-price-gross-cell">${amt.priceGross.toFixed(2)}</td>
+            <td class="n purchase-inv-sum-net">${amt.sumNet.toFixed(2)}</td>
+            <td class="c">${purchaseLineVatSelectHtml(idx, line.vat_rate)}</td>
+            <td class="n purchase-inv-sum-vat">${amt.sumVat.toFixed(2)}</td>
+            <td class="n purchase-inv-sum-gross">${formatEuro(amt.sumGross)}</td>
           </tr>`;
       }).join("");
 
-      tbody.querySelectorAll(".purchase-line-cat").forEach((sel) => {
+      const onRowInput = (e) => {
+        const idx = Number(e.target?.dataset?.idx);
+        if (!Number.isFinite(idx)) return;
+        syncPurchaseLineFromDom(idx, e.target);
+        updatePurchaseInvoiceRowUi(idx);
+        recalcPurchaseGrandTotal();
+      };
+      tbody.querySelectorAll("input, select").forEach((inp) => {
+        inp.addEventListener("input", onRowInput);
+        inp.addEventListener("change", onRowInput);
+      });
+      tbody.querySelectorAll(".purchase-line-product").forEach((sel) => {
         sel.addEventListener("change", () => {
           const idx = Number(sel.dataset.idx);
-          purchaseLines[idx].category = sel.value;
-          purchaseLines[idx].menu_item_id = "";
+          syncPurchaseLineFromDom(idx, sel);
           renderPurchaseFormLines();
         });
       });
-      tbody.querySelectorAll(".purchase-line-product").forEach(sel => {
-        sel.addEventListener("change", () => {
-          const idx = Number(sel.dataset.idx);
-          purchaseLines[idx].menu_item_id = sel.value;
-          const item = menuItemsCache.find(m => String(m.id) === sel.value);
-          if (item) {
-            purchaseLines[idx].category = String(item.category || "").trim();
-            if (purchaseLines[idx].pack_price === "" || purchaseLines[idx].pack_price == null) {
-              purchaseLines[idx].pack_price = Number(item.price) || 0;
-            }
-            purchaseLines[idx].vat_rate = normalizePurchaseLineVat(item.vat_category);
-          }
-          renderPurchaseFormLines();
-        });
-      });
-      tbody.querySelectorAll(".purchase-line-vat").forEach((sel) => {
-        sel.addEventListener("change", () => {
-          const idx = Number(sel.dataset.idx);
-          purchaseLines[idx].vat_rate = normalizePurchaseLineVat(sel.value);
-        });
-      });
-      // Pa ri-render në çdo taste — ndryshe çmimi / decimalet prishen gjatë shkrimit
-      tbody.querySelectorAll(".purchase-line-packs").forEach(inp => {
-        inp.addEventListener("input", () => {
-          const idx = Number(inp.dataset.idx);
-          purchaseLines[idx].pack_qty = inp.value;
-          updatePurchaseLineTotalsUi();
-        });
-      });
-      tbody.querySelectorAll(".purchase-line-ppp").forEach(inp => {
-        inp.addEventListener("input", () => {
-          const idx = Number(inp.dataset.idx);
-          purchaseLines[idx].pieces_per_pack = inp.value;
-          updatePurchaseLineTotalsUi();
-        });
-      });
-      tbody.querySelectorAll(".purchase-line-price").forEach(inp => {
-        inp.addEventListener("input", () => {
-          const idx = Number(inp.dataset.idx);
-          purchaseLines[idx].pack_price = inp.value;
-          updatePurchaseLineTotalsUi();
-        });
-      });
-      tbody.querySelectorAll(".purchase-line-remove").forEach(btn => {
+      tbody.querySelectorAll(".purchase-line-remove").forEach((btn) => {
         btn.addEventListener("click", () => {
           const idx = Number(btn.dataset.idx);
           purchaseLines.splice(idx, 1);
@@ -8552,6 +8790,7 @@
 
     async function ruajFaturenBlerje() {
       if (purchaseSaving) return;
+      purchaseLines.forEach((_, idx) => syncPurchaseLineFromDom(idx));
       const msg = document.getElementById("msg-purchase");
       msg.textContent = "";
       const supplier = document.getElementById("purchase-supplier").value.trim();
@@ -8576,7 +8815,7 @@
         .filter(l => l.menu_item_id)
         .map(l => ({
           menu_item_id: Number(l.menu_item_id),
-          quantity: purchaseLineStockQty(l),
+          quantity: purchaseLineSasiaForInvoice(l),
           unit_price: purchaseLineUnitPrice(l),
           vat_rate: normalizePurchaseLineVat(l.vat_rate ?? vat_rate),
         }));
@@ -8816,6 +9055,14 @@
       set("kont-bilanc-blerje", data.purchases_total);
       set("kont-bilanc-shpenzim", data.expenses_total);
       set("kont-bilanc-fitim", data.profit);
+      const splitEl = document.getElementById("kont-bilanc-shitje-split");
+      if (splitEl) {
+        const b2c = Number(data.sales_b2c ?? data.sales_total) || 0;
+        const b2b = Number(data.sales_b2b) || 0;
+        splitEl.textContent =
+          `Shitje B2C (kasë + hotel): ${formatEuro(b2c)} (${data.sales_b2c_count ?? 0} rreshta) · ` +
+          `Shitje B2B (fatura A4): ${formatEuro(b2b)} (${data.sales_b2b_count ?? 0} fatura) · Total: ${formatEuro(data.sales_total)}`;
+      }
       const fitimEl = document.getElementById("kont-bilanc-fitim");
       if (fitimEl) {
         fitimEl.style.color = Number(data.profit) < 0 ? "var(--ngjyr-danger)" : "var(--ngjyr-success, #16a34a)";
@@ -10213,33 +10460,264 @@
       el.style.color = text ? (ok ? "var(--ngjyr-success)" : "var(--ngjyr-danger)") : "";
     }
 
+    function setReceiptScanWarnings(warnList, totalsCheck) {
+      const box = document.getElementById("receipt-scan-warnings");
+      if (!box) return;
+      const w = Array.isArray(warnList) ? warnList.filter(Boolean) : [];
+      const tcBad = totalsCheck && typeof totalsCheck === "object" && totalsCheck.ok === false;
+      if (!w.length && !tcBad) {
+        box.hidden = true;
+        box.innerHTML = "";
+        return;
+      }
+      const parts = [];
+      if (tcBad && totalsCheck.message) {
+        parts.push(`<li>${escAttr(String(totalsCheck.message))}</li>`);
+      }
+      for (const line of w) {
+        parts.push(`<li>${escAttr(String(line))}</li>`);
+      }
+      box.innerHTML = `<strong>Kontrollo skanimin AI:</strong><ul>${parts.join("")}</ul>`;
+      box.hidden = false;
+    }
+
+    function filterReceiptScanQtyVatWarnings(warnings, items, headerVat) {
+      const vatHeader = normalizePurchaseLineVat(headerVat ?? 18);
+      return (Array.isArray(warnings) ? warnings : []).filter((w) => {
+        const s = String(w);
+        if (!/sasia.?[×x].?çmimi|sasia x çmimi/i.test(s)) return true;
+        for (const it of items || []) {
+          const name = String(it.name || it.emri || "").trim();
+          if (!name || !s.includes(name)) continue;
+          const packs = Number(it.pack_qty) || 0;
+          const ppp = Number(it.pieces_per_pack) || 1;
+          const qty = Number(it.quantity ?? it.sasia) || (packs > 0 ? packs * ppp : 0);
+          const price = Number(it.unit_price ?? it.cmimi ?? it.price) || 0;
+          const lt = Number(it.line_total ?? it.vlera_me_tvsh ?? it.vlera ?? 0);
+          if (!(qty > 0) || !(price > 0) || !(lt > 0)) continue;
+          const vat = normalizePurchaseLineVat(it.vat_rate ?? vatHeader);
+          const net = Math.round(qty * price * 100) / 100;
+          const gross = Math.round(net * (1 + vat / 100) * 100) / 100;
+          const tol = Math.max(0.06, net * 0.02);
+          if (Math.abs(net - lt) <= tol || Math.abs(gross - lt) <= tol) return false;
+        }
+        return true;
+      });
+    }
+
     function inferReceiptPiecesPerPack(item) {
-      const unit = String(item.unit || "copë").toLowerCase();
-      if (unit !== "pako") return 1;
       const explicit = Number(item.pieces_per_pack);
       if (explicit > 0) return Math.round(explicit);
-      const name = String(item.name || "");
+      const name = String(item.name || item.scan_name || "");
       const m = name.match(/(\d+)\s*cop/i);
       if (m) return Number(m[1]);
-      return 1;
+      if (/qumesht|qumësht|milk|barista/i.test(name)) return 12;
+      if (/(\d+[.,]?\d*)\s*l\b/i.test(name)) {
+        const vol = Number(String(name.match(/(\d+[.,]?\d*)\s*l\b/i)[1]).replace(",", "."));
+        if (vol >= 0.45 && vol <= 0.6 && /mineral|natyr|uje|ujë|aria|pellister/i.test(name)) return 12;
+      }
+      return 24;
     }
 
+    function receiptScanPurchaseShape(item) {
+      const vat = normalizePurchaseLineVat(item.vat_rate ?? 18);
+      let price_gross = Number(item.price_gross);
+      if (!Number.isFinite(price_gross) || price_gross < 0) {
+        const net = Number(item.unit_price) || 0;
+        price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
+      }
+      return {
+        pack_qty: item.pack_qty,
+        pieces_per_pack: item.pieces_per_pack,
+        price_gross,
+        pack_price: item.pack_price,
+        vat_rate: item.vat_rate,
+      };
+    }
+
+    function receiptScanInvoiceAmounts(item) {
+      const vat = normalizePurchaseLineVat(item.vat_rate ?? 18);
+      const disc = Math.min(100, Math.max(0, Number(item.discount_pct) || 0));
+      const fDisc = 1 - disc / 100;
+      let sasia = Number(item.quantity);
+      if (!Number.isFinite(sasia) || sasia <= 0) {
+        sasia = purchaseLineStockQty(receiptScanPurchaseShape(item));
+      }
+      let priceNet = Number(item.unit_price);
+      if (!Number.isFinite(priceNet) || priceNet < 0) {
+        priceNet = purchaseLineNetPerPiece(receiptScanPurchaseShape(item));
+      }
+      const priceGross = Math.round(priceNet * (1 + vat / 100) * 100) / 100;
+      const sumNet = Math.round(sasia * priceNet * fDisc * 100) / 100;
+      const sumVat = Math.round(sumNet * (vat / 100) * 100) / 100;
+      const sumGross = Math.round((sumNet + sumVat) * 100) / 100;
+      const stockCop = purchaseLineStockQty(receiptScanPurchaseShape(item)) || sasia;
+      return { sasia, priceNet, priceGross, sumNet, sumVat, sumGross, disc, vat, stockCop };
+    }
+
+    /** Preview neto/bruto për rresht (pas skanimit). */
     function receiptPackPreview(item) {
-      const unit = String(item.unit || "copë").toLowerCase() === "pako" ? "pako" : "copë";
-      const packs = Number(item.quantity) || 0;
-      const ppp = unit === "pako" ? inferReceiptPiecesPerPack({ ...item, unit }) : 1;
-      const packPrice = Number(item.unit_price) || 0;
-      const pieces = Math.round(packs * ppp * 1000) / 1000;
-      const perPiece = ppp > 0 ? Math.round((packPrice / ppp) * 10000) / 10000 : 0;
-      return { packs, ppp, packPrice, pieces, perPiece, unit };
+      const amt = receiptScanInvoiceAmounts(item);
+      return {
+        packs: Number(item.pack_qty) || 0,
+        ppp: Number(item.pieces_per_pack) || 1,
+        packPrice: amt.priceNet,
+        packPriceGross: amt.priceGross,
+        pieces: amt.stockCop,
+        perPiece: amt.priceNet,
+        perPieceGross: amt.priceGross,
+        lineNet: amt.sumNet,
+        lineGross: amt.sumGross,
+        unit: "copë",
+      };
     }
 
-    function receiptScanLineVatSelectHtml(idx, selected) {
-      const v = normalizePurchaseLineVat(selected);
-      const opts = [18, 8, 0]
-        .map((r) => `<option value="${r}"${v === r ? " selected" : ""}>${r}%</option>`)
-        .join("");
-      return `<select class="receipt-scan-vat" data-idx="${idx}" title="TVSH për këtë rresht" aria-label="TVSH">${opts}</select>`;
+    function normalizeReceiptScanRowFromAi(it) {
+      const scan_name = String(it.scan_name || it.name || it.emri || "").trim();
+      const unitRaw = it.unit || it.njesia || "copë";
+      const unitIsPako = String(unitRaw).toLowerCase().match(/^(pako|pake|pak|box|carton)$/);
+      const rawQty = Number(it.quantity ?? it.sasia) || 0;
+      let pieces_per_pack = Number(it.pieces_per_pack) || inferReceiptPiecesPerPack(it);
+      if (!pieces_per_pack || pieces_per_pack < 1) pieces_per_pack = 1;
+      let pack_qty;
+      let stockCop;
+      const vat = normalizePurchaseLineVat(it.vat_rate ?? 18);
+      const lineNet = Number(it.line_net ?? it.shuma_pa_tvsh ?? it.vlera_pa_tvsh) || 0;
+      const lineTotal = Number(it.line_total ?? it.vlera_me_tvsh ?? it.vlera) || 0;
+      const discount_pct = Math.min(100, Math.max(0, Number(it.discount_pct ?? it.zbritja) || 0));
+
+      if (unitIsPako) {
+        pack_qty = rawQty;
+        stockCop = Math.round(pack_qty * pieces_per_pack * 1000) / 1000;
+      } else {
+        stockCop = rawQty;
+        if (pieces_per_pack > 1 && stockCop >= pieces_per_pack) {
+          pack_qty = Math.round((stockCop / pieces_per_pack) * 1000) / 1000;
+        } else {
+          pack_qty = 1;
+          pieces_per_pack = stockCop > 0 ? stockCop : 1;
+        }
+      }
+
+      let unit_price = 0;
+      if (lineNet > 0 && stockCop > 0) {
+        unit_price = Math.round((lineNet / stockCop) * 10000) / 10000;
+      } else if (lineTotal > 0 && stockCop > 0) {
+        unit_price = Math.round((lineTotal / stockCop / (1 + vat / 100)) * 10000) / 10000;
+      } else {
+        const up = Number(it.unit_price ?? it.cmimi ?? it.price) || 0;
+        if (up > 0) {
+          const grossGuess = lineTotal > 0 && stockCop > 0 ? lineTotal / stockCop : 0;
+          if (grossGuess > 0 && Math.abs(up - grossGuess) < Math.abs(up - grossGuess / (1 + vat / 100))) {
+            unit_price = Math.round((up / (1 + vat / 100)) * 10000) / 10000;
+          } else {
+            unit_price = Math.round(up * 10000) / 10000;
+          }
+        }
+      }
+      const price_gross =
+        unit_price > 0
+          ? Math.round(unit_price * (1 + vat / 100) * 10000) / 10000
+          : Number(it.unit_price_gross) || 0;
+
+      return {
+        ...it,
+        scan_name,
+        name: scan_name,
+        pack_qty,
+        pieces_per_pack,
+        price_gross,
+        unit_price,
+        discount_pct,
+        vat_rate: vat,
+        quantity: stockCop,
+        unit: "copë",
+        line_net: lineNet > 0 ? lineNet : undefined,
+        line_total: lineTotal > 0 ? lineTotal : it.line_total,
+      };
+    }
+
+    function receiptScanRematchMenuItem(item) {
+      const scanLabel = String(item.name || item.scan_name || "").trim();
+      if (!scanLabel) {
+        item.menu_item_id = null;
+        item.menu_match_name = "";
+        return;
+      }
+      const matched = findMenuItemByNameFuzzy(scanLabel);
+      if (matched) {
+        item.menu_item_id = matched.id;
+        item.menu_match_name = matched.name;
+        item.category = String(matched.category || "").trim();
+      } else {
+        item.menu_item_id = null;
+        item.menu_match_name = "";
+      }
+    }
+
+    function updateReceiptScanRowUi(idx) {
+      const tr = document.querySelector(
+        `#receipt-scan-items-body tr.receipt-scan-line-row[data-scan-idx="${idx}"]`,
+      );
+      const item = receiptScanItems[idx];
+      if (!tr || !item) return;
+      const amt = receiptScanInvoiceAmounts(item);
+      const set = (sel, text) => {
+        const el = tr.querySelector(sel);
+        if (el) el.textContent = text;
+      };
+      set(".receipt-scan-price-gross-cell", amt.priceGross.toFixed(2));
+      set(".receipt-scan-sum-net", amt.sumNet.toFixed(2));
+      set(".receipt-scan-sum-vat", amt.sumVat.toFixed(2));
+      set(".receipt-scan-sum-gross", formatEuro(amt.sumGross));
+    }
+
+    function syncReceiptScanItemFromDom(idx, sourceEl) {
+      const item = receiptScanItems[idx];
+      if (!item) return;
+      const name = document.querySelector(`.receipt-scan-name[data-idx="${idx}"]`)?.value?.trim();
+      const sasiaInp = document.querySelector(`.receipt-scan-sasia[data-idx="${idx}"]`);
+      const priceNetInp = document.querySelector(`.receipt-scan-price-net[data-idx="${idx}"]`);
+      const discInp = document.querySelector(`.receipt-scan-discount[data-idx="${idx}"]`);
+      const pack_qty = Number(document.querySelector(`.receipt-scan-packs[data-idx="${idx}"]`)?.value);
+      const vatSel = document.querySelector(`.receipt-scan-vat[data-idx="${idx}"]`);
+      const src = sourceEl?.classList || { contains: () => false };
+      if (!item.scan_name) item.scan_name = name || item.name;
+      item.name = name || item.scan_name || item.name;
+      if (src.contains("receipt-scan-name")) receiptScanRematchMenuItem(item);
+      if (vatSel) item.vat_rate = normalizePurchaseLineVat(vatSel.value);
+      const qSasia = Number(sasiaInp?.value);
+      if (src.contains("receipt-scan-packs")) {
+        if (Number.isFinite(pack_qty) && pack_qty >= 0) item.pack_qty = pack_qty;
+        if (Number.isFinite(qSasia) && qSasia > 0 && item.pack_qty > 0) {
+          item.quantity = qSasia;
+          item.pieces_per_pack = Math.round((qSasia / item.pack_qty) * 1000) / 1000;
+        } else if (item.pack_qty > 0 && (Number(item.pieces_per_pack) || 0) > 0) {
+          item.quantity = purchaseLineStockQty(receiptScanPurchaseShape(item));
+          if (sasiaInp) sasiaInp.value = String(item.quantity);
+        }
+      } else if (src.contains("receipt-scan-sasia")) {
+        if (Number.isFinite(qSasia) && qSasia >= 0) item.quantity = qSasia;
+        const ppp = Number(item.pieces_per_pack) || 0;
+        if (item.quantity > 0 && ppp > 0) {
+          item.pack_qty = Math.round((item.quantity / ppp) * 1000) / 1000;
+        } else if (item.quantity > 0 && item.pack_qty > 0) {
+          item.pieces_per_pack = Math.round((item.quantity / item.pack_qty) * 1000) / 1000;
+        }
+      } else {
+        if (Number.isFinite(pack_qty) && pack_qty >= 0) item.pack_qty = pack_qty;
+        if (Number.isFinite(qSasia) && qSasia >= 0) item.quantity = qSasia;
+        else item.quantity = purchaseLineStockQty(receiptScanPurchaseShape(item));
+      }
+      const net = Number(priceNetInp?.value);
+      if (Number.isFinite(net) && net >= 0) {
+        item.unit_price = net;
+        const vat = normalizePurchaseLineVat(item.vat_rate ?? 18);
+        item.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
+      }
+      const disc = Number(discInp?.value);
+      if (Number.isFinite(disc)) item.discount_pct = Math.min(100, Math.max(0, disc));
+      item.unit = "copë";
     }
 
     async function applyReceiptScanItemVatRates() {
@@ -10264,97 +10742,68 @@
       const body = document.getElementById("receipt-scan-items-body");
       const results = document.getElementById("receipt-scan-results");
       if (!body || !results) return;
-      body.innerHTML = receiptScanItems.map((item, idx) => {
-        const p = receiptPackPreview(item);
-        const vat = normalizePurchaseLineVat(
-          item.vat_rate ?? document.getElementById("receipt-scan-vat-rate")?.value ?? 18,
-        );
-        return `<tr>
-        <td><input type="text" class="receipt-scan-name" data-idx="${idx}" value="${escAttr(item.name)}"></td>
-        <td><input type="number" class="receipt-scan-qty" data-idx="${idx}" min="0" step="0.001" value="${p.packs}"></td>
-        <td>
-          <select class="receipt-scan-unit" data-idx="${idx}">
-            <option value="copë"${p.unit === "copë" ? " selected" : ""}>copë</option>
-            <option value="pako"${p.unit === "pako" ? " selected" : ""}>pako</option>
-          </select>
-        </td>
-        <td><input type="number" class="receipt-scan-ppp" data-idx="${idx}" min="1" step="1" value="${p.ppp}" ${p.unit !== "pako" ? "disabled" : ""}></td>
-        <td><input type="number" class="receipt-scan-price" data-idx="${idx}" min="0" step="0.01" value="${p.packPrice.toFixed(2)}"></td>
-        <td>${receiptScanLineVatSelectHtml(idx, vat)}</td>
-        <td class="receipt-scan-pieces" data-idx="${idx}">${p.pieces}</td>
-        <td class="receipt-scan-unitprice" data-idx="${idx}">${p.perPiece.toFixed(4)} €</td>
-      </tr>`;
-      }).join("");
-      const refreshPreview = () => {
-        receiptScanItems.forEach((item, idx) => {
-          const name = document.querySelector(`.receipt-scan-name[data-idx="${idx}"]`)?.value?.trim();
-          const quantity = Number(document.querySelector(`.receipt-scan-qty[data-idx="${idx}"]`)?.value);
-          const unit = document.querySelector(`.receipt-scan-unit[data-idx="${idx}"]`)?.value || "copë";
-          const pieces_per_pack = Number(document.querySelector(`.receipt-scan-ppp[data-idx="${idx}"]`)?.value);
-          const unit_price = Number(document.querySelector(`.receipt-scan-price[data-idx="${idx}"]`)?.value);
-          const vatSel = document.querySelector(`.receipt-scan-vat[data-idx="${idx}"]`);
-          item.name = name || item.name;
-          item.quantity = quantity;
-          item.unit = unit;
-          item.pieces_per_pack = unit === "pako" ? pieces_per_pack : 1;
-          item.unit_price = unit_price;
-          if (vatSel) item.vat_rate = normalizePurchaseLineVat(vatSel.value);
-          const pppEl = document.querySelector(`.receipt-scan-ppp[data-idx="${idx}"]`);
-          if (pppEl) {
-            pppEl.disabled = unit !== "pako";
-            if (unit !== "pako") pppEl.value = "1";
-          }
-          const p = receiptPackPreview(item);
-          const pe = document.querySelector(`.receipt-scan-pieces[data-idx="${idx}"]`);
-          const up = document.querySelector(`.receipt-scan-unitprice[data-idx="${idx}"]`);
-          if (pe) pe.textContent = String(p.pieces);
-          if (up) up.textContent = `${p.perPiece.toFixed(4)} €`;
-        });
+      const rows = [];
+      receiptScanItems.forEach((item, idx) => {
+        const amt = receiptScanInvoiceAmounts(item);
+        const packs = item.pack_qty !== "" && item.pack_qty != null ? item.pack_qty : "";
+        const netVal =
+          item.unit_price !== "" && item.unit_price != null ? item.unit_price : amt.priceNet;
+        const disc = item.discount_pct != null ? item.discount_pct : 0;
+        rows.push(`
+          <tr class="receipt-scan-line-row" data-scan-idx="${idx}">
+            <td class="c">${idx + 1}</td>
+            <td class="receipt-scan-desc-cell">
+              <input type="text" class="receipt-scan-name" data-idx="${idx}" value="${escAttr(item.name || item.scan_name || "")}" title="Përshkrimi (si faturë)">
+            </td>
+            <td class="c receipt-scan-pako-cell"><input type="number" class="receipt-scan-packs purchase-line-packs" data-idx="${idx}" min="0" step="any" value="${packs}" title="Sa pako" aria-label="Pako"></td>
+            <td class="n"><input type="number" class="receipt-scan-sasia" data-idx="${idx}" min="0" step="any" value="${amt.sasia}" title="Sasia (copë totale)"></td>
+            <td class="n"><input type="number" class="receipt-scan-price-net" data-idx="${idx}" min="0" step="any" value="${netVal !== "" && netVal != null ? netVal : ""}" title="Çmimi pa TVSH / copë"></td>
+            <td class="n"><input type="number" class="receipt-scan-discount" data-idx="${idx}" min="0" max="100" step="any" value="${disc}" title="Zbritja %"></td>
+            <td class="n receipt-scan-price-gross-cell">${amt.priceGross.toFixed(2)}</td>
+            <td class="n receipt-scan-sum-net">${amt.sumNet.toFixed(2)}</td>
+            <td class="c">${purchaseLineVatSelectHtml(idx, item.vat_rate).replace("purchase-line-vat", "purchase-line-vat receipt-scan-vat")}</td>
+            <td class="n receipt-scan-sum-vat">${amt.sumVat.toFixed(2)}</td>
+            <td class="n receipt-scan-sum-gross">${formatEuro(amt.sumGross)}</td>
+          </tr>`);
+      });
+      body.innerHTML = rows.join("");
+
+      const onRowInput = (e) => {
+        const idx = Number(e.target?.dataset?.idx);
+        if (!Number.isFinite(idx)) return;
+        clearReceiptScanAiFlags();
+        syncReceiptScanItemFromDom(idx, e.target);
+        updateReceiptScanRowUi(idx);
       };
       body.querySelectorAll("input, select").forEach((inp) => {
-        inp.addEventListener("input", () => {
-          clearReceiptScanAiFlags();
-          refreshPreview();
-        });
-      });
-      body.querySelectorAll("select").forEach((inp) => {
-        inp.addEventListener("change", () => {
-          clearReceiptScanAiFlags();
-          refreshPreview();
-        });
+        inp.addEventListener("input", onRowInput);
+        inp.addEventListener("change", onRowInput);
       });
       results.hidden = false;
     }
 
     function readReceiptScanItemsFromDom() {
-      return receiptScanItems.map((item, idx) => {
-        const name = document.querySelector(`.receipt-scan-name[data-idx="${idx}"]`)?.value?.trim();
-        const qtyRaw = document.querySelector(`.receipt-scan-qty[data-idx="${idx}"]`)?.value;
-        const unit = document.querySelector(`.receipt-scan-unit[data-idx="${idx}"]`)?.value || item.unit || "copë";
-        const pppRaw = document.querySelector(`.receipt-scan-ppp[data-idx="${idx}"]`)?.value;
-        const priceRaw = document.querySelector(`.receipt-scan-price[data-idx="${idx}"]`)?.value;
-        const quantity = Number(String(qtyRaw ?? "").replace(",", "."));
-        const pieces_per_pack = unit === "pako"
-          ? Number(String(pppRaw ?? "").replace(",", "."))
-          : 1;
-        const unit_price = Number(String(priceRaw ?? "").replace(",", "."));
-        const vatRaw = document.querySelector(`.receipt-scan-vat[data-idx="${idx}"]`)?.value;
+      receiptScanItems.forEach((_, idx) => syncReceiptScanItemFromDom(idx));
+      return receiptScanItems.map((item) => {
+        const name = String(item.name || item.scan_name || "").trim();
+        const amt = receiptScanInvoiceAmounts(item);
         const headerVat = Number(document.getElementById("receipt-scan-vat-rate")?.value ?? 18);
         const out = {
-          name: name || item.name,
-          quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : Number(item.quantity) || 0,
-          unit: unit === "pako" ? "pako" : "copë",
-          pieces_per_pack: unit === "pako" && Number.isFinite(pieces_per_pack) && pieces_per_pack > 0
-            ? pieces_per_pack
-            : 1,
-          unit_price: Number.isFinite(unit_price) && unit_price >= 0 ? unit_price : Number(item.unit_price) || 0,
-          vat_rate: normalizePurchaseLineVat(vatRaw ?? item.vat_rate ?? headerVat),
+          name,
+          scan_name: item.scan_name || name,
+          quantity: amt.sasia,
+          unit: "copë",
+          pieces_per_pack: Number(item.pieces_per_pack) || 1,
+          pack_qty: Number(item.pack_qty) || 0,
+          unit_price: amt.priceNet >= 0 ? amt.priceNet : 0,
+          discount_pct: amt.disc,
+          vat_rate: normalizePurchaseLineVat(item.vat_rate ?? headerVat),
+          line_net: amt.sumNet,
+          line_total: amt.sumGross,
         };
-        if (item.line_total != null && item.line_total !== "") {
-          out.line_total = Number(item.line_total);
-        }
+        if (item.menu_item_id) out.menu_item_id = Number(item.menu_item_id);
         return out;
-      }).filter(item => item.name && item.quantity > 0);
+      }).filter((item) => item.name && item.quantity > 0);
     }
 
     function receiptScanMetaScore(o) {
@@ -10482,6 +10931,7 @@
       receiptScanFile = null;
       receiptScanFile2 = null;
       clearReceiptScanAiFlags();
+      setReceiptScanWarnings([], null);
       setReceiptScanStatus("", true);
       document.getElementById("receipt-scan-results").hidden = true;
       document.getElementById("receipt-scan-loading").hidden = true;
@@ -10571,11 +11021,16 @@
           const data2 = await scanReceiptPhotoFile(receiptScanFile2);
           data = mergeReceiptScanResults(data, data2);
         }
-        receiptScanItems = (Array.isArray(data.items) ? data.items : []).map((it) => ({ ...it }));
+        receiptScanItems = (Array.isArray(data.items) ? data.items : []).map((it) =>
+          normalizeReceiptScanRowFromAi({ ...it }),
+        );
+        const headerVat = Number(data.vat_rate ?? document.getElementById("receipt-scan-vat-rate")?.value ?? 18);
+        const filteredWarn = filterReceiptScanQtyVatWarnings(data.warnings, receiptScanItems, headerVat);
         receiptScanMeta = {
-          warnings: Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [],
+          warnings: Array.isArray(filteredWarn) ? filteredWarn.filter(Boolean) : [],
           totals_check: data.totals_check && typeof data.totals_check === "object" ? data.totals_check : null,
         };
+        setReceiptScanWarnings(receiptScanMeta.warnings, receiptScanMeta.totals_check);
         document.getElementById("receipt-scan-supplier").value = data.supplier || "";
         document.getElementById("receipt-scan-number").value = data.invoice_number || "";
         const nuiEl = document.getElementById("receipt-scan-nui");
@@ -10592,6 +11047,7 @@
           dateEl.value = String(data.invoice_date).slice(0, 10);
         }
         await applyReceiptScanItemVatRates();
+        receiptScanItems.forEach((item) => receiptScanRematchMenuItem(item));
         renderReceiptScanItems();
         const warnList = receiptScanMeta.warnings || [];
         const warnText = warnList.length ? `\n⚠ ${warnList.join(" ")}` : "";
@@ -10750,10 +11206,6 @@
     document.getElementById("btn-receipt-scan-apply")?.addEventListener("click", () => {
       applyReceiptScanToStock().catch(err => setReceiptScanStatus(err.message, false));
     });
-    document.getElementById("btn-receipt-scan-calc-packs")?.addEventListener("click", () => {
-      renderReceiptScanItems();
-      setReceiptScanStatus("Llogaritja u rifreskua — kontrollo kolonat Copa (stok) dhe Çmim/copë, pastaj Regjistro.", true);
-    });
     function bindReceiptFileInput(id) {
       document.getElementById(id)?.addEventListener("change", e => {
         onReceiptFileChosen(e.target.files?.[0] || null);
@@ -10786,10 +11238,6 @@
     });
     document.getElementById("btn-receipt-scan-apply")?.addEventListener("click", () => {
       applyReceiptScanToStock().catch(err => setReceiptScanStatus(err.message, false));
-    });
-    document.getElementById("btn-receipt-scan-calc-packs")?.addEventListener("click", () => {
-      renderReceiptScanItems();
-      setReceiptScanStatus("Llogaritja u rifreskua — kontrollo kolonat Copa (stok) dhe Çmim/copë, pastaj Regjistro.", true);
     });
     function bindReceiptFileInput(id) {
       document.getElementById(id)?.addEventListener("change", e => {
@@ -16838,6 +17286,111 @@
       }
     }
 
+    let localWaiterLanPollTimer = null;
+    let localWaiterQrCache = { url: "", data_url: "" };
+
+    function stopLocalWaiterLanPoll() {
+      if (localWaiterLanPollTimer) {
+        clearInterval(localWaiterLanPollTimer);
+        localWaiterLanPollTimer = null;
+      }
+    }
+
+    function startLocalWaiterLanPoll() {
+      stopLocalWaiterLanPoll();
+      const cloudActive = document.getElementById("panel-cloud")?.classList.contains("active");
+      if (!cloudActive || !adminSettingsMode) return;
+      localWaiterLanPollTimer = setInterval(async () => {
+        try {
+          const s = await api("/api/admin/local-waiter-links");
+          applyLocalWaiterLanPayload(s);
+        } catch {
+          /* ignore */
+        }
+      }, 15000);
+    }
+
+    function refreshLocalWaiterQrUi(url) {
+      const img = document.getElementById("cloud-local-waiter-qr-img");
+      const printBtn = document.getElementById("btn-print-local-waiter-qr");
+      const hint = document.getElementById("cloud-local-waiter-qr-hint");
+      const u = String(url || "").trim();
+      if (!img) return;
+      if (!u) {
+        img.hidden = true;
+        if (printBtn) printBtn.hidden = true;
+        return;
+      }
+      if (localWaiterQrCache.url === u && localWaiterQrCache.data_url) {
+        img.src = localWaiterQrCache.data_url;
+        img.hidden = false;
+        if (printBtn) printBtn.hidden = false;
+        return;
+      }
+      const dataUrl = typeof adminMakeQrDataUrl === "function" ? adminMakeQrDataUrl(u, 160) : "";
+      localWaiterQrCache = { url: u, data_url: dataUrl };
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.hidden = false;
+        if (printBtn) printBtn.hidden = false;
+        if (hint) {
+          hint.textContent =
+            "Skanoni QR me telefonin (i njëjti WiFi si PC) — hapet kamarieri. Ruajeni si bookmark. QR rifreskohet automatikisht.";
+        }
+      } else {
+        img.hidden = true;
+        if (printBtn) printBtn.hidden = true;
+        if (hint) hint.textContent = "QR nuk u gjenerua — rifreskoni faqen ose kontrolloni qrcode.js.";
+      }
+    }
+
+    function renderLocalWaiterHostnameAlternatives(list) {
+      const box = document.getElementById("cloud-local-waiter-hostnames");
+      if (!box) return;
+      const rows = (list || []).filter((e) => e && e.url);
+      if (!rows.length) {
+        box.innerHTML = "";
+        box.hidden = true;
+        return;
+      }
+      box.hidden = false;
+      box.innerHTML =
+        `<p style="font-size:0.8rem;color:var(--ngjyr-muted);margin:0 0 0.5rem">Alternativa pa IP (nëse WiFi e njeh emrin e PC-së ose mDNS):</p>`
+        + rows.map((e, i) => (
+          `<div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.35rem">`
+          + `<span style="font-size:0.75rem;color:var(--ngjyr-muted);min-width:10rem">${escHtml(e.label || "Link")}</span>`
+          + `<input type="text" readonly id="cloud-local-host-${i}" value="${escAttr(e.url)}" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:160px">`
+          + `<button type="button" class="btn btn-ghost btn-sm" data-copy-local-host="${i}">Kopjo</button>`
+          + `</div>`
+        )).join("");
+      box.querySelectorAll("[data-copy-local-host]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const inp = document.getElementById(`cloud-local-host-${btn.dataset.copyLocalHost}`);
+          const val = inp?.value || "";
+          if (!val) return;
+          navigator.clipboard.writeText(val).catch(() => {
+            if (inp) { inp.select(); document.execCommand("copy"); }
+          });
+        });
+      });
+    }
+
+    function applyLocalWaiterLanPayload(s) {
+      if (!s) return;
+      const localWaiterUrl =
+        s.local_waiter_panel_url
+        || (s.local_lan_ip && s.local_server_port
+          ? `http://${s.local_lan_ip}:${s.local_server_port}/waiter.html`
+          : "");
+      const cur = document.getElementById("cloud-local-waiter-url");
+      if (cur && localWaiterUrl && cur.value !== localWaiterUrl) {
+        cur.value = localWaiterUrl;
+        void provoLidhjenLokalTeKamarierit(localWaiterUrl);
+      }
+      refreshLocalWaiterQrUi(localWaiterUrl || cur?.value || "");
+      renderLocalWaiterHostnameAlternatives(s.local_waiter_hostname_urls);
+    }
+
     async function provoLidhjenLokalTeKamarierit(url) {
       const el = document.getElementById("cloud-local-waiter-reach-hint");
       if (!el) return;
@@ -16890,17 +17443,22 @@
       setVal("cloud-public-url", s.public_page_url);
       setVal("cloud-hk-url", s.housekeeping_url || "");
       setVal("cloud-reception-url", cloudDisabled ? "" : (s.reception_url || ""));
-      toggleRow("cloud-row-waiter", false);
-      toggleRow("cloud-row-reception", false);
+      toggleRow("cloud-row-waiter", !cloudDisabled && !!(s.waiter_url || s.kitchen_slug));
+      toggleRow("cloud-row-reception", !cloudDisabled && !!s.reception_url);
 
-      const localWaiterUrl = s.local_waiter_url || s.local_staff_wifi?.kamarier || "";
+      const localWaiterUrl =
+        s.local_waiter_panel_url
+        || (s.local_base_url ? `${String(s.local_base_url).replace(/\/+$/, "")}/waiter.html` : "")
+        || s.local_waiter_url
+        || s.local_staff_wifi?.kamarier
+        || "";
       let localRecepsionUrl = s.local_recepsion_url || s.local_staff_wifi?.recepsion || "";
       if (!localRecepsionUrl && localWaiterUrl) {
         localRecepsionUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/recepsion$1");
       }
       setVal("cloud-local-waiter-url", localWaiterUrl);
       setVal("cloud-local-recepsion-url", localRecepsionUrl);
-      toggleRow("cloud-row-local-waiter", !!localWaiterUrl);
+      toggleRow("cloud-row-local-waiter", true);
       toggleRow("cloud-row-local-recepsion", !!(localRecepsionUrl || localWaiterUrl));
       const recepHint = document.getElementById("cloud-local-recepsion-hint");
       if (recepHint) {
@@ -16914,6 +17472,8 @@
       if (wLbl) wLbl.textContent = venue ? `Kamarieri — ${venue}` : "Kamarieri — WiFi lokal";
       if (rLbl) rLbl.textContent = venue ? `Recepsioni — ${venue}` : "Recepsioni — WiFi lokal";
       void provoLidhjenLokalTeKamarierit(localWaiterUrl);
+      refreshLocalWaiterQrUi(localWaiterUrl);
+      renderLocalWaiterHostnameAlternatives(s.local_waiter_hostname_urls);
       if (localWaiterUrl) localWifiBaseKamarier = localWaiterUrl;
       if (localRecepsionUrl) localWifiBaseRecepsion = localRecepsionUrl;
 
@@ -16925,12 +17485,19 @@
 
       if (hint) {
         hint.hidden = false;
-        if (localWaiterUrl || localRecepsionUrl) {
-          hint.textContent = "Kamarier/recepsion — WiFi i hotelit (pa cloud). Link personal me kod 3-shifror te Stafi → Ndrysho.";
+        if (localWaiterUrl && !cloudDisabled && s.waiter_url) {
+          hint.textContent =
+            "WiFi lokal (telefon në rrjetin e hotelit) + cloud (internet) — të dyja me PIN 6-shifror. Link personal WiFi me kod 3-shifror te Stafi → Ndrysho.";
+        } else if (localWaiterUrl || localRecepsionUrl) {
+          hint.textContent =
+            "Kamarier/recepsion — WiFi i hotelit. Link personal me kod 3-shifror te Stafi → Ndrysho."
+            + (!cloudDisabled && s.waiter_url ? " Cloud kamarier — kopjoni linkun më sipër." : "");
         } else if (s.hotel_slug) {
           hint.textContent = "Emri i hotelit → slug: hotel/" + s.hotel_slug + " · Link WiFi lokal — te Stafi.";
         } else if (s.links_ready) {
-          hint.textContent = "Linke cloud (kuzhinë/bar). Kamarier/recepsion vetëm WiFi lokal.";
+          hint.textContent = cloudDisabled
+            ? "Linke cloud (kuzhinë/bar). Kamarier/recepsion vetëm WiFi lokal."
+            : "Linke cloud (kamarier, kuzhinë, bar). WiFi lokal mbetet te rreshtat më poshtë.";
         } else {
           hint.textContent = "Vendosni emrin e hotelit te Cilësimet dhe çelësin e licencës.";
         }
@@ -16949,8 +17516,10 @@
           !!s.offline,
         );
         vendosLinketCloud(s);
+        startLocalWaiterLanPoll();
       } catch (err) {
         vendosStatusinCloud(false, err.message || "Nuk u lexuan linket.", true);
+        stopLocalWaiterLanPoll();
       }
     }
 
@@ -16970,6 +17539,25 @@
 
     document.getElementById("btn-copy-local-waiter-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-local-waiter-url", this);
+    });
+    document.getElementById("btn-print-local-waiter-qr")?.addEventListener("click", () => {
+      const entry = localWaiterQrCache;
+      if (!entry?.data_url || !entry?.url) return;
+      const w = window.open("", "_blank", "noopener");
+      if (!w) {
+        alert("Lejoni dritaren e re për printim.");
+        return;
+      }
+      w.document.write(`<!DOCTYPE html><html lang="sq"><head><meta charset="UTF-8"><title>QR Kamarier WiFi</title>
+<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:16px;text-align:center;color:#111}
+.qr-print-card{border:1px solid #ddd;border-radius:12px;padding:16px;max-width:420px;margin:0 auto}
+.qr-print-label{font-size:1.35rem;font-weight:800;margin:12px 0 6px}
+.qr-print-url{font-size:9px;color:#666;word-break:break-all;line-height:1.3}
+@media print{body{padding:0}.qr-print-card{border:none;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}}</style></head>
+<body><section class="qr-print-card"><img src="${escAttr(entry.data_url)}" alt="QR" width="280" height="280">
+<div class="qr-print-label">Kamarier — WiFi hotel</div><div class="qr-print-url">${escHtml(entry.url)}</div></section>
+<script>window.onload=function(){window.print();}<\/script></body></html>`);
+      w.document.close();
     });
     document.getElementById("btn-copy-local-recepsion-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-local-recepsion-url", this);
@@ -18230,6 +18818,90 @@
         console.warn("disk-status", e);
       }
     }
+
+    async function ngarkoAutoBackupStatus() {
+      const el = document.getElementById("auto-backup-status-line");
+      if (!el) return;
+      try {
+        const s = await api("/api/auto-backup/status");
+        const at = s.last_backup_at ? new Date(s.last_backup_at).toLocaleString("sq-AL") : "—";
+        const dir = s.backup_dir || "Desktop\\Revolution Backup\\HOTEL";
+        const daily = s.daily_count != null ? s.daily_count : "—";
+        const monthly = s.monthly_count != null ? s.monthly_count : "—";
+        el.textContent =
+          `Auto-backup: ${dir} · minutë: ${at} · ditorë: ${daily} · mujorë: ${monthly}`;
+      } catch {
+        el.textContent = "Auto-backup: statusi nuk u lexua.";
+      }
+    }
+
+    let restoreBackupCatalog = [];
+
+    function mbyllModalRestoreBackup() {
+      const modal = document.getElementById("modal-restore-backup");
+      if (modal) modal.hidden = true;
+    }
+
+    async function hapModalRestoreBackup() {
+      const modal = document.getElementById("modal-restore-backup");
+      const sel = document.getElementById("restore-backup-select");
+      const msg = document.getElementById("restore-backup-msg");
+      if (!modal || !sel) return;
+      if (msg) msg.textContent = "";
+      try {
+        const cat = await api("/api/auto-backup/catalog");
+        restoreBackupCatalog = cat.items || [];
+        sel.innerHTML = "";
+        if (!restoreBackupCatalog.length) {
+          sel.innerHTML = "<option value=\"\">Nuk ka backup</option>";
+        } else {
+          for (const it of restoreBackupCatalog) {
+            const opt = document.createElement("option");
+            opt.value = `${it.source_type}:${it.source_id}`;
+            opt.textContent = it.label || `${it.source_type} ${it.source_id}`;
+            sel.appendChild(opt);
+          }
+        }
+        modal.hidden = false;
+      } catch (err) {
+        alert(err.message || "Nuk u lexua lista e backup-eve.");
+      }
+    }
+
+    document.getElementById("btn-hotel-restore-auto-backup")?.addEventListener("click", () => {
+      void hapModalRestoreBackup();
+    });
+    document.getElementById("restore-backup-backdrop")?.addEventListener("click", mbyllModalRestoreBackup);
+    document.getElementById("btn-restore-backup-cancel")?.addEventListener("click", mbyllModalRestoreBackup);
+    document.getElementById("btn-restore-backup-confirm")?.addEventListener("click", async () => {
+      const sel = document.getElementById("restore-backup-select");
+      const msgPanel = document.getElementById("msg-hotel-backup");
+      const msg = document.getElementById("restore-backup-msg");
+      const raw = sel?.value || "";
+      if (!raw) return;
+      const [source_type, ...rest] = raw.split(":");
+      const source_id = rest.join(":");
+      if (!confirm(`Riktheni nga ${source_type} / ${source_id}? Mbyllni dhe rinisni programin pas OK.`)) {
+        return;
+      }
+      try {
+        const r = await api("/api/auto-backup/restore", {
+          method: "POST",
+          body: JSON.stringify({ source_type, source_id }),
+        });
+        mbyllModalRestoreBackup();
+        if (msgPanel) {
+          msgPanel.style.color = "var(--ngjyr-success,#22c55e)";
+          msgPanel.textContent = r.message || "U rikthye — rinisni programin.";
+        }
+        alert(r.message || "U rikthye. Rinisni Revolution HOTEL.");
+      } catch (err) {
+        if (msg) {
+          msg.style.color = "var(--ngjyr-danger)";
+          msg.textContent = err.message || "Restore dështoi.";
+        }
+      }
+    });
 
     document.getElementById("btn-hotel-backup")?.addEventListener("click", async () => {
       const msg = document.getElementById("msg-hotel-backup");

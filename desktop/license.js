@@ -594,6 +594,73 @@ function isActivationNeededCode(code) {
   return c === "NOT_FOUND" || c === "TERMINAL_REVOKED" || c === "TERMINAL_DENIED";
 }
 
+function unlinkIfExists(filePath) {
+  try {
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {
+    /* ignore */
+  }
+}
+
+const FACTORY_RESET_CLIENT_DB_FILES = [
+  "hotel.db",
+  "restaurant.db",
+  ".db-master.dpapi",
+  ".db-install-salt",
+  ".db-master.scrypt",
+];
+
+const FACTORY_RESET_CLIENT_DATA_DIRS = ["fiscal-keys"];
+
+/** Sidecar-ë nga load/corrupt (hotel.db.load-fail-*, hotel.db.corrupt-*, etj.). */
+function wipeFactoryResetDbSidecarFiles(userDataRoot) {
+  const root = String(userDataRoot || "").trim();
+  if (!root) return;
+  const bases = ["hotel.db", "restaurant.db"];
+  let names = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    for (const base of bases) {
+      if (name.startsWith(`${base}.corrupt-`) || name.startsWith(`${base}.load-fail-`)) {
+        unlinkIfExists(path.join(root, name));
+      }
+    }
+  }
+}
+
+/** Rivendos si të re — DB + sidecar enkriptimi + fiscal-keys; licenca mbetet. Thirret në boot (DB e mbyllur). */
+function wipeAllClientData(app, userDataDir) {
+  const ea = app || _electronApp;
+  const root =
+    String(userDataDir || "").trim() || (ea ? ea.getPath("userData") : "");
+  if (!root) return { ok: false, deleted: [] };
+  const deleted = [];
+  wipeFactoryResetDbSidecarFiles(root);
+  for (const name of FACTORY_RESET_CLIENT_DB_FILES) {
+    const full = path.join(root, name);
+    if (fs.existsSync(full)) {
+      unlinkIfExists(full);
+      if (!fs.existsSync(full)) deleted.push(name);
+    }
+  }
+  for (const dirName of FACTORY_RESET_CLIENT_DATA_DIRS) {
+    const full = path.join(root, dirName);
+    try {
+      if (fs.existsSync(full)) {
+        fs.rmSync(full, { recursive: true, force: true });
+        if (!fs.existsSync(full)) deleted.push(`${dirName}/`);
+      }
+    } catch (e) {
+      console.warn("[factory-reset] could not remove dir:", full, e.message || e);
+    }
+  }
+  return { ok: true, deleted };
+}
+
 function wipeDirHard(dir) {
   // BLLOKUAR — nuk lejohet fshirja e folderëve të klientit
   // Ky funksion nuk duhet me fshirë asgjë përveç skedarëve të licencës
@@ -1946,6 +2013,7 @@ module.exports = {
   requestEmergencyCodeToOwner,
   startLicenseWatchdog,
   wipeAllActivationData,
+  wipeAllClientData,
   listActivationFileBasenames,
   getMachineId,
   getHardwareIdForDisplay,

@@ -643,6 +643,8 @@ if (!gotTheLock) {
         "hotel-factory-reset-pending",
       );
 
+      const FACTORY_RESET_DONE_FLAG = ".factory-reset-done";
+
       const clearFactoryResetFlags = () => {
         try {
           fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
@@ -657,15 +659,89 @@ if (!gotTheLock) {
         }
       };
 
-      const wipeLicenseOnlyForFactoryReset = () => {
+      const markFactoryResetSkipBackupRestore = () => {
+        try {
+          fs.writeFileSync(
+            path.join(userData, FACTORY_RESET_DONE_FLAG),
+            new Date().toISOString(),
+            "utf8",
+          );
+        } catch (e) {
+          console.warn("[factory-reset] skip-restore flag:", e.message || e);
+        }
+      };
+
+      const consumeFactoryResetSkipRestore = () => {
+        const flagPath = path.join(userData, FACTORY_RESET_DONE_FLAG);
+        if (!fs.existsSync(flagPath)) return false;
+        try {
+          fs.unlinkSync(flagPath);
+        } catch {
+          /* ignore */
+        }
+        return true;
+      };
+
+      const wipeClientDataForFactoryReset = () => {
         try {
           const licenseMod = require(path.join(__dirname, "license"));
           licenseMod.registerInstallContext(app);
-          if (typeof licenseMod.wipeAllActivationData === "function") {
-            licenseMod.wipeAllActivationData(app);
+          if (typeof licenseMod.wipeAllClientData === "function") {
+            return licenseMod.wipeAllClientData(app, userData);
           }
         } catch (e) {
-          console.warn("[factory-reset] vetëm licencë:", e.message || e);
+          console.warn("[factory-reset] wipe client DB:", e.message || e);
+        }
+        return { ok: false, deleted: [] };
+      };
+
+      const readFactoryResetPendingAt = () => {
+        for (const flagPath of [resetFlag, resetFlagExternal]) {
+          try {
+            if (flagPath && fs.existsSync(flagPath)) {
+              const t = fs.readFileSync(flagPath, "utf8").trim();
+              if (t) return t;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        return new Date().toISOString();
+      };
+
+      const writeFactoryResetPendingFlags = () => {
+        const stamp = new Date().toISOString();
+        try {
+          fs.mkdirSync(path.dirname(resetFlagExternal), { recursive: true });
+          fs.writeFileSync(resetFlagExternal, stamp, "utf8");
+        } catch {
+          /* ignore */
+        }
+        try {
+          fs.writeFileSync(resetFlag, stamp, "utf8");
+        } catch {
+          /* ignore */
+        }
+        console.log("[factory-reset] pending flags written — DB fshihet në boot tjetër");
+      };
+
+      const shutdownServerBeforeFactoryResetExit = () => {
+        try {
+          const autoBackup = require(path.join(__dirname, "auto-backup"));
+          if (typeof autoBackup.stopAutoBackup === "function") autoBackup.stopAutoBackup();
+        } catch {
+          /* ignore */
+        }
+        try {
+          const db = require(path.join(__dirname, "database"));
+          if (typeof db.flushDatabase === "function") db.flushDatabase();
+        } catch {
+          /* ignore */
+        }
+        try {
+          httpServer?.close();
+        } catch {
+          /* ignore */
         }
       };
 
@@ -673,8 +749,15 @@ if (!gotTheLock) {
         fs.existsSync(resetFlag) || fs.existsSync(resetFlagExternal);
 
       if (factoryResetRequested) {
-        wipeLicenseOnlyForFactoryReset();
+        process.env.HOTEL_FACTORY_RESET_AT = readFactoryResetPendingAt();
+        markFactoryResetSkipBackupRestore();
+        const wiped = wipeClientDataForFactoryReset();
         clearFactoryResetFlags();
+        global.__hotelJustFactoryReset = true;
+        console.log(
+          "[factory-reset] startup wipe:",
+          wiped?.deleted?.length ? wiped.deleted.join(", ") : "asnjë skedar",
+        );
       }
 
       process.env.DB_PATH = path.join(userData, "hotel.db");
@@ -684,22 +767,25 @@ if (!gotTheLock) {
           dialog.showMessageBoxSync({
             type: "warning",
             title: APP_NAME,
-            message: "Rivendosje licencë",
+            message: "Rivendosje nga administratori",
             detail:
-              "Licenca lokale pastrohet (të dhënat e klientit mbeten). Mbyllni dhe riaktivizoni programin.",
+              "Të dhënat lokale (DB) fshihen pas mbylljes së programit. Licenca mbetet — programi riniset si i ri.",
             buttons: ["OK"],
           });
         } catch {
           /* ignore */
         }
-        wipeLicenseOnlyForFactoryReset();
-        clearFactoryResetFlags();
-        try {
-          httpServer?.close();
-        } catch {
-          /* ignore */
+        markFactoryResetSkipBackupRestore();
+        writeFactoryResetPendingFlags();
+        shutdownServerBeforeFactoryResetExit();
+        const execPath = String(process.execPath || "");
+        if (!/^[Z]:/i.test(execPath)) {
+          try {
+            app.relaunch();
+          } catch {
+            /* ignore */
+          }
         }
-        app.relaunch();
         app.exit(0);
       };
 
@@ -767,12 +853,18 @@ if (!gotTheLock) {
         const autoBackup = require(path.join(__dirname, "auto-backup"));
         const dbPath = process.env.DB_PATH;
         const fiscalKeysPath = path.join(userData, "fiscal-keys");
-        const restore = autoBackup.maybeRestoreOnStartup({
-          targetDbPath: dbPath,
-          targetKeysPath: fiscalKeysPath,
-          licenseActive: isProd,
-          skipLicenseCheck: !isProd,
-        });
+        const skipRestoreAfterReset = consumeFactoryResetSkipRestore();
+        const restore = skipRestoreAfterReset
+          ? { restored: false, skipped: true, reason: "factory_reset" }
+          : autoBackup.maybeRestoreOnStartup({
+              targetDbPath: dbPath,
+              targetKeysPath: fiscalKeysPath,
+              licenseActive: isProd,
+              skipLicenseCheck: !isProd,
+            });
+        if (skipRestoreAfterReset) {
+          console.log("[backup] Skip restore pas Rivendos — DB mbetet bosh (pa backup-latest)");
+        }
         if (restore?.restored && restore.message) {
           global.__hotelAutoRestoreMessage = restore.message;
         } else if (restore?.code === "license_required") {

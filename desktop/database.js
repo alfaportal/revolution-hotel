@@ -10696,6 +10696,263 @@ function resolveRoomChargeVatCategory(c) {
   return "18";
 }
 
+const HOTEL_B2B_FINAL_STATUSES = ["final", "printed", "emailed"];
+
+function hotelB2bRound2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function normalizeHotelB2bVatRate(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 18;
+  if (n === 0 || n === 8 || n === 18) return n;
+  if (n > 0 && n < 1) {
+    const pct = Math.round(n * 100);
+    if (pct === 8 || pct === 18) return pct;
+  }
+  if (n <= 0) return 0;
+  if (n <= 8) return 8;
+  return 18;
+}
+
+function hotelB2bInvoiceVatBuckets(inv) {
+  const subtotal = hotelB2bRound2(inv.subtotal);
+  const vatAmt = hotelB2bRound2(inv.vat_amount);
+  const gross = hotelB2bRound2(inv.grand_total);
+  const enabled = Number(inv.vat_enabled) === 1 || inv.vat_enabled === true;
+  if (!enabled || vatAmt <= 0) {
+    const letter = vatLetterFromCategory("0");
+    return {
+      vat_rate: "0%",
+      vat_amount: 0,
+      vat_buckets: [{
+        letter,
+        rate: 0,
+        gross: subtotal,
+        net: subtotal,
+        vat: 0,
+      }],
+    };
+  }
+  const rate = normalizeHotelB2bVatRate(inv.vat_percent);
+  const letter = vatLetterFromCategory(String(rate));
+  return {
+    vat_rate: `${rate}%`,
+    vat_amount: vatAmt,
+    vat_buckets: [{
+      letter,
+      rate,
+      gross,
+      net: subtotal,
+      vat: vatAmt,
+    }],
+  };
+}
+
+/** Faturat A4 finalizuar (sales_invoices) për Kontabilistin — skema HOTEL guest/lines. */
+function listFinalizedHotelSalesForKont({ from, to } = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const fromDate = from || today;
+  const toDate = to || today;
+  const placeholders = HOTEL_B2B_FINAL_STATUSES.map(() => "?").join(",");
+  const rows = sqlite
+    .prepare(
+      `
+    SELECT * FROM sales_invoices
+    WHERE status IN (${placeholders})
+      AND date(invoice_date) >= date(?)
+      AND date(invoice_date) <= date(?)
+    ORDER BY invoice_date ASC, id ASC
+  `,
+    )
+    .all(...HOTEL_B2B_FINAL_STATUSES, fromDate, toDate);
+  if (!rows.length) return [];
+  const ids = rows.map((r) => Number(r.id));
+  const linePlaceholders = ids.map(() => "?").join(",");
+  const lineRows = sqlite
+    .prepare(
+      `SELECT * FROM sales_invoice_lines WHERE invoice_id IN (${linePlaceholders}) ORDER BY invoice_id, sort_order, id`,
+    )
+    .all(...ids);
+  const linesByInvoice = new Map();
+  for (const ln of lineRows) {
+    const invId = Number(ln.invoice_id);
+    if (!linesByInvoice.has(invId)) linesByInvoice.set(invId, []);
+    linesByInvoice.get(invId).push({
+      description: String(ln.description || "").trim(),
+      qty: Number(ln.qty) || 0,
+      unit_price: hotelB2bRound2(ln.unit_price),
+      line_total: hotelB2bRound2(ln.line_total),
+      discount_type: ln.discount_type || "amount",
+      discount_value: Number(ln.discount_value) || 0,
+    });
+  }
+  return rows.map((row) => {
+    const kind = row.guest_kind === "company" ? "company" : "individual";
+    const clientName =
+      kind === "company"
+        ? String(row.guest_company_name || row.guest_name || "").trim()
+        : String(row.guest_name || "").trim();
+    return {
+      id: Number(row.id),
+      number: String(row.number || "").trim(),
+      invoice_date: row.invoice_date,
+      status: row.status,
+      guest_kind: kind,
+      client_name: clientName,
+      client_nui: String(row.guest_nui || "").trim(),
+      client_fiscal: String(row.guest_fiscal_number || "").trim(),
+      subtotal: hotelB2bRound2(row.subtotal),
+      vat_amount: hotelB2bRound2(row.vat_amount),
+      grand_total: hotelB2bRound2(row.grand_total),
+      vat_percent: normalizeHotelB2bVatRate(row.vat_percent),
+      vat_enabled: Number(row.vat_enabled) === 1,
+      created_at: row.created_at,
+      lines: linesByInvoice.get(Number(row.id)) || [],
+    };
+  });
+}
+
+function buildHotelB2bSalesLedgerRows(invoices) {
+  return (invoices || []).map((inv) => {
+    const vatMeta = hotelB2bInvoiceVatBuckets(inv);
+    const itemsSummary = (inv.lines || [])
+      .map((it) => `${String(it.description || "").trim()} x${Number(it.qty) || 1}`)
+      .filter(Boolean)
+      .join(", ");
+    const created = String(inv.created_at || "").trim();
+    let time = "12:00:00";
+    if (created.length >= 19) time = created.slice(11, 19);
+    return {
+      id: -Number(inv.id),
+      date: inv.invoice_date,
+      time,
+      receipt_number: inv.number || "",
+      items: itemsSummary,
+      total: hotelB2bRound2(inv.grand_total),
+      vat_rate: vatMeta.vat_rate,
+      vat_amount: vatMeta.vat_amount,
+      vat_buckets: vatMeta.vat_buckets,
+      payment_method: "invoice",
+      buyer_name: inv.client_name || "",
+      buyer_fiscal: inv.client_nui || "",
+      buyer_vat: inv.client_fiscal || "",
+      source: "b2b-sales",
+      sales_invoice_id: Number(inv.id),
+    };
+  });
+}
+
+function hotelB2bInvoiceVatBases(inv) {
+  const sub = hotelB2bRound2(inv.subtotal);
+  const vatTotal = hotelB2bRound2(inv.vat_amount);
+  const grand = hotelB2bRound2(inv.grand_total);
+  const enabled = Number(inv.vat_enabled) === 1 || inv.vat_enabled === true;
+  if (!enabled || vatTotal <= 0) {
+    return {
+      base18: 0,
+      vat18: 0,
+      base8: 0,
+      vat8: 0,
+      base0: sub,
+      vat_total: 0,
+      grand_total: grand,
+    };
+  }
+  const rate = normalizeHotelB2bVatRate(inv.vat_percent);
+  if (rate === 8) {
+    return {
+      base18: 0,
+      vat18: 0,
+      base8: sub,
+      vat8: vatTotal,
+      base0: 0,
+      vat_total: vatTotal,
+      grand_total: grand,
+    };
+  }
+  if (rate === 0) {
+    return {
+      base18: 0,
+      vat18: 0,
+      base8: 0,
+      vat8: 0,
+      base0: sub,
+      vat_total: 0,
+      grand_total: grand,
+    };
+  }
+  return {
+    base18: sub,
+    vat18: vatTotal,
+    base8: 0,
+    vat8: 0,
+    base0: 0,
+    vat_total: vatTotal,
+    grand_total: grand,
+  };
+}
+
+function buildHotelB2bSalesVatBookRows(invoices) {
+  return (invoices || []).map((inv, i) => {
+    const b = hotelB2bInvoiceVatBases(inv);
+    return {
+      nr: i + 1,
+      section: "B2B",
+      date: inv.invoice_date || "",
+      invoice_number: inv.number || "",
+      buyer_name: inv.client_name || "",
+      buyer_fiscal: inv.client_nui || "",
+      buyer_vat: inv.client_fiscal || "",
+      base18: b.base18,
+      vat18: b.vat18,
+      base8: b.base8,
+      vat8: b.vat8,
+      base0: b.base0,
+      vat_total: b.vat_total,
+      gross: b.grand_total,
+      payment_method: "invoice",
+      box9: b.base0,
+      box12: b.base18,
+      boxK1: b.vat18,
+      box14: b.base8,
+      boxK2: b.vat8,
+      box30: b.vat_total,
+    };
+  });
+}
+
+function mergeHotelSalesVatBoxTotals(a, b) {
+  const base = atk.sumSalesVatBoxes([]);
+  const keys = Object.keys(base);
+  const out = {};
+  for (const k of keys) out[k] = hotelB2bRound2((Number(a[k]) || 0) + (Number(b[k]) || 0));
+  out.box10 = hotelB2bRound2(
+    (Number(out.box10a) || 0) + (Number(out.box10b) || 0) + (Number(out.box10c) || 0),
+  );
+  out.box30 = hotelB2bRound2((Number(out.boxK1) || 0) + (Number(out.boxK2) || 0));
+  return out;
+}
+
+function totalsFromHotelB2bSalesVatRows(rows) {
+  const acc = atk.sumSalesVatBoxes([]);
+  for (const r of rows || []) {
+    acc.box9 = hotelB2bRound2((Number(acc.box9) || 0) + (Number(r.base0) || 0));
+    acc.box12 = hotelB2bRound2((Number(acc.box12) || 0) + (Number(r.base18) || 0));
+    acc.boxK1 = hotelB2bRound2((Number(acc.boxK1) || 0) + (Number(r.vat18) || 0));
+    acc.box14 = hotelB2bRound2((Number(acc.box14) || 0) + (Number(r.base8) || 0));
+    acc.boxK2 = hotelB2bRound2((Number(acc.boxK2) || 0) + (Number(r.vat8) || 0));
+  }
+  acc.box10a = acc.box12;
+  acc.box10b = acc.box14;
+  acc.box10c = acc.box9;
+  acc.box10 = hotelB2bRound2(
+    (Number(acc.box10a) || 0) + (Number(acc.box10b) || 0) + (Number(acc.box10c) || 0),
+  );
+  acc.box30 = hotelB2bRound2((Number(acc.boxK1) || 0) + (Number(acc.boxK2) || 0));
+  return acc;
+}
+
 function getSalesLedger({ from, to } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const fromDate = from || today;
@@ -10830,6 +11087,13 @@ function getSalesLedger({ from, to } = {}) {
     }
   } catch (err) {
     console.warn("[kontabilisti] hotel ledger merge:", err.message);
+  }
+
+  try {
+    const hotelB2bInvoices = listFinalizedHotelSalesForKont({ from: fromDate, to: toDate });
+    rows.push(...buildHotelB2bSalesLedgerRows(hotelB2bInvoices));
+  } catch (err) {
+    console.warn("[kontabilisti] hotel A4 sales ledger merge:", err.message);
   }
 
   rows.sort((a, b) => {
@@ -11020,10 +11284,13 @@ function getKontabilistiBilanc({ from, to } = {}) {
   const salesRows = getSalesLedger({ from: fromDate, to: toDate });
   const purchaseInvoices = listPurchaseInvoicesForAtk({ from: fromDate, to: toDate });
   const expenseRows = listExpenses({ from: fromDate, to: toDate });
-  const sales_total = salesRows.reduce(
-    (s, r) => s + atk.saleLedgerNetTotal(r),
-    0,
-  );
+  const sales_b2c = salesRows
+    .filter((r) => r.source !== "b2b-sales")
+    .reduce((s, r) => s + atk.saleLedgerNetTotal(r), 0);
+  const sales_b2b = salesRows
+    .filter((r) => r.source === "b2b-sales")
+    .reduce((s, r) => s + atk.saleLedgerNetTotal(r), 0);
+  const sales_total = sales_b2c + sales_b2b;
   const purchases_total = purchaseInvoices.reduce(
     (s, inv) => s + atk.purchaseInvoiceNetTotal(inv),
     0,
@@ -11037,12 +11304,16 @@ function getKontabilistiBilanc({ from, to } = {}) {
     from: fromDate,
     to: toDate,
     sales_total: Number(sales_total.toFixed(2)),
+    sales_b2c: Number(sales_b2c.toFixed(2)),
+    sales_b2b: Number(sales_b2b.toFixed(2)),
     cogs_total,
     gross_profit,
     purchases_total: Number(purchases_total.toFixed(2)),
     expenses_total: Number(expenses_total.toFixed(2)),
     profit: Number(profit.toFixed(2)),
     sales_count: salesRows.length,
+    sales_b2c_count: salesRows.filter((r) => r.source !== "b2b-sales").length,
+    sales_b2b_count: salesRows.filter((r) => r.source === "b2b-sales").length,
     purchases_count: purchaseInvoices.length,
     expenses_count: expenseRows.length,
   };
@@ -11122,8 +11393,24 @@ function listPurchaseInvoicesForAtk({ from, to } = {}) {
 
 function getAtkSalesVatBook({ from, to } = {}) {
   const sales = getSalesLedger({ from, to });
-  const rows = atk.buildSalesVatBook(sales);
-  return { from, to, rows, totals: atk.sumSalesVatBoxes(rows) };
+  const salesB2cOnly = sales.filter((r) => r.source !== "b2b-sales");
+  const rows_b2c = atk.buildSalesVatBook(salesB2cOnly);
+  const b2bInvoices = listFinalizedHotelSalesForKont({ from, to });
+  const rows_b2b = buildHotelB2bSalesVatBookRows(b2bInvoices);
+  const totals_b2c = atk.sumSalesVatBoxes(rows_b2c);
+  const totals_b2b = totalsFromHotelB2bSalesVatRows(rows_b2b);
+  const totals = mergeHotelSalesVatBoxTotals(totals_b2c, totals_b2b);
+  return {
+    from,
+    to,
+    rows: rows_b2c,
+    rows_b2b,
+    b2b_count: rows_b2b.length,
+    b2c_count: rows_b2c.length,
+    totals,
+    totals_b2c,
+    totals_b2b,
+  };
 }
 
 function getAtkPurchaseVatBook({ from, to } = {}) {
@@ -12861,6 +13148,8 @@ function getVersionInfo() {
     listExpenses,
     deleteExpense,
     getSalesLedger,
+    listFinalizedHotelSalesForKont,
+    buildHotelB2bSalesLedgerRows,
     getVatReport,
     exportSalesLedgerCsv,
     exportExpensesCsv,
