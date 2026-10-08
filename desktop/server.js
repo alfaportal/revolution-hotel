@@ -6,9 +6,11 @@ const {
   listPublicStaticRoots,
   resolvePublicFile,
   pruneStalePublicOverlay,
+  refreshStalePinLoginOverlay,
 } = require("./app-paths");
 try {
   pruneStalePublicOverlay();
+  refreshStalePinLoginOverlay();
 } catch (e) {
   console.warn("[hotel] public-overlay prune:", e.message || e);
 }
@@ -778,6 +780,57 @@ async function closeCloudLinkedSale(tableId, cloudOrderIds, opts = {}) {
     }
   }
   return { closed };
+}
+
+/** Cloud pas mbylljes lokale — mos blloko pagesën; mos table-free kur kuzhina mbetet active. */
+function scheduleCloudAfterTableClose(db, {
+  tableId,
+  order,
+  table,
+  receipt,
+  closeItems,
+  waiterName,
+  mirrorsCloud,
+  cloudOrderIds,
+  logTag = "close",
+  cloudFiscalOpts = {},
+} = {}) {
+  void (async () => {
+    const ids = [...new Set((cloudOrderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
+    try {
+      if (mirrorsCloud || ids.length) {
+        try {
+          await closeCloudLinkedSale(tableId, ids, {
+            items: closeItems,
+            total: order?.total,
+            payment_method: order?.payment_method,
+            receipt_number: receipt?.receipt_number,
+            waiter_name: waiterName,
+            closed_at: receipt?.printed_at || new Date().toISOString(),
+            ...cloudFiscalOpts,
+          });
+        } finally {
+          purgeClosedCloudOrdersFromWatcher(ids);
+        }
+      } else if (order) {
+        const syncRes = await cloudSync.pushSaleSync(db, order, {
+          table_number: table?.number || 0,
+          receipt_number: receipt?.receipt_number || "",
+          closed_at: receipt?.printed_at || new Date().toISOString(),
+          status: "closed",
+          payment_method: order.payment_method,
+          timeoutMs: cloudSync.CLOUD_CLOSE_PUSH_TIMEOUT_MS,
+          ...cloudFiscalOpts,
+        });
+        const st = String(syncRes?.sale_status || "").toLowerCase();
+        if (syncRes?.ok && table?.number && (st === "closed" || st === "cancelled")) {
+          cloudSync.pushTableFree(db, table.number);
+        }
+      }
+    } catch (err) {
+      console.warn(`[${logTag}] cloud background:`, err.message);
+    }
+  })();
 }
 
 function purgeClosedCloudOrdersFromWatcher(cloudOrderIds) {
@@ -4146,27 +4199,17 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       });
     }
 
-    if (mirrorsCloud || cloudIds3.length) {
-      void closeCloudLinkedSale(tableId, cloudIds3, {
-        items: closeItems,
-        total: order.total,
-        payment_method: "room",
-        receipt_number: receipt.receipt_number,
-        waiter_name: waiterName,
-        closed_at: receipt.printed_at || new Date().toISOString(),
-      })
-        .catch((err) => console.warn("[charge-to-room] cloud:", err.message))
-        .finally(() => purgeClosedCloudOrdersFromWatcher(cloudIds3));
-    } else {
-      cloudSync.pushSale(db, order, {
-        table_number: table?.number || 0,
-        receipt_number: receipt.receipt_number,
-        closed_at: receipt.printed_at || new Date().toISOString(),
-        status: "closed",
-        payment_method: "room",
-      });
-      if (table?.number) cloudSync.pushTableFree(db, table.number);
-    }
+    scheduleCloudAfterTableClose(db, {
+      tableId,
+      order,
+      table,
+      receipt,
+      closeItems,
+      waiterName,
+      mirrorsCloud,
+      cloudOrderIds: cloudIds3,
+      logTag: "charge-to-room",
+    });
 
     auditReq(
       req,
@@ -4290,31 +4333,8 @@ app.post("/api/orders/close", auth, async (req, res) => {
       allowAnyWaiter: asAdmin,
       payment_splits: payInfo.payment_splits,
     });
-    if (order) {
-      const tNum = tableRow?.number || 0;
-      const mirrorsCloud = cloudSync.orderMirrorsRemoteCloud(order);
-      if (!mirrorsCloud) {
-        cloudSync.pushSale(db, order, {
-          table_number: tNum,
-          status: "closed",
-          ...cloudFiscalOpts,
-        });
-        if (tNum) cloudSync.pushTableFree(db, tNum);
-      } else {
-        const cloudIds1 = db.getLinkedCloudOrderIds(order.id);
-        void closeCloudLinkedSale(Number(table_id), cloudIds1, {
-          items: db.parseOrderItems(order.items_json),
-          total: order.total,
-          payment_method: order.payment_method,
-          waiter_name: name,
-          closed_at: new Date().toISOString(),
-          ...cloudFiscalOpts,
-        }).catch(err => console.warn("[close] cloud table:", err.message));
-      }
-      const cloudIds1 = db.getLinkedCloudOrderIds(order.id);
-      if (cloudIds1.length && !mirrorsCloud) cloudSync.cancelOnlineOrders(db, cloudIds1).catch(() => {});
-      purgeClosedCloudOrdersFromWatcher(cloudIds1);
-    }
+    const mirrorsCloud = order ? cloudSync.orderMirrorsRemoteCloud(order) : false;
+    const cloudIdsClose = order ? db.getLinkedCloudOrderIds(order.id) : [];
 
     // HAPI FINAL — PAS closeTable (nuk e prek closeTable)
     let fiscalResult = null;
@@ -4335,6 +4355,21 @@ app.post("/api/orders/close", auth, async (req, res) => {
       } catch (fe) {
         console.warn("[fiscal-main] orders/close:", fe.message);
       }
+    }
+
+    if (order) {
+      scheduleCloudAfterTableClose(db, {
+        tableId,
+        order,
+        table: tableRow ? { number: tableRow.number } : null,
+        receipt: null,
+        closeItems,
+        waiterName: name,
+        mirrorsCloud,
+        cloudOrderIds: cloudIdsClose,
+        logTag: "orders/close",
+        cloudFiscalOpts,
+      });
     }
 
     res.json({ ok: true, order, fiscal: fiscalResult, fiscal_skipped: fiscalSkip });
@@ -4468,30 +4503,18 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       }
     }
 
-    if (mirrorsCloud || cloudIds3.length) {
-      // Cloud-linked → NJË njoftim mbylljeje (jo pushSale). Pa await: nuk bllokon printin.
-      void closeCloudLinkedSale(tableId, cloudIds3, {
-        items: closeItems,
-        total: order.total,
-        payment_method: order.payment_method,
-        receipt_number: receipt.receipt_number,
-        waiter_name: waiterName,
-        closed_at: receipt.printed_at || new Date().toISOString(),
-        ...cloudFiscalOpts,
-      })
-        .catch(err => console.warn("[close] cloud table:", err.message))
-        .finally(() => purgeClosedCloudOrdersFromWatcher(cloudIds3));
-    } else {
-      cloudSync.pushSale(db, order, {
-        table_number: table?.number || 0,
-        receipt_number: receipt.receipt_number,
-        closed_at: receipt.printed_at || new Date().toISOString(),
-        status: "closed",
-        payment_method: order.payment_method,
-        ...cloudFiscalOpts,
-      });
-      if (table?.number) cloudSync.pushTableFree(db, table.number);
-    }
+    scheduleCloudAfterTableClose(db, {
+      tableId,
+      order,
+      table,
+      receipt,
+      closeItems,
+      waiterName,
+      mirrorsCloud,
+      cloudOrderIds: cloudIds3,
+      logTag: "close-and-print",
+      cloudFiscalOpts,
+    });
 
     res.json({
       ok: true,
@@ -4634,33 +4657,19 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       }
     }
 
-    if (mirrorsCloud || cloudIds4.length) {
-      // Cloud-linked → NJË njoftim (jo pushSale). Pa await kur mbyllet tavolina.
-      if (result.tableFreed) {
-        void closeCloudLinkedSale(tableId, cloudIds4, {
-          items: result.removed,
-          total: result.partialTotal,
-          payment_method: result.order.payment_method,
-          receipt_number: receipt.receipt_number,
-          waiter_name: waiterName,
-          closed_at: receipt.printed_at || new Date().toISOString(),
-          ...cloudFiscalOpts,
-        })
-          .catch(err => console.warn("[split-close] cloud table:", err.message))
-          .finally(() => purgeClosedCloudOrdersFromWatcher(cloudIds4));
-      }
-    } else {
-      cloudSync.pushSale(db, partialOrder, {
-        table_number: table?.number || 0,
-        receipt_number: receipt.receipt_number,
-        closed_at: receipt.printed_at || new Date().toISOString(),
-        status: "closed",
-        payment_method: partialOrder.payment_method,
-        ...cloudFiscalOpts,
+    if (result.tableFreed) {
+      scheduleCloudAfterTableClose(db, {
+        tableId,
+        order: partialOrder,
+        table,
+        receipt,
+        closeItems: result.removed,
+        waiterName,
+        mirrorsCloud,
+        cloudOrderIds: cloudIds4,
+        logTag: "split-close",
+        cloudFiscalOpts,
       });
-      if (result.tableFreed && table?.number) {
-        cloudSync.pushTableFree(db, table.number);
-      }
     }
 
     if (!result.tableFreed) {
@@ -4721,6 +4730,15 @@ app.get("/api/settings", auth, adminOnly, async (_req, res) => {
 
 app.get("/api/admin/dashboard", auth, adminOnly, (_req, res) => {
   res.json(db.getDashboardOverview());
+});
+
+app.put("/api/admin/tab-order", auth, adminOnly, (req, res) => {
+  try {
+    const order = db.setAdminTabOrder(req.body?.order);
+    res.json({ ok: true, order });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message || "Rendi i skedave nuk u ruajt." });
+  }
 });
 
 app.get("/api/admin/register-status", auth, adminOnly, (_req, res) => {
@@ -4790,6 +4808,55 @@ app.post("/api/admin/rebuild-register", auth, adminOnly, async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+function requireAdminPurgeConfirm(body) {
+  const confirm = String(body?.confirm || "").trim();
+  if (confirm !== "FSHIJ") {
+    const err = new Error('Shkruani saktë "FSHIJ" për të konfirmuar.');
+    err.status = 400;
+    throw err;
+  }
+}
+
+app.post("/api/admin/purge-today", auth, adminOnly, (req, res) => {
+  try {
+    requireAdminPurgeConfirm(req.body || {});
+    const result = db.purgeTodaySalesData();
+    auditReq(req, "Fshij shitjet e sotme (restorant)", JSON.stringify(result));
+    try {
+      syncCatalogToCloud();
+    } catch (e) {
+      console.warn("[purge-today] cloud:", e.message);
+    }
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(e.status || 400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.delete("/api/categories/:id/purge", auth, adminOnly, (req, res) => {
+  try {
+    requireAdminPurgeConfirm(req.body || {});
+    const result = db.purgeCategoryById(Number(req.params.id));
+    auditReq(req, "Fshij kategori (purge)", result.category_name);
+    syncCatalogToCloud();
+    res.json({ ok: true, ...result, categories: db.getCategories() });
+  } catch (e) {
+    res.status(e.status || 400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.delete("/api/menu/:id/purge", auth, adminOnly, (req, res) => {
+  try {
+    requireAdminPurgeConfirm(req.body || {});
+    const result = db.purgeMenuItemById(Number(req.params.id));
+    auditReq(req, "Fshij produkt (purge)", `${result.name} (#${result.id})`);
+    syncCatalogToCloud();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(e.status || 400).json({ ok: false, gabim: e.message });
   }
 });
 
