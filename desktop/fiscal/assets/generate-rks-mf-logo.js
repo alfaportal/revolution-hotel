@@ -359,35 +359,44 @@ function encodePng(rgba) {
   ]);
 }
 
-if (!fs.existsSync(REF)) {
-  console.error("Mungon fotoja e stemës:", REF);
-  process.exit(1);
+function generateRksMfLogo(outPath) {
+  if (!fs.existsSync(REF)) {
+    throw new Error(`Mungon fotoja e stemës: ${REF}`);
+  }
+  const img = decodePngRgba(REF);
+  const shield = extractShieldBw(img);
+  const rgba = composeLogo(shield);
+  const out = outPath || path.join(__dirname, "logo_rks_mf.png");
+  fs.writeFileSync(out, encodePng(rgba));
+  return { out, rgba };
 }
 
-const img = decodePngRgba(REF);
-const shield = extractShieldBw(img);
-console.log("shield", { w: shield.width, h: shield.height });
-const rgba = composeLogo(shield);
-const out = path.join(__dirname, "logo_rks_mf.png");
-fs.writeFileSync(out, encodePng(rgba));
+module.exports = { generateRksMfLogo };
 
-// sa mbush ink
-let minX = OUT_W;
-let maxX = 0;
-let minY = OUT_H;
-let maxY = 0;
-for (let y = 0; y < OUT_H; y++) {
-  for (let x = 0; x < OUT_W; x++) {
-    if (rgba[(y * OUT_W + x) * 4] > 40) continue;
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
+if (require.main === module) {
+  try {
+    const { out, rgba } = generateRksMfLogo();
+    console.log("OK", out);
+    let minX = OUT_W;
+    let maxX = 0;
+    let minY = OUT_H;
+    let maxY = 0;
+    for (let y = 0; y < OUT_H; y++) {
+      for (let x = 0; x < OUT_W; x++) {
+        if (rgba[(y * OUT_W + x) * 4] > 40) continue;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    console.log("ink fill", {
+      w: maxX - minX + 1,
+      h: maxY - minY + 1,
+      mm: [((maxX - minX + 1) / 8).toFixed(1), ((maxY - minY + 1) / 8).toFixed(1)],
+    });
+  } catch (e) {
+    console.error(e.message || e);
+    process.exit(1);
   }
 }
-console.log("OK", out);
-console.log("ink fill", {
-  w: maxX - minX + 1,
-  h: maxY - minY + 1,
-  mm: [((maxX - minX + 1) / 8).toFixed(1), ((maxY - minY + 1) / 8).toFixed(1)],
-});
