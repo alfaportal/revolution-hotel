@@ -1605,6 +1605,32 @@
       opacity: 0.65;
       cursor: wait;
     }
+    .settings-danger-item {
+      margin-top: 1.25rem;
+      padding-top: 1.15rem;
+      border-top: 1px solid rgba(254, 202, 202, 0.65);
+    }
+    .settings-danger-item:first-of-type {
+      margin-top: 0.75rem;
+      padding-top: 0;
+      border-top: none;
+    }
+    .settings-danger-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+    .settings-danger-row select,
+    .settings-danger-row input {
+      min-height: 44px;
+      padding: 0.45rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid #fca5a5;
+      background: #fff;
+      min-width: min(100%, 220px);
+    }
     .factory-reset-modal {
       position: fixed;
       inset: 0;
@@ -1752,6 +1778,7 @@
       border: 1px solid rgba(148, 163, 184, 0.25);
       border-radius: 8px;
     }
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines,
     #modal-purchase table.inv-lines.hotel-inv-lines {
       width: 100%;
@@ -1760,6 +1787,8 @@
       border-collapse: collapse;
       font-size: 0.74rem;
     }
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines th,
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines td,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines th,
     #modal-purchase table.inv-lines.hotel-inv-lines th,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines td,
@@ -1769,6 +1798,7 @@
       vertical-align: middle;
       overflow: hidden;
     }
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines th,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines th,
     #modal-purchase table.inv-lines.hotel-inv-lines th {
       background: #4a4a4a;
@@ -1779,12 +1809,17 @@
       white-space: normal;
       font-size: 0.68rem;
     }
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines td.c,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines td.c,
     #modal-purchase table.inv-lines.hotel-inv-lines td.c,
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines th:nth-child(1),
     #modal-receipt-scan table.inv-lines.hotel-inv-lines th:nth-child(1),
     #modal-purchase table.inv-lines.hotel-inv-lines th:nth-child(1) { text-align: center; }
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines td.n,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines td.n,
     #modal-purchase table.inv-lines.hotel-inv-lines td.n { text-align: right; }
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines input,
+    #admin-sales-invoices-root table.inv-lines.hotel-inv-lines select,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines input,
     #modal-purchase table.inv-lines.hotel-inv-lines input,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines select,
@@ -1926,6 +1961,9 @@
     body.admin-app .admin-topbar-brand { color: #fff !important; }
     body.admin-app .admin-tab-btn { color: #a0a0b8 !important; }
     body.admin-app .admin-tab-btn.active { color: #FF6B35 !important; border-bottom-color: #FF6B35 !important; }
+    body.admin-app .admin-tab-btn-draggable { cursor: grab; user-select: none; touch-action: none; }
+    body.admin-app .admin-tab-btn-dragging { opacity: 0.55; cursor: grabbing; }
+    body.admin-app .admin-tab-btn-drop-target { box-shadow: inset 0 -3px 0 #FF6B35; }
     body.admin-app .admin-main { background: #12121f !important; }
     body.admin-app .card,
     body.admin-app .stat-card,
@@ -3911,6 +3949,42 @@
         <button type="button" class="btn btn-danger-reset" id="btn-factory-reset">
           Rivendos si të re (fshin krejt të dhënat)
         </button>
+
+        <div class="settings-danger-item">
+          <div class="settings-danger-title" style="font-size:0.95rem">Fshij të dhënat e ditës (restorant)</div>
+          <p class="settings-danger-desc" style="margin-bottom:0.5rem">
+            Fshin porositë e sotme të restorantit, logun e ditës (jo recepsion CO-/RC-), kuponat fiskalë të ditës. Stoku rikthehet. Nuk prek dhoma, check-out, fatura A4.
+          </p>
+          <button type="button" class="btn btn-danger-reset" id="btn-purge-today">Fshij shitjet e sotme</button>
+        </div>
+
+        <div class="settings-danger-item">
+          <div class="settings-danger-title" style="font-size:0.95rem">Fshij kategorinë</div>
+          <p class="settings-danger-desc" style="margin-bottom:0.5rem">
+            Fshin kategorinë dhe krejt produktet e saj (hard delete).
+          </p>
+          <div class="settings-danger-row">
+            <select id="purge-category-select" aria-label="Zgjidh kategorinë">
+              <option value="">— Zgjidh kategori —</option>
+            </select>
+            <button type="button" class="btn btn-danger-reset" id="btn-purge-category">Fshij një kategori</button>
+          </div>
+        </div>
+
+        <div class="settings-danger-item">
+          <div class="settings-danger-title" style="font-size:0.95rem">Fshij produktin</div>
+          <p class="settings-danger-desc" style="margin-bottom:0.5rem">
+            Fshin një produkt nga menuja komplet (hard delete).
+          </p>
+          <div class="settings-danger-row">
+            <input type="text" id="purge-product-search" placeholder="Kërko me emër ose barkod…" autocomplete="off" list="purge-product-datalist" />
+            <datalist id="purge-product-datalist"></datalist>
+            <select id="purge-product-select" aria-label="Produkti" style="min-width:min(100%,280px)">
+              <option value="">— Zgjidh produkt —</option>
+            </select>
+            <button type="button" class="btn btn-danger-reset" id="btn-purge-product">Fshij një produkt</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -3935,6 +4009,20 @@
         <div class="factory-reset-modal-actions">
           <button type="button" class="btn btn-ghost" data-factory-cancel>Anulo</button>
           <button type="button" class="btn btn-danger-reset" id="btn-factory-reset-confirm">Rivendos tani</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-admin-purge" class="factory-reset-modal" hidden>
+      <div class="factory-reset-modal-backdrop" data-purge-cancel></div>
+      <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
+        <h3 id="admin-purge-title">Konfirmim</h3>
+        <p class="purchases-panel-sub" id="admin-purge-msg" style="margin:0 0 0.75rem"></p>
+        <p class="purchases-panel-sub" style="margin:0 0 0.5rem">Shkruani <strong>FSHIJ</strong> për të vazhduar.</p>
+        <input type="text" id="admin-purge-confirm-input" autocomplete="off" spellcheck="false" placeholder="FSHIJ">
+        <div class="factory-reset-modal-actions">
+          <button type="button" class="btn btn-ghost" data-purge-cancel>Anulo</button>
+          <button type="button" class="btn btn-danger-reset" id="admin-purge-confirm-btn">Konfirmo</button>
         </div>
       </div>
     </div>
@@ -5196,8 +5284,22 @@
           <dd><span id="staff-modal-pin" class="pin-mask"></span></dd>
         </div>
       </dl>
+      <div class="staff-modal-kds-block" id="staff-modal-cloud-waiter-block" hidden>
+        <label for="staff-modal-cloud-waiter-url">Link kamarier (cloud)</label>
+        <input
+          type="text"
+          id="staff-modal-cloud-waiter-url"
+          class="staff-rfid-input"
+          readonly
+          style="font-family:monospace;font-size:0.75rem;margin-top:0.35rem"
+        >
+        <div class="staff-rfid-actions" style="margin-top:0.35rem">
+          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-cloud-waiter">Kopjo</button>
+        </div>
+        <p id="staff-modal-cloud-waiter-hint" class="links-hint" style="margin:0.35rem 0 0" hidden></p>
+      </div>
       <div class="staff-modal-kds-block" id="staff-modal-local-wifi-block" hidden>
-        <label for="staff-modal-local-wifi-url">Link WiFi lokal (telefon/tablet)</label>
+        <label for="staff-modal-local-wifi-url" id="staff-modal-local-wifi-label">Link WiFi lokal (telefon/tablet)</label>
         <input
           type="text"
           id="staff-modal-local-wifi-url"
@@ -5971,8 +6073,9 @@
   <script src="/js/vat-smart-mapping.js"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/cloud-status.js"></script>
-  <script src="/js/sales-invoice-html.js?v=1"></script>
-  <script src="/js/sales-invoices-ui.js?v=1"></script>
+  <script src="/js/hotel-inv-lines-shared.js?v=1"></script>
+  <script src="/js/sales-invoice-html.js?v=2"></script>
+  <script src="/js/sales-invoices-ui.js?v=2"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
   <script src="/js/fiscal-offline-status.js?v=2"></script>
   <script src="/js/hotel-paper-block-tab.js?v=2"></script>
@@ -6284,6 +6387,112 @@
       switchAdminPanel(name);
     };
 
+    let adminTabDragEl = null;
+    let adminTabOrderSaveTimer = null;
+    let adminTabSkipClick = false;
+
+    function getAdminTabOrderFromDom() {
+      const nav = document.getElementById("tabs");
+      if (!nav) return [];
+      return [...nav.querySelectorAll(".admin-tab-btn")]
+        .map((b) => b.dataset.panel)
+        .filter(Boolean);
+    }
+
+    function applyAdminTabOrder(order) {
+      const nav = document.getElementById("tabs");
+      if (!nav || !order?.length) return;
+      const map = new Map(
+        [...nav.querySelectorAll(".admin-tab-btn")].map((b) => [b.dataset.panel, b]),
+      );
+      for (const id of order) {
+        const el = map.get(id);
+        if (el) nav.appendChild(el);
+      }
+    }
+
+    async function saveAdminTabOrderFromDom() {
+      const order = getAdminTabOrderFromDom();
+      try {
+        await api("/api/admin/tab-order", {
+          method: "PUT",
+          body: JSON.stringify({ order }),
+        });
+      } catch (err) {
+        console.warn("[admin] tab order:", err.message || err);
+      }
+    }
+
+    function bindAdminTabDragReorder() {
+      const nav = document.getElementById("tabs");
+      if (!nav) return;
+      nav.querySelectorAll(".admin-tab-btn").forEach((tab) => {
+        tab.setAttribute("draggable", "true");
+        tab.classList.add("admin-tab-btn-draggable");
+        if (!tab.dataset.tabDragHint) {
+          tab.dataset.tabDragHint = "1";
+          const base = tab.getAttribute("title") || "";
+          tab.setAttribute("title", base ? `${base} · tërhiq për renditje` : "Tërhiq për renditje");
+        }
+      });
+      if (nav.dataset.tabDragBound === "1") return;
+      nav.dataset.tabDragBound = "1";
+
+      nav.addEventListener("dragstart", (e) => {
+        const tab = e.target.closest(".admin-tab-btn");
+        if (!tab) return;
+        adminTabDragEl = tab;
+        adminTabSkipClick = false;
+        tab.classList.add("admin-tab-btn-dragging");
+        try {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", tab.dataset.panel || "");
+        } catch { /* ignore */ }
+      });
+
+      nav.addEventListener("dragend", () => {
+        nav.querySelectorAll(".admin-tab-btn-dragging").forEach((el) =>
+          el.classList.remove("admin-tab-btn-dragging"),
+        );
+        nav.querySelectorAll(".admin-tab-btn-drop-target").forEach((el) =>
+          el.classList.remove("admin-tab-btn-drop-target"),
+        );
+        if (adminTabDragEl && adminTabSkipClick) {
+          clearTimeout(adminTabOrderSaveTimer);
+          adminTabOrderSaveTimer = setTimeout(() => saveAdminTabOrderFromDom(), 280);
+        }
+        adminTabDragEl = null;
+      });
+
+      nav.addEventListener("dragover", (e) => {
+        if (!adminTabDragEl) return;
+        const tab = e.target.closest(".admin-tab-btn");
+        if (!tab || tab === adminTabDragEl) return;
+        e.preventDefault();
+        adminTabSkipClick = true;
+        nav.querySelectorAll(".admin-tab-btn-drop-target").forEach((el) =>
+          el.classList.remove("admin-tab-btn-drop-target"),
+        );
+        tab.classList.add("admin-tab-btn-drop-target");
+        const rect = tab.getBoundingClientRect();
+        const before = e.clientX < rect.left + rect.width / 2;
+        if (before) nav.insertBefore(adminTabDragEl, tab);
+        else nav.insertBefore(adminTabDragEl, tab.nextSibling);
+      });
+
+      nav.addEventListener("dragleave", (e) => {
+        const tab = e.target.closest(".admin-tab-btn");
+        if (tab) tab.classList.remove("admin-tab-btn-drop-target");
+      });
+
+      nav.addEventListener("drop", (e) => {
+        e.preventDefault();
+        nav.querySelectorAll(".admin-tab-btn-drop-target").forEach((el) =>
+          el.classList.remove("admin-tab-btn-drop-target"),
+        );
+      });
+    }
+
     function switchAdminPanel(name) {
       adminSettingsMode = false;
       showSettingsSubnavBar(false);
@@ -6299,6 +6508,7 @@
         showSettingsSubnavBar(false);
         document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
         document.getElementById("panel-cilësimet")?.classList.add("active");
+        refreshAdminPurgeSelects().catch(() => {});
         return;
       }
 
@@ -6352,8 +6562,16 @@
     }
 
     document.querySelectorAll(".admin-tab-btn").forEach(tab => {
-      tab.addEventListener("click", () => switchAdminPanel(tab.dataset.panel));
+      tab.addEventListener("click", (e) => {
+        if (adminTabSkipClick) {
+          adminTabSkipClick = false;
+          e.preventDefault();
+          return;
+        }
+        switchAdminPanel(tab.dataset.panel);
+      });
     });
+    bindAdminTabDragReorder();
 
     bindHotelTabGates();
 
@@ -6379,6 +6597,189 @@
     });
 
     document.getElementById("btn-fiscal-save-all")?.addEventListener("click", ruajTeGjithaFiskale);
+
+    let adminPurgeAction = null;
+
+    async function refreshAdminPurgeSelects() {
+      const catSel = document.getElementById("purge-category-select");
+      const prodSel = document.getElementById("purge-product-select");
+      const dataList = document.getElementById("purge-product-datalist");
+      if (!catSel || !prodSel) return;
+      try {
+        const [cats, menu] = await Promise.all([
+          api("/api/categories"),
+          api("/api/menu/all"),
+        ]);
+        const categories = Array.isArray(cats) ? cats : cats?.categories || [];
+        catSel.innerHTML =
+          '<option value="">— Zgjidh kategori —</option>' +
+          categories
+            .map(
+              (c) =>
+                `<option value="${escMenuAttr(String(c.id))}">${escMenuAttr(c.name)}</option>`,
+            )
+            .join("");
+        const items = Array.isArray(menu) ? menu : menu?.items || [];
+        prodSel.innerHTML =
+          '<option value="">— Zgjidh produkt —</option>' +
+          items
+            .map((it) => {
+              const lab = `${it.name}${it.barcode ? ` · ${it.barcode}` : ""} (${it.category || ""})`;
+              return `<option value="${escMenuAttr(String(it.id))}" data-barcode="${escMenuAttr(it.barcode || "")}">${escMenuAttr(lab)}</option>`;
+            })
+            .join("");
+        if (dataList) {
+          dataList.innerHTML = items
+            .map((it) => {
+              const v = `${it.name}${it.barcode ? ` · ${it.barcode}` : ""}`;
+              return `<option value="${escMenuAttr(v)}"></option>`;
+            })
+            .join("");
+        }
+        window.__purgeMenuItems = items;
+      } catch (e) {
+        console.warn("[purge] load selects:", e.message);
+      }
+    }
+
+    function openAdminPurgeModal(title, message, onConfirm) {
+      const modal = document.getElementById("modal-admin-purge");
+      const inp = document.getElementById("admin-purge-confirm-input");
+      document.getElementById("admin-purge-title").textContent = title;
+      document.getElementById("admin-purge-msg").textContent = message;
+      if (inp) inp.value = "";
+      adminPurgeAction = onConfirm;
+      if (modal) {
+        modal.hidden = false;
+        modal.style.display = "flex";
+      }
+      setTimeout(() => inp?.focus(), 60);
+    }
+
+    function closeAdminPurgeModal() {
+      const modal = document.getElementById("modal-admin-purge");
+      if (modal) {
+        modal.hidden = true;
+        modal.style.display = "none";
+      }
+      adminPurgeAction = null;
+      const inp = document.getElementById("admin-purge-confirm-input");
+      if (inp) inp.value = "";
+    }
+
+    function resolvePurgeProductId() {
+      const sel = document.getElementById("purge-product-select");
+      const search = String(document.getElementById("purge-product-search")?.value || "").trim();
+      if (sel?.value) return Number(sel.value);
+      if (!search) return 0;
+      const items = window.__purgeMenuItems || [];
+      const needle = search.toLowerCase();
+      const hit =
+        items.find((it) => String(it.barcode || "").trim().toLowerCase() === needle) ||
+        items.find((it) => String(it.name || "").trim().toLowerCase() === needle) ||
+        items.find((it) => String(it.name || "").toLowerCase().includes(needle));
+      return hit ? Number(hit.id) : 0;
+    }
+
+    (function setupAdminDangerPurge() {
+      document.querySelectorAll("[data-purge-cancel]").forEach((el) => {
+        el.addEventListener("click", closeAdminPurgeModal);
+      });
+      document.getElementById("admin-purge-confirm-btn")?.addEventListener("click", async () => {
+        const typed = String(document.getElementById("admin-purge-confirm-input")?.value || "").trim();
+        if (typed !== "FSHIJ") {
+          alert('Shkruani saktë "FSHIJ".');
+          return;
+        }
+        const run = adminPurgeAction;
+        if (!run) return;
+        const btn = document.getElementById("admin-purge-confirm-btn");
+        if (btn) btn.disabled = true;
+        try {
+          await run(typed);
+          closeAdminPurgeModal();
+        } catch (err) {
+          alert(err.message || "Gabim");
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+      document.getElementById("admin-purge-confirm-input")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") document.getElementById("admin-purge-confirm-btn")?.click();
+        if (e.key === "Escape") closeAdminPurgeModal();
+      });
+
+      document.getElementById("purge-product-search")?.addEventListener("input", () => {
+        const id = resolvePurgeProductId();
+        const sel = document.getElementById("purge-product-select");
+        if (sel && id) sel.value = String(id);
+      });
+
+      document.getElementById("btn-purge-today")?.addEventListener("click", () => {
+        openAdminPurgeModal(
+          "Fshij shitjet e sotme (restorant)",
+          "Jeni i sigurt? Fshihen porositë e sotme të restorantit, logu i ditës (pa recepsion), kuponat fiskalë të ditës. Stoku rikthehet. Dhoma dhe faturat A4 mbeten.",
+          async (confirm) => {
+            const data = await api("/api/admin/purge-today", {
+              method: "POST",
+              body: JSON.stringify({ confirm }),
+            });
+            alert(
+              `U fshinë ${data.orders_deleted || 0} porosi · ${data.daily_log_deleted || 0} log ditari · stoku u rikthye për ${data.stock_lines_restored || 0} produkte.`,
+            );
+            ngarkoPasqyra().catch(() => {});
+            ngarkoMenu().catch(() => {});
+          },
+        );
+      });
+
+      document.getElementById("btn-purge-category")?.addEventListener("click", () => {
+        const id = Number(document.getElementById("purge-category-select")?.value);
+        if (!id) {
+          alert("Zgjidhni një kategori.");
+          return;
+        }
+        const name =
+          document.getElementById("purge-category-select")?.selectedOptions?.[0]?.textContent || "";
+        openAdminPurgeModal(
+          "Fshij kategorinë",
+          `Jeni i sigurt? Do të fshihet kategoria «${name}» dhe krejt produktet e saj.`,
+          async (confirm) => {
+            await api(`/api/categories/${id}/purge`, {
+              method: "DELETE",
+              body: JSON.stringify({ confirm }),
+            });
+            alert(`Kategoria «${name}» u fshi.`);
+            await ngarkoKategoriteUI();
+            await ngarkoMenu();
+            await refreshAdminPurgeSelects();
+          },
+        );
+      });
+
+      document.getElementById("btn-purge-product")?.addEventListener("click", () => {
+        const id = resolvePurgeProductId();
+        if (!id) {
+          alert("Zgjidhni ose kërkoni një produkt (emër / barkod).");
+          return;
+        }
+        const sel = document.getElementById("purge-product-select");
+        const label = sel?.selectedOptions?.[0]?.textContent || `ID ${id}`;
+        openAdminPurgeModal(
+          "Fshij produktin",
+          `Jeni i sigurt? Do të fshihet produkti: ${label}`,
+          async (confirm) => {
+            await api(`/api/menu/${id}/purge`, {
+              method: "DELETE",
+              body: JSON.stringify({ confirm }),
+            });
+            alert("Produkti u fshi.");
+            await ngarkoMenu();
+            await refreshAdminPurgeSelects();
+          },
+        );
+      });
+    })();
 
     (function setupFactoryReset() {
       const modal1 = document.getElementById("modal-factory-reset-1");
@@ -7375,6 +7776,10 @@
 
     async function ngarkoSettings() {
       const s = await api("/api/settings");
+      if (Array.isArray(s.admin_tab_order) && s.admin_tab_order.length) {
+        applyAdminTabOrder(s.admin_tab_order);
+      }
+      bindAdminTabDragReorder();
       applyPackageTier(s.packageTier, s.packageFeatures);
       emriRestorantit = s.business_name || s.restaurant_name || "";
       if (typeof applyAppWindowTitle === "function") applyAppWindowTitle(s);
@@ -14717,6 +15122,7 @@
 
     let stafModalAktual = null;
     let stafKdsEnabled = false;
+    let cloudWaiterDisabled = false;
     let localWifiBaseKamarier = "";
     let localWifiBaseRecepsion = "";
 
@@ -14745,18 +15151,52 @@
       return "";
     }
 
+    function refreshStaffModalCloudWaiterUi(staff) {
+      const block = document.getElementById("staff-modal-cloud-waiter-block");
+      const input = document.getElementById("staff-modal-cloud-waiter-url");
+      const copyBtn = document.getElementById("staff-modal-copy-cloud-waiter");
+      const hint = document.getElementById("staff-modal-cloud-waiter-hint");
+      if (!block || !staff) {
+        if (block) block.hidden = true;
+        return;
+      }
+      const isRecepsion = staff.staff_role === "recepsion";
+      const showCloud = !cloudWaiterDisabled && !isRecepsion;
+      block.hidden = !showCloud;
+      if (!showCloud) return;
+      const waiterUrl = String(staff.waiter_url || "").trim();
+      if (input) input.value = waiterUrl;
+      if (copyBtn) copyBtn.disabled = !waiterUrl;
+      if (hint) {
+        if (!waiterUrl) {
+          hint.hidden = false;
+          hint.textContent =
+            "Linku cloud shfaqet pas PIN 6-shifror dhe sinkronizimit të stafit (Cloud → Sinkronizo gjithçka).";
+        } else {
+          hint.hidden = true;
+          hint.textContent = "";
+        }
+      }
+    }
+
     async function refreshStaffModalLocalWifiUi(staff) {
       const block = document.getElementById("staff-modal-local-wifi-block");
       const input = document.getElementById("staff-modal-local-wifi-url");
       const copyBtn = document.getElementById("staff-modal-copy-local-wifi");
       const genBtn = document.getElementById("staff-modal-generate-local-wifi");
       const hint = document.getElementById("staff-modal-local-wifi-hint");
+      const wifiLbl = document.getElementById("staff-modal-local-wifi-label");
       if (!block || !staff) {
         if (block) block.hidden = true;
         return;
       }
       block.hidden = false;
       const roleLabel = staff.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
+      if (wifiLbl) {
+        wifiLbl.textContent = staff.staff_role === "recepsion"
+          ? "Link recepsion (WiFi)"
+          : "Link kamarier (WiFi)";
+      }
       if (hint) hint.textContent = `${roleLabel} — hap linkun në WiFi të hotelit, pastaj PIN.`;
       const row = await findStaffLocalWifiCodeRow(staff);
       const url = staffLocalWifiUrlFromRow(row, staff);
@@ -14781,6 +15221,9 @@
       try {
         const d = await api("/api/staff");
         stafKdsEnabled = !!d.kds_enabled;
+        if (typeof d.cloud_waiter_disabled === "boolean") {
+          cloudWaiterDisabled = d.cloud_waiter_disabled;
+        }
         stafCache = d.staff || stafCache;
         s = stafCache.find(x => String(x.id) === String(s.id)) || s;
       } catch {
@@ -14789,8 +15232,10 @@
       stafModalAktual = s;
       document.getElementById("staff-modal-title").textContent = s.name;
       const roleLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
-      document.getElementById("staff-modal-sub").textContent =
-        `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`;
+      const dualLinks = !cloudWaiterDisabled && s.staff_role !== "recepsion";
+      document.getElementById("staff-modal-sub").textContent = dualLinks
+        ? `${roleLabel} — PIN, link WiFi + cloud, kartela RFID`
+        : `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`;
       document.getElementById("staff-modal-shift").textContent = s.shift_label || "—";
       const pinEl = document.getElementById("staff-modal-pin");
       pinEl.textContent = s.has_pin ? "••••" : "Nuk është vendosur";
@@ -14798,6 +15243,7 @@
       const cardInput = document.getElementById("staff-modal-card-input");
       cardInput.value = s.has_card ? (s.card_uid || "") : "";
       document.getElementById("staff-modal-card-del-btn").hidden = !s.has_card;
+      refreshStaffModalCloudWaiterUi(s);
       await refreshStaffModalLocalWifiUi(s);
       document.getElementById("modal-staff").hidden = false;
     }
@@ -14821,6 +15267,19 @@
         setTimeout(() => { this.textContent = orig; }, 1500);
       } catch {
         prompt("Kopjoni linkun WiFi:", val);
+      }
+    });
+
+    document.getElementById("staff-modal-copy-cloud-waiter")?.addEventListener("click", async function () {
+      const val = document.getElementById("staff-modal-cloud-waiter-url")?.value || "";
+      if (!val) return;
+      try {
+        await navigator.clipboard.writeText(val);
+        const orig = this.textContent;
+        this.textContent = "U kopjua!";
+        setTimeout(() => { this.textContent = orig; }, 1500);
+      } catch {
+        prompt("Kopjoni linkun cloud të kamarierit:", val);
       }
     });
 
@@ -17515,6 +17974,9 @@
           s.status_message || s.message || "Linke lokale (LAN).",
           !!s.offline,
         );
+        if (typeof s.cloud_waiter_disabled === "boolean") {
+          cloudWaiterDisabled = s.cloud_waiter_disabled;
+        }
         vendosLinketCloud(s);
         startLocalWaiterLanPoll();
       } catch (err) {
