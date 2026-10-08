@@ -17895,14 +17895,21 @@
         if (row) row.hidden = !show;
       };
       const cloudDisabled = !!s.cloud_waiter_disabled;
-      setVal("cloud-waiter-url", cloudDisabled ? "" : (s.waiter_url || ""));
+      let cloudWaiterDisplay = cloudDisabled ? "" : (s.waiter_url || "");
+      if (!cloudWaiterDisplay && !cloudDisabled && s.bar_url) {
+        cloudWaiterDisplay = String(s.bar_url).replace(/\/bar(\?|$)/i, "/kamarier$1");
+      }
+      setVal("cloud-waiter-url", cloudWaiterDisplay);
       setVal("cloud-kitchen-url", s.kitchen_url);
       setVal("cloud-bar-url", s.bar_url);
       setVal("cloud-kiosk-url", s.kiosk_url);
       setVal("cloud-public-url", s.public_page_url);
       setVal("cloud-hk-url", s.housekeeping_url || "");
       setVal("cloud-reception-url", cloudDisabled ? "" : (s.reception_url || ""));
-      toggleRow("cloud-row-waiter", !cloudDisabled && !!(s.waiter_url || s.kitchen_slug));
+      toggleRow(
+        "cloud-row-waiter",
+        !cloudDisabled && !!(cloudWaiterDisplay || s.kitchen_slug || s.hotel_slug || s.bar_url),
+      );
       toggleRow("cloud-row-reception", !cloudDisabled && !!s.reception_url);
 
       const localWaiterUrl =
