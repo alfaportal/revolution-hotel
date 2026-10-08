@@ -1650,6 +1650,61 @@ function getAppWindowTitle({ business_subtype, business_type, restaurant_name } 
   return `${info.brand} — ${info.label} ${name}`;
 }
 
+/** Rendi default i skedave Admin (data-panel). */
+const DEFAULT_ADMIN_TAB_ORDER = [
+  "pasqyra",
+  "menuja",
+  "promocione",
+  "rezervime",
+  "stoku",
+  "stafi",
+  "dhomat",
+  "sherbimet",
+  "rezervime-dhomash",
+  "mysafiret",
+  "pastrimi",
+  "qr-tavolinat",
+  "raportet",
+  "faturat",
+  "ditari",
+  "fiskalizimi",
+  "kuponet-fiskale",
+  "audit",
+  "paper-block",
+  "cilësimet",
+  "licenca",
+  "blerjet",
+  "kontabilisti",
+  "ai",
+];
+
+function parseAdminTabOrder(raw) {
+  const allowed = new Set(DEFAULT_ADMIN_TAB_ORDER);
+  let arr = [];
+  try {
+    const parsed = JSON.parse(String(raw || "[]"));
+    if (Array.isArray(parsed)) {
+      arr = parsed.map((id) => String(id)).filter((id) => allowed.has(id));
+    }
+  } catch {
+    arr = [];
+  }
+  for (const id of DEFAULT_ADMIN_TAB_ORDER) {
+    if (!arr.includes(id)) arr.push(id);
+  }
+  return arr;
+}
+
+function getAdminTabOrder() {
+  return parseAdminTabOrder(getSetting("admin_tab_order", ""));
+}
+
+function setAdminTabOrder(order) {
+  const clean = parseAdminTabOrder(JSON.stringify(Array.isArray(order) ? order : []));
+  setSetting("admin_tab_order", JSON.stringify(clean));
+  return clean;
+}
+
 function getSettings() {
   const business_subtype = getStoredBusinessSubtype();
   const restaurant_name = getSetting("restaurant_name", "");
@@ -1671,6 +1726,7 @@ function getSettings() {
     biz_phone:       getSetting("biz_phone", ""),
     admin_has_card:  !!adminCard,
     admin_card_hint: adminCard ? `…${adminCard.slice(-4)}` : "",
+    admin_tab_order: getAdminTabOrder(),
   };
 }
 
@@ -2488,6 +2544,138 @@ function toggleMenuItemActive(id, active) {
 
 function deleteMenuItemPermanent(id) {
   sqlite.prepare("DELETE FROM menu_items WHERE id = ?").run(id);
+}
+
+function deleteMenuItemReferences(menuItemId) {
+  const pid = Number(menuItemId);
+  if (!pid) return;
+  const tables = [
+    ["purchase_invoice_items", "menu_item_id"],
+    ["inventory_lines", "menu_item_id"],
+    ["stock_checks", "menu_item_id"],
+  ];
+  for (const [table, column] of tables) {
+    try {
+      sqlite.prepare(`DELETE FROM ${table} WHERE ${column} = ?`).run(pid);
+    } catch (e) {
+      if (!/no such table/i.test(String(e.message || ""))) throw e;
+    }
+  }
+}
+
+function purgeMenuItemById(id) {
+  const pid = Number(id);
+  const row = sqlite.prepare("SELECT id, name, category FROM menu_items WHERE id = ?").get(pid);
+  if (!row) throw new Error("Produkti nuk u gjet");
+  sqlite.transaction(() => {
+    deleteMenuItemReferences(pid);
+    sqlite.prepare("DELETE FROM menu_items WHERE id = ?").run(pid);
+  })();
+  return { id: pid, name: row.name, category: row.category };
+}
+
+function purgeCategoryById(categoryId) {
+  const cid = Number(categoryId);
+  const cat = sqlite.prepare("SELECT id, name FROM categories WHERE id = ?").get(cid);
+  if (!cat) throw new Error("Kategoria nuk u gjet");
+  const itemIds = sqlite
+    .prepare("SELECT id FROM menu_items WHERE category = ?")
+    .all(cat.name)
+    .map((r) => Number(r.id));
+  sqlite.transaction(() => {
+    for (const pid of itemIds) {
+      deleteMenuItemReferences(pid);
+      sqlite.prepare("DELETE FROM menu_items WHERE id = ?").run(pid);
+    }
+    sqlite.prepare("DELETE FROM categories WHERE id = ?").run(cat.id);
+  })();
+  return { category_id: cat.id, category_name: cat.name, products_deleted: itemIds.length };
+}
+
+function localTodayYmd() {
+  return sqlite.prepare("SELECT date('now','localtime') AS d").get().d;
+}
+
+/** Fshirje e kontrolluar — vetëm restorant (porosi + daily_log), jo recepsion/dhoma/A4. */
+function purgeTodaySalesData() {
+  const today = localTodayYmd();
+  const orders = sqlite
+    .prepare(
+      `
+      SELECT id, items_json, status, table_id
+      FROM orders
+      WHERE date(created_at) = date(?)
+    `,
+    )
+    .all(today);
+  const stockRestore = new Map();
+  for (const o of orders) {
+    if (String(o.status) === "cancelled") continue;
+    for (const it of parseOrderItems(o.items_json)) {
+      const pid = Number(it.menu_item_id || it.id);
+      const qty = Number(it.quantity || it.qty) || 0;
+      if (!pid || !(qty > 0)) continue;
+      stockRestore.set(pid, (stockRestore.get(pid) || 0) + qty);
+    }
+  }
+  const orderIds = orders.map((o) => Number(o.id)).filter((id) => id > 0);
+  let dailyLogDeleted = 0;
+  let receiptsDeleted = 0;
+  sqlite.transaction(() => {
+    for (const o of orders) {
+      const tid = Number(o.table_id);
+      if (tid > 0) {
+        sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tid);
+      }
+    }
+    for (const [pid, qty] of stockRestore.entries()) {
+      increaseMenuItemStock(pid, qty);
+    }
+    if (orderIds.length) {
+      const ph = orderIds.map(() => "?").join(",");
+      try {
+        sqlite.prepare(`DELETE FROM customer_ledger WHERE order_id IN (${ph})`).run(...orderIds);
+      } catch (e) {
+        if (!/no such table/i.test(String(e.message || ""))) throw e;
+      }
+      receiptsDeleted = sqlite
+        .prepare(`DELETE FROM receipts WHERE order_id IN (${ph})`)
+        .run(...orderIds).changes;
+      sqlite.prepare(`DELETE FROM orders WHERE id IN (${ph})`).run(...orderIds);
+    }
+    dailyLogDeleted = sqlite
+      .prepare(
+        `
+      DELETE FROM daily_log
+      WHERE date = ?
+        AND COALESCE(receipt_number, '') NOT LIKE 'CO-%'
+        AND COALESCE(receipt_number, '') NOT LIKE 'RC-%'
+        AND COALESCE(source, '') NOT IN (
+          'hotel-recepsion-checkout',
+          'hotel-recepsion-kasa',
+          'room_service',
+          'guest_service',
+          'rooms'
+        )
+    `,
+      )
+      .run(today).changes;
+  })();
+  let fiscal = { fiscal_receipts: 0, fiscal_audit_log: 0, pending_txn: 0 };
+  try {
+    const { deleteFiscalDataForDate } = require("./fiscal/fiscal-db");
+    fiscal = deleteFiscalDataForDate(today);
+  } catch (e) {
+    console.warn("[purge-today] fiscal:", e.message);
+  }
+  return {
+    date: today,
+    orders_deleted: orderIds.length,
+    daily_log_deleted: Number(dailyLogDeleted) || 0,
+    receipts_deleted: Number(receiptsDeleted) || 0,
+    stock_lines_restored: stockRestore.size,
+    fiscal,
+  };
 }
 
 function getTableCount() {
@@ -6418,6 +6606,15 @@ function isGuestHotelServiceOrder(cloudOrder) {
   return orderDeviceId(cloudOrder) === "WEB-GUEST-SERVICE";
 }
 
+/** QR dhomë / room service / shërbime hoteli — recepsioni, jo kamarieri restoranti. */
+function isRecepcionCloudPendingOrder(cloudOrder) {
+  if (isGuestHotelServiceOrder(cloudOrder)) return true;
+  const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
+  if (!roomNum) return false;
+  if (isCloudQrTableOrder(cloudOrder)) return false;
+  return true;
+}
+
 /** Takeaway / delivery / web publike — jo tavolinë fizike me QR */
 function isCloudOnlinePickupOrder(cloudOrder) {
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
@@ -6474,14 +6671,17 @@ function enrichCloudOrderForWaiter(cloudOrder) {
   if (!cloudOrder?.id) return cloudOrder;
   const staff = isCloudStaffWaiterOrder(cloudOrder);
   const guestSvc = isGuestHotelServiceOrder(cloudOrder);
-  const qr = !staff && !guestSvc && isCloudQrTableOrder(cloudOrder);
+  const recepQr = isRecepcionCloudPendingOrder(cloudOrder);
+  const qr = !staff && !guestSvc && !recepQr && isCloudQrTableOrder(cloudOrder);
   return {
     ...cloudOrder,
     is_staff_waiter: staff,
     is_guest_hotel_service: guestSvc,
+    is_recepcion_qr: recepQr,
     is_qr_table: qr,
-    is_online_pickup: !staff && !qr && !guestSvc && isCloudOnlinePickupOrder(cloudOrder),
+    is_online_pickup: !staff && !qr && !guestSvc && !recepQr && isCloudOnlinePickupOrder(cloudOrder),
     qr_table_number: qr ? parseQrTableNumberFromCloudOrder(cloudOrder) : 0,
+    room_number: cloudOrder.room_number || parseRoomNumberFromCloudOrder(cloudOrder) || "",
   };
 }
 
@@ -12866,6 +13066,9 @@ function getVersionInfo() {
     flushDatabase,
     isSetupDone,
     getSettings,
+    getAdminTabOrder,
+    setAdminTabOrder,
+    DEFAULT_ADMIN_TAB_ORDER,
     getBusinessName,
     getAppWindowTitle,
     getBusinessTypeInfo,
@@ -12900,6 +13103,10 @@ function getVersionInfo() {
     toggleMenuItemActive,
     reorderMenuItems,
     deleteMenuItemPermanent,
+    deleteMenuItemReferences,
+    purgeMenuItemById,
+    purgeCategoryById,
+    purgeTodaySalesData,
     getTablesWithOrders,
     getTableLayout,
     getTableCount,
@@ -13003,6 +13210,7 @@ function getVersionInfo() {
     isCloudPosAcceptQueueOrder,
     isCloudOnlinePickupOrder,
     isGuestHotelServiceOrder,
+    isRecepcionCloudPendingOrder,
     isCloudStaffWaiterOrder,
     parseRoomNumberFromCloudOrder,
     tryApplyCloudRoomMenuOrder,

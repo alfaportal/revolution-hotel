@@ -625,6 +625,62 @@ function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } 
     });
 }
 
+/** Pas PRANO në POS për QR — cloud duhet accepted_by + artikujt që kuzhina t’i shfaqë. */
+async function pushQrWaiterAcceptToCloudKitchen(
+  db,
+  order,
+  { cloudOrderId = "", waiterName = "", waiterId = "", table_number = 0 } = {},
+) {
+  const built = buildSalePayload(db, order, {
+    table_number,
+    status: "ordered",
+    ordered_at: order?.created_at || new Date().toISOString(),
+  });
+  if (!built) {
+    return { ok: false, message: "Pa konfigurim cloud." };
+  }
+
+  const accName = String(waiterName || order?.waiter_name || "").trim();
+  if (accName) {
+    built.payload.waiter_name = accName;
+    built.payload.accepted_by_waiter_name = accName;
+    built.payload.pos_waiter_accepted = true;
+    built.payload.accepted_at = new Date().toISOString();
+  }
+  const wId = String(waiterId || "").trim();
+  if (wId) {
+    built.payload.waiter_id = wId;
+    built.payload.accepted_by_waiter_id = wId;
+  }
+  const cloudUuid = String(cloudOrderId || order?.cloud_order_id || "").trim();
+  if (cloudUuid) {
+    try {
+      const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
+      const key = map[cloudUuid];
+      if (key?.local_order_id && key?.device_id) {
+        built.payload.device_id = String(key.device_id).trim().toUpperCase();
+        built.payload.local_order_id = String(key.local_order_id).trim();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  try {
+    const r = await requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload);
+    if (r.status >= 400) {
+      console.warn("[cloud] QR kuzhinë push:", r.status, r.data?.slice?.(0, 120));
+      return { ok: false, message: `HTTP ${r.status}` };
+    }
+    console.log("[cloud] QR pranim → kuzhinë OK: T", built.payload.table_number);
+    attachCloudIdFromSyncResponse(db, order, r);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] QR kuzhinë push dështoi:", err.message);
+    return { ok: false, message: err.message || String(err) };
+  }
+}
+
 /** Sinkronizon tavolinat me cloud: dërgon të zënat + liron të lirat (pa prekur QR në pritje lokale). */
 const LOCAL_ACK_KEY = "online_orders_local_ack_ids";
 
@@ -1753,7 +1809,7 @@ async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "") {
   };
 }
 
-async function refuseOnlineOrder(db, orderId, pin = "", reason = "") {
+async function refuseOnlineOrder(db, orderId, pin = "", reason = "", ackMeta = {}) {
   const cfg = getConfig(db);
   if (!cfg.celesi || !cfg.serverUrl) {
     return { ok: false, connected: false, refused: 0, message: "Pa lidhje cloud." };
@@ -1764,19 +1820,27 @@ async function refuseOnlineOrder(db, orderId, pin = "", reason = "") {
     return { ok: false, connected: true, refused: 0, message: "Mungon porosia." };
   }
 
-  const pinTrim = String(pin || "").trim();
-  if (!pinTrim) {
-    return { ok: false, connected: true, refused: 0, message: "Mungon PIN-i i kamarierit." };
+  const pinTrim = /^\d{6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
+  const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
+  if (!pinTrim && !waiterName) {
+    return { ok: false, connected: true, refused: 0, message: "Mungon identifikimi i kamarierit." };
   }
 
   try {
-    const res = await requestJson("POST", cfg.serverUrl, "/api/v1/license/online-orders/refuse", {
+    const body = {
       celesi: cfg.celesi,
       device_id: cfg.deviceId,
       order_id: id,
       pin: pinTrim,
       reason: String(reason || "").trim(),
-    });
+    };
+    if (!pinTrim && waiterName) {
+      body.pos_authenticated = true;
+      body.waiter_name = waiterName;
+      const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
+      if (waiterId) body.waiter_id = waiterId;
+    }
+    const res = await requestJson("POST", cfg.serverUrl, "/api/v1/license/online-orders/refuse", body);
     const parsed = parseCloudJson(res.data);
     if (res.status < 400 && parsed.ok && (Number(parsed.refused) || parsed.refuse_mode === "grace_v2")) {
       return {
@@ -1895,7 +1959,24 @@ async function cancelOnlineOrders(db, orderIds) {
   }
 }
 
-async function acknowledgeOnlineOrders(db, orderIds, pin = "") {
+function buildPosWaiterAckBody(cfg, ids, pinTrim, ackMeta = {}) {
+  const body = {
+    celesi: cfg.celesi,
+    device_id: cfg.deviceId,
+    order_ids: ids,
+    pin: pinTrim,
+  };
+  const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
+  const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
+  if (!pinTrim && waiterName) {
+    body.pos_authenticated = true;
+    body.waiter_name = waiterName;
+    if (waiterId) body.waiter_id = waiterId;
+  }
+  return body;
+}
+
+async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
   const cfg = getConfig(db);
   if (!cfg.celesi || !cfg.serverUrl) {
     return { ok: false, connected: false, acknowledged: 0, message: "Pa lidhje cloud." };
@@ -1906,15 +1987,15 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "") {
     return { ok: true, connected: true, acknowledged: 0, order_ids: [] };
   }
 
-  const pinTrim = String(pin || "").trim();
+  const pinTrim = /^\d{6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
 
   try {
-    const res = await requestJson("POST", cfg.serverUrl, "/api/v1/license/online-orders/acknowledge", {
-      celesi: cfg.celesi,
-      device_id: cfg.deviceId,
-      order_ids: ids,
-      pin: pinTrim,
-    });
+    const res = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/license/online-orders/acknowledge",
+      buildPosWaiterAckBody(cfg, ids, pinTrim, ackMeta),
+    );
     const parsed = parseCloudJson(res.data);
     if (res.status < 400 && parsed.ok && (Number(parsed.acknowledged) || 0) > 0) {
       return {
@@ -2918,6 +2999,7 @@ module.exports = {
   pushSaleSync,
   CLOUD_CLOSE_PUSH_TIMEOUT_MS,
   pushActiveOrderUpdate,
+  pushQrWaiterAcceptToCloudKitchen,
   pushAllActiveTables,
   reconcileAllTablesWithCloud,
   pushTableFree,

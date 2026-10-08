@@ -1626,9 +1626,9 @@
       return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
     }
 
-    /** Shërbimet hoteli (bazen, spa…) — recepsioni i pranon; restoranti nuk i sheh. */
+    /** Restorant: QR tavolinë + takeaway — jo dhomë / shërbime hoteli (ato te recepsioni). */
     function filtroPorosiOnlineRestorant(orders) {
-      return (orders || []).filter((o) => !eshtePorosiSherbimiHoteliQr(o));
+      return (orders || []).filter((o) => !eshtePorosiSherbimiHoteliQr(o) && !o?.is_recepcion_qr);
     }
 
     function hapWaiterOnlinePop() {
@@ -1682,6 +1682,18 @@
 
     function resetWaiterAcceptPin() {}
 
+    function orderItemsList(o) {
+      let items = o?.items;
+      if (!items?.length && o?.items_json) {
+        try {
+          items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+        } catch {
+          items = [];
+        }
+      }
+      return Array.isArray(items) ? items : [];
+    }
+
     function renderWaiterOnlinePreview(orders) {
       const body = document.getElementById("waiter-online-pop-preview");
       if (!body) return;
@@ -1690,16 +1702,24 @@
         return;
       }
       const o = orders[0];
-      const items = (o.items || []).slice(0, 4).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
-      const src = o.source_label || "Online";
-      const customer = o.customer_label || o.waiter_name || "Klient";
+      const itemRows = orderItemsList(o).map(it => {
+        const qty = Number(it.quantity) || 1;
+        const name = String(it.name || "—").trim();
+        return `<li><span class="waiter-online-pop-qty">${qty}×</span> ${name}</li>`;
+      }).join("");
       const tn = parseTableNumFromCloudOrder(o);
-      const table = tn > 0 ? `T${tn}` : "Porosi online";
-      const extra = orders.length > 1 ? `<small>+ ${orders.length - 1} ${tt("tjetër në radhë")}</small>` : "";
+      const qr = eshtePorosiQrTavoline(o);
+      const src = qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway");
+      const customer = o.customer_label || o.waiter_name || "Klient";
+      const table = qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway");
+      const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} ${tt("tjetër në radhë")}</p>` : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
-        <strong>${src} · ${customer}</strong>
-        <span>${table} · ${formatEuro(o.total || 0)}</span>
-        <small>${items}</small>
+        <div class="waiter-online-pop-meta">
+          <strong>${src}</strong>
+          <span class="waiter-online-pop-customer">${customer}</span>
+          <span class="waiter-online-pop-total">${table} · ${formatEuro(o.total || 0)}</span>
+        </div>
+        <ul class="waiter-online-pop-items">${itemRows || `<li>—</li>`}</ul>
         ${extra}
       </div>`;
     }
@@ -1707,11 +1727,20 @@
     async function pranoNjëPorosiOnline() {
       const first = waiterOnlineOrders[0];
       if (!first?.id) return null;
-      const ids = [String(first.id)];
+      const ids = [];
+      const tn = parseTableNumFromCloudOrder(first);
+      if (tn > 0 && eshtePorosiQrTavoline(first)) {
+        for (const o of waiterOnlineOrders) {
+          if (!o?.id || !eshtePorosiQrTavoline(o)) continue;
+          if (parseTableNumFromCloudOrder(o) === tn) ids.push(String(o.id));
+        }
+      }
+      if (!ids.length) ids.push(String(first.id));
+      const uniqueIds = [...new Set(ids)];
       return api("/api/waiter/online-orders/accept", {
         method: "POST",
         body: JSON.stringify({
-          order_ids: ids,
+          order_ids: uniqueIds,
           orders: waiterOnlineOrders,
         }),
       });

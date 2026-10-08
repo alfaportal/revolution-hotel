@@ -790,8 +790,35 @@
       return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
     }
 
+    /** Dhomë / room service / shërbime QR — vetëm recepsioni (jo tavolinë restoranti). */
+    function eshtePorosiRecepcionQr(o) {
+      if (eshtePorosiSherbimiHoteliQr(o)) return true;
+      if (o?.is_recepcion_qr) return true;
+      const room = String(o?.room_number || "").trim();
+      if (room) {
+        const device = String(o?.device_id || "").toUpperCase();
+        const tn = Number(o?.table_number) || Number(o?.qr_table_number) || 0;
+        const blob = `${o?.source_label || ""} ${o?.waiter_name || ""}`.toLowerCase();
+        const isRestTableQr = tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob));
+        if (!isRestTableQr) return true;
+      }
+      return false;
+    }
+
     function filtroPorosiSherbimiRecep(orders) {
-      return (orders || []).filter(eshtePorosiSherbimiHoteliQr);
+      return (orders || []).filter(eshtePorosiRecepcionQr);
+    }
+
+    function recepOrderItemsList(o) {
+      let items = o?.items;
+      if (!items?.length && o?.items_json) {
+        try {
+          items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+        } catch {
+          items = [];
+        }
+      }
+      return Array.isArray(items) ? items : [];
     }
 
     function dridhPorosiRecep() {
@@ -840,16 +867,24 @@
         return;
       }
       const o = orders[0];
-      const items = (o.items || []).slice(0, 6).map((it) => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
-      const src = o.source_label || "Shërbim hoteli";
+      const itemRows = recepOrderItemsList(o).map((it) => {
+        const qty = Number(it.quantity) || 1;
+        const name = String(it.name || "—").trim();
+        return `<li><span class="waiter-online-pop-qty">${qty}×</span> ${escHtml(name)}</li>`;
+      }).join("");
+      const src = o.source_label || (eshtePorosiSherbimiHoteliQr(o) ? "Shërbim hoteli" : "Room service");
       const customer = o.customer_label || o.customer_name || o.waiter_name || "Mysafir";
-      const room = o.room_number ? `Dh. ${o.room_number}` : "Dhoma";
-      const extra = orders.length > 1 ? `<small>+ ${orders.length - 1} tjetër në radhë</small>` : "";
+      const roomNum = String(o.room_number || "").trim();
+      const room = roomNum ? `Dh. ${roomNum}` : "Dhoma";
+      const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} tjetër në radhë</p>` : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
-        <strong>${escHtml(src)} · ${escHtml(customer)}</strong>
-        <span>${escHtml(room)} · ${formatEuro(o.total || 0)}</span>
-        <small>${escHtml(items)}</small>
-        <small style="color:#94a3b8">QR shërbimesh — prano për ta shtuar te fatura e dhomës</small>
+        <div class="waiter-online-pop-meta">
+          <strong>${escHtml(src)}</strong>
+          <span class="waiter-online-pop-customer">${escHtml(customer)}</span>
+          <span class="waiter-online-pop-total">${escHtml(room)} · ${formatEuro(o.total || 0)}</span>
+        </div>
+        <ul class="waiter-online-pop-items">${itemRows || "<li>—</li>"}</ul>
+        <small style="color:#94a3b8;display:block;margin-top:.35rem">QR — prano për faturën e dhomës (pa PIN sërish)</small>
         ${extra}
       </div>`;
     }

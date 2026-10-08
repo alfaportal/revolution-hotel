@@ -416,6 +416,47 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
   }
 }
 
+function staffCloudAckMeta(staff) {
+  if (!staff) return { waiterId: "", waiterName: "" };
+  const name = String(staff.name || "").trim();
+  const cloudId = String(staff.cloud_waiter_id || "").trim();
+  return {
+    waiterId: cloudId || (staff.id != null ? String(staff.id) : ""),
+    waiterName: name,
+  };
+}
+
+function cloudAckPinFromInput(pinRaw) {
+  const pinTrim = String(pinRaw || "").trim();
+  return /^\d{6}$/.test(pinTrim) ? pinTrim : "";
+}
+
+function resolveTrustedStaffFromWaiterSession(session, pinRaw = "") {
+  const pin = String(pinRaw || "").trim();
+  if (/^\d{6}$/.test(pin)) {
+    const pinStaff = db.findStaffByPin(pin);
+    if (!pinStaff) {
+      throw Object.assign(new Error("PIN i gabuar!"), { status: 401 });
+    }
+    const staffId = resolveWaiterStaffId(session);
+    if (staffId != null && Number(pinStaff.id) !== Number(staffId)) {
+      throw Object.assign(new Error("PIN i gabuar për këtë kamarier!"), { status: 401 });
+    }
+    return pinStaff;
+  }
+  const staffId = resolveWaiterStaffId(session);
+  if (staffId != null) {
+    const row = db.findStaffById(staffId);
+    if (row) return row;
+  }
+  const emri = String(session?.emri || "").trim();
+  if (emri) {
+    const ident = resolveStaffCloudWaiterIdentity(session);
+    return { id: staffId || null, name: emri, cloud_waiter_id: ident.waiterId };
+  }
+  throw Object.assign(new Error("Kyçuni si kamarier për të vazhduar."), { status: 400 });
+}
+
 async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   const ids = [...new Set((orderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
   const pinTrim = String(pin || "").trim();
@@ -500,16 +541,8 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   db.ensureTablesForPendingCloudOrders(ordersBefore);
 
-  const ackPin = pinTrim || String(staff.pin || "").trim();
-
-  let cloudResult = { ok: false, message: "", accepted_by: "" };
-  if (ackPin) {
-    try {
-      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin);
-    } catch (e) {
-      cloudResult = { ok: false, message: e.message || "", accepted_by: "" };
-    }
-  }
+  const ackPin = cloudAckPinFromInput(pinTrim);
+  const ackMeta = staffCloudAckMeta(staff);
 
   let slotLayout = [];
   try {
@@ -573,29 +606,70 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   }
 
   const success = imported.filter(r => r.ok);
-  if (!success.length && !cloudResult.ok) {
+  const tableImports = success.filter(r => r.table_id && !r.room_menu && !r.guest_service);
+  if (!success.length) {
     throw Object.assign(
-      new Error(imported[0]?.error || cloudResult.message || "Importimi i porosisë dështoi."),
+      new Error(imported[0]?.error || "Importimi i porosisë dështoi."),
       { status: 400 },
     );
   }
 
-  if (success.length) {
-    await finalizeImportedCloudOrders(success, waiterName);
+  if (tableImports.length) {
+    await finalizeImportedCloudOrders(tableImports, waiterName);
   }
 
-  if (success.length || cloudResult.ok) {
+  if (tableImports.length) {
     onlineOrdersWatcher.persistAcknowledged(db, ids);
     db.removePendingCloudOrders(ids);
   }
 
-  if (!cloudResult.ok && success.length && ackPin) {
-    cloudSync.acknowledgeOnlineOrders(db, ids, ackPin).catch(() => {});
-  }
-
   onlineOrdersWatcher.markOrdersPrinted(db, ids);
   onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
-  const freshSnapshot = onlineOrdersWatcher.getOnlineOrdersSnapshot();
+
+  let cloudResult = { ok: false, message: "", accepted_by: "" };
+  if (ackPin || ackMeta.waiterName) {
+    try {
+      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
+    } catch (e) {
+      cloudResult = { ok: false, message: e.message || "", accepted_by: "" };
+    }
+    if (cloudResult.ok && !tableImports.length) {
+      onlineOrdersWatcher.persistAcknowledged(db, ids);
+      db.removePendingCloudOrders(ids);
+      onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
+    }
+  }
+
+  if (tableImports.length) {
+    for (let i = 0; i < ordersBefore.length; i++) {
+      const r = imported[i];
+      const cloudOrder = ordersBefore[i];
+      if (!r?.ok || !r.table_id || !cloudOrder?.id) continue;
+      if (typeof db.isCloudQrTableOrder === "function" && !db.isCloudQrTableOrder(cloudOrder)) {
+        continue;
+      }
+      const order = db.getActiveOrderForTable(r.table_id);
+      if (!order) continue;
+      const tblNum = Number(r.table_number || cloudOrder.table_number) || 0;
+      try {
+        await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
+          cloudOrderId: cloudOrder.id,
+          waiterName,
+          waiterId: ackMeta.waiterId,
+          table_number: tblNum,
+        });
+      } catch (pushErr) {
+        console.warn("[accept] push QR → kuzhinë:", pushErr.message || pushErr);
+      }
+    }
+  }
+
+  let freshSnapshot = onlineOrdersWatcher.getOnlineOrdersSnapshot();
+  try {
+    freshSnapshot = await onlineOrdersWatcher.refreshOnlineOrders(db, null);
+  } catch {
+    /* mbet snapshot i përditësuar lokalisht */
+  }
 
   return {
     acknowledged: ids.length,
@@ -660,15 +734,16 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
   );
 
   let cloudResult = { ok: false, message: "", refused: 0, order_id: orderId };
-  const ackPin = pinTrim || String(staff.pin || "").trim();
+  const ackPin = cloudAckPinFromInput(pinTrim);
+  const ackMeta = staffCloudAckMeta(staff);
   try {
-    cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason);
+    cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta);
   } catch (e) {
     cloudResult = { ok: false, message: e.message || "", refused: 0, order_id: orderId };
   }
 
   if (!cloudResult.ok && !isLocalGuestOrder) {
-    cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason).catch(() => {});
+    cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta).catch(() => {});
     throw Object.assign(
       new Error(cloudResult.message || "Nuk u refuzua porosia në cloud — provoni përsëri."),
       { status: 400 },
@@ -2624,7 +2699,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
     if (staffId) {
       orders = orders.filter(o => !onlineOrdersWatcher.isStaffRefusedOrder(db, staffId, o.id));
     }
-    orders = filterQrOrdersForWaiterName(orders, req.session?.emri);
+    orders = filterOnlineOrdersForStaffRole(orders, req.session);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const hasPending = orders.length > 0;
     res.json({
@@ -2747,37 +2822,23 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
       return res.status(400).json({ ok: false, gabim: "Zgjidhni porosinë." });
     }
 
-    const staffId = resolveWaiterStaffId(req.session);
     const pin = String(req.body?.pin || req.body?.waiter_pin || "").trim();
-    let trustedStaff = null;
-
-    if (/^\d{6}$/.test(pin)) {
-      const pinStaff = db.findStaffByPin(pin);
-      if (!pinStaff) {
-        return res.status(401).json({ ok: false, gabim: "PIN i gabuar!" });
-      }
-      if (staffId != null && Number(pinStaff.id) !== Number(staffId)) {
-        return res.status(401).json({ ok: false, gabim: "PIN i gabuar për këtë kamarier!" });
-      }
-      trustedStaff = pinStaff;
-    } else if (staffId != null) {
-      trustedStaff = db.findStaffById(staffId);
-      if (!trustedStaff) {
-        return res.status(401).json({ ok: false, gabim: "Sesioni i kamarierit nuk u gjet." });
-      }
-    } else {
-      return res.status(400).json({ ok: false, gabim: "Vendosni PIN-in tuaj (6 shifra)." });
+    let trustedStaff;
+    try {
+      trustedStaff = resolveTrustedStaffFromWaiterSession(req.session, pin);
+    } catch (e) {
+      return res.status(e.status || 400).json({ ok: false, gabim: e.message });
     }
+    const staffId = resolveWaiterStaffId(req.session);
 
     const fallbackOrders = Array.isArray(req.body?.orders) ? req.body.orders : [];
-    const ackPin = pin || String(trustedStaff?.pin || "").trim();
     const flow = await acceptOnlineOrdersFlow(
       ids,
-      ackPin,
+      pin,
       { fallbackOrders, trustedStaff },
     );
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
-    const visibleOrders = filterQrOrdersForWaiterName(flow.snapshot?.orders || [], req.session?.emri);
+    const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
     res.json({
       ok: true,
       acknowledged: flow.acknowledged,
@@ -2807,32 +2868,19 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
       return res.status(400).json({ ok: false, gabim: "Zgjidhni porosinë." });
     }
 
-    const staffId = resolveWaiterStaffId(req.session);
     const pin = String(req.body?.pin || req.body?.waiter_pin || "").trim();
-    let trustedStaff = null;
-
-    if (/^\d{6}$/.test(pin)) {
-      const pinStaff = db.findStaffByPin(pin);
-      if (!pinStaff) {
-        return res.status(401).json({ ok: false, gabim: "PIN i gabuar!" });
-      }
-      if (staffId != null && Number(pinStaff.id) !== Number(staffId)) {
-        return res.status(401).json({ ok: false, gabim: "PIN i gabuar për këtë kamarier!" });
-      }
-      trustedStaff = pinStaff;
-    } else if (staffId != null) {
-      trustedStaff = db.findStaffById(staffId);
-      if (!trustedStaff) {
-        return res.status(401).json({ ok: false, gabim: "Sesioni i kamarierit nuk u gjet." });
-      }
-    } else {
-      return res.status(400).json({ ok: false, gabim: "Vendosni PIN-in tuaj (6 shifra)." });
+    let trustedStaff;
+    try {
+      trustedStaff = resolveTrustedStaffFromWaiterSession(req.session, pin);
+    } catch (e) {
+      return res.status(e.status || 400).json({ ok: false, gabim: e.message });
     }
+    const staffId = resolveWaiterStaffId(req.session);
 
     const reason = String(req.body?.reason || req.body?.refuse_reason || "").trim();
     const flow = await refusePendingOnlineOrdersFlow(ids, { pin, trustedStaff, reason });
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
-    const visibleOrders = filterQrOrdersForWaiterName(flow.snapshot?.orders || [], req.session?.emri);
+    const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
     res.json({
       ok: true,
       refused: flow.refused,
@@ -2923,6 +2971,17 @@ app.get("/api/waiter/active-register-mode", auth, (req, res) => {
 
 function filterQrOrdersForWaiterName(orders, waiterName) {
   return (orders || []).filter(o => db.qrOrderAccessForWaiter(o, waiterName).allowed);
+}
+
+function filterOnlineOrdersForStaffRole(orders, session) {
+  let list = filterQrOrdersForWaiterName(orders, session?.emri);
+  const role = String(session?.role || "").trim();
+  if (role === "recepsion") {
+    list = list.filter(o => db.isRecepcionCloudPendingOrder(o));
+  } else if (role === "kamarier") {
+    list = list.filter(o => !db.isRecepcionCloudPendingOrder(o));
+  }
+  return list;
 }
 
 function findCloudOrderForQrGuard(orderId) {

@@ -412,7 +412,7 @@
         }
         window.staffOrderAlert({
           title: n === 1 ? "Porosi e re!" : `${n} porosi të reja!`,
-          body: "Hyr me PIN dhe pranoje porosinë.",
+          body: "Hap panelin e kamarierit dhe shtyp PRANO.",
           tag: "login-online-pending",
         });
         return;
@@ -486,8 +486,8 @@
         hintText = data?.message || "Pa lidhje cloud";
       } else if (displayCount > 0) {
         hintText = displayCount === 1
-          ? "1 porosi në pritje — hyr me PIN dhe pranoje"
-          : `${displayCount} porosi në pritje — hyr me PIN dhe pranoji`;
+          ? "1 porosi QR — hyr si kamarier dhe shtyp PRANO"
+          : `${displayCount} porosi në pritje — hyr si kamarier dhe pranoji`;
       } else {
         hintText = "Nuk ka porosi të reja";
       }
@@ -516,7 +516,15 @@
           preview.innerHTML = allNotifyOrders.slice(0, 4).map(o => {
             const src = o.source_label || "Online";
             const customer = o.customer_label || o.waiter_name || "Klient";
-            const items = (o.items || []).slice(0, 2).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
+            let rawItems = o.items;
+            if (!rawItems?.length && o.items_json) {
+              try {
+                rawItems = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+              } catch {
+                rawItems = [];
+              }
+            }
+            const items = (rawItems || []).slice(0, 3).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
             const total = formatEuroLogin(o.total || 0);
             return `<li><strong>${src}</strong> · ${customer} · ${total}${items ? ` — ${items}` : ""}</li>`;
           }).join("") + (allNotifyOrders.length > 4 ? `<li class="login-online-preview-more">+ ${allNotifyOrders.length - 4} ${typeof window.t === "function" ? window.t("tjetër…") : "tjetër…"}</li>` : "");
@@ -1332,7 +1340,7 @@
             if (typeof window.staffOrderAlert === "function") {
               window.staffOrderAlert({
                 title: n === 1 ? "Porosi e re!" : `${n} porosi të reja!`,
-                body: "Hyr me PIN dhe pranoje porosinë.",
+                body: "Hap panelin e kamarierit dhe shtyp PRANO.",
                 tag: "staff-login-online-pending",
               });
             }
