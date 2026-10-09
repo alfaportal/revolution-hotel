@@ -1385,12 +1385,21 @@ async function fullCloudSync(db) {
     }
 
     if (result.connected) {
+      try {
+        const hotelCloudSync = require("./hotel-cloud-sync");
+        result.hotel_pms = await hotelCloudSync.fullHotelSync(db);
+      } catch (err) {
+        console.warn("[cloud/sync] fullSync hotel PMS:", err.message);
+        result.hotel_pms = { ok: false, message: err.message };
+      }
       syncVenueLogoFromCloud(db).catch(() => {});
     }
 
     if (result.connected && result.catalog_ok) {
-      result.message =
-        `Sinkronizimi OK — ${result.menu_items} artikuj, ${result.categories} kategori në cloud (QR/telefon).`;
+      const hotelOk = result.hotel_pms?.ok !== false;
+      result.message = hotelOk
+        ? `Sinkronizimi OK — ${result.menu_items} artikuj, ${result.categories} kategori në cloud (QR/telefon); dhoma/mysafirë cloud u përditësuan.`
+        : `Menuja u dërgua (${result.menu_items} artikuj). Hotel PMS: ${result.hotel_pms?.message || "sinkronizimi dështoi — shiko licencën."}`;
     }
     return result;
   } catch (err) {
