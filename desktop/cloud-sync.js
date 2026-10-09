@@ -1030,6 +1030,8 @@ function buildCatalogPayload(db) {
     name: s.name,
     active: !!s.active,
     pin: String(s.pin || "").trim(),
+    staff_role: String(s.staff_role || "kamarier").trim(),
+    role: String(s.staff_role || "kamarier").trim(),
   }));
 
   let staff_local_links = null;

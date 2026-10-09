@@ -29,16 +29,29 @@ function trimTrailingSlash(url) {
   return String(url || "").trim().replace(/\/+$/, "");
 }
 
+const LEGACY_KITCHEN_SLUG_HEX_SUFFIX = /-[a-f0-9]{6}$/i;
+
+function stripLegacyKitchenSlugSuffix(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s || !LEGACY_KITCHEN_SLUG_HEX_SUFFIX.test(s)) return s;
+  const base = s.replace(LEGACY_KITCHEN_SLUG_HEX_SUFFIX, "");
+  if (base.length < 3) return s;
+  return base;
+}
+
 function normalizeSlug(slugOrOpts) {
+  let raw = "";
   if (slugOrOpts && typeof slugOrOpts === "object") {
-    return String(
+    raw = String(
       slugOrOpts.kitchen_slug
       || slugOrOpts.client_id
       || slugOrOpts.cloud_client_id
       || "",
     ).trim();
+  } else {
+    raw = String(slugOrOpts || "").trim();
   }
-  return String(slugOrOpts || "").trim();
+  return stripLegacyKitchenSlugSuffix(raw);
 }
 
 function isLocalOrPrivateServerUrl(url) {
@@ -299,11 +312,19 @@ function buildWaiterKdsUrl(slug, key, webToken) {
 
 /** https://revolution-pos.com/hotel/{slug}/kamarier?key={key}&w={token} */
 function buildWaiterPersonalUrl(slug, key, webToken) {
+  return buildStaffPersonalUrl(slug, key, webToken, "kamarier");
+}
+
+/** Link personal cloud — kamarier ose recepsion sipas rolit lokal. */
+function buildStaffPersonalUrl(slug, key, webToken, staffRole) {
   const s = normalizeSlug(slug);
   const token = String(webToken || "").trim();
   if (!s || !token) return "";
+  const role = String(staffRole || "kamarier").trim().toLowerCase();
+  const cloudRole =
+    role === "recepsion" || role === "receptionist" || role === "reception" ? "reception" : "waiter";
   const extra = `w=${encodeURIComponent(token)}`;
-  return buildAccessLink(null, s, key, "waiter", extra);
+  return buildAccessLink(null, s, key, cloudRole, extra);
 }
 
 /** Mysafir — shërbime / room service (cloud; hotel-server duhet t’i servojë statiket). */
@@ -353,6 +374,8 @@ module.exports = {
   deriveLocalAccessKey,
   buildWaiterKdsUrl,
   buildWaiterPersonalUrl,
+  buildStaffPersonalUrl,
+  stripLegacyKitchenSlugSuffix,
   buildLocalWaiterPersonalUrl,
   urlTipiSegment,
   trimTrailingSlash,

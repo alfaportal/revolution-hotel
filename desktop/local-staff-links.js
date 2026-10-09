@@ -2,7 +2,7 @@
  * Linke WiFi stafi — përdoret nga cloud-sync (pa importuar server.js).
  */
 const os = require("os");
-const { urlTipiSegment } = require("./cloud-server-url");
+const { urlTipiSegment, stripLegacyKitchenSlugSuffix } = require("./cloud-server-url");
 
 function lanInterfaceKind(ifName) {
   const n = String(ifName || "").toLowerCase();
@@ -54,7 +54,7 @@ function resolveLocalVenueSegments(db) {
     || db.getSetting("client_tipi", "")
     || "hotel";
   const tipi = urlTipiSegment(rawTipi);
-  const slug = String(
+  let slug = String(
     db.getSetting("cloud_slug", "")
     || settings.kitchen_slug
     || settings.cloud_client_id
@@ -62,6 +62,7 @@ function resolveLocalVenueSegments(db) {
   )
     .trim()
     .toLowerCase();
+  slug = stripLegacyKitchenSlugSuffix(slug) || slug;
   return { tipi, slug, rawTipi };
 }
 

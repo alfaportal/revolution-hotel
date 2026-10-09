@@ -5307,16 +5307,17 @@
         </div>
       </dl>
       <div class="staff-modal-kds-block" id="staff-modal-cloud-waiter-block" hidden>
-        <label for="staff-modal-cloud-waiter-url">Link kamarier (cloud)</label>
+        <label for="staff-modal-cloud-waiter-url" id="staff-modal-cloud-waiter-label">Link cloud (telefon)</label>
         <input
           type="text"
           id="staff-modal-cloud-waiter-url"
           class="staff-rfid-input"
           readonly
-          style="font-family:monospace;font-size:0.75rem;margin-top:0.35rem"
+          style="font-family:monospace;font-size:0.72rem;margin-top:0.35rem;width:100%;box-sizing:border-box"
         >
-        <div class="staff-rfid-actions" style="margin-top:0.35rem">
+        <div class="staff-rfid-actions" style="margin-top:0.35rem;flex-wrap:wrap">
           <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-cloud-waiter">Kopjo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-regenerate-cloud">Rigjenero link cloud</button>
         </div>
         <p id="staff-modal-cloud-waiter-hint" class="links-hint" style="margin:0.35rem 0 0" hidden></p>
       </div>
@@ -5327,7 +5328,7 @@
           id="staff-modal-local-wifi-url"
           class="staff-rfid-input"
           readonly
-          style="font-family:monospace;font-size:0.75rem;margin-top:0.35rem"
+          style="font-family:monospace;font-size:0.72rem;margin-top:0.35rem;width:100%;box-sizing:border-box"
         >
         <div class="staff-rfid-actions" style="margin-top:0.35rem">
           <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-local-wifi">Kopjo</button>
@@ -15225,23 +15226,32 @@
       const block = document.getElementById("staff-modal-cloud-waiter-block");
       const input = document.getElementById("staff-modal-cloud-waiter-url");
       const copyBtn = document.getElementById("staff-modal-copy-cloud-waiter");
+      const regenBtn = document.getElementById("staff-modal-regenerate-cloud");
+      const label = document.getElementById("staff-modal-cloud-waiter-label");
       const hint = document.getElementById("staff-modal-cloud-waiter-hint");
       if (!block || !staff) {
         if (block) block.hidden = true;
         return;
       }
       const isRecepsion = staff.staff_role === "recepsion";
-      const showCloud = !cloudWaiterDisabled && !isRecepsion;
+      const showCloud = !cloudWaiterDisabled;
       block.hidden = !showCloud;
       if (!showCloud) return;
-      const waiterUrl = String(staff.waiter_url || "").trim();
-      if (input) input.value = waiterUrl;
-      if (copyBtn) copyBtn.disabled = !waiterUrl;
+      if (label) {
+        label.textContent = isRecepsion
+          ? "Link recepsion (cloud — revolution-pos.com)"
+          : "Link kamarier (cloud — revolution-pos.com)";
+      }
+      const cloudUrl = String(staff.staff_cloud_url || staff.waiter_url || "").trim();
+      if (input) input.value = cloudUrl;
+      if (copyBtn) copyBtn.disabled = !cloudUrl;
+      if (regenBtn) regenBtn.disabled = false;
       if (hint) {
-        if (!waiterUrl) {
+        if (!cloudUrl) {
           hint.hidden = false;
-          hint.textContent =
-            "Linku cloud shfaqet pas PIN 6-shifror dhe sinkronizimit të stafit (Cloud → Sinkronizo gjithçka).";
+          hint.textContent = isRecepsion
+            ? "Vendosni PIN 6-shifror, pastaj Cloud → Sinkronizo gjithçka. Linku hap panelin e recepsionit në cloud."
+            : "Vendosni PIN 6-shifror, pastaj Cloud → Sinkronizo gjithçka. Linku hap tabletin e kamarierit.";
         } else {
           hint.hidden = true;
           hint.textContent = "";
@@ -15302,10 +15312,9 @@
       stafModalAktual = s;
       document.getElementById("staff-modal-title").textContent = s.name;
       const roleLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
-      const dualLinks = !cloudWaiterDisabled && s.staff_role !== "recepsion";
-      document.getElementById("staff-modal-sub").textContent = dualLinks
-        ? `${roleLabel} — PIN, link WiFi + cloud, kartela RFID`
-        : `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`;
+      document.getElementById("staff-modal-sub").textContent = cloudWaiterDisabled
+        ? `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`
+        : `${roleLabel} — PIN, link cloud + WiFi lokal, kartela RFID.`;
       document.getElementById("staff-modal-shift").textContent = s.shift_label || "—";
       const pinEl = document.getElementById("staff-modal-pin");
       pinEl.textContent = s.has_pin ? "••••" : "Nuk është vendosur";
@@ -15349,7 +15358,33 @@
         this.textContent = "U kopjua!";
         setTimeout(() => { this.textContent = orig; }, 1500);
       } catch {
-        prompt("Kopjoni linkun cloud të kamarierit:", val);
+        prompt("Kopjoni linkun cloud:", val);
+      }
+    });
+
+    document.getElementById("staff-modal-regenerate-cloud")?.addEventListener("click", async function () {
+      const s = stafModalAktual;
+      if (!s?.id) return;
+      const btn = this;
+      btn.disabled = true;
+      try {
+        const r = await api(`/api/staff/${s.id}/regenerate-link`, { method: "POST" });
+        await api("/api/cloud-sync/sync-all", { method: "POST" }).catch(() => {});
+        const d = await api("/api/staff");
+        stafCache = d.staff || stafCache;
+        const fresh = stafCache.find(x => String(x.id) === String(s.id));
+        if (fresh) {
+          stafModalAktual = fresh;
+          refreshStaffModalCloudWaiterUi(fresh);
+        } else if (r.waiter_url) {
+          s.waiter_url = r.waiter_url;
+          s.staff_cloud_url = r.waiter_url;
+          refreshStaffModalCloudWaiterUi(s);
+        }
+      } catch (err) {
+        alert(err?.message || "Linku cloud nuk u rigjenerua.");
+      } finally {
+        btn.disabled = false;
       }
     });
 

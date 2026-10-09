@@ -348,6 +348,8 @@ const {
   buildCloudAccessLinks,
   buildPublicMenuUrl,
   buildWaiterPersonalUrl,
+  buildStaffPersonalUrl,
+  stripLegacyKitchenSlugSuffix,
   buildHotelVenueSlug,
   urlTipiSegment,
   PUBLIC_HOTEL_ORIGIN,
@@ -1312,21 +1314,34 @@ function isCloudWaiterDisabledSetting() {
   return false;
 }
 
-function resolveStaffWaiterUrl(_cloudWaiter, _staffRow) {
+function cloudStaffListKey(name, staffRole) {
+  const role = db.normalizeStaffRole(staffRole || "kamarier");
+  const cloudRole = role === "recepsion" ? "receptionist" : "waiter";
+  return `${normalizeStaffName(name)}:${cloudRole}`;
+}
+
+function resolveStaffWaiterUrl(cloudRow, staffRow) {
   if (isCloudWaiterDisabledSetting()) return "";
+  const links = buildHotelStaffLinks(db);
+  if (!staffRow || staffRow.id == null) {
+    const role = db.normalizeStaffRole(staffRow?.staff_role || "kamarier");
+    return role === "recepsion" ? links.reception_url : links.waiter_url;
+  }
+  const localRole = db.normalizeStaffRole(staffRow.staff_role || "kamarier");
+  const fromCloud = String(
+    cloudRow?.waiter_url || cloudRow?.reception_url || "",
+  ).trim();
+  if (fromCloud && cloudRow) {
+    const cloudRole = String(cloudRow.role || "waiter").toLowerCase();
+    const localIsRecep = localRole === "recepsion";
+    const cloudIsRecep = cloudRole === "receptionist";
+    if (localIsRecep === cloudIsRecep) return fromCloud;
+  }
+  const token = db.ensureStaffWebToken(staffRow.id);
   const { slug, key } = resolveHotelVenueAccess(db);
-  if (!_staffRow || _staffRow.id == null) {
-    return buildHotelStaffLinks(db).waiter_url;
-  }
-  const token = db.ensureStaffWebToken(_staffRow.id);
-  const fromCloud = String(_cloudWaiter?.waiter_url || "").trim();
-  if (fromCloud) return fromCloud;
-  const cloudToken = String(_cloudWaiter?.web_token || token || "").trim();
-  if (slug && cloudToken) {
-    const personal = buildWaiterPersonalUrl(slug, key, cloudToken);
-    if (personal) return personal;
-  }
-  return buildHotelStaffLinks(db).waiter_url;
+  const personal = buildStaffPersonalUrl(slug, key, token, localRole);
+  if (personal) return personal;
+  return localRole === "recepsion" ? links.reception_url : links.waiter_url;
 }
 
 function lanInterfaceKind(ifName) {
@@ -1421,7 +1436,7 @@ function resolveLocalVenueSegments() {
     || db.getSetting("client_tipi", "")
     || "hotel";
   const tipi = urlTipiSegment(rawTipi);
-  const slug = String(
+  let slug = String(
     db.getSetting("cloud_slug", "")
     || settings.kitchen_slug
     || settings.cloud_client_id
@@ -1430,6 +1445,7 @@ function resolveLocalVenueSegments() {
   )
     .trim()
     .toLowerCase();
+  slug = stripLegacyKitchenSlugSuffix(slug) || slug;
   return { tipi, slug, rawTipi };
 }
 
@@ -1553,6 +1569,7 @@ function resolveHotelVenueAccess(db) {
   );
   let slug = String(settings.kitchen_slug || settings.cloud_client_id || "").trim();
   if (!slug) slug = buildHotelVenueSlug(bizName, deviceId);
+  slug = stripLegacyKitchenSlugSuffix(slug) || slug;
   const key = String(settings.kitchen_key || "").trim();
   return { slug, key, deviceId, bizName: String(bizName || "").trim() };
 }
@@ -5850,8 +5867,8 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
       }
     }
   }
-  const byName = new Map(
-    cloudWaiters.map(w => [normalizeStaffName(w.name), w]),
+  const byStaffKey = new Map(
+    cloudWaiters.map(w => [cloudStaffListKey(w.name, w.role === "receptionist" ? "recepsion" : "kamarier"), w]),
   );
   const staffRows = db.getStaff();
   const staffById = new Map(staffRows.map((s) => [Number(s.id), s]));
@@ -5860,10 +5877,12 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
     cloud_waiter_disabled: isCloudWaiterDisabledSetting(),
     staff: staff.map(s => {
       const full = staffById.get(Number(s.id)) || null;
-      const cw = cloudWaiterOn ? byName.get(normalizeStaffName(s.name)) : null;
+      const cw = cloudWaiterOn ? byStaffKey.get(cloudStaffListKey(s.name, s.staff_role)) : null;
+      const cloudUrl = resolveStaffWaiterUrl(cw, full);
       return {
         ...s,
-        waiter_url: resolveStaffWaiterUrl(cw, full),
+        waiter_url: cloudUrl,
+        staff_cloud_url: cloudUrl,
       };
     }),
     active_today: db.getActiveStaffToday(),
