@@ -227,12 +227,27 @@ function purgeCloudResolvedOrders(db, orderIds) {
 function normalizePendingOrder(o) {
   if (!o?.id) return null;
   let items = o.items;
+  let payload = null;
   if (!items?.length && o.items_json) {
     try {
-      items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+      payload = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
     } catch {
-      items = [];
+      payload = [];
     }
+    items = payload;
+  }
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    items = Array.isArray(payload.items) ? payload.items : (payload.service_lines || []);
+    return {
+      ...o,
+      items: items || [],
+      order_kind: payload.order_kind || o.order_kind || "",
+      room_number: payload.room_number || o.room_number || "",
+      folio_pre_applied: payload.folio_pre_applied ?? o.folio_pre_applied,
+      service_lines: payload.service_lines || o.service_lines || [],
+      source_label: payload.source_label || o.source_label,
+      customer_label: payload.customer_label || o.customer_label,
+    };
   }
   return { ...o, items: items || [] };
 }
@@ -395,6 +410,7 @@ function cloudReady(db) {
 function isLoginNotifyPendingOrder(o, db) {
   if (!o?.id || isExplicitlyAccepted(o)) return false;
   if (typeof db?.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(o)) return true;
+  if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) return true;
   if (typeof db?.isCloudPosAcceptQueueOrder === "function" && db.isCloudPosAcceptQueueOrder(o)) return true;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;
   const device = String(o?.device_id || "").trim().toUpperCase();

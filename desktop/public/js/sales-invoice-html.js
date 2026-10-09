@@ -36,7 +36,17 @@
   }
 
   function computeTotals(lines, vat) {
-    const subtotal = roundMoney((lines || []).reduce((s, ln) => s + lineTotal(ln), 0));
+    const arr = lines || [];
+    const hasInvLines = arr.some((ln) => ln.sumGross != null && Number.isFinite(Number(ln.sumGross)));
+    if (hasInvLines) {
+      const subtotal = roundMoney(arr.reduce((s, ln) => s + (Number(ln.sumNet) || 0), 0));
+      const vatAmount = roundMoney(arr.reduce((s, ln) => s + (Number(ln.sumVat) || 0), 0));
+      const grandTotal = roundMoney(arr.reduce((s, ln) => s + (Number(ln.sumGross) || 0), 0));
+      let percent = Number(vat?.percent);
+      if (!Number.isFinite(percent) || percent < 0) percent = 18;
+      return { subtotal, vatAmount, grandTotal, vatPercent: vatAmount > 0 ? percent : 0 };
+    }
+    const subtotal = roundMoney(arr.reduce((s, ln) => s + lineTotal(ln), 0));
     const enabled = Boolean(vat?.enabled);
     let percent = Number(vat?.percent);
     if (!Number.isFinite(percent) || percent < 0) percent = 18;
@@ -104,7 +114,10 @@ body { margin: 0; font: 11pt/1.35 'Segoe UI', Arial, sans-serif; color: #111; ba
     const addr = [seller.address, seller.city].filter(Boolean).join(", ");
 
     const rows = lines.map((ln, i) => {
-      const lt = ln.lineTotal != null ? ln.lineTotal : lineTotal(ln);
+      const lt =
+        ln.sumGross != null && Number.isFinite(Number(ln.sumGross))
+          ? Number(ln.sumGross)
+          : (ln.lineTotal != null ? ln.lineTotal : lineTotal(ln));
       const disc = ln.discount?.value
         ? (ln.discount.type === "percent" ? `${ln.discount.value}%` : fmtMoney(ln.discount.value, currency))
         : "—";

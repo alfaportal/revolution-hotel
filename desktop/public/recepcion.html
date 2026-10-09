@@ -29,6 +29,47 @@
       overflow-y: auto;
     }
 
+    /* Popup porosi QR dhomë — tekst i lexueshëm (jo i zbehur në rozë) */
+    #recep-online-pop .waiter-online-pop-order {
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      padding: 0.65rem 0.75rem;
+      gap: 0.35rem;
+      color: #0f172a;
+      font-size: 0.92rem;
+    }
+    #recep-online-pop .waiter-online-pop-meta strong {
+      color: #0f172a;
+      font-size: 1rem;
+    }
+    #recep-online-pop .waiter-online-pop-customer,
+    #recep-online-pop .waiter-online-pop-total {
+      display: block;
+      color: #334155;
+      font-weight: 700;
+    }
+    #recep-online-pop .waiter-online-pop-items {
+      margin: 0.35rem 0 0;
+      padding-left: 1.1rem;
+      color: #1e293b;
+      font-weight: 600;
+    }
+    #recep-online-pop .waiter-online-pop-items li {
+      margin: 0.2rem 0;
+    }
+    #recep-online-pop .waiter-online-pop-qty {
+      color: #b45309;
+      font-weight: 800;
+    }
+    #recep-online-pop .waiter-online-pop-order small {
+      color: #475569 !important;
+      font-weight: 600;
+    }
+    #recep-online-pop #recep-online-accept-msg:not([hidden]) {
+      margin-top: 0.5rem;
+      font-weight: 700;
+    }
+
     .recep-main-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -818,7 +859,30 @@
           items = [];
         }
       }
-      return Array.isArray(items) ? items : [];
+      if (!Array.isArray(items)) items = [];
+      const lines = Array.isArray(o?.service_lines) ? o.service_lines : [];
+      if (lines.length) {
+        if (!items.length) {
+          items = lines.map((sl) => ({
+            name: sl.name || `Shërbim #${sl.service_id || "?"}`,
+            quantity: sl.quantity,
+            price: sl.amount ?? sl.price,
+            service_id: sl.service_id,
+          }));
+        } else {
+          items = items.map((it, idx) => {
+            const sl = lines[idx] || lines.find((s) => Number(s.service_id) === Number(it.service_id));
+            const nm = String(it.name || sl?.name || "").trim();
+            return {
+              ...it,
+              name: nm && !/^Shërbim #\d+$/i.test(nm) ? nm : (String(sl?.name || "").trim() || nm || "Shërbim hoteli"),
+              price: Number(it.price) || Number(sl?.amount ?? sl?.price ?? 0),
+              service_id: it.service_id ?? sl?.service_id,
+            };
+          });
+        }
+      }
+      return items;
     }
 
     function dridhPorosiRecep() {
@@ -884,7 +948,7 @@
           <span class="waiter-online-pop-total">${escHtml(room)} · ${formatEuro(o.total || 0)}</span>
         </div>
         <ul class="waiter-online-pop-items">${itemRows || "<li>—</li>"}</ul>
-        <small style="color:#94a3b8;display:block;margin-top:.35rem">QR — prano për faturën e dhomës (pa PIN sërish)</small>
+        <small>QR — prano për faturën e dhomës (pa PIN sërish)</small>
         ${extra}
       </div>`;
     }

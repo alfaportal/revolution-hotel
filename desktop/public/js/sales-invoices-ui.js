@@ -1,26 +1,20 @@
 /**
  * Faturat A4 shitje — admin desktop (SQLite lokale).
+ * Rreshtat: tabela 11 kolona (si Blerjet / inv-lines).
  */
 (function () {
   const API = "/api/admin/sales-invoices";
-  const PRESETS = [
-    "Dhomë / natë",
-    "Restorant",
-    "Minibar",
-    "Transport",
-    "Parkim",
-    "SPA / wellness",
-    "Konferencë",
-    "Lavanderi",
-  ];
+  const HI = window.HotelInvLines;
 
   const root = document.getElementById("admin-sales-invoices-root");
   const Html = window.SalesInvoiceHtml;
-  if (!root || !Html) return;
+  if (!root || !Html || !HI) return;
 
   let settings = { vatEnabled: false, vatPercent: 18, companyLogoUrl: "" };
   let seller = {};
   let invoices = [];
+  let menuItemsCache = [];
+  let salesCatFilter = null;
   let screen = "list";
   let busy = false;
   let errorMsg = "";
@@ -29,7 +23,7 @@
   let invoiceNumber = "";
   let editId = null;
   let guest = emptyGuest();
-  let lines = [emptyLine()];
+  let lines = [newSalesLine()];
   let date = todayYmd();
   let q = "";
   let statusFilter = "Të gjitha";
@@ -51,34 +45,111 @@
     };
   }
 
-  function emptyLine() {
-    return { description: "", qty: 1, unitPrice: "", discount: { type: "amount", value: 0 } };
+  function defaultLineVat() {
+    const v = settings.vatEnabled ? Number(settings.vatPercent) : 18;
+    return HI.normalizeLineVat(v);
+  }
+
+  function newSalesLine() {
+    return {
+      menu_item_id: "",
+      category: "",
+      pack_qty: 1,
+      pieces_per_pack: 1,
+      pack_price: "",
+      price_gross: "",
+      discount_pct: 0,
+      line_sasia: "",
+      vat_rate: defaultLineVat(),
+      description: "",
+    };
+  }
+
+  function escHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function escAttr(s) {
+    return escHtml(s).replace(/'/g, "&#39;");
   }
 
   function euro(n) {
     return `${(Number(n) || 0).toFixed(2)} €`;
   }
 
-  function escAttr(s) {
-    return String(s ?? "").replace(/"/g, "&quot;");
-  }
-
   async function invApi(path, opts = {}) {
     return api(`${API}${path}`, opts);
   }
 
+  async function ensureMenuLoaded() {
+    if (menuItemsCache.length) return;
+    menuItemsCache = await api("/api/menu/all");
+  }
+
   function vatFromSettings() {
-    return { enabled: !!settings.vatEnabled, percent: Number(settings.vatPercent) || 18 };
+    const hasLineVat = lines.some((ln) => {
+      const a = HI.invoiceLineAmountsFromLine(ln);
+      return a.sumVat > 0;
+    });
+    return {
+      enabled: !!settings.vatEnabled || hasLineVat,
+      percent: Number(settings.vatPercent) || 18,
+    };
+  }
+
+  function lineDescription(line) {
+    const manual = String(line.description || "").trim();
+    if (manual) return manual;
+    const item = menuItemsCache.find((m) => String(m.id) === String(line.menu_item_id));
+    return item ? String(item.name || "").trim() : "";
+  }
+
+  function salesLineToApiLine(line) {
+    const amt = HI.invoiceLineAmountsFromLine(line);
+    const desc = lineDescription(line);
+    return {
+      description: desc,
+      qty: amt.sasia,
+      unitPrice: amt.priceNet,
+      discount: { type: "percent", value: amt.disc },
+      lineTotal: amt.sumNet,
+      sumNet: amt.sumNet,
+      sumVat: amt.sumVat,
+      sumGross: amt.sumGross,
+    };
+  }
+
+  function apiLineToSalesLine(ln) {
+    const qty = Number(ln.qty) || 1;
+    const net = Number(ln.unitPrice) || 0;
+    let disc = 0;
+    if (ln.discount?.type === "percent") disc = Number(ln.discount.value) || 0;
+    else if (Number(ln.discount?.value) > 0 && qty * net > 0) {
+      disc = Math.min(100, (Number(ln.discount.value) / (qty * net)) * 100);
+    }
+    const vat = defaultLineVat();
+    const gross = net > 0 ? Math.round(net * (1 + vat / 100) * 10000) / 10000 : "";
+    return {
+      menu_item_id: "",
+      category: "",
+      pack_qty: 1,
+      pieces_per_pack: qty,
+      line_sasia: qty,
+      price_gross: gross,
+      discount_pct: Math.round(disc * 100) / 100,
+      vat_rate: vat,
+      description: ln.description || "",
+    };
   }
 
   function buildDoc(num, status) {
+    lines.forEach((_, idx) => syncSalesLineFromDom(idx));
     const vat = vatFromSettings();
-    const normLines = lines.map((ln) => ({
-      ...ln,
-      qty: Number(ln.qty) || 0,
-      unitPrice: Number(ln.unitPrice) || 0,
-      lineTotal: Html.lineTotal(ln),
-    }));
+    const normLines = lines.map((ln) => salesLineToApiLine(ln)).filter((ln) => ln.description);
     const totals = Html.computeTotals(normLines, vat);
     return {
       id: editId,
@@ -107,6 +178,242 @@
       ? `?q=${encodeURIComponent(q)}&status=${encodeURIComponent(statusFilter)}`
       : "");
     invoices = list.invoices || [];
+  }
+
+  function salesCategoryList() {
+    const present = new Set(
+      (menuItemsCache || []).map((it) => String(it.category || "").trim()).filter(Boolean),
+    );
+    const ordered = [];
+    if (typeof KATEGORITE !== "undefined" && Array.isArray(KATEGORITE)) {
+      for (const k of KATEGORITE) if (present.has(k)) ordered.push(k);
+    }
+    for (const c of present) {
+      if (!ordered.includes(c)) ordered.push(c);
+    }
+    return ordered;
+  }
+
+  function itemsForSalesDropdown(selectedId, lineCategory) {
+    let items = menuItemsCache || [];
+    const cat = String(lineCategory || salesCatFilter || "").trim();
+    if (cat) items = items.filter((it) => String(it.category || "").trim() === cat);
+    if (selectedId) {
+      const sel = (menuItemsCache || []).find((m) => String(m.id) === String(selectedId));
+      if (sel && !items.some((m) => String(m.id) === String(selectedId))) items = [sel, ...items];
+    }
+    return items;
+  }
+
+  function salesProductOptionsHtml(line) {
+    const lineCat = String(line.category || salesCatFilter || "").trim();
+    const items = itemsForSalesDropdown(line.menu_item_id, lineCat);
+    let html = '<option value="">— Zgjidh produktin —</option>';
+    if (!lineCat) {
+      const byCat = new Map();
+      for (const it of items) {
+        const c = String(it.category || "").trim() || "Pa kategori";
+        if (!byCat.has(c)) byCat.set(c, []);
+        byCat.get(c).push(it);
+      }
+      for (const [c, list] of [...byCat.entries()].sort((a, b) => a[0].localeCompare(b[0], "sq"))) {
+        html += `<optgroup label="${escHtml(c)}">`;
+        for (const it of list) {
+          const selected = String(it.id) === String(line.menu_item_id) ? " selected" : "";
+          html += `<option value="${it.id}"${selected}>${escHtml(it.name)}</option>`;
+        }
+        html += "</optgroup>";
+      }
+    } else {
+      for (const it of items) {
+        const selected = String(it.id) === String(line.menu_item_id) ? " selected" : "";
+        html += `<option value="${it.id}"${selected}>${escHtml(it.name)}</option>`;
+      }
+    }
+    return html;
+  }
+
+  function salesLineVatSelectHtml(idx, selected) {
+    const v = HI.normalizeLineVat(selected);
+    const opts = [18, 8, 0]
+      .map((r) => `<option value="${r}"${v === r ? " selected" : ""}>${r}%</option>`)
+      .join("");
+    return `<select class="sales-line-vat" data-idx="${idx}" title="TVSH për këtë rresht">${opts}</select>`;
+  }
+
+  function menuItemVatRate(item) {
+    if (!item) return defaultLineVat();
+    const raw = item.vat_category ?? item.vat_rate ?? item.vat;
+    const n = Number(raw);
+    if (n === 0 || n === 8 || n === 18) return n;
+    if (String(raw || "").toUpperCase().includes("8")) return 8;
+    if (String(raw || "").toUpperCase().includes("0")) return 0;
+    return defaultLineVat();
+  }
+
+  function syncSalesLineFromDom(idx, sourceEl) {
+    const line = lines[idx];
+    if (!line) return;
+    const sasiaInp = document.querySelector(`.sales-line-sasia[data-idx="${idx}"]`);
+    const netInp = document.querySelector(`.sales-line-price-net[data-idx="${idx}"]`);
+    const discInp = document.querySelector(`.sales-line-discount[data-idx="${idx}"]`);
+    const packInp = document.querySelector(`.sales-line-packs[data-idx="${idx}"]`);
+    const vatSel = document.querySelector(`.sales-line-vat[data-idx="${idx}"]`);
+    const prodSel = document.querySelector(`.sales-line-product[data-idx="${idx}"]`);
+    const src = sourceEl?.classList || { contains: () => false };
+
+    if (prodSel) {
+      line.menu_item_id = prodSel.value;
+      const item = menuItemsCache.find((m) => String(m.id) === prodSel.value);
+      if (item) {
+        line.category = String(item.category || "").trim();
+        line.description = String(item.name || "").trim();
+        if (line.price_gross === "" || line.price_gross == null) {
+          line.price_gross = Number(item.price) || 0;
+        }
+        line.vat_rate = menuItemVatRate(item);
+      }
+    }
+    if (vatSel) line.vat_rate = HI.normalizeLineVat(vatSel.value);
+
+    const pack_qty = Number(packInp?.value);
+    const qSasia = Number(sasiaInp?.value);
+    if (src.contains("sales-line-packs")) {
+      if (Number.isFinite(pack_qty)) line.pack_qty = pack_qty;
+      if (Number.isFinite(qSasia) && qSasia >= 0) {
+        line.line_sasia = qSasia;
+        if (line.pack_qty > 0) {
+          line.pieces_per_pack = Math.round((qSasia / line.pack_qty) * 1000) / 1000;
+        }
+      } else {
+        line.line_sasia = HI.lineStockQty(line);
+      }
+    } else if (src.contains("sales-line-sasia")) {
+      if (Number.isFinite(qSasia) && qSasia >= 0) line.line_sasia = qSasia;
+      const pack = Number(line.pack_qty) || 0;
+      if (line.line_sasia > 0 && pack > 0) {
+        line.pieces_per_pack = Math.round((line.line_sasia / pack) * 1000) / 1000;
+      }
+    } else {
+      if (Number.isFinite(pack_qty)) line.pack_qty = pack_qty;
+      if (Number.isFinite(qSasia) && qSasia >= 0) line.line_sasia = qSasia;
+    }
+
+    const net = Number(netInp?.value);
+    if (Number.isFinite(net) && net >= 0) {
+      const vat = HI.normalizeLineVat(line.vat_rate ?? 18);
+      line.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
+    }
+    const disc = Number(discInp?.value);
+    if (Number.isFinite(disc)) line.discount_pct = Math.min(100, Math.max(0, disc));
+  }
+
+  function updateSalesInvoiceRowUi(idx) {
+    const tr = document.querySelector(`#sales-lines-body tr[data-line="${idx}"]`);
+    const line = lines[idx];
+    if (!tr || !line) return;
+    const amt = HI.invoiceLineAmountsFromLine(line);
+    const set = (sel, text) => {
+      const el = tr.querySelector(sel);
+      if (el) el.textContent = text;
+    };
+    set(".sales-inv-price-gross-cell", amt.priceGross.toFixed(2));
+    set(".sales-inv-sum-net", amt.sumNet.toFixed(2));
+    set(".sales-inv-sum-vat", amt.sumVat.toFixed(2));
+    set(".sales-inv-sum-gross", euro(amt.sumGross));
+  }
+
+  function recalcSalesGrandTotal() {
+    let sum = 0;
+    for (const line of lines) sum += HI.invoiceLineAmountsFromLine(line).sumGross;
+    const el = document.getElementById("sales-grand-total");
+    if (el) el.textContent = euro(Math.round(sum * 100) / 100);
+  }
+
+  function renderSalesCatFilter() {
+    const bar = document.getElementById("sales-cat-filter");
+    if (!bar) return;
+    const cats = salesCategoryList();
+    if (salesCatFilter && !cats.includes(salesCatFilter)) salesCatFilter = null;
+    const tabs = [{ key: null, label: "Krejt" }, ...cats.map((c) => ({ key: c, label: c }))];
+    bar.innerHTML = tabs
+      .map((t) => {
+        const active = salesCatFilter === t.key;
+        const val = t.key === null ? "__all__" : encodeURIComponent(t.key);
+        return `<button type="button" class="product-cat-tab${active ? " active" : ""}" data-sales-cat="${val}" role="tab" aria-selected="${active ? "true" : "false"}" style="flex:0 0 auto;white-space:nowrap;padding:0.32rem 0.7rem;font-size:0.78rem;font-weight:700;border-radius:999px;cursor:pointer;border:1px solid ${active ? "#FF6B35" : "#3a3a55"};background:${active ? "#FF6B35" : "#252538"};color:#fff">${escHtml(t.label)}</button>`;
+      })
+      .join("");
+    bar.querySelectorAll("[data-sales-cat]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const raw = btn.dataset.salesCat;
+        salesCatFilter = raw === "__all__" ? null : decodeURIComponent(raw || "");
+        renderSalesCatFilter();
+        renderSalesFormLines();
+      });
+    });
+  }
+
+  function renderSalesFormLines() {
+    const tbody = document.getElementById("sales-lines-body");
+    if (!tbody) return;
+    tbody.innerHTML = lines.map((line, idx) => {
+      const lineCat = String(line.category || "").trim() || (() => {
+        const sel = menuItemsCache.find((m) => String(m.id) === String(line.menu_item_id));
+        return sel ? String(sel.category || "").trim() : (salesCatFilter || "");
+      })();
+      if (!line.category && lineCat) line.category = lineCat;
+      const amt = HI.invoiceLineAmountsFromLine(line);
+      const packs = line.pack_qty !== "" && line.pack_qty != null ? line.pack_qty : "";
+      const netVal = HI.lineNetPerPiece(line);
+      const disc = line.discount_pct != null ? line.discount_pct : 0;
+      const delBtn =
+        lines.length > 1
+          ? `<button type="button" class="btn btn-ghost btn-sm sales-line-remove" data-idx="${idx}" title="Fshi rreshtin">×</button>`
+          : "";
+      return `
+        <tr data-line="${idx}">
+          <td class="c">${idx + 1}${delBtn}</td>
+          <td class="purchase-inv-desc-cell">
+            <select class="sales-line-product" data-idx="${idx}">${salesProductOptionsHtml(line)}</select>
+          </td>
+          <td class="c purchase-inv-pako-cell"><input type="number" class="sales-line-packs" data-idx="${idx}" min="0" step="any" value="${packs}" title="Pako"></td>
+          <td class="n"><input type="number" class="sales-line-sasia" data-idx="${idx}" min="0" step="any" value="${amt.sasia}" title="Sasia (copë totale)"></td>
+          <td class="n"><input type="number" class="sales-line-price-net" data-idx="${idx}" min="0" step="any" value="${netVal ? netVal : ""}" title="Çmimi pa TVSH / copë"></td>
+          <td class="n"><input type="number" class="sales-line-discount" data-idx="${idx}" min="0" max="100" step="any" value="${disc}" title="Zbritja %"></td>
+          <td class="n sales-inv-price-gross-cell">${amt.priceGross.toFixed(2)}</td>
+          <td class="n sales-inv-sum-net">${amt.sumNet.toFixed(2)}</td>
+          <td class="c">${salesLineVatSelectHtml(idx, line.vat_rate)}</td>
+          <td class="n sales-inv-sum-vat">${amt.sumVat.toFixed(2)}</td>
+          <td class="n sales-inv-sum-gross">${euro(amt.sumGross)}</td>
+        </tr>`;
+    }).join("");
+
+    const onRowInput = (e) => {
+      const idx = Number(e.target?.dataset?.idx);
+      if (!Number.isFinite(idx)) return;
+      syncSalesLineFromDom(idx, e.target);
+      updateSalesInvoiceRowUi(idx);
+      recalcSalesGrandTotal();
+    };
+    tbody.querySelectorAll("input, select").forEach((inp) => {
+      inp.addEventListener("input", onRowInput);
+      inp.addEventListener("change", onRowInput);
+    });
+    tbody.querySelectorAll(".sales-line-product").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const idx = Number(sel.dataset.idx);
+        syncSalesLineFromDom(idx, sel);
+        renderSalesFormLines();
+      });
+    });
+    tbody.querySelectorAll(".sales-line-remove").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.idx);
+        lines.splice(idx, 1);
+        renderSalesFormLines();
+      });
+    });
+    recalcSalesGrandTotal();
   }
 
   function renderSettingsCard() {
@@ -188,17 +495,37 @@
       <div class="form-row"><label>Telefoni</label><input id="inv-phone" value="${escAttr(guest.phone)}" /></div>
       <div class="form-row"><label>Data</label><input type="date" id="inv-date" value="${escAttr(date)}" /></div>
     </div>
-    <div class="card" style="margin-top:0.75rem">
-      <div class="card-title">Artikuj (çmimet neto)</div>
-      <div class="form-row">
-        <label>Shto shpejt:</label>
-        <select id="inv-preset"><option value="">—</option>${PRESETS.map((p) => `<option value="${escAttr(p)}">${Html.esc(p)}</option>`).join("")}</select>
+    <div class="card sales-inv-lines-card" style="margin-top:0.75rem">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <span>Artikuj</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="inv-add-line">+ Shto rresht</button>
       </div>
-      <table class="dashboard-top-table">
-        <thead><tr><th>Përshkrimi</th><th>Sasia</th><th>Çmimi neto</th><th>Zbritja €</th><th></th></tr></thead>
-        <tbody id="inv-lines-body"></tbody>
-      </table>
-      <button type="button" class="btn btn-ghost btn-sm" id="inv-add-line">+ Rresht</button>
+      <p class="purchases-panel-sub">Zgjidhni produktin nga menuja ose ndryshoni pako, sasi, çmime dhe TVSH — si te Blerjet.</p>
+      <div id="sales-cat-filter" class="product-cat-filter purchase-cat-filter" role="tablist" aria-label="Filtro produktet" style="display:flex;flex-wrap:nowrap;gap:0.4rem;overflow-x:auto;margin:0.35rem 0 0.65rem;padding:0.15rem 0;min-height:2rem"></div>
+      <div class="sales-lines-wrap receipt-scan-table-scroll">
+        <table class="inv-lines hotel-inv-lines sales-inv-lines">
+          <thead>
+            <tr>
+              <th>Nr</th>
+              <th>Përshkrimi</th>
+              <th>Pako</th>
+              <th>Sasia</th>
+              <th>Çmimi<br>pa TVSH</th>
+              <th>Zbritja<br>%</th>
+              <th>Çmimi<br>me TVSH</th>
+              <th>Shuma<br>pa TVSH</th>
+              <th>TVSH<br>%</th>
+              <th>Shuma<br>TVSH</th>
+              <th>Totali<br>me TVSH</th>
+            </tr>
+          </thead>
+          <tbody id="sales-lines-body"></tbody>
+        </table>
+      </div>
+      <div class="purchase-form-total">
+        <span>Totali i faturës</span>
+        <strong id="sales-grand-total">0.00 €</strong>
+      </div>
     </div>
     <button type="button" class="btn btn-primary" id="inv-go-preview" ${busy ? "disabled" : ""}>
       ${busy ? "Duke alokuar…" : "Vazhdo te preview"}
@@ -221,19 +548,6 @@
     </div>`;
   }
 
-  function renderLinesBody() {
-    const tbody = document.getElementById("inv-lines-body");
-    if (!tbody) return;
-    tbody.innerHTML = lines.map((ln, idx) => `
-      <tr data-idx="${idx}">
-        <td><input class="inv-ln-desc" data-idx="${idx}" value="${escAttr(ln.description)}" /></td>
-        <td><input type="number" class="inv-ln-qty" data-idx="${idx}" min="0" step="0.01" value="${ln.qty}" /></td>
-        <td><input type="number" class="inv-ln-price" data-idx="${idx}" min="0" step="0.01" value="${ln.unitPrice}" /></td>
-        <td><input type="number" class="inv-ln-disc" data-idx="${idx}" min="0" step="0.01" value="${ln.discount?.value || 0}" /></td>
-        <td><button type="button" class="btn btn-ghost btn-sm inv-rm-line" data-idx="${idx}">✕</button></td>
-      </tr>`).join("");
-  }
-
   function readGuestFromDom() {
     guest.kind = root.querySelector('input[name="inv-guest-kind"]:checked')?.value || "individual";
     guest.name = document.getElementById("inv-name")?.value || "";
@@ -246,41 +560,18 @@
     date = document.getElementById("inv-date")?.value || date;
   }
 
-  function bindLineInputs() {
-    root.querySelectorAll(".inv-ln-desc").forEach((el) => {
-      el.oninput = () => { lines[+el.dataset.idx].description = el.value; };
-    });
-    root.querySelectorAll(".inv-ln-qty").forEach((el) => {
-      el.oninput = () => { lines[+el.dataset.idx].qty = el.value; };
-    });
-    root.querySelectorAll(".inv-ln-price").forEach((el) => {
-      el.oninput = () => { lines[+el.dataset.idx].unitPrice = el.value; };
-    });
-    root.querySelectorAll(".inv-ln-disc").forEach((el) => {
-      el.oninput = () => {
-        lines[+el.dataset.idx].discount = { type: "amount", value: Number(el.value) || 0 };
-      };
-    });
-    root.querySelectorAll(".inv-rm-line").forEach((el) => {
-      el.onclick = () => {
-        if (lines.length <= 1) return;
-        lines.splice(+el.dataset.idx, 1);
-        render();
-      };
-    });
-  }
-
   async function goPreview() {
     errorMsg = "";
     readGuestFromDom();
+    lines.forEach((_, idx) => syncSalesLineFromDom(idx));
     const nameOk = guest.kind === "company" ? guest.companyName.trim() : guest.name.trim();
     if (!nameOk) {
       errorMsg = guest.kind === "company" ? "Vendosni emrin e kompanisë." : "Vendosni emrin e mysafirit.";
       render();
       return;
     }
-    if (!lines.some((ln) => String(ln.description || "").trim())) {
-      errorMsg = "Shtoni të paktën një artikull.";
+    if (!lines.some((ln) => lineDescription(ln))) {
+      errorMsg = "Shtoni të paktën një artikull (zgjidhni produktin).";
       render();
       return;
     }
@@ -340,11 +631,18 @@
     editId = null;
     invoiceNumber = "";
     guest = emptyGuest();
-    lines = [emptyLine()];
+    salesCatFilter = null;
+    lines = [newSalesLine()];
     date = todayYmd();
     errorMsg = "";
     okMsg = "";
     render();
+    ensureMenuLoaded()
+      .then(() => {
+        renderSalesCatFilter();
+        renderSalesFormLines();
+      })
+      .catch(() => renderSalesFormLines());
   }
 
   function openView(inv) {
@@ -354,6 +652,23 @@
     };
     screen = "preview";
     render();
+  }
+
+  function bindEditScreen() {
+    renderSalesCatFilter();
+    renderSalesFormLines();
+    root.querySelectorAll('input[name="inv-guest-kind"]').forEach((r) => {
+      r.onchange = () => { readGuestFromDom(); render(); };
+    });
+    document.getElementById("inv-add-line")?.addEventListener("click", () => {
+      lines.push(newSalesLine());
+      renderSalesFormLines();
+    });
+    document.getElementById("inv-go-preview")?.addEventListener("click", goPreview);
+    document.getElementById("inv-back-list")?.addEventListener("click", () => {
+      screen = "list";
+      loadAll().then(render);
+    });
   }
 
   function render() {
@@ -441,20 +756,9 @@
     }
 
     if (screen === "edit") {
-      renderLinesBody();
-      bindLineInputs();
-      root.querySelectorAll('input[name="inv-guest-kind"]').forEach((r) => {
-        r.onchange = () => { readGuestFromDom(); render(); };
-      });
-      document.getElementById("inv-preset")?.addEventListener("change", (e) => {
-        const v = e.target.value;
-        if (v) lines.push({ ...emptyLine(), description: v });
-        e.target.value = "";
-        render();
-      });
-      document.getElementById("inv-add-line")?.addEventListener("click", () => { lines.push(emptyLine()); render(); });
-      document.getElementById("inv-go-preview")?.addEventListener("click", goPreview);
-      document.getElementById("inv-back-list")?.addEventListener("click", () => { screen = "list"; loadAll().then(render); });
+      ensureMenuLoaded()
+        .then(() => bindEditScreen())
+        .catch(() => bindEditScreen());
     }
 
     if (screen === "preview") {
@@ -470,16 +774,15 @@
         screen = "edit";
         if (previewDoc) {
           guest = { ...emptyGuest(), ...previewDoc.guest };
-          lines = previewDoc.lines.map((ln) => ({
-            description: ln.description,
-            qty: ln.qty,
-            unitPrice: ln.unitPrice,
-            discount: ln.discount || { type: "amount", value: 0 },
-          }));
+          lines = (previewDoc.lines || []).map((ln) => apiLineToSalesLine(ln));
+          if (!lines.length) lines = [newSalesLine()];
           date = previewDoc.date;
           invoiceNumber = previewDoc.number;
         }
         render();
+        ensureMenuLoaded()
+          .then(() => bindEditScreen())
+          .catch(() => bindEditScreen());
       });
     }
   }

@@ -329,6 +329,72 @@ function deleteTestFiscalReceipts() {
   return Number(result.changes) || 0;
 }
 
+function ymdToFiscalDisplayDate(dateYmd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateYmd || "").trim());
+  if (!m) throw new Error("Datë fiskale e pavlefshme.");
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
+/** Fshirje e kontrolluar — vetëm për datën e dhënë (purge ditore restorant). */
+function deleteFiscalDataForDate(dateYmd) {
+  if (isFiscalMemoryOnly()) {
+    return { fiscal_receipts: 0, fiscal_audit_log: 0, pending_txn: 0 };
+  }
+  const d = String(dateYmd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    throw new Error("Datë fiskale e pavlefshme.");
+  }
+  const fiscalD = ymdToFiscalDisplayDate(d);
+  const sqlite = getSqlite();
+  const exec = (sql) => sqlite.exec(sql);
+
+  exec(`DROP TRIGGER IF EXISTS trg_fiscal_receipts_block_delete`);
+  exec(`DROP TRIGGER IF EXISTS trg_fiscal_audit_block_delete`);
+
+  const receiptRows = sqlite
+    .prepare(
+      `SELECT id, sale_id FROM fiscal_receipts WHERE fiscal_date = ? OR fiscal_date = ?`,
+    )
+    .all(fiscalD, d);
+  const saleIds = receiptRows.map((r) => Number(r.sale_id)).filter((id) => id > 0);
+  const receiptIds = receiptRows.map((r) => Number(r.id)).filter((id) => id > 0);
+
+  let pendingChanges = 0;
+  if (saleIds.length || receiptIds.length) {
+    const parts = [];
+    const params = [];
+    if (saleIds.length) {
+      parts.push(`order_id IN (${saleIds.map(() => "?").join(",")})`);
+      params.push(...saleIds);
+    }
+    if (receiptIds.length) {
+      parts.push(`fiscal_receipt_id IN (${receiptIds.map(() => "?").join(",")})`);
+      params.push(...receiptIds);
+    }
+    pendingChanges = sqlite
+      .prepare(`DELETE FROM pending_txn WHERE ${parts.join(" OR ")}`)
+      .run(...params).changes;
+  }
+
+  const delReceipts = sqlite
+    .prepare(`DELETE FROM fiscal_receipts WHERE fiscal_date = ? OR fiscal_date = ?`)
+    .run(fiscalD, d);
+  const delAudit = sqlite
+    .prepare(`DELETE FROM fiscal_audit_log WHERE date(created_at) = ?`)
+    .run(d);
+
+  installWriteOnceTriggers({
+    exec: (sql) => sqlite.exec(sql),
+    run: (sql) => sqlite.exec(sql),
+  });
+
+  return {
+    fiscal_receipts: Number(delReceipts.changes) || 0,
+    fiscal_audit_log: Number(delAudit.changes) || 0,
+    pending_txn: pendingChanges,
+  };
+}
+
 /**
  * Reset i plotë për fillim të pastër ATK test:
  * fshin fiscal_receipts / fiscal_audit_log / pending_txn,
@@ -900,6 +966,7 @@ module.exports = {
   getFiscalDbPath,
   fiscalReceiptUpdate,
   deleteTestFiscalReceipts,
+  deleteFiscalDataForDate,
   resetFiscalTestData,
   validateFiscalReceiptInsert,
   insertFiscalReceipt,

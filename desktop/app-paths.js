@@ -74,6 +74,56 @@ function pruneStalePublicOverlay() {
   walk(overlay, "");
 }
 
+/** login.html në overlay me PIN 4-shifror → zëvendëso nga paketa/burimi 6-shifror. */
+function refreshStalePinLoginOverlay() {
+  const overlay = publicOverlayRoot();
+  if (!overlay) return;
+  const rel = "login.html";
+  const overlayFile = path.join(overlay, rel);
+  if (!fs.existsSync(overlayFile)) return;
+
+  const candidates = [
+    path.join(getAppContentRoot(), "public", rel),
+    path.join(__dirname, "public", rel),
+  ];
+  try {
+    if (process.resourcesPath) {
+      candidates.unshift(
+        path.join(process.resourcesPath, "app.asar.unpacked", "public", rel),
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+
+  let bundledFile = null;
+  for (const c of candidates) {
+    if (!c || !fs.existsSync(c)) continue;
+    try {
+      const text = fs.readFileSync(c, "utf8");
+      if (/pinValue\.length !== 6/.test(text)) {
+        bundledFile = c;
+        break;
+      }
+    } catch {
+      /* provo kandidatin tjetër */
+    }
+  }
+  if (!bundledFile) return;
+
+  try {
+    const overlayText = fs.readFileSync(overlayFile, "utf8");
+    const overlayUses4 =
+      /pinValue\.length !== 4/.test(overlayText) ||
+      /Shkruani PIN-in \(4 shifra\)/.test(overlayText);
+    if (!overlayUses4) return;
+    fs.copyFileSync(bundledFile, overlayFile);
+    console.warn("[public-overlay] login.html u përditësua (PIN 6 shifra).");
+  } catch (e) {
+    console.warn("[public-overlay] refresh login.html:", e.message || e);
+  }
+}
+
 function resolvePackagedPublicFile(segments) {
   if (!segments.length || segments[0] !== "public") return null;
   try {
@@ -144,5 +194,6 @@ module.exports = {
   listPublicStaticRoots,
   resolvePublicFile,
   pruneStalePublicOverlay,
+  refreshStalePinLoginOverlay,
   isPublicOverlayAllowed,
 };

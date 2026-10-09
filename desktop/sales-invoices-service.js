@@ -23,7 +23,22 @@ function lineTotal(line) {
 }
 
 function computeTotals(lines, vat) {
-  const subtotal = roundMoney((lines || []).reduce((s, ln) => s + lineTotal(ln), 0));
+  const arr = lines || [];
+  const hasInvLines = arr.some((ln) => ln.sumGross != null && Number.isFinite(Number(ln.sumGross)));
+  if (hasInvLines) {
+    const subtotal = roundMoney(arr.reduce((s, ln) => s + (Number(ln.sumNet) || 0), 0));
+    const vatAmount = roundMoney(arr.reduce((s, ln) => s + (Number(ln.sumVat) || 0), 0));
+    const grandTotal = roundMoney(arr.reduce((s, ln) => s + (Number(ln.sumGross) || 0), 0));
+    let percent = Number(vat?.percent);
+    if (!Number.isFinite(percent) || percent < 0) percent = 18;
+    return {
+      subtotal,
+      vatAmount,
+      grandTotal,
+      vatPercent: vatAmount > 0 ? percent : 0,
+    };
+  }
+  const subtotal = roundMoney(arr.reduce((s, ln) => s + lineTotal(ln), 0));
   const enabled = Boolean(vat?.enabled);
   let percent = Number(vat?.percent);
   if (!Number.isFinite(percent) || percent < 0) percent = 18;
@@ -233,10 +248,21 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
       qty: Number(ln.qty) || 0,
       unitPrice: Number(ln.unitPrice) || 0,
       discount: ln.discount || { type: "amount", value: 0 },
+      sumNet: ln.sumNet != null ? Number(ln.sumNet) : null,
+      sumVat: ln.sumVat != null ? Number(ln.sumVat) : null,
+      sumGross: ln.sumGross != null ? Number(ln.sumGross) : null,
     };
-    return { ...row, lineTotal: lineTotal(row), sort_order: idx };
+    const lineTotalVal =
+      row.sumNet != null && Number.isFinite(row.sumNet)
+        ? roundMoney(row.sumNet)
+        : lineTotal(row);
+    return { ...row, lineTotal: lineTotalVal, sort_order: idx };
   });
-  const totals = computeTotals(lines, vat);
+  const vatForTotals = {
+    enabled: vat.enabled || lines.some((ln) => (Number(ln.sumVat) || 0) > 0),
+    percent: vat.percent,
+  };
+  const totals = computeTotals(lines, vatForTotals);
   const number = fixedNumber || String(payload.number || "").trim() || allocateInvoiceNumber();
   const date = String(payload.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
   const status = String(payload.status || "final").trim() || "final";

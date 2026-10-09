@@ -2853,8 +2853,10 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
       cloud_message: flow.cloud_message || "",
     });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ ok: false, gabim: e.message || "Gabim." });
+    const msg = String(e.message || "Gabim.").trim();
+    const biz = /nuk u gjet|mungon|pavlefsh|porosia/i.test(msg);
+    const status = e.status || (biz ? 400 : 500);
+    res.status(status).json({ ok: false, gabim: msg });
   }
 });
 

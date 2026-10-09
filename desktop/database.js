@@ -3452,6 +3452,85 @@ function getHotelServiceById(id) {
   return row ? decorateHotelService(row) : null;
 }
 
+function findHotelServiceByNameInsensitive(name) {
+  const n = String(name || "").trim();
+  if (!n) return null;
+  const row = sqlite.prepare(`
+    SELECT
+      s.*,
+      COALESCE(s.vat_category, '18') AS vat_category,
+      c.name AS category_name,
+      c.icon AS category_icon
+    FROM services s
+    LEFT JOIN service_categories c ON c.id = s.category_id
+    WHERE lower(trim(s.name)) = lower(trim(?))
+    LIMIT 1
+  `).get(n);
+  return row ? decorateHotelService(row) : null;
+}
+
+function guestServiceHintsById(order) {
+  const hints = new Map();
+  for (const it of order?.items || []) {
+    const sid = Number(it.service_id);
+    if (sid) hints.set(sid, it);
+  }
+  return hints;
+}
+
+function resolveHotelServiceForGuestCloudLine(raw, hint) {
+  const sid = Number(raw?.service_id);
+  if (sid) {
+    const byId = getHotelServiceById(sid);
+    if (byId && byId.active !== 0) return byId;
+  }
+  let name = String(hint?.name || raw?.name || "").trim();
+  if (/^Shërbim #\d+$/i.test(name)) name = "";
+  if (name) {
+    const byName = findHotelServiceByNameInsensitive(name);
+    if (byName && byName.active !== 0) return byName;
+  }
+  return null;
+}
+
+/** Kur ID cloud ≠ katalog lokal — shto charge nga emri/çmimi i porosisë QR. */
+function applyGuestServiceChargeFallback(roomId, raw, hint) {
+  const room = getRoomById(roomId);
+  if (!room) throw new Error("Dhoma nuk u gjet.");
+  if (room.status !== "occupied") {
+    throw new Error("Shërbimi shtohet vetëm në dhoma të zëna.");
+  }
+  const guest = getActiveGuestForRoom(room.id);
+  if (!guest) throw new Error("Nuk ka mysafir aktiv në këtë dhomë.");
+  let qty = Number(raw?.quantity ?? hint?.quantity);
+  if (!Number.isFinite(qty) || qty < 1) qty = 1;
+  qty = Math.min(99, Math.trunc(qty));
+  let unit = Number(raw?.amount ?? raw?.price ?? hint?.price ?? 0);
+  if (!Number.isFinite(unit) || unit < 0) unit = 0;
+  let name = String(hint?.name || raw?.name || "").trim();
+  if (!name || /^Shërbim #\d+$/i.test(name)) name = "Shërbim hoteli (QR)";
+  const noteTxt = String(raw?.notes || hint?.notes || "").trim();
+  let description = qty > 1 ? `${qty}× ${name}` : name;
+  if (noteTxt) description += ` — ${noteTxt}`;
+  const lineTotal = Math.round(unit * qty * 100) / 100;
+  const charge = addRoomCharge({
+    guest_id: guest.id,
+    room_id: room.id,
+    description,
+    amount: lineTotal,
+    vat_category: String(hint?.vat_category || "18"),
+  });
+  return {
+    charge,
+    guest,
+    room,
+    service: null,
+    quantity: qty,
+    unit_price: unit,
+    fallback: true,
+  };
+}
+
 function setHotelServicePhoto(id, photo) {
   const val = photo ? String(photo).trim() : "";
   sqlite.prepare("UPDATE services SET photo = ? WHERE id = ?").run(val, Number(id));
@@ -4582,7 +4661,7 @@ function buildGuestServiceOrderPayload(target, serviceLines) {
 }
 
 function applyGuestHotelServiceOrder(order) {
-  const roomNum = String(order?.room_number || "").trim();
+  const roomNum = String(order?.room_number || parseRoomNumberFromCloudOrder(order) || "").trim();
   if (!roomNum) throw new Error("Numri i dhomës mungon.");
   const target = resolveGuestRoomTarget(roomNum);
   const rawLines = Array.isArray(order?.service_lines) && order.service_lines.length
@@ -4590,19 +4669,27 @@ function applyGuestHotelServiceOrder(order) {
     : (Array.isArray(order?.items) ? order.items.map((i) => ({
       service_id: i.service_id,
       quantity: i.quantity,
-      amount: i.price,
+      amount: i.price ?? i.amount,
       notes: i.notes,
+      name: i.name,
     })) : []);
   if (!rawLines.length) throw new Error("Porosia nuk ka shërbime.");
 
+  const hints = guestServiceHintsById(order);
   const applied = [];
   if (target.mode === "occupied") {
     for (const raw of rawLines) {
-      applied.push(addServiceChargeToRoom(target.room.id, raw.service_id, {
-        quantity: raw.quantity,
-        amount: raw.amount,
-        notes: raw.notes,
-      }));
+      const hint = hints.get(Number(raw.service_id)) || raw;
+      const svc = resolveHotelServiceForGuestCloudLine(raw, hint);
+      if (svc) {
+        applied.push(addServiceChargeToRoom(target.room.id, svc.id, {
+          quantity: raw.quantity,
+          amount: raw.amount ?? hint?.price,
+          notes: raw.notes,
+        }));
+      } else {
+        applied.push(applyGuestServiceChargeFallback(target.room.id, raw, hint));
+      }
     }
     return {
       ok: true,
@@ -4614,7 +4701,22 @@ function applyGuestHotelServiceOrder(order) {
   }
 
   for (const raw of rawLines) {
-    appendReservationServiceLine(target.reservation.id, target.room.id, raw);
+    const hint = hints.get(Number(raw.service_id)) || raw;
+    const svc = resolveHotelServiceForGuestCloudLine(raw, hint);
+    if (svc) {
+      appendReservationServiceLine(target.reservation.id, target.room.id, {
+        service_id: svc.id,
+        quantity: raw.quantity,
+        amount: raw.amount ?? hint?.price,
+        notes: raw.notes,
+      });
+    } else {
+      throw new Error(
+        hint?.name
+          ? `Shërbimi «${String(hint.name).trim()}» nuk u gjet në katalog — sinkronizoni shërbimet ose shtojeni lokalisht.`
+          : "Shërbimi nuk u gjet.",
+      );
+    }
     applied.push(raw);
   }
   return {
@@ -6541,10 +6643,43 @@ function isCloudStaffWaiterOrder(cloudOrder) {
   return orderDeviceId(cloudOrder) === "WEB-WAITER";
 }
 
+function parseGuestOrderMetaFromCloud(cloudOrder) {
+  if (!cloudOrder) return {};
+  if (cloudOrder.order_kind || cloudOrder.folio_pre_applied != null) {
+    return {
+      order_kind: String(cloudOrder.order_kind || "").trim(),
+      room_number: String(cloudOrder.room_number || "").trim(),
+      folio_pre_applied: !!cloudOrder.folio_pre_applied,
+      service_lines: Array.isArray(cloudOrder.service_lines) ? cloudOrder.service_lines : [],
+      nested_items: Array.isArray(cloudOrder.items) ? cloudOrder.items : [],
+    };
+  }
+  let raw = cloudOrder.items_json ?? cloudOrder.items;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return {
+      order_kind: String(raw.order_kind || "").trim(),
+      room_number: String(raw.room_number || "").trim(),
+      folio_pre_applied: !!raw.folio_pre_applied,
+      service_lines: Array.isArray(raw.service_lines) ? raw.service_lines : [],
+      nested_items: Array.isArray(raw.items) ? raw.items : [],
+    };
+  }
+  return {};
+}
+
 function parseRoomNumberFromCloudOrder(cloudOrder) {
   if (!cloudOrder) return "";
   const direct = String(cloudOrder.room_number ?? "").trim();
   if (direct) return direct;
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  if (meta.room_number) return meta.room_number;
   const blob = [
     cloudOrder.customer_label,
     cloudOrder.source_label,
@@ -6567,9 +6702,23 @@ function tryApplyCloudRoomMenuOrder(cloudOrder) {
   }
   const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
   if (!roomNum) return null;
-  const rawItems = cloudOrder.items || cloudOrder.items_json || [];
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  let rawItems = cloudOrder.items || cloudOrder.items_json || [];
+  if ((!Array.isArray(rawItems) || !rawItems.length) && meta.nested_items?.length) {
+    rawItems = meta.nested_items;
+  }
   const list = Array.isArray(rawItems) ? rawItems : [];
   if (!list.length) return null;
+  if (meta.folio_pre_applied || cloudOrder.folio_pre_applied) {
+    return {
+      ok: true,
+      mode: meta.target_mode || "occupied",
+      count: list.length,
+      room_number: roomNum,
+      folio_pre_applied: true,
+      guest_name: cloudOrder.customer_name || "",
+    };
+  }
   const mapped = mapCloudItemsToLocal(list);
   if (!mapped.length) return null;
   return submitGuestRoomMenuOrder(roomNum, mapped);
@@ -6603,7 +6752,9 @@ function isCloudOrderAcceptedForImport(cloudOrder) {
 function isGuestHotelServiceOrder(cloudOrder) {
   if (!cloudOrder) return false;
   if (String(cloudOrder.order_kind || "").trim() === "guest_hotel_service") return true;
-  return orderDeviceId(cloudOrder) === "WEB-GUEST-SERVICE";
+  if (orderDeviceId(cloudOrder) === "WEB-GUEST-SERVICE") return true;
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  return meta.order_kind === "guest_hotel_service";
 }
 
 /** QR dhomë / room service / shërbime hoteli — recepsioni, jo kamarieri restoranti. */
@@ -6630,8 +6781,10 @@ function isCloudOnlinePickupOrder(cloudOrder) {
     && parseTableNumberFromCloudOrder(cloudOrder) <= 0;
 }
 
-/** Vetëm QR tavolinë — pranohet në POS (takeaway/delivery shkojnë te banaku cloud) */
+/** QR tavolinë + porosi dhomë/shërbime mysafiri (recepsioni). */
 function isCloudPosAcceptQueueOrder(cloudOrder) {
+  if (isGuestHotelServiceOrder(cloudOrder)) return true;
+  if (isRecepcionCloudPendingOrder(cloudOrder)) return true;
   return isCloudQrTableOrder(cloudOrder);
 }
 
