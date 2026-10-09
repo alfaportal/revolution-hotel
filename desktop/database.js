@@ -6768,6 +6768,16 @@ function parseRoomNumberFromCloudOrder(cloudOrder) {
   return "";
 }
 
+/** Porosi QR menu — fatura e dhomës tashmë u aplikua (mos e dyfisho te PRANO). */
+function guestRoomMenuFolioAlreadyApplied(cloudOrder) {
+  if (!cloudOrder) return false;
+  if (cloudOrder.folio_pre_applied) return true;
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  if (meta.folio_pre_applied) return true;
+  if (isGuestRoomMenuOrder(cloudOrder) && cloudOrder.local_only) return true;
+  return false;
+}
+
 /** Porosi menu/room service nga cloud — dhomë e zënë → faturë dhomës (jo tavolinë restoranti). */
 function tryApplyCloudRoomMenuOrder(cloudOrder) {
   if (!cloudOrder || isGuestHotelServiceOrder(cloudOrder) || isCloudStaffWaiterOrder(cloudOrder)) {
@@ -6782,18 +6792,47 @@ function tryApplyCloudRoomMenuOrder(cloudOrder) {
   }
   const list = Array.isArray(rawItems) ? rawItems : [];
   if (!list.length) return null;
-  if (meta.folio_pre_applied || cloudOrder.folio_pre_applied) {
+
+  let target;
+  try {
+    target = resolveGuestRoomTarget(roomNum);
+  } catch {
+    return null;
+  }
+
+  if (guestRoomMenuFolioAlreadyApplied(cloudOrder)) {
+    const guestName = cloudOrder.customer_name
+      || (target.mode === "occupied" ? target.guest?.guest_name : target.reservation?.guest_name)
+      || "";
     return {
       ok: true,
-      mode: meta.target_mode || "occupied",
+      mode: target.mode,
       count: list.length,
       room_number: roomNum,
       folio_pre_applied: true,
-      guest_name: cloudOrder.customer_name || "",
+      guest_name: guestName,
     };
   }
+
   const mapped = mapCloudItemsToLocal(list);
   if (!mapped.length) return null;
+
+  if (target.mode === "occupied") {
+    const created = addRoomChargesFromOrderItems(
+      target.guest.id,
+      target.room.id,
+      mapped,
+      { source: "room_service", decrement_stock: true },
+    );
+    return {
+      ok: true,
+      mode: "occupied",
+      count: created.length,
+      room_number: target.room.room_number,
+      guest_name: target.guest.guest_name,
+    };
+  }
+
   return submitGuestRoomMenuOrder(roomNum, mapped);
 }
 
