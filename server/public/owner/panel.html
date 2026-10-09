@@ -1061,8 +1061,44 @@
             <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-bar">Kopjo</button>
           </div>
         </div>
-        <div class="link-row" id="owner-link-waiter-row">
-          <label>Kamarierët — link i përbashkët (menaxho punonjësit nga KAFENE desktop)</label>
+        <div class="link-row" id="owner-link-waiter-cloud-row">
+          <label>Kamarier — cloud (internet)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-waiter-cloud-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-waiter-cloud">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-waiter-wifi-row">
+          <label>Kamarier — WiFi lokal (IP, i njëjti rrjet si PC)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-waiter-wifi-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-waiter-wifi">Kopjo</button>
+          </div>
+        </div>
+        <div id="owner-waiter-hostnames" class="links-hint hidden" style="margin:-0.35rem 0 0.75rem"></div>
+        <div class="link-row" id="owner-link-reception-cloud-row">
+          <label>Recepsion — cloud (internet)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-reception-cloud-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-reception-cloud">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-reception-wifi-row">
+          <label>Recepsion — WiFi lokal (tablet recepsioni)</label>
+          <div class="link-actions">
+            <input type="text" id="owner-reception-wifi-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-reception-wifi">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row" id="owner-link-takeaway-row">
+          <label>Takeaway / porosi online</label>
+          <div class="link-actions">
+            <input type="text" id="owner-takeaway-url" readonly>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-takeaway">Kopjo</button>
+          </div>
+        </div>
+        <div class="link-row hidden" id="owner-link-waiter-row">
+          <label>Kamarierët — link i vjetër</label>
           <div class="link-actions">
             <input type="text" id="owner-waiter-url" readonly>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-owner-copy-waiter">Kopjo</button>
@@ -1345,7 +1381,7 @@
   <script src="/hotel/js/fiscalDiagnostics.js?v=1"></script>
   <script src="/hotel/js/offlineQueue.js?v=1"></script>
   <script src="/hotel/js/qrcode.js?v=1"></script>
-  <script src="/hotel/js/owner.js?v=39"></script>
+  <script src="/hotel/js/owner.js?v=40"></script>
   <script src="/hotel/js/owner-locations.js?v=1"></script>
   <script src="/hotel/js/owner-catalog.js?v=1"></script>
   <script src="/hotel/js/owner-stock.js?v=2"></script>

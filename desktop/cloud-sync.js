@@ -1032,6 +1032,14 @@ function buildCatalogPayload(db) {
     pin: String(s.pin || "").trim(),
   }));
 
+  let staff_local_links = null;
+  try {
+    const { buildStaffLocalLinksSyncPayload } = require("./local-staff-links");
+    staff_local_links = buildStaffLocalLinksSyncPayload(db);
+  } catch (err) {
+    console.warn("[cloud/sync] staff_local_links:", err.message);
+  }
+
   return {
     cfg,
     payload: {
@@ -1046,6 +1054,7 @@ function buildCatalogPayload(db) {
       categories,
       menu_items,
       staff,
+      ...(staff_local_links ? { staff_local_links } : {}),
     },
   };
 }

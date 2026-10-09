@@ -295,22 +295,61 @@ async function loadClient() {
   const linksCard = document.getElementById("owner-links-card");
   if (linksCard) linksCard.classList.toggle("hidden", !!viewAll);
 
+  const waiterCloud = links.waiter_cloud || links.waiter || data.waiter_url || "";
   const rows = [
     ["owner-link-bar-row", "owner-bar-url", features.kds, links.bar || data.bar_url],
-    ["owner-link-waiter-row", "owner-waiter-url", features.waiter, links.waiter || data.waiter_url],
+    ["owner-link-waiter-cloud-row", "owner-waiter-cloud-url", features.waiter, waiterCloud],
+    ["owner-link-waiter-wifi-row", "owner-waiter-wifi-url", true, links.waiter_wifi || ""],
+    ["owner-link-reception-cloud-row", "owner-reception-cloud-url", true, links.reception_cloud || ""],
+    ["owner-link-reception-wifi-row", "owner-reception-wifi-url", true, links.reception_wifi || ""],
+    ["owner-link-takeaway-row", "owner-takeaway-url", true, links.takeaway || ""],
     ["owner-link-kitchen-row", "owner-kitchen-url", features.kds, links.kitchen || data.kitchen_url],
     ["owner-link-kiosk-row", "owner-kiosk-url", features.kiosk, links.kiosk],
     ["owner-link-public-row", "owner-public-url", features.website, links.public_page],
   ];
   for (const [rowId, inputId, enabled, url] of rows) {
     const row = document.getElementById(rowId);
-    if (row) row.classList.toggle("hidden", !enabled);
+    const show = enabled && !!(url || "").trim();
+    if (row) row.classList.toggle("hidden", !show);
     const input = document.getElementById(inputId);
-    if (input) input.value = enabled ? (url || "") : "";
+    if (input) input.value = show ? (url || "") : "";
   }
+  const legacyWaiter = document.getElementById("owner-link-waiter-row");
+  if (legacyWaiter) legacyWaiter.classList.add("hidden");
+
+  const hostBox = document.getElementById("owner-waiter-hostnames");
+  const hostUrls = Array.isArray(links.waiter_hostname_urls) ? links.waiter_hostname_urls : [];
+  if (hostBox) {
+    if (!hostUrls.length) {
+      hostBox.innerHTML = "";
+      hostBox.classList.add("hidden");
+    } else {
+      hostBox.classList.remove("hidden");
+      hostBox.innerHTML =
+        "<p style=\"margin:0 0 0.4rem;font-size:0.8rem\">Kamarier — alternativa pa IP (emri PC / mDNS):</p>"
+        + hostUrls.map((e, i) => (
+          `<div class="link-actions" style="margin-bottom:0.35rem">`
+          + `<span style="font-size:0.75rem;min-width:8rem;color:var(--muted)">${escapeHtml(e.label || "Link")}</span>`
+          + `<input type="text" readonly id="owner-waiter-host-${i}" value="${escAttr(e.url || "")}" style="flex:1;font-family:monospace;font-size:0.72rem">`
+          + `<button type="button" class="btn btn-ghost btn-sm" data-copy-host="${i}">Kopjo</button>`
+          + `</div>`
+        )).join("");
+      hostBox.querySelectorAll("[data-copy-host]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const inp = document.getElementById(`owner-waiter-host-${btn.dataset.copyHost}`);
+          if (inp?.value) kopjoLinkun(inp.id, btn);
+        });
+      });
+    }
+  }
+
   const empty = document.getElementById("owner-links-empty");
   if (empty) {
-    empty.classList.toggle("hidden", !!(features.waiter || features.kds || features.kiosk || features.website));
+    const anyLink =
+      !!(features.waiter && waiterCloud)
+      || !!(links.waiter_wifi || links.reception_cloud || links.reception_wifi || links.takeaway)
+      || !!(features.kds || features.kiosk || features.website);
+    empty.classList.toggle("hidden", anyLink);
   }
 }
 
@@ -328,8 +367,23 @@ async function kopjoLinkun(inputId, btn) {
   }
 }
 
-document.getElementById("btn-owner-copy-waiter").addEventListener("click", function () {
+document.getElementById("btn-owner-copy-waiter")?.addEventListener("click", function () {
   kopjoLinkun("owner-waiter-url", this);
+});
+document.getElementById("btn-owner-copy-waiter-cloud")?.addEventListener("click", function () {
+  kopjoLinkun("owner-waiter-cloud-url", this);
+});
+document.getElementById("btn-owner-copy-waiter-wifi")?.addEventListener("click", function () {
+  kopjoLinkun("owner-waiter-wifi-url", this);
+});
+document.getElementById("btn-owner-copy-reception-cloud")?.addEventListener("click", function () {
+  kopjoLinkun("owner-reception-cloud-url", this);
+});
+document.getElementById("btn-owner-copy-reception-wifi")?.addEventListener("click", function () {
+  kopjoLinkun("owner-reception-wifi-url", this);
+});
+document.getElementById("btn-owner-copy-takeaway")?.addEventListener("click", function () {
+  kopjoLinkun("owner-takeaway-url", this);
 });
 document.getElementById("btn-owner-copy-kitchen").addEventListener("click", function () {
   kopjoLinkun("owner-kitchen-url", this);
