@@ -58,21 +58,9 @@
         <span class="nav-icon" aria-hidden="true">🌐</span>
         <span class="nav-label">Faqja publike</span>
       </button>
-      <button type="button" class="tab nav-tile" data-tab="zreport">
-        <span class="nav-icon" aria-hidden="true">📊</span>
-        <span class="nav-label">Raportet X/Z</span>
-      </button>
-      <button type="button" class="tab nav-tile" data-tab="fiskale">
-        <span class="nav-icon" aria-hidden="true">🧾</span>
-        <span class="nav-label">Arka</span>
-      </button>
       <button type="button" class="tab nav-tile" data-tab="llogaria">
         <span class="nav-icon" aria-hidden="true">🔑</span>
         <span class="nav-label">Llogaria</span>
-      </button>
-      <button type="button" class="tab nav-tile" data-tab="licenca">
-        <span class="nav-icon" aria-hidden="true">🔐</span>
-        <span class="nav-label">Licenca</span>
       </button>
       <button type="button" class="tab nav-tile" data-tab="porosite">
         <span class="nav-icon" aria-hidden="true">📦</span>
@@ -81,10 +69,6 @@
       <button type="button" class="tab nav-tile" data-tab="stoku">
         <span class="nav-icon" aria-hidden="true">📋</span>
         <span class="nav-label">Stoku</span>
-      </button>
-      <button type="button" class="tab nav-tile" data-tab="blerje" id="tab-blerje">
-        <span class="nav-icon" aria-hidden="true">🛒</span>
-        <span class="nav-label">Blerje</span>
       </button>
       <button type="button" class="tab nav-tile ai-feature-tab hidden" data-tab="ai" id="tab-ai-hub" hidden>
         <span class="nav-icon" aria-hidden="true">✨</span>
@@ -105,10 +89,6 @@
       <button type="button" class="tab nav-tile" data-tab="raportet">
         <span class="nav-icon" aria-hidden="true">📑</span>
         <span class="nav-label">Raportet</span>
-      </button>
-      <button type="button" class="tab nav-tile" data-tab="faturat">
-        <span class="nav-icon" aria-hidden="true">🧾</span>
-        <span class="nav-label">Faturat</span>
       </button>
       <button type="button" class="tab nav-tile" data-tab="linqet" id="tab-linqet">
         <span class="nav-icon" aria-hidden="true">🔗</span>
@@ -346,7 +326,7 @@
       </div>
     </div>
 
-    <div id="panel-blerje" class="panel-section hidden">
+    <div id="panel-blerje" class="panel-section hidden owner-panel-mobile-off" hidden aria-hidden="true">
       <div class="card">
         <div class="card-title">Blerje — shëno faturën</div>
         <p class="links-hint">
@@ -638,7 +618,7 @@
       </div>
     </div>
 
-    <div id="panel-zreport" class="panel-section hidden">
+    <div id="panel-zreport" class="panel-section hidden owner-panel-mobile-off" hidden aria-hidden="true">
       <div class="card">
         <div class="card-title card-title-row">
           <span id="zreport-title">Raporti Ditor (Z-Report)</span>
@@ -717,7 +697,7 @@
       </div>
     </div>
 
-    <div id="panel-fiskale" class="panel-section hidden">
+    <div id="panel-fiskale" class="panel-section hidden owner-panel-mobile-off" hidden aria-hidden="true">
       <div class="card">
         <div class="card-title">Arka fiskale ATK</div>
         <p class="owner-fiscal-intro">
@@ -1026,7 +1006,7 @@
       </div>
     </div>
 
-    <div id="panel-licenca" class="panel-section hidden">
+    <div id="panel-licenca" class="panel-section hidden owner-panel-mobile-off" hidden aria-hidden="true">
       <div class="card">
         <div class="card-title">Licenca e aplikacionit POS</div>
         <p class="links-hint">
@@ -1328,7 +1308,7 @@
       </div>
     </div>
 
-    <div id="panel-faturat" class="panel-section hidden">
+    <div id="panel-faturat" class="panel-section hidden owner-panel-mobile-off" hidden aria-hidden="true">
       <div id="owner-sales-invoices-root">
         <p class="links-hint">Duke ngarkuar faturat…</p>
       </div>
@@ -1365,7 +1345,7 @@
   <script src="/hotel/js/fiscalDiagnostics.js?v=1"></script>
   <script src="/hotel/js/offlineQueue.js?v=1"></script>
   <script src="/hotel/js/qrcode.js?v=1"></script>
-  <script src="/hotel/js/owner.js?v=38"></script>
+  <script src="/hotel/js/owner.js?v=39"></script>
   <script src="/hotel/js/owner-locations.js?v=1"></script>
   <script src="/hotel/js/owner-catalog.js?v=1"></script>
   <script src="/hotel/js/owner-stock.js?v=2"></script>

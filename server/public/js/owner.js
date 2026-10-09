@@ -2,6 +2,15 @@ let token = localStorage.getItem("owner_token") || "";
 
 const HOTEL_PREFIX = "/hotel";
 
+/** Nuk shfaqen në panelin cloud (telefon) — mbeten vetëm në desktop admin. */
+const OWNER_PHONE_HIDDEN_TABS = new Set([
+  "zreport",
+  "fiskale",
+  "licenca",
+  "blerje",
+  "faturat",
+]);
+
 function hotelPath(path) {
   const p = String(path || "");
   if (!p || p.startsWith(HOTEL_PREFIX) || /^https?:\/\//i.test(p)) return p;
@@ -2666,6 +2675,7 @@ document.querySelectorAll(".reservation-filter").forEach(btn => {
 
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
+    if (OWNER_PHONE_HIDDEN_TABS.has(tab.dataset.tab || "")) return;
     if (tab.classList.contains("ai-feature-locked")) {
       alert(AI_UPGRADE_MSG);
       return;
@@ -3351,7 +3361,7 @@ document.getElementById("btn-staff-add")?.addEventListener("click", async () => 
       window.openBlerjeAndScan();
       return;
     }
-    document.querySelector('.tab[data-tab="blerje"]')?.click();
+    alert("Blerjet dhe skanimi i faturës — vetëm në programin desktop (admin PC), jo në telefon.");
     document.getElementById("btn-invoice-scan-ai")?.click();
   });
 })();

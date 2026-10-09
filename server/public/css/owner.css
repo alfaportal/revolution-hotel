@@ -968,6 +968,11 @@
   text-align: center;
 }
 
+/* Panel pronari telefon — vetëm desktop/Electron (X/Z, arka, licencë, blerje, fatura) */
+.owner-panel-mobile-off {
+  display: none !important;
+}
+
 .owner-guest-list {
   display: flex;
   flex-direction: column;
