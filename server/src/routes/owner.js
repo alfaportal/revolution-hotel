@@ -76,7 +76,7 @@ const { getAssignmentState, setWaiterTables } = require("../services/waiterTable
 const { ensureKitchenCredentials, buildClientWebLinks, buildWaiterUrl, buildWaiterKitchenUrl } = require("../lib/kitchenAccess");
 const { buildHotelOwnerStaffLinks } = require("../lib/hotelStaffLinks");
 const { getSupabase } = require("../db");
-const { featuresForTier } = require("../lib/packages");
+const { featuresForTier, featuresForClient } = require("../lib/packages");
 const { listKioskQrCodes, listTableQrMeta, getTableQrCode, getTableQrPng, qrPrintHtml, singleQrPrintHtml, tableMenuUrl } = require("../services/kioskQrService");
 const {
   getOwnerPublicPageSettings,
@@ -241,7 +241,7 @@ router.get("/client", async (req, res) => {
       client = await ensureKitchenCredentials(client);
     }
     const base = getPublicAppOrigin();
-    const features = featuresForTier(client?.package_tier);
+    const features = featuresForClient(client);
     const built = buildClientWebLinks(base, client, client?.package_tier);
 
     let staffLocal = {};

@@ -7,6 +7,12 @@ const {
   toLegacyTier,
   isAiLegacyTier,
 } = require("./packageTierMap");
+const {
+  isHotelProductClient,
+  normalizeHotelPackageTier,
+  hotelHasAi,
+  hotelTierToLegacyFeatureTier,
+} = require("./hotelPackageTier");
 
 const PACKAGE_TIERS = ["pako_1", "pako_2", "pako_3", "pako_4", "pako_5"];
 
@@ -182,8 +188,20 @@ function featuresForTier(tier) {
   return base;
 }
 
+/** Pakot HOTEL (3 tier) — AI vetëm te pako_3 Premium. */
+function featuresForClient(client) {
+  if (!isHotelProductClient(client)) {
+    return featuresForTier(client?.package_tier);
+  }
+  const hotelTier = normalizeHotelPackageTier(client?.package_tier);
+  const legacyId = hotelTierToLegacyFeatureTier(hotelTier);
+  const base = { ...(TIER_FEATURES[legacyId] || TIER_FEATURES.pako_5) };
+  base.ai = hotelHasAi(client);
+  return base;
+}
+
 function clientHasFeature(client, feature) {
-  const features = featuresForTier(client?.package_tier);
+  const features = featuresForClient(client);
   return Boolean(features[feature]);
 }
 
@@ -231,6 +249,7 @@ module.exports = {
   TIER_CONTENTS,
   normalizePackageTier,
   featuresForTier,
+  featuresForClient,
   clientHasFeature,
   packageUpgradeMessage,
   AI_UPGRADE_MESSAGE,
