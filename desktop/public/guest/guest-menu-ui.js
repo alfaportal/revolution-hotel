@@ -7,10 +7,20 @@
     return p.startsWith("/") ? p : `/${p}`;
   }
 
+  function guestStaticAssetUrl(src) {
+    const s = String(src || "").trim();
+    if (!s || /^https?:\/\//i.test(s)) return s;
+    const hotelPrefix = String(global.location?.pathname || "").includes("/hotel/") ? "/hotel" : "";
+    if (s.startsWith("/menu-stock/")) return `${hotelPrefix}${s}`;
+    if (s.startsWith("/hotel/")) return s;
+    if (s.startsWith("/")) return `${hotelPrefix}${s}`;
+    return s;
+  }
+
   /** Foto menu — e njëjta burim si /api/menu (pronari/kamarieri). */
   function guestPhotoUrl(item) {
-    const src = String(item?.photo_src || item?.photo || "").trim();
-    if (src.startsWith("/") || /^https?:\/\//i.test(src)) return src;
+    const src = String(item?.photo_src || item?.photo_url || item?.photo || "").trim();
+    if (src) return guestStaticAssetUrl(src);
     if (item?.id != null) return guestApi(`/api/guest/menu/${item.id}/photo`);
     return "";
   }
