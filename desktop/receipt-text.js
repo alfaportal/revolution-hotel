@@ -171,6 +171,7 @@ function buildReceiptLineItems({
   sourceLabel = "",
   waiterName = "",
   acceptedBy = "",
+  paymentBy = "",
   items = [],
   total = 0,
   receiptNumber = "",
@@ -210,6 +211,7 @@ function buildReceiptLineItems({
     lines.push(kind === "order" ? `Klienti: ${waiterName}` : `Kamarieri: ${waiterName}`);
   }
   if (acceptedBy) lines.push(`Pranuar nga: ${acceptedBy}`);
+  if (kind === "final" && paymentBy) lines.push(`Pagesë nga: ${paymentBy}`);
   if (registerName) lines.push(`Arka: ${registerName}`);
   if (cashierName) lines.push(`Operatori: ${cashierName}`);
   lines.push(`Data: ${date}  Ora: ${time}`);

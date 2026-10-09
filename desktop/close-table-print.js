@@ -1,6 +1,7 @@
 const receiptPrint = require("./receipt-print");
 const { buildReceiptHtml } = require("./receipt-html");
 const printer = require("./printer");
+const { receiptStaffFields } = require("./receipt-staff-meta");
 
 function normalizeCouponType(raw) {
   const v = String(raw || "thermal").trim().toLowerCase();
@@ -12,6 +13,7 @@ async function printClosedTableReceipt(db, {
   receipt,
   tableNumber = 0,
   couponType = "thermal",
+  closedBy = "",
 }) {
   const fiscal = db.getFiscalSettings();
   const settings = typeof db.getSettings === "function" ? db.getSettings() : {};
@@ -30,11 +32,15 @@ async function printClosedTableReceipt(db, {
   const discountTotal = Number(order.discount_total) || 0;
   const promotionName = order.promotion_name || "";
   const subtotalBeforeDiscount = order.subtotal != null ? order.subtotal : null;
+  const staff = receiptStaffFields(order, closedBy || order.closed_by || order.waiter_name);
 
   if (kind === "fiscal") {
     const html = buildReceiptHtml({
       tableNumber,
-      waiterName: order.waiter_name,
+      waiterName: staff.waiterName,
+      acceptedBy: staff.acceptedBy,
+      paymentBy: staff.paymentBy,
+      guestContext: staff.guestContext,
       items: parsedItems,
       fiscal,
       receiptNumber: receipt.receipt_number,
@@ -70,7 +76,11 @@ async function printClosedTableReceipt(db, {
   }
 
   const printResult = await receiptPrint.printOrderReceipt(db, {
-    order,
+    order: {
+      ...order,
+      waiter_name: staff.waiterName,
+      source_label: staff.guestContext || order.source_label,
+    },
     tableNumber,
     receiptNumber: receipt.receipt_number,
     fiscal,
@@ -80,6 +90,8 @@ async function printClosedTableReceipt(db, {
     paymentMethod: order.payment_method,
     slipKind: "final",
     station: "bar",
+    acceptedBy: staff.paymentBy || staff.acceptedBy,
+    paymentBy: staff.paymentBy,
     discountTotal,
     promotionName,
     subtotalBeforeDiscount,
@@ -124,7 +136,8 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     ? String(rawCoupon).trim().toLowerCase()
     : null;
   const fiscalSkip = opts.fiscal_skip === true || opts.fiscalSkip === true || requestedCoupon === "thermal";
-  const closed = db.closeTable(table.id, order.waiter_name || "Kamarier", false, pay, null, {
+  const closingName = String(opts.waiter_name || opts.closedBy || order.waiter_name || "Kamarier").trim();
+  const closed = db.closeTable(table.id, closingName, false, pay, null, {
     allowAnyWaiter: true,
   });
   if (!closed) return { printed: false, skipped: true, reason: "close_failed" };
@@ -184,6 +197,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     receipt,
     tableNumber: num,
     couponType: fiscalSkip ? "thermal" : "fiscal",
+    closedBy: closingName,
   });
   console.log("[close-print] cloud close T" + num, {
     printed: !!printResult?.printed,

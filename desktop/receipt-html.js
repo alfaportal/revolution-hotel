@@ -38,6 +38,9 @@ function resolveVenueLineHtml(tableNumber, sourceLabel, waiterName) {
 function buildReceiptHtml({
   tableNumber,
   waiterName,
+  acceptedBy = "",
+  paymentBy = "",
+  guestContext = "",
   items,
   fiscal,
   receiptNumber,
@@ -79,6 +82,15 @@ function buildReceiptHtml({
     ? `<div class="receipt-meta">Pagesa: ${paymentLabel}</div>`
     : "";
   const venueLine = resolveVenueLineHtml(tableNumber, sourceLabel, waiterName);
+  const guestLine = guestContext
+    ? `<div class="receipt-meta">Porosia: ${String(guestContext).replace(/</g, "&lt;")}</div>`
+    : "";
+  const acceptedLine = acceptedBy
+    ? `<div class="receipt-meta">Pranuar nga: ${String(acceptedBy).replace(/</g, "&lt;")}</div>`
+    : "";
+  const paymentByLine = paymentBy
+    ? `<div class="receipt-meta">Pagesë nga: ${String(paymentBy).replace(/</g, "&lt;")}</div>`
+    : "";
 
   return `
     <div class="receipt-rule">================================</div>
@@ -95,7 +107,10 @@ function buildReceiptHtml({
     <div class="receipt-rule">--------------------------------</div>
     <div class="receipt-meta">Data: ${data}  Ora: ${ora}</div>
     ${venueLine}
+    ${guestLine}
     <div class="receipt-meta">Kamarieri: ${waiterName || "—"}</div>
+    ${acceptedLine}
+    ${paymentByLine}
     <div class="receipt-meta">Arka: ${f.biz_register_number || "—"}</div>
     <div class="receipt-meta">Operatori: ${f.biz_cashier_operator || "—"}</div>
     <div class="receipt-rule">--------------------------------</div>

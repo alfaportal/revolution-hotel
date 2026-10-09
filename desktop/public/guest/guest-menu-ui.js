@@ -17,10 +17,17 @@
     return s;
   }
 
+  function withMenuStockCacheBust(url) {
+    const u = String(url || "").trim();
+    if (!u || !u.includes("/menu-stock/")) return u;
+    if (/[?&]v=/.test(u)) return u;
+    return `${u}${u.includes("?") ? "&" : "?"}v=5`;
+  }
+
   /** Foto menu — e njëjta burim si /api/menu (pronari/kamarieri). */
   function guestPhotoUrl(item) {
     const src = String(item?.photo_src || item?.photo_url || item?.photo || "").trim();
-    if (src) return guestStaticAssetUrl(src);
+    if (src) return withMenuStockCacheBust(guestStaticAssetUrl(src));
     if (item?.id != null) return guestApi(`/api/guest/menu/${item.id}/photo`);
     return "";
   }
@@ -28,7 +35,9 @@
   /** Foto shërbimi — e njëjta burim si Admin → Shërbimet / kamarier. */
   function guestServicePhotoUrl(service, group) {
     const src = String(service?.photo_src || service?.photo || group?.photo || "").trim();
-    if (src.startsWith("/") || /^https?:\/\//i.test(src)) return src;
+    if (src.startsWith("/") || /^https?:\/\//i.test(src)) {
+      return withMenuStockCacheBust(guestStaticAssetUrl(src));
+    }
     if (service?.id != null) return guestApi(`/api/guest/services/${service.id}/photo`);
     return "";
   }

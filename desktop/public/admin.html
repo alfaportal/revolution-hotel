@@ -2702,10 +2702,6 @@
         <button type="button" id="btn-update-vat-all" style="background:#FF6B35;color:#fff;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin:10px 0;">🔄 Përditëso TVSH të gjitha produkteve</button>
         <div id="msg-update-vat-all" class="fiscal-save-msg" hidden style="margin:0 0 10px"></div>
         <div id="product-cat-filter" class="product-cat-filter" role="tablist" aria-label="Filtro sipas kategorisë"></div>
-        <p style="margin:0.75rem 0;color:var(--ngjyr-muted);font-size:0.85rem">
-          <strong>Të gjitha</strong> — shfaq krejt produktet. Zgjidh një kategori (p.sh. Alkool) për të
-          <strong>zvarritur</strong> (⋮⋮) renditjen. <strong>Ndrysho</strong> / <strong>Stop</strong> / <strong>Fshi</strong>.
-        </p>
         <div id="product-grid" class="product-grid"></div>
       </div>
     </section>
@@ -8220,17 +8216,29 @@
       });
     }
 
+    function productCardThumb(it) {
+      const initials = productInitials(it.name);
+      const url = typeof menuPhotoUrl === "function" ? String(menuPhotoUrl(it) || "").trim() : "";
+      if (!url) {
+        return `<div class="product-initial" aria-hidden="true">${escMenuAttr(initials)}</div>`;
+      }
+      return `<div class="product-thumb" aria-hidden="true">
+        <img class="product-photo" src="${escMenuAttr(url)}" alt="" loading="lazy" decoding="async"
+          onerror="this.onerror=null;this.hidden=true;var f=this.nextElementSibling;if(f)f.hidden=false;">
+        <div class="product-initial product-initial-fallback" hidden>${escMenuAttr(initials)}</div>
+      </div>`;
+    }
+
     function productCardHeader(it, editing) {
       const accent = categoryAccentColor(it.category);
-      const initials = productInitials(it.name);
       if (editing) {
         return `<div class="product-card-header" style="--product-accent:${accent}">
-          <div class="product-initial" aria-hidden="true">${escMenuAttr(initials)}</div>
+          ${productCardThumb(it)}
           <span class="product-edit-hint">Duke redaktuar</span>
         </div>`;
       }
       return `<div class="product-card-header" style="--product-accent:${accent}">
-        <div class="product-initial" aria-hidden="true">${escMenuAttr(initials)}</div>
+        ${productCardThumb(it)}
         <div class="product-card-head-text">
           <div class="product-card-name">${escMenuAttr(it.name)}</div>
           <span class="product-cat-chip">${escMenuAttr(it.category)}</span>

@@ -7523,7 +7523,8 @@ function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash"
   }
   const method = normalizePaymentMethod(paymentMethod);
   const table = sqlite.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-  const logMeta = shiftMetaForWaiter(order.waiter_name);
+  const closingStaff = String(waiterName || order.waiter_name || "").trim();
+  const logMeta = shiftMetaForWaiter(closingStaff);
   const subtotal = pricing?.subtotal != null ? Number(pricing.subtotal) : Number(order.total);
   const discountTotal = pricing?.discount_total != null ? Number(pricing.discount_total) : 0;
   const finalTotal = pricing?.total != null ? Number(pricing.total) : Number(order.total);
@@ -7538,7 +7539,7 @@ function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash"
     sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tableId);
     addDailyLogEntry({
       table_number:  table.number,
-      waiter_name:   order.waiter_name,
+      waiter_name:   closingStaff,
       items_json:    order.items_json,
       total:         finalTotal,
       receipt_number: null,
@@ -7564,6 +7565,7 @@ function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash"
     discount_total: discountTotal,
     promotion_id: promotionId,
     promotion_name: promotionName,
+    closed_by: closingStaff,
   };
 }
 
@@ -7589,7 +7591,8 @@ function closeOrderById(orderId, waiterName, isAdmin = false, paymentMethod = "c
   }
   const method = normalizePaymentMethod(paymentMethod);
   const table = sqlite.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-  const logMeta = shiftMetaForWaiter(order.waiter_name);
+  const closingStaff = String(waiterName || order.waiter_name || "").trim();
+  const logMeta = shiftMetaForWaiter(closingStaff);
   const subtotal = pricing?.subtotal != null ? Number(pricing.subtotal) : Number(order.total);
   const discountTotal = pricing?.discount_total != null ? Number(pricing.discount_total) : 0;
   const finalTotal = pricing?.total != null ? Number(pricing.total) : Number(order.total);
@@ -7611,7 +7614,7 @@ function closeOrderById(orderId, waiterName, isAdmin = false, paymentMethod = "c
     }
     addDailyLogEntry({
       table_number:  table.number,
-      waiter_name:   order.waiter_name,
+      waiter_name:   closingStaff,
       items_json:    order.items_json,
       total:         finalTotal,
       receipt_number: null,
@@ -7637,6 +7640,7 @@ function closeOrderById(orderId, waiterName, isAdmin = false, paymentMethod = "c
     discount_total: discountTotal,
     promotion_id: promotionId,
     promotion_name: promotionName,
+    closed_by: closingStaff,
   };
 }
 
@@ -7706,7 +7710,8 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
     : partialSubtotal;
   const method = normalizePaymentMethod(paymentMethod);
   const table = sqlite.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-  const logMeta = shiftMetaForWaiter(order.waiter_name);
+  const closingStaff = String(waiterName || order.waiter_name || "").trim();
+  const logMeta = shiftMetaForWaiter(closingStaff);
   const promotionId = pricing?.promotion_id ?? null;
   const promotionName = pricing?.promotion_name || "";
 
@@ -7722,7 +7727,7 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
 
     addDailyLogEntry({
       table_number: table.number,
-      waiter_name: order.waiter_name,
+      waiter_name: closingStaff,
       items_json: JSON.stringify(removed),
       total: partialTotal,
       receipt_number: null,

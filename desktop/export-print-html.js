@@ -167,6 +167,9 @@ function buildGuestFolioPrintHtml(folio, fiscal, restaurantName) {
       <div class="receipt-item"><span>Dhoma</span><span>${escHtml(room.room_number || "—")}</span></div>
       <div class="receipt-item"><span>Check-in</span><span>${escHtml(bill.check_in_date || guest.check_in_date || "—")}</span></div>
       <div class="receipt-item"><span>Check-out</span><span>${escHtml(bill.check_out_date || guest.check_out_date || "—")}</span></div>
+      ${data.processed_by ? `<div class="receipt-item"><span>Përpunoi pagesën</span><span>${escHtml(data.processed_by)}</span></div>` : ""}
+      ${data.payment_label ? `<div class="receipt-item"><span>Pagesa</span><span>${escHtml(data.payment_label)}</span></div>` : ""}
+      ${data.shift_id ? `<div class="receipt-item"><span>Nderrimi</span><span>#${escHtml(String(data.shift_id))}</span></div>` : ""}
       <div class="receipt-rule">--------------------------------</div>
       <div class="receipt-meta receipt-invoice">DHOMË</div>
       <div class="receipt-item"><span>${escHtml(data.room_line?.description || `${bill.nights || 0} netë`)}</span><span>${formatEuro(bill.room_total)}</span></div>
@@ -210,6 +213,15 @@ function buildGuestFolioPrintLines(folio, fiscal, restaurantName, paper = "80mm"
   lines.push(labelValueLine("Dhoma", String(room.room_number || "—"), w));
   lines.push(labelValueLine("Check-in", String(bill.check_in_date || guest.check_in_date || "—"), w));
   lines.push(labelValueLine("Check-out", String(bill.check_out_date || guest.check_out_date || "—"), w));
+  if (data.processed_by) {
+    lines.push(truncatedLabelValueLine("Përpunoi pagesën", String(data.processed_by), w));
+  }
+  if (data.payment_label) {
+    lines.push(labelValueLine("Pagesa", String(data.payment_label), w));
+  }
+  if (data.shift_id) {
+    lines.push(labelValueLine("Nderrimi", `#${String(data.shift_id)}`, w));
+  }
   lines.push(divider(w, "-"));
   lines.push(pad("DHOMË", w, "center"));
   lines.push(truncatedLabelValueLine(

@@ -146,6 +146,7 @@
       "receipt-print.js",
       "receipt-text.js",
       "receipt-html.js",
+      "receipt-staff-meta.js",
       "close-table-print.js",
       "waiter-shift-html.js",
       "shift-report-html.js",

@@ -1033,6 +1033,29 @@ async function autoPrintKitchenTicket(db, opts) {
   return autoPrintOrderSlip(db, opts);
 }
 
+function enrichGuestFolioForReceipt(db, folio, { processedBy, paymentMethod } = {}) {
+  const name = String(processedBy || folio?.processed_by || "").trim();
+  let shift_id = folio?.shift_id ?? null;
+  if (name && shift_id == null && typeof db.shiftMetaForWaiter === "function") {
+    try {
+      shift_id = db.shiftMetaForWaiter(name).shift_id;
+    } catch {
+      shift_id = null;
+    }
+  }
+  const pm = paymentMethod != null ? paymentMethod : folio?.payment_method;
+  const payment_label = pm != null && typeof db.paymentMethodLabel === "function"
+    ? db.paymentMethodLabel(pm)
+    : (folio?.payment_label || "");
+  return {
+    ...folio,
+    processed_by: name || folio?.processed_by,
+    payment_method: pm,
+    payment_label,
+    shift_id: shift_id ?? folio?.shift_id,
+  };
+}
+
 /** Print fatura qëndrimi hoteli — termik (bar) ose fiskal. */
 async function printGuestFolioReceipt(db, folio, opts = {}) {
   const { normalizeCouponType } = require("./close-table-print");
@@ -1040,8 +1063,12 @@ async function printGuestFolioReceipt(db, folio, opts = {}) {
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
   const hotelName = folio?.hotel_name || settings.business_name || "Hotel";
-  const html = buildGuestFolioPrintHtml(folio, fiscal, hotelName);
-  const text = buildGuestFolioPrintLines(folio, fiscal, hotelName).join("\n");
+  const receiptFolio = enrichGuestFolioForReceipt(db, folio, {
+    processedBy: opts.processedBy,
+    paymentMethod: opts.paymentMethod,
+  });
+  const html = buildGuestFolioPrintHtml(receiptFolio, fiscal, hotelName);
+  const text = buildGuestFolioPrintLines(receiptFolio, fiscal, hotelName).join("\n");
 
   if (kind === "fiscal") {
     try {
@@ -1079,7 +1106,15 @@ function toMenuItemDto(item) {
   const dbPhoto = String(photo || "").trim();
   const stock = String(menuStockPhotos.stockPhotoForName(item.name) || "").trim();
   const hasStored = Boolean(dbPhoto) || Boolean(item.has_photo);
-  const p = dbPhoto || stock || "";
+  let p = dbPhoto || stock || "";
+  if (
+    stock
+    && dbPhoto
+    && menuStockPhotos.isRemotePhoto(dbPhoto)
+    && !menuStockPhotos.isStockPhoto(dbPhoto)
+  ) {
+    p = stock;
+  }
   rest.has_photo = hasStored || Boolean(stock);
   rest.system_photo = Boolean(p) && (!hasStored || menuStockPhotos.isStockPhoto(dbPhoto || p));
   if (p.startsWith("/") || /^https?:\/\//i.test(p)) rest.photo_src = p;
@@ -1122,8 +1157,16 @@ function resolveMenuItemPhoto(id) {
     : db.getMenuItems(false).find(i => Number(i.id) === numId);
   if (!item) return "";
   const stock = menuStockPhotos.stockPhotoForName(item.name);
-  const stored = db.getMenuItemPhoto(numId);
-  return String(stored || "").trim() || stock || "";
+  const stored = String(db.getMenuItemPhoto(numId) || "").trim();
+  if (
+    stock
+    && stored
+    && menuStockPhotos.isRemotePhoto(stored)
+    && !menuStockPhotos.isStockPhoto(stored)
+  ) {
+    return stock;
+  }
+  return stored || stock || "";
 }
 
 function resolveServicePhoto(id) {
@@ -3562,7 +3605,9 @@ app.post("/api/admin/guests/:id/print-folio", auth, adminOnly, async (req, res) 
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
     });
-    const result = await printGuestFolioReceipt(db, folio);
+    const result = await printGuestFolioReceipt(db, folio, {
+      processedBy: req.session.emri || "Admin",
+    });
     auditReq(req, "Print faturë qëndrimi", `${folio.guest.guest_name} · Dh. ${folio.room.room_number}`);
     res.json({ ok: true, ...result, folio: { total: folio.bill.total, guest_id: folio.guest.id } });
   } catch (e) {
@@ -3577,7 +3622,9 @@ app.post("/api/admin/rooms/:id/print-folio", auth, adminOnly, async (req, res) =
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
     });
-    const result = await printGuestFolioReceipt(db, folio);
+    const result = await printGuestFolioReceipt(db, folio, {
+      processedBy: req.session.emri || "Admin",
+    });
     auditReq(req, "Print faturë qëndrimi", `${folio.guest.guest_name} · Dh. ${folio.room.room_number}`);
     res.json({ ok: true, ...result, folio: { total: folio.bill.total, guest_id: folio.guest.id } });
   } catch (e) {
@@ -3724,13 +3771,18 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
         hotel_name: db.getSettings()?.business_name || "Hotel",
       };
     }
+    const processedBy = req.session.emri || "Recepcion";
+    const folioPrintOpts = {
+      processedBy,
+      paymentMethod: payInfo.payment_method,
+    };
     let printResult = { printed: false, printMessage: "", html: null, coupon_type: couponType };
     if (fiscalSkip) {
-      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal" });
+      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal", ...folioPrintOpts });
     } else if (fiscalConfig.isFiscalEnabled()) {
-      printResult = await printGuestFolioReceipt(db, folio, { couponType: "fiscal" });
+      printResult = await printGuestFolioReceipt(db, folio, { couponType: "fiscal", ...folioPrintOpts });
     } else {
-      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal" });
+      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal", ...folioPrintOpts });
     }
     auditReq(
       req,
@@ -3772,7 +3824,9 @@ app.post("/api/waiter/rooms/:id/print-folio", auth, staffOrAdmin, async (req, re
         throw previewErr;
       }
     }
-    const result = await printGuestFolioReceipt(db, folio);
+    const result = await printGuestFolioReceipt(db, folio, {
+      processedBy: req.session.emri || "Recepcion",
+    });
     auditReq(req, "Print faturë qëndrimi", `${folio.guest.guest_name} · Dh. ${folio.room.room_number}`);
     res.json({ ok: true, ...result, folio: { total: folio.bill.total, guest_id: folio.guest.id } });
   } catch (e) {
@@ -3787,7 +3841,9 @@ app.post("/api/waiter/guests/:id/print-folio", auth, staffOrAdmin, async (req, r
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
     });
-    const result = await printGuestFolioReceipt(db, folio);
+    const result = await printGuestFolioReceipt(db, folio, {
+      processedBy: req.session.emri || "Recepcion",
+    });
     auditReq(req, "Print faturë qëndrimi", `${folio.guest.guest_name} · Dh. ${folio.room.room_number}`);
     res.json({ ok: true, ...result, folio: { total: folio.bill.total, guest_id: folio.guest.id } });
   } catch (e) {
@@ -4298,6 +4354,7 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
         receipt,
         tableNumber: table?.number || 0,
         couponType: "thermal",
+        closedBy: waiterName,
       });
     }
 
@@ -4579,6 +4636,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
         receipt,
         tableNumber: table?.number || 0,
         couponType: fiscalSkip ? "thermal" : (sefOn ? "thermal" : couponType),
+        closedBy: waiterName,
       });
     } else {
       console.log("[close-and-print] SEF replace — skip kupon normal mbylljeje, vetëm fiskal");
@@ -4708,6 +4766,9 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       subtotal: pricing.subtotal,
       discount_total: pricing.discount_total,
       promotion_name: pricing.promotion_name,
+      closed_by: waiterName,
+      source_label: result.order?.source_label || "",
+      waiter_name: result.order?.waiter_name || waiterName,
     };
 
     const receipt = db.createReceipt(fiscalOrderId);
@@ -4733,6 +4794,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
         receipt,
         tableNumber: table?.number || 0,
         couponType: fiscalSkip ? "thermal" : (sefOn ? "thermal" : couponType),
+        closedBy: waiterName,
       });
     } else {
       console.log("[split-close] SEF replace — skip kupon normal mbylljeje, vetëm fiskal");
@@ -8746,6 +8808,7 @@ app.post("/api/receipts/print", auth, adminOnly, async (req, res) => {
       receipt,
       tableNumber: table?.number || 0,
       couponType: effectiveCouponType,
+      closedBy: req.session.emri || receipt.order?.closed_by || "",
     });
 
     res.json({
