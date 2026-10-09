@@ -17,6 +17,7 @@ const {
 const { testSupabaseConnection } = require("./db");
 const authRoutes = require("./routes/auth");
 const licenseRoutes = require("./routes/license");
+const hotelPmsRoutes = require("./routes/hotelPms");
 const salesRoutes = require("./routes/sales");
 const adminRoutes = require("./routes/admin");
 const superRoutes = require("./routes/super");
@@ -429,6 +430,7 @@ app.get("/health/db", async (_req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/v1/license", licenseRoutes);
+app.use("/api/v1/hotel", hotelPmsRoutes);
 app.use("/api/v1/sales", salesRoutes);
 app.use("/api/v1/pos", posRoutes);
 app.use("/api/v1/receipt", receiptRoutes);

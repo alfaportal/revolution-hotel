@@ -46,6 +46,14 @@
         <span class="nav-icon" aria-hidden="true">🪑</span>
         <span class="nav-label">Tavolinat Live</span>
       </button>
+      <button type="button" class="tab nav-tile" data-tab="dhomat">
+        <span class="nav-icon" aria-hidden="true">🛏️</span>
+        <span class="nav-label">Dhomat</span>
+      </button>
+      <button type="button" class="tab nav-tile" data-tab="mysafiret">
+        <span class="nav-icon" aria-hidden="true">👤</span>
+        <span class="nav-label">Mysafirët</span>
+      </button>
       <button type="button" class="tab nav-tile" data-tab="faqja">
         <span class="nav-icon" aria-hidden="true">🌐</span>
         <span class="nav-label">Faqja publike</span>
@@ -120,6 +128,30 @@
           <h2 class="owner-online-title" id="owner-online-title">POROSI ONLINE</h2>
           <div id="live-online-slots-grid" class="live-online-slots-grid"></div>
         </section>
+      </div>
+    </div>
+
+    <div id="panel-dhomat" class="panel-section hidden">
+      <div class="card">
+        <div class="live-tables-head">
+          <div class="card-title" style="margin:0">Dhomat e hotelit</div>
+          <span id="hotel-rooms-updated" class="live-updated-label"></span>
+        </div>
+        <p class="links-hint">Të dhënat vijnë nga PC-ja (Revolution HOTEL) — «Sinkronizo gjithçka» te Cilësimet ose sync automatik. Lexim nga telefoni; ndryshimet bëhen në desktop/recepsion.</p>
+        <div id="hotel-rooms-empty" class="links-hint hidden" style="color:var(--warn,#f59e0b)"></div>
+        <div id="hotel-rooms-grid" class="live-tables-grid"></div>
+      </div>
+    </div>
+
+    <div id="panel-mysafiret" class="panel-section hidden">
+      <div class="card">
+        <div class="live-tables-head">
+          <div class="card-title" style="margin:0">Mysafirët</div>
+          <span id="hotel-guests-updated" class="live-updated-label"></span>
+        </div>
+        <p class="links-hint">Qëndrimet e fundit të sinkronizuara nga hoteli (check-in / check-out).</p>
+        <div id="hotel-guests-empty" class="links-hint hidden" style="color:var(--warn,#f59e0b)"></div>
+        <div id="hotel-guests-list" class="owner-guest-list"></div>
       </div>
     </div>
 
@@ -1333,7 +1365,7 @@
   <script src="/hotel/js/fiscalDiagnostics.js?v=1"></script>
   <script src="/hotel/js/offlineQueue.js?v=1"></script>
   <script src="/hotel/js/qrcode.js?v=1"></script>
-  <script src="/hotel/js/owner.js?v=37"></script>
+  <script src="/hotel/js/owner.js?v=38"></script>
   <script src="/hotel/js/owner-locations.js?v=1"></script>
   <script src="/hotel/js/owner-catalog.js?v=1"></script>
   <script src="/hotel/js/owner-stock.js?v=2"></script>

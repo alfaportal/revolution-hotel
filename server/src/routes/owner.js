@@ -134,6 +134,10 @@ const {
 } = require("../services/ownerGroupService");
 const { issueOwnerSession } = require("../lib/ownerSession");
 const salesInvoicesRouter = require("./salesInvoices");
+const {
+  listHotelRoomsForOwner,
+  listHotelGuestsForOwner,
+} = require("../services/hotelPmsSyncService");
 
 const router = express.Router();
 
@@ -1451,6 +1455,26 @@ router.patch("/reservations/:id", async (req, res) => {
     res.json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
+  }
+});
+
+router.get("/hotel/rooms", async (req, res) => {
+  try {
+    const rooms = await listHotelRoomsForOwner(req.user.client_id);
+    res.json({ ok: true, rooms, synced: rooms.length > 0 });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+router.get("/hotel/guests", async (req, res) => {
+  try {
+    const guests = await listHotelGuestsForOwner(req.user.client_id, {
+      limit: req.query?.limit,
+    });
+    res.json({ ok: true, guests, synced: guests.length > 0 });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
   }
 });
 

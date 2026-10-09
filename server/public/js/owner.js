@@ -458,6 +458,123 @@ async function loadLiveTables() {
   await loadLiveOnlineSlots();
 }
 
+const HOTEL_ROOM_STATUS_LABEL = {
+  free: "E lirë",
+  occupied: "E zënë",
+  dirty: "E papastër",
+  maintenance: "Mirëmbajtje",
+};
+
+const HOTEL_GUEST_STATUS_LABEL = {
+  checked_in: "Në hotel",
+  checked_out: "Check-out",
+  active: "Në hotel",
+};
+
+function hotelRoomCardClass(status) {
+  const st = String(status || "free").toLowerCase();
+  if (st === "dirty") return "occupied ready";
+  if (st === "maintenance") return "free";
+  if (st === "occupied") return "occupied";
+  return "free";
+}
+
+function renderHotelRoomCard(r) {
+  const st = String(r.status || "free").toLowerCase();
+  const label = HOTEL_ROOM_STATUS_LABEL[st] || st;
+  const guest = String(r.guest_name || "").trim();
+  const meta = guest
+    ? `<div class="live-table-meta">${escapeHtml(guest)}${r.check_out_date ? ` · deri ${escapeHtml(String(r.check_out_date).slice(0, 10))}` : ""}</div>`
+    : `<div class="live-table-meta">${escapeHtml(r.room_type || "—")} · ${euro(Number(r.price_per_night) || 0)}/natë</div>`;
+  return `<div class="live-table-card ${hotelRoomCardClass(st)}">
+    <div class="live-table-title">${escapeHtml(r.room_number || "—")}</div>
+    <div class="live-table-status">${escapeHtml(label)}</div>
+    ${meta}
+    <div class="live-table-source">Kati ${escapeHtml(String(r.floor ?? "—"))}</div>
+  </div>`;
+}
+
+function renderHotelGuestRow(g) {
+  const st = String(g.status || "").toLowerCase();
+  const statusLabel = HOTEL_GUEST_STATUS_LABEL[st] || st || "—";
+  return `<div class="owner-guest-row">
+    <div class="owner-guest-main">
+      <strong>${escapeHtml(g.guest_name || "—")}</strong>
+      <span class="owner-guest-status">${escapeHtml(statusLabel)}</span>
+    </div>
+    <div class="owner-guest-meta">
+      ${g.room_number ? `Dhoma <strong>${escapeHtml(g.room_number)}</strong> · ` : ""}
+      ${g.check_in_date ? `${escapeHtml(String(g.check_in_date).slice(0, 10))}` : ""}
+      ${g.check_out_date ? ` → ${escapeHtml(String(g.check_out_date).slice(0, 10))}` : ""}
+      · ${Number(g.persons) || 1} persona
+      ${g.phone ? ` · ${escapeHtml(g.phone)}` : ""}
+    </div>
+  </div>`;
+}
+
+async function loadHotelRooms() {
+  const grid = document.getElementById("hotel-rooms-grid");
+  const empty = document.getElementById("hotel-rooms-empty");
+  const updated = document.getElementById("hotel-rooms-updated");
+  if (!grid) return;
+  try {
+    const data = await api("/api/owner/hotel/rooms");
+    const rooms = data.rooms || [];
+    if (!rooms.length) {
+      grid.innerHTML = "";
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent =
+          "Ende nuk ka dhoma në cloud. Në PC: Cilësimet → Linke stafi → «Sinkronizo gjithçka», pastaj rifreskoni këtu.";
+      }
+    } else {
+      if (empty) empty.hidden = true;
+      grid.innerHTML = rooms.map(renderHotelRoomCard).join("");
+      const syncAt = rooms.reduce((best, r) => {
+        const t = r.synced_at ? Date.parse(r.synced_at) : 0;
+        return t > best ? t : best;
+      }, 0);
+      if (updated && syncAt) updated.textContent = `Sinkronizuar: ${fmtTime(new Date(syncAt).toISOString())}`;
+    }
+  } catch (err) {
+    grid.innerHTML = "";
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = err.message || "Nuk u ngarkuan dhomat.";
+    }
+  }
+}
+
+async function loadHotelGuests() {
+  const list = document.getElementById("hotel-guests-list");
+  const empty = document.getElementById("hotel-guests-empty");
+  const updated = document.getElementById("hotel-guests-updated");
+  if (!list) return;
+  try {
+    const data = await api("/api/owner/hotel/guests");
+    const guests = data.guests || [];
+    if (!guests.length) {
+      list.innerHTML = "";
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent =
+          "Ende nuk ka mysafirë të sinkronizuar. Check-in në recepsion + sync nga PC hotelit.";
+      }
+    } else {
+      if (empty) empty.hidden = true;
+      list.innerHTML = guests.map(renderHotelGuestRow).join("");
+      const syncAt = guests[0]?.synced_at;
+      if (updated && syncAt) updated.textContent = `Sinkronizuar: ${fmtTime(syncAt)}`;
+    }
+  } catch (err) {
+    list.innerHTML = "";
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = err.message || "Nuk u ngarkuan mysafirët.";
+    }
+  }
+}
+
 function connectOwnerLiveEvents() {
   if (typeof EventSource === "undefined") return;
   const q = token ? `?token=${encodeURIComponent(token)}` : "";
@@ -2558,6 +2675,8 @@ document.querySelectorAll(".tab").forEach(tab => {
     document.querySelectorAll(".panel-section").forEach(p => p.classList.add("hidden"));
     document.getElementById(`panel-${tab.dataset.tab}`).classList.remove("hidden");
     if (tab.dataset.tab === "tavolinat") loadLiveTables();
+    if (tab.dataset.tab === "dhomat") loadHotelRooms();
+    if (tab.dataset.tab === "mysafiret") loadHotelGuests();
     if (tab.dataset.tab === "raportet") { loadReport(); loadAuditLog(); loadExpenses(); }
     if (tab.dataset.tab === "porosite") {
       loadOrders();
