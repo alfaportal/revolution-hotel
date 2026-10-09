@@ -2513,8 +2513,11 @@
         return;
       }
       if ((preview.active_tables || 0) > 0) {
+        const labels = (preview.active_table_labels || []).join(", ");
         alert(
-          `Mbyllni fillimisht ${preview.active_tables} porosi/tavolinë aktive të kamarierit (nëse ka) para mbylljes së ndërrimit.`,
+          labels
+            ? `Mbyllni fillimisht porositë tuaja të recepsionit: ${labels}.`
+            : `Mbyllni fillimisht ${preview.active_tables} porosi aktive para mbylljes së ndërrimit.`,
         );
         return;
       }

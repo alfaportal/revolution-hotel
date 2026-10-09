@@ -529,6 +529,29 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   }
 
   const waiterName = String(staff.name || "").trim();
+  const sessionRole = String(options.sessionRole || "").trim().toLowerCase();
+  if (sessionRole === "recepsion") {
+    const restOnly = ordersBefore.filter((o) => !db.isRecepcionCloudPendingOrder(o));
+    if (restOnly.length) {
+      throw Object.assign(
+        new Error(
+          "Porosi restoranti (QR tavolinë / takeaway) — vetëm kamarieri i pranon. "
+          + "Recepsioni merr vetëm room service dhe shërbime hoteli nga QR dhomë.",
+        ),
+        { status: 403 },
+      );
+    }
+    ordersBefore = ordersBefore.filter((o) => db.isRecepcionCloudPendingOrder(o));
+  } else if (sessionRole === "kamarier") {
+    ordersBefore = ordersBefore.filter((o) => !db.isRecepcionCloudPendingOrder(o));
+    if (!ordersBefore.length) {
+      throw Object.assign(
+        new Error("Porosi dhome/shërbimi hoteli — pranoni nga recepsioni, jo nga restoranti."),
+        { status: 403 },
+      );
+    }
+  }
+
   for (const o of ordersBefore) {
     const access = db.qrOrderAccessForWaiter(o, waiterName);
     if (!access.allowed) {
@@ -2806,7 +2829,15 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
       return slot;
     }).map(slot => {
       if (!slot?.order) return slot;
-      const access = db.qrOrderAccessForWaiter(slot.order, req.session?.emri);
+      const o = slot.order;
+      if (
+        db.isRecepcionCloudPendingOrder(o)
+        || db.isGuestHotelServiceOrder(o)
+        || db.isGuestRoomMenuOrder(o)
+      ) {
+        return { ...slot, status: "free", order: null };
+      }
+      const access = db.qrOrderAccessForWaiter(o, req.session?.emri);
       if (access.allowed) return slot;
       return { ...slot, status: "free", order: null };
     });
@@ -2908,7 +2939,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     const flow = await acceptOnlineOrdersFlow(
       ids,
       pin,
-      { fallbackOrders, trustedStaff },
+      { fallbackOrders, trustedStaff, sessionRole: req.session.role },
     );
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
@@ -2927,7 +2958,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     });
   } catch (e) {
     const msg = String(e.message || "Gabim.").trim();
-    const biz = /nuk u gjet|mungon|pavlefsh|porosia/i.test(msg);
+    const biz = /nuk u gjet|mungon|pavlefsh|porosia|restoranti|recepsioni|dhom/i.test(msg);
     const status = e.status || (biz ? 400 : 500);
     res.status(status).json({ ok: false, gabim: msg });
   }
@@ -3054,12 +3085,7 @@ function filterOnlineOrdersForStaffRole(orders, session) {
   if (role === "recepsion") {
     list = list.filter(o => db.isRecepcionCloudPendingOrder(o));
   } else if (role === "kamarier") {
-    list = list.filter((o) => {
-      if (typeof db.isGuestRoomMenuKitchenOrder === "function" && db.isGuestRoomMenuKitchenOrder(o)) {
-        return true;
-      }
-      return !db.isRecepcionCloudPendingOrder(o);
-    });
+    list = list.filter((o) => !db.isRecepcionCloudPendingOrder(o));
   }
   return list;
 }
@@ -3150,7 +3176,9 @@ app.get("/api/waiter/shift", auth, waiterOrRecepsion, (req, res) => {
     if (!staffId) {
       return res.status(400).json({ gabim: "Kamarieri nuk u identifikua. Dilni dhe hyni përsëri." });
     }
-    const summary = db.getWaiterShiftSummary(staffId);
+    const summary = db.getWaiterShiftSummary(staffId, {
+      sessionRole: req.session.role,
+    });
     if (!summary) return res.status(404).json({ gabim: "Kamarieri nuk u gjet." });
     res.json({
       ok: true,
@@ -3173,6 +3201,7 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
       staffId,
       req.body?.actual_closing_cash,
       req.body?.handover_to_staff_id,
+      { sessionRole: req.session.role },
     );
     const salesDetail = db.getShiftSalesDetail(closed.shift.id);
     const printerConfig = printer.getPrinterConfig(db);

@@ -7034,6 +7034,12 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   const name = String(waiterName || "").trim();
   if (!name) throw new Error("Mungon emri i kamarierit që pranon porosinë.");
 
+  if (isRecepcionCloudPendingOrder(cloudOrder)) {
+    throw new Error(
+      "Porosi dhome/shërbimi hoteli — pranoni nga recepsioni (jo si tavolinë restoranti).",
+    );
+  }
+
   assertCloudQrOrderForWaiter(cloudOrder, name);
 
   const fromAcceptFlow = !!options.fromAcceptFlow;
@@ -8826,12 +8832,23 @@ function isCloudPickupOrder(row) {
   return !!(row?.cloud_order_id && String(row.cloud_order_id).trim());
 }
 
-function getBlockingActiveTablesForWaiter(waiterName) {
-  return getActiveTablesForWaiter(waiterName);
+function isPhysicalRestaurantTableId(tableId) {
+  const table = getTableById(tableId);
+  return !!table && isPhysicalVenueTable(table);
 }
 
-function activeTableLabelsForWaiter(waiterName) {
-  return getBlockingActiveTablesForWaiter(waiterName).map(row => {
+/** Recepsioni nuk bllokohet nga tavolinat fizike të restorantit (vetëm porositë e veta online). */
+function getBlockingActiveTablesForWaiter(waiterName, { sessionRole = "" } = {}) {
+  const rows = getActiveTablesForWaiter(waiterName);
+  const role = String(sessionRole || "").trim().toLowerCase();
+  if (role === "recepsion") {
+    return rows.filter((row) => !isPhysicalRestaurantTableId(row.table_id));
+  }
+  return rows;
+}
+
+function activeTableLabelsForWaiter(waiterName, opts = {}) {
+  return getBlockingActiveTablesForWaiter(waiterName, opts).map(row => {
     const lbl = tableLabel({ number: row.table_number, display_name: row.table_display_name });
     const src = String(row.source_label || "").trim();
     if (src && isCloudPickupOrder(row)) return `${lbl} (${src})`;
@@ -8839,8 +8856,8 @@ function activeTableLabelsForWaiter(waiterName) {
   });
 }
 
-function activeTableDetailsForWaiter(waiterName) {
-  return getBlockingActiveTablesForWaiter(waiterName).map(row => ({
+function activeTableDetailsForWaiter(waiterName, opts = {}) {
+  return getBlockingActiveTablesForWaiter(waiterName, opts).map(row => ({
     order_id: row.order_id,
     table_id: row.table_id,
     table_number: row.table_number,
@@ -9004,7 +9021,7 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
   })();
 }
 
-function getWaiterShiftSummary(staffId) {
+function getWaiterShiftSummary(staffId, opts = {}) {
   const id = Number(staffId);
   if (!id) return null;
   const staff = sqlite.prepare("SELECT id, name FROM staff WHERE id = ? AND active = 1").get(id);
@@ -9013,8 +9030,9 @@ function getWaiterShiftSummary(staffId) {
   const pendingHandover = getPendingHandoverForStaff(id);
   const shift = getOpenShift(id);
   const peersCount = listHandoverPeers(id).length;
-  const activeLabels = activeTableLabelsForWaiter(staff.name);
-  const activeDetails = activeTableDetailsForWaiter(staff.name);
+  const shiftOpts = { sessionRole: opts.sessionRole || "" };
+  const activeLabels = activeTableLabelsForWaiter(staff.name, shiftOpts);
+  const activeDetails = activeTableDetailsForWaiter(staff.name, shiftOpts);
 
   const dbgWithShift = shift
     ? sqlite.prepare(`
@@ -9093,7 +9111,7 @@ function getWaiterShiftSummary(staffId) {
   return summary;
 }
 
-function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId) {
+function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId, opts = {}) {
   const id = Number(staffId);
   if (!id) throw new Error("Kamarieri i panjohur.");
   const staff = sqlite.prepare("SELECT id, name FROM staff WHERE id = ? AND active = 1").get(id);
@@ -9115,7 +9133,8 @@ function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId) {
     }
   }
 
-  const activeLabels = activeTableLabelsForWaiter(staff.name);
+  const shiftOpts = { sessionRole: opts.sessionRole || "" };
+  const activeLabels = activeTableLabelsForWaiter(staff.name, shiftOpts);
   if (activeLabels.length > 0) {
     throw new Error(`Mbyllni fillimisht tavolinat dhe pagesat: ${activeLabels.join(", ")}.`);
   }
