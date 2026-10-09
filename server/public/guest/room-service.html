@@ -9,7 +9,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>Room Service</title>
-
+  <script>
+    (function () {
+      const q = window.location.search || "";
+      window.location.replace("services.html" + q);
+    })();
+  </script>
   <link rel="stylesheet" href="guest-menu.css">
 
   <style>

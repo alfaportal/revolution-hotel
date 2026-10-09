@@ -139,6 +139,18 @@ function findCachedOrderById(orderId, db, allOrders) {
   return null;
 }
 
+/** QR dhomë / shërbime hoteli — ruhen lokalisht, cloud nuk i liston. */
+function isLocalRecepcionGuestPending(o, db) {
+  if (!o?.id) return false;
+  if (o.local_only === true) return true;
+  const device = String(o.device_id || "").trim().toUpperCase();
+  if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return true;
+  if (typeof db?.isRecepcionAcceptPendingOrder === "function" && db.isRecepcionAcceptPendingOrder(o)) {
+    return true;
+  }
+  return false;
+}
+
 /** ID që cloud i ka pranuar, mbyllur, ose nuk i kthen më — hiqen nga cache lokale. */
 function buildCloudResolvedIdSet(data, allOrders, db) {
   const resolved = new Set();
@@ -163,6 +175,7 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
     if (resolved.has(id) || cloudLive.has(id)) continue;
     const cached = findCachedOrderById(id, db, allOrders);
     if (cached && isInRefusalGraceOrder(cached)) continue;
+    if (cached && isLocalRecepcionGuestPending(cached, db)) continue;
     resolved.add(id);
   }
 
@@ -198,6 +211,10 @@ function splitUntouchedExpiredPending(db, orders) {
   const expiredIds = [];
   for (const o of orders || []) {
     if (!o?.id) continue;
+    if (isLocalRecepcionGuestPending(o, db)) {
+      live.push(o);
+      continue;
+    }
     if (isInRefusalGraceOrder(o)) {
       live.push(o);
       continue;
@@ -409,12 +426,25 @@ function cloudReady(db) {
 
 function isLoginNotifyPendingOrder(o, db) {
   if (!o?.id || isExplicitlyAccepted(o)) return false;
-  if (typeof db?.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(o)) return true;
-  if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) return true;
+  if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
+    return db.isRestaurantLoginNotifyOrder(o);
+  }
+  if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) {
+    return false;
+  }
   if (typeof db?.isCloudPosAcceptQueueOrder === "function" && db.isCloudPosAcceptQueueOrder(o)) return true;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;
   const device = String(o?.device_id || "").trim().toUpperCase();
   return device === "WEB-PUBLIC";
+}
+
+/** Radha lokale / snapshot — recepsion + restorant (jo vetëm alarmi i login-it të kamarierit). */
+function isLocalPendingQueueOrder(o, db) {
+  if (!o?.id || isExplicitlyAccepted(o)) return false;
+  if (typeof db?.isAnyStaffAcceptPendingOrder === "function" && db.isAnyStaffAcceptPendingOrder(o)) {
+    return true;
+  }
+  return isLoginNotifyPendingOrder(o, db);
 }
 
 function isPosAcceptQueueOrder(o, db) {
@@ -434,7 +464,7 @@ async function tick(db, printBarTicket) {
     const localOnly = dropLocallyHandled(
       db,
       mergePending(db, [], safeListLocalPending(db), new Set()),
-    ).filter((o) => isLoginNotifyPendingOrder(o, db));
+    ).filter((o) => isLocalPendingQueueOrder(o, db));
     syncAlarmIds(localOnly);
     lastSnapshot = {
       ok: true,
@@ -537,7 +567,7 @@ async function tick(db, printBarTicket) {
     mergePending(db, cloudPending, safeListLocalPending(db), suppressIds),
   );
   const staleLocalIds = safeListLocalPending(db)
-    .filter(o => o?.id && !isLoginNotifyPendingOrder(o, db))
+    .filter(o => o?.id && !isLocalPendingQueueOrder(o, db))
     .map(o => o.id);
   safeRemoveLocalPending(db, staleLocalIds);
   let finalPending = pendingOrders.filter(o => orderStillPending(o, suppressIds));

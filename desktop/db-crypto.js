@@ -343,11 +343,54 @@ function loadDatabaseBytes(dbPath) {
   throw new Error("db-crypto: hotel.db nuk është SQLite e vlefshme as e enkriptuar");
 }
 
+function sleepMs(ms) {
+  if (ms <= 0) return;
+  try {
+    const sab = new SharedArrayBuffer(4);
+    Atomics.wait(new Int32Array(sab), 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { /* sync backoff */ }
+  }
+}
+
+/** Windows: antivirus / dy instanca → EBUSY — retry + shkrim përmes .tmp */
+function writeDbFileAtomic(dbPath, data) {
+  const dir = path.dirname(dbPath);
+  ensureDir(dir);
+  const tmp = path.join(dir, `.${path.basename(dbPath)}.write-${process.pid}-${Date.now()}.tmp`);
+  const opts = { mode: 0o600 };
+  const retryable = (code) => code === "EBUSY" || code === "EPERM" || code === "EACCES";
+  let lastErr;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      fs.writeFileSync(tmp, data, opts);
+      try {
+        if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+      } catch {
+        /* target i bllokuar — provo rename direkt */
+      }
+      fs.renameSync(tmp, dbPath);
+      return;
+    } catch (e) {
+      lastErr = e;
+      try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+      if (!retryable(e?.code) || attempt >= 7) break;
+      sleepMs(40 * (attempt + 1));
+    }
+  }
+  throw lastErr || new Error("db-crypto: shkrimi i databazës dështoi.");
+}
+
 function saveDatabaseBytes(dbPath, sqliteBytes) {
   const dir = path.dirname(dbPath);
   ensureDir(dir);
   const enc = encryptBuffer(sqliteBytes, dir);
-  fs.writeFileSync(dbPath, enc, { mode: 0o600 });
+  writeDbFileAtomic(dbPath, enc);
 }
 
 function encryptedPathFor(pemPath) {

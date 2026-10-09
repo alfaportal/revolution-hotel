@@ -21,6 +21,29 @@
         mode === "recepsion" ? "login-mode-staff-recepsion" : "login-mode-staff-kamarier",
       );
     })();
+    (function () {
+      const path = window.location.pathname.replace(/\/+$/, "").toLowerCase();
+      if (path !== "/login.html") return;
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.get("mode") === "kamarier" || qs.get("mode") === "recepsion") return;
+      const host = (window.location.hostname || "").toLowerCase();
+      if (host === "127.0.0.1" || host === "localhost" || host === "::1") return;
+      fetch("/api/login/staff-wifi-links", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d || !d.ok) return;
+          const target = d.kamarier_url || d.local_staff_wifi?.kamarier || "";
+          if (target) window.location.replace(target);
+          else if (qs.get("mode") !== "kamarier") {
+            qs.set("mode", "kamarier");
+            window.location.replace(`${path}?${qs.toString()}`);
+          }
+        })
+        .catch(() => {
+          qs.set("mode", "kamarier");
+          window.location.replace(`${path}?${qs.toString()}`);
+        });
+    })();
   </script>
   <style>
     .login-staff-role-pick {
@@ -1311,6 +1334,8 @@
   <script src="/js/cloud-status.js"></script>
   <script>
     if (typeof window.isStaffMobileLoginUi === "function" && window.isStaffMobileLoginUi()) {
+      const staffLoginIsRecepsion = () =>
+        document.documentElement.classList.contains("login-mode-staff-recepsion");
       const tickStaffCloudPill = async () => {
         try {
           window.applyStaffLoginCloudPillLabel(await fetch("/api/cloud/status").then((r) => r.json()));
@@ -1331,8 +1356,7 @@
           const prev = lastStaffLoginPending;
           const isFirstPoll = prev === null;
           const isNew = displayCount > 0 && (
-            !!data?.has_new
-            || (prev != null && displayCount > prev)
+            (prev != null && displayCount > prev)
             || (isFirstPoll && displayCount > 0)
           );
           if (isNew) {
@@ -1358,8 +1382,10 @@
           /* pa cloud */
         }
       }
-      setTimeout(pollStaffLoginOrdersAlertOnly, 1500);
-      setInterval(pollStaffLoginOrdersAlertOnly, 12000);
+      if (!staffLoginIsRecepsion()) {
+        setTimeout(pollStaffLoginOrdersAlertOnly, 1500);
+        setInterval(pollStaffLoginOrdersAlertOnly, 12000);
+      }
     } else {
       initCloudStatusIndicator("cloud-status-pill", { delayMs: 2500 });
     }

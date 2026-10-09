@@ -1,6 +1,6 @@
 /**
  * QR për hotel — Room Service / Menyja / Shërbime (vetëm cloud).
- * Publik (cloud): https://revolution-pos.com/hotel/guest/room-service.html?room=…
+ * Publik (cloud): https://revolution-pos.com/hotel/guest/services.html?room=… (një faqe: restorant + shërbime)
  */
 const QRCode = require("qrcode");
 const {
@@ -61,24 +61,22 @@ function buildHotelQrUrls(base, roomNumber, slug = "") {
   const venueSlug = String(slug || "").trim();
 
   if (isCloudQrBase(b) && venueSlug) {
-    const roomServiceUrl = buildHotelGuestPublicUrl(b, "room-service", roomRaw, venueSlug);
+    const hubUrl = buildHotelGuestPublicUrl(b, "services", roomRaw, venueSlug);
     return {
-      room_service: roomServiceUrl,
-      menu: roomServiceUrl,
-      services: buildHotelGuestPublicUrl(b, "services", roomRaw, venueSlug),
+      room_service: hubUrl,
+      menu: hubUrl,
+      services: hubUrl,
     };
   }
 
+  const hubLocal = roomRaw
+    ? `${b}/guest/services.html?room=${encodeURIComponent(roomRaw)}`
+    : `${b}/guest/services.html`;
+
   return {
-    room_service: roomRaw
-      ? `${b}/guest/room-service.html?room=${encodeURIComponent(roomRaw)}`
-      : `${b}/guest/room-service.html`,
-    menu: roomRaw
-      ? `${b}/guest/menu.html?room=${encodeURIComponent(roomRaw)}`
-      : `${b}/guest/menu.html`,
-    services: roomRaw
-      ? `${b}/guest/services.html?room=${encodeURIComponent(roomRaw)}`
-      : `${b}/guest/services.html`,
+    room_service: hubLocal,
+    menu: hubLocal,
+    services: hubLocal,
   };
 }
 

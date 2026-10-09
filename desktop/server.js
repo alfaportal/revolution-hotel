@@ -607,6 +607,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   const success = imported.filter(r => r.ok);
   const tableImports = success.filter(r => r.table_id && !r.room_menu && !r.guest_service);
+  const localRecepImports = success.filter(r => r.guest_service || r.room_menu);
   if (!success.length) {
     throw Object.assign(
       new Error(imported[0]?.error || "Importimi i porosisë dështoi."),
@@ -623,8 +624,25 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     db.removePendingCloudOrders(ids);
   }
 
+  if (localRecepImports.length) {
+    const localIds = [
+      ...new Set(
+        localRecepImports
+          .map((r) => String(r.cloud_id || "").trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (localIds.length) {
+      onlineOrdersWatcher.persistAcknowledged(db, localIds);
+      db.removePendingCloudOrders(localIds);
+      onlineOrdersWatcher.removeOrdersFromSnapshot(localIds);
+    }
+  }
+
   onlineOrdersWatcher.markOrdersPrinted(db, ids);
-  onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
+  if (!localRecepImports.length) {
+    onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
+  }
 
   let cloudResult = { ok: false, message: "", accepted_by: "" };
   if (ackPin || ackMeta.waiterName) {
@@ -1071,8 +1089,16 @@ function toMenuItemDto(item) {
 function toGuestMenuItemDto(item) {
   const dto = toMenuItemDto(item);
   if (dto.id != null) {
-    if (!dto.photo_src) dto.photo_src = `/api/guest/menu/${dto.id}/photo`;
-    dto.has_photo = true;
+    const stock = String(menuStockPhotos.stockPhotoForName(item.name) || "").trim();
+    const resolved = String(resolveMenuItemPhoto(item.id) || "").trim();
+    const direct = resolved.startsWith("/") ? resolved : stock;
+    if (direct.startsWith("/") || /^https?:\/\//i.test(direct)) {
+      dto.photo_src = direct;
+      dto.has_photo = true;
+    } else if (!dto.photo_src) {
+      dto.photo_src = `/api/guest/menu/${dto.id}/photo`;
+      dto.has_photo = true;
+    }
   }
   return dto;
 }
@@ -1279,10 +1305,11 @@ function sanitizeLanHostname(name) {
     .slice(0, 63);
 }
 
-/** URL waiter.html pa IP — NetBIOS / mDNS (telefoni duhet në të njëjtin WiFi). */
+/** URL hyrje kamarier pa IP — NetBIOS / mDNS (telefoni duhet në të njëjtin WiFi). */
 function getLocalWaiterHostnamePanelUrls() {
   const port = getLocalServerPort();
-  const suffix = "/waiter.html";
+  const staffSuffix = localStaffPathSuffix("kamarier");
+  const suffix = staffSuffix || "/login.html?mode=kamarier";
   const out = [];
   const pc = sanitizeLanHostname(os.hostname());
   if (pc) {
@@ -1302,6 +1329,9 @@ function getLocalWaiterHostnamePanelUrls() {
 
 function buildLocalWaiterLanLinkPayload() {
   return {
+    /** Hyrje stafi WiFi — PIN kamarier/recepsion (jo pronari / login.html). */
+    local_waiter_url: getLocalWaiterUrl(),
+    local_recepsion_url: getLocalRecepsionUrl(),
     local_waiter_panel_url: getLocalWaiterPanelUrl(),
     local_lan_ip: pickLanIPv4Address() || "",
     local_server_port: getLocalServerPort(),
@@ -2038,7 +2068,7 @@ app.get("/hotel/:a/:b", (req, res) => {
     return res.redirect(302, `/${encodeURIComponent(role)}/${encodeURIComponent(slug)}${qs}`);
   }
   if (role === "room-service") {
-    return res.redirect(302, `/guest/room-service.html${qs}`);
+    return res.redirect(302, `/guest/services.html${qs}`);
   }
   if (role === "services") {
     return res.redirect(302, `/guest/services.html${qs}`);
@@ -2673,7 +2703,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
       data = onlineOrdersWatcher.getOnlineOrdersSnapshot();
     }
     const isAcceptPending = (o) => o?.id && (
-      db.isCloudPosAcceptQueueOrder(o) || db.isCloudOnlinePickupOrder(o)
+      db.isAnyStaffAcceptPendingOrder(o) || db.isCloudOnlinePickupOrder(o)
     );
     const isStillPendingForPos = (o) => isAcceptPending(o)
       && !cloudSync.isCloudOrderAccepted(o);
@@ -2707,7 +2737,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
       connected: !!data.connected,
       pending: orders.length,
       has_pending: hasPending,
-      has_new: hasPending && !!data.has_new,
+      has_new: hasPending,
       orders,
       my_external: myOrders.length,
       my_orders: myOrders,
@@ -2981,7 +3011,12 @@ function filterOnlineOrdersForStaffRole(orders, session) {
   if (role === "recepsion") {
     list = list.filter(o => db.isRecepcionCloudPendingOrder(o));
   } else if (role === "kamarier") {
-    list = list.filter(o => !db.isRecepcionCloudPendingOrder(o));
+    list = list.filter((o) => {
+      if (typeof db.isGuestRoomMenuKitchenOrder === "function" && db.isGuestRoomMenuKitchenOrder(o)) {
+        return true;
+      }
+      return !db.isRecepcionCloudPendingOrder(o);
+    });
   }
   return list;
 }
@@ -3408,9 +3443,15 @@ app.put("/api/admin/rooms/:id", auth, adminOnly, (req, res) => {
 app.delete("/api/admin/rooms/:id", auth, adminOnly, (req, res) => {
   try {
     const existing = db.getRoomById(req.params.id);
-    db.deleteRoom(req.params.id);
+    const result = db.deleteRoom(req.params.id);
     auditReq(req, "Fshirje dhome", existing?.room_number || req.params.id);
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      archived: !!result?.archived,
+      message: result?.archived
+        ? "Dhoma u hoq nga lista (historia e mysafirëve mbetet)."
+        : "Dhoma u fshi.",
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }

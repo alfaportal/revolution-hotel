@@ -306,6 +306,27 @@
       border-color: #fb923c;
       color: #fff;
     }
+    .main-cat-bar button .recep-pending-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.15rem;
+      height: 1.15rem;
+      margin-left: .35rem;
+      padding: 0 .3rem;
+      border-radius: 999px;
+      background: #dc2626;
+      color: #fff;
+      font-size: .68rem;
+      font-weight: 900;
+      line-height: 1;
+      vertical-align: middle;
+      animation: recep-badge-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes recep-badge-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
     .recep-module-overlay {
       position: absolute;
       inset: 0;
@@ -914,7 +935,9 @@
     </section>
   </div>
 
-  <script src="/js/app.js?v=7"></script>
+  <script src="/js/app.js?v=8"></script>
+  <script src="/js/order-alarm-sound.js?v=2"></script>
+  <script src="/js/staff-order-alert.js?v=2"></script>
   <script>
     (function guardRecepsionSession() {
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
@@ -942,6 +965,7 @@
     let primaryPay = "cash";
     let multiPay = false;
     let paperBlockActive = false;
+    let recepPendingOrderCount = 0;
 
     function euro(n) {
       return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + " €";
@@ -1174,9 +1198,36 @@
       const nav = document.getElementById("main-cat-bar");
       nav.innerHTML = RECEP_MODULES.map((m) => {
         const on = activeRecepView === m.id ? " on" : "";
-        return `<button type="button" class="${on.trim()}" data-recep-view="${m.id}">${esc(m.label)}</button>`;
+        const badge =
+          m.id === "orders" && recepPendingOrderCount > 0
+            ? `<span class="recep-pending-badge" aria-label="${recepPendingOrderCount} në pritje">${recepPendingOrderCount}</span>`
+            : "";
+        return `<button type="button" class="${on.trim()}" data-recep-view="${m.id}">${esc(m.label)}${badge}</button>`;
       }).join("");
     }
+
+    function playKasaRecepOrderBell() {
+      if (typeof window.staffOrderAlert === "function") {
+        window.staffOrderAlert({
+          title: "Porosi e re!",
+          body: "Hap Porositë dhe pranoje kërkesën nga QR.",
+          tag: "kasa-recep-pending-order",
+        });
+        return;
+      }
+      if (typeof window.playOrderAlarmSound === "function") {
+        window.playOrderAlarmSound();
+      }
+    }
+
+    window.addEventListener("message", (ev) => {
+      if (ev.origin !== window.location.origin) return;
+      const d = ev.data;
+      if (!d || d.type !== "hotel-recep-pending-orders") return;
+      recepPendingOrderCount = Math.max(0, Number(d.pending) || 0);
+      renderCategoryNav();
+      if (d.playBell) playKasaRecepOrderBell();
+    });
 
     async function loadShift() {
       try {

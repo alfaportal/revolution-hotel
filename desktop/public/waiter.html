@@ -1626,9 +1626,19 @@
       return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
     }
 
+    function eshtePorosiVetemRecepsioni(o) {
+      if (eshtePorosiSherbimiHoteliQr(o) || o?.is_recepcion_qr) return true;
+      const device = String(o?.device_id || "").toUpperCase();
+      if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return true;
+      if (String(o?.order_kind || "") === "guest_room_menu") return true;
+      const room = String(o?.room_number || "").trim();
+      if (room && !eshtePorosiQrTavoline(o)) return true;
+      return false;
+    }
+
     /** Restorant: QR tavolinë + takeaway — jo dhomë / shërbime hoteli (ato te recepsioni). */
     function filtroPorosiOnlineRestorant(orders) {
-      return (orders || []).filter((o) => !eshtePorosiSherbimiHoteliQr(o) && !o?.is_recepcion_qr);
+      return (orders || []).filter((o) => !eshtePorosiVetemRecepsioni(o));
     }
 
     function hapWaiterOnlinePop() {
@@ -1951,8 +1961,7 @@
         }
         const isFirstPoll = prevPending === null;
         const isNew = pending > 0 && (
-          data.has_new
-          || (prevPending != null && pending > prevPending)
+          (prevPending != null && pending > prevPending)
           || (isFirstPoll && pending > 0)
         );
         if (isNew) {

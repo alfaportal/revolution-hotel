@@ -89,9 +89,14 @@ function ensureMinibarMenuSeed(sqlGet, sqlRun) {
   }
   const products = [
     ["Ujë 0.5L", 1.5, 10],
+    ["Ujë 1.5L", 2.5, 12],
     ["Coca-Cola", 2.0, 20],
+    ["Fanta", 2.0, 22],
+    ["Red Bull", 3.5, 24],
     ["Birra", 3.0, 30],
     ["Çokollatë", 2.5, 40],
+    ["Biskota", 1.8, 45],
+    ["Snickers", 2.5, 48],
     ["Chips", 2.0, 50],
   ];
   for (const [name, price, sort] of products) {
@@ -275,7 +280,11 @@ async function bootDatabase(cfg) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    saveDbNow();
+    try {
+      saveDbNow();
+    } catch (e) {
+      console.error("[db-engine] flushSave:", e.message || e);
+    }
   }
 
   function getLastInsertRowid() {
@@ -1363,6 +1372,12 @@ function initSchema() {
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_room ON reservations(room_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations(check_in_date, check_out_date)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status)");
+  migrateAddColumns(
+    "rooms-archived-column",
+    "rooms",
+    [["archived", "INTEGER NOT NULL DEFAULT 0"]],
+    backupCtx,
+  );
   runSchemaMigration(
     "reservation-services-table",
     backupCtx,

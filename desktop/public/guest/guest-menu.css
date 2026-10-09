@@ -17,6 +17,20 @@
   background: var(--guest-panel);
 }
 
+.guest-menu-shell .menu-group-bar.menu-sub-bar {
+  top: 52px;
+  z-index: 29;
+  background: #0f172a;
+  border-bottom: 1px solid #1e293b;
+  padding: 0.45rem 0.75rem;
+}
+
+.guest-menu-shell .menu-group-bar.menu-sub-bar .menu-group-btn {
+  font-size: 0.82rem;
+  min-height: 38px;
+  padding: 0.4rem 0.85rem;
+}
+
 .guest-menu-shell .menu-group-bar {
   display: flex;
   flex-wrap: nowrap;
@@ -159,6 +173,33 @@
   color: var(--guest-muted);
   padding: 2rem 1rem;
   font-size: 0.95rem;
+}
+
+#minibar-block .guest-menu-shell .menu-photo-grid {
+  max-height: none;
+  min-height: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+#minibar-block .menu-photo-grid-inner {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.25rem;
+  scroll-snap-type: x proximity;
+}
+
+#minibar-block .menu-item-btn {
+  flex: 0 0 min(140px, 38vw);
+  scroll-snap-align: start;
+}
+
+#minibar-block .menu-item-photo-wrap {
+  aspect-ratio: 1;
+  border-radius: 12px;
 }
 
 .guest-menu-shell .menu-item-btn.menu-item-flash .menu-item-photo-wrap {

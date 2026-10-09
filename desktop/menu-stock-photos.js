@@ -34,6 +34,26 @@ const LEGACY_PHOTOS = {
   [normName("Biskota")]: "/menu-stock/biskota.jpg",
   [normName("Chips")]: "/menu-stock/chips.jpg",
   [normName("Kikirikë")]: "/menu-stock/kikirke.jpg",
+  [normName("Birra")]: "/menu-stock/beer-heineken.jpg",
+  [normName("Çokollatë")]: "/menu-stock/chocolate-bar.jpg",
+  [normName("Snickers")]: "/menu-stock/chocolate-bar.jpg",
+  [normName("Biskota")]: "/menu-stock/biskota.jpg",
+  [normName("Ujë 1.5L")]: "/menu-stock/uje-15l.jpg",
+  [normName("Red Bull")]: "/menu-stock/red-bull.jpg",
+  [normName("Fanta")]: "/menu-stock/fanta.jpg",
+  [normName("Sprite")]: "/menu-stock/sprite.jpg",
+  [normName("Sallatë Shqiptare")]: "/menu-stock/sal-shtepie.jpg",
+  [normName("Sallatë Greke")]: "/menu-stock/sal-greek.jpg",
+  [normName("Sallatë Çoban")]: "/menu-stock/sal-shtepie.jpg",
+  [normName("Sallatë me ton")]: "/menu-stock/sal-tonno.jpg",
+  [normName("Supë viçi")]: "/menu-stock/soup-leng-mishi.jpg",
+};
+
+/** Emra të menuës që ndryshojnë pak — map te foto e seed-it. */
+const NAME_ALIASES = {
+  [normName("Sallatë greke")]: "/menu-stock/sal-greek.jpg",
+  [normName("Sallatë tune")]: "/menu-stock/sal-tonno.jpg",
+  [normName("Supë pule")]: "/menu-stock/soup-pule.jpg",
 };
 
 let _seedPhotoByName = null;
@@ -71,7 +91,33 @@ function seedPhotoMap() {
 }
 
 function stockPhotoForName(name) {
-  return seedPhotoMap()[normName(name)] || "";
+  const n = normName(name);
+  const map = seedPhotoMap();
+  if (map[n]) return map[n];
+  if (NAME_ALIASES[n]) return NAME_ALIASES[n];
+  if (n.includes("sup") && n.includes("pule")) return "/menu-stock/soup-pule.jpg";
+  if (n.includes("sup") && (n.includes("vic") || n.includes("mish") || n.includes("leng"))) {
+    return "/menu-stock/soup-leng-mishi.jpg";
+  }
+  if (n.includes("sallat") && n.includes("grek")) return "/menu-stock/sal-greek.jpg";
+  if (n.includes("sallat") && (n.includes("shqip") || n.includes("coban") || n.includes("shtep"))) {
+    return "/menu-stock/sal-shtepie.jpg";
+  }
+  if (n.includes("sallat") && (n.includes("ton") || n.includes("tun"))) return "/menu-stock/sal-tonno.jpg";
+  if (n.includes("sallat") && n.includes("cezar")) return "/menu-stock/sal-caesar.jpg";
+  if (n.startsWith("birra") || n === "birra") return "/menu-stock/beer-heineken.jpg";
+  if (n.includes("cokollat") || n.includes("snickers") || n.includes("mars")) {
+    return "/menu-stock/chocolate-bar.jpg";
+  }
+  if (n.includes("biskot")) return "/menu-stock/biskota.jpg";
+  if (n.includes("chips") || n.includes("crisps")) return "/menu-stock/chips.jpg";
+  if (n.includes("coca") || n.includes("cola")) return "/menu-stock/coca-cola.jpg";
+  if (n.includes("fanta")) return "/menu-stock/fanta.jpg";
+  if (n.includes("sprite")) return "/menu-stock/sprite.jpg";
+  if (n.includes("red bull") || n.includes("redbull")) return "/menu-stock/red-bull.jpg";
+  if (n.includes("uje") && (n.includes("15") || n.includes("1.5"))) return "/menu-stock/uje-15l.jpg";
+  if (n.includes("uje") || n.includes("ujë")) return "/menu-stock/uje-05l.jpg";
+  return "";
 }
 
 function isRemotePhoto(val) {

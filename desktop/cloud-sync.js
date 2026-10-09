@@ -1419,6 +1419,12 @@ function isCloudOrderAccepted(o) {
 function isLoginPendingCloudOrder(db, o) {
   if (!o?.id) return false;
   if (isCloudOrderAccepted(o)) return false;
+  if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
+    return db.isRestaurantLoginNotifyOrder(o);
+  }
+  if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) {
+    return false;
+  }
   if (typeof db?.isCloudStaffWaiterOrder === "function" && db.isCloudStaffWaiterOrder(o)) return false;
   if (typeof db?.isCloudPosAcceptQueueOrder === "function" && db.isCloudPosAcceptQueueOrder(o)) return true;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;

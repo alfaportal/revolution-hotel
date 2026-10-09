@@ -2898,6 +2898,7 @@ function getRoomById(id) {
 function listRooms() {
   return sqlite.prepare(`
     SELECT * FROM rooms
+    WHERE COALESCE(archived, 0) = 0
     ORDER BY floor ASC,
       CAST(room_number AS INTEGER) ASC,
       room_number ASC
@@ -2944,7 +2945,9 @@ function createRoom({ room_number, floor, type, price_per_night, status } = {}) 
   const price = Number(price_per_night);
   if (!Number.isFinite(price) || price < 0) throw new Error("Çmimi për natë është i pavlefshëm.");
   const st = normalizeRoomStatus(status == null ? "free" : status);
-  const existing = sqlite.prepare("SELECT id FROM rooms WHERE room_number = ?").get(num);
+  const existing = sqlite.prepare(
+    "SELECT id FROM rooms WHERE room_number = ? AND COALESCE(archived, 0) = 0",
+  ).get(num);
   if (existing) throw new Error(`Dhoma ${num} ekziston tashmë.`);
   const r = sqlite.prepare(`
     INSERT INTO rooms (room_number, floor, type, price_per_night, status)
@@ -2964,7 +2967,9 @@ function updateRoom(id, { room_number, floor, type, price_per_night, status } = 
   const price = price_per_night != null ? Number(price_per_night) : Number(row.price_per_night);
   if (!Number.isFinite(price) || price < 0) throw new Error("Çmimi për natë është i pavlefshëm.");
   const st = status != null ? normalizeRoomStatus(status) : row.status;
-  const clash = sqlite.prepare("SELECT id FROM rooms WHERE room_number = ? AND id != ?").get(num, Number(id));
+  const clash = sqlite.prepare(
+    "SELECT id FROM rooms WHERE room_number = ? AND id != ? AND COALESCE(archived, 0) = 0",
+  ).get(num, Number(id));
   if (clash) throw new Error(`Dhoma ${num} ekziston tashmë.`);
   sqlite.prepare(`
     UPDATE rooms
@@ -2977,10 +2982,34 @@ function updateRoom(id, { room_number, floor, type, price_per_night, status } = 
 function deleteRoom(id) {
   const row = getRoomById(id);
   if (!row) throw new Error("Dhoma nuk u gjet.");
-  const activeGuest = getActiveGuestForRoom(id);
-  if (activeGuest) throw new Error("Dhoma ka mysafir aktiv — bëni Check-out fillimisht.");
-  sqlite.prepare("DELETE FROM rooms WHERE id = ?").run(Number(id));
-  return { ok: true };
+  if (Number(row.archived)) return { ok: true, archived: true };
+  const rid = Number(id);
+  const activeGuest = getActiveGuestForRoom(rid);
+  if (activeGuest) throw new Error("Dhoma ka mysafir aktiv — bëni check-out fillimisht.");
+  sqlite.prepare(`
+    UPDATE reservations
+    SET status = 'cancelled',
+        updated_at = datetime('now','localtime')
+    WHERE room_id = ?
+      AND status IN ('pending', 'confirmed')
+  `).run(rid);
+  sqlite.prepare("DELETE FROM housekeeping_tasks WHERE room_id = ?").run(rid);
+  const anyGuest = sqlite.prepare("SELECT id FROM guests WHERE room_id = ? LIMIT 1").get(rid);
+  if (anyGuest) {
+    sqlite.prepare(`
+      UPDATE rooms
+      SET archived = 1, status = 'free'
+      WHERE id = ?
+    `).run(rid);
+    return { ok: true, archived: true };
+  }
+  sqlite.prepare(`
+    DELETE FROM reservations
+    WHERE room_id = ?
+      AND status IN ('cancelled', 'no_show')
+  `).run(rid);
+  sqlite.prepare("DELETE FROM rooms WHERE id = ?").run(rid);
+  return { ok: true, archived: false };
 }
 
 function parseHotelDate(value) {
@@ -4564,6 +4593,46 @@ function submitGuestPublicMenuOrder({
   };
 }
 
+function buildGuestRoomMenuPendingPayload(target, rawItems, { folio_pre_applied = false } = {}) {
+  const crypto = require("crypto");
+  const mapped = mapCloudItemsToLocal(Array.isArray(rawItems) ? rawItems : []);
+  if (!mapped.length) throw new Error("Porosia nuk ka artikuj.");
+  const guestName = target.mode === "occupied"
+    ? String(target.guest?.guest_name || "").trim()
+    : String(target.reservation?.guest_name || "").trim();
+  const roomNum = String(target.room?.room_number || "").trim();
+  const total = Math.round(
+    mapped.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0) * 100,
+  ) / 100;
+  const hasMinibarOnly = mapped.every(
+    (i) => String(i.category || "").trim().toLowerCase() === "minibar",
+  );
+  const labelKind = hasMinibarOnly ? "Minibar" : "Room service";
+  return {
+    id: crypto.randomUUID(),
+    order_kind: "guest_room_menu",
+    source: "guest_room_menu",
+    source_label: `${labelKind} · Dh. ${roomNum}`,
+    customer_label: guestName ? `${guestName} · Dh. ${roomNum}` : `Dh. ${roomNum}`,
+    customer_name: guestName,
+    room_number: roomNum,
+    room_id: target.room.id,
+    target_mode: target.mode,
+    reservation_id: target.mode === "reserved" ? Number(target.reservation.id) : null,
+    guest_id: target.mode === "occupied" ? Number(target.guest.id) : null,
+    folio_pre_applied: !!folio_pre_applied,
+    waiter_name: `Mysafir · Dh. ${roomNum}`,
+    device_id: "WEB-GUEST-ROOM",
+    local_only: true,
+    table_number: 0,
+    items: mapped,
+    items_json: mapped,
+    total,
+    ordered_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  };
+}
+
 function submitGuestRoomMenuOrder(roomNumber, items) {
   const target = resolveGuestRoomTarget(roomNumber);
   const list = Array.isArray(items) ? items : [];
@@ -4576,13 +4645,17 @@ function submitGuestRoomMenuOrder(roomNumber, items) {
       list,
       { source: "room_service", decrement_stock: true },
     );
+    const menuPending = buildGuestRoomMenuPendingPayload(target, list, { folio_pre_applied: true });
+    upsertPendingCloudOrders([menuPending]);
     return {
       ok: true,
       mode: "occupied",
+      pending: true,
+      order_id: menuPending.id,
       count: created.length,
       guest_name: target.guest.guest_name,
       room_number: target.room.room_number,
-      message: "Porosia u shtua te fatura e dhomës.",
+      message: "Porosia u shtua te fatura e dhomës. Recepsioni u njoftua.",
     };
   }
 
@@ -6757,9 +6830,29 @@ function isGuestHotelServiceOrder(cloudOrder) {
   return meta.order_kind === "guest_hotel_service";
 }
 
+function isGuestRoomMenuOrder(cloudOrder) {
+  if (!cloudOrder) return false;
+  if (String(cloudOrder.order_kind || "").trim() === "guest_room_menu") return true;
+  if (orderDeviceId(cloudOrder) === "WEB-GUEST-ROOM") return true;
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  return meta.order_kind === "guest_room_menu";
+}
+
+/** Ushqim/restorant nga QR dhomë — edhe kuzhina/kamarieri (jo vetëm minibar). */
+function isGuestRoomMenuKitchenOrder(cloudOrder) {
+  if (!isGuestRoomMenuOrder(cloudOrder)) return false;
+  const label = String(cloudOrder?.source_label || "").toLowerCase();
+  if (label.includes("minibar")) return false;
+  const items = cloudOrder.items || cloudOrder.items_json || [];
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return !label.includes("minibar");
+  return list.some((i) => String(i.category || "").trim().toLowerCase() !== "minibar");
+}
+
 /** QR dhomë / room service / shërbime hoteli — recepsioni, jo kamarieri restoranti. */
 function isRecepcionCloudPendingOrder(cloudOrder) {
   if (isGuestHotelServiceOrder(cloudOrder)) return true;
+  if (isGuestRoomMenuOrder(cloudOrder)) return true;
   const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
   if (!roomNum) return false;
   if (isCloudQrTableOrder(cloudOrder)) return false;
@@ -6781,11 +6874,32 @@ function isCloudOnlinePickupOrder(cloudOrder) {
     && parseTableNumberFromCloudOrder(cloudOrder) <= 0;
 }
 
-/** QR tavolinë + porosi dhomë/shërbime mysafiri (recepsioni). */
+/** Vetëm QR tavolinë restoranti — jo dhomë/shërbime (ato te recepsioni). */
 function isCloudPosAcceptQueueOrder(cloudOrder) {
-  if (isGuestHotelServiceOrder(cloudOrder)) return true;
-  if (isRecepcionCloudPendingOrder(cloudOrder)) return true;
   return isCloudQrTableOrder(cloudOrder);
+}
+
+/** Porosi që pranohen te recepsioni (QR dhomë, shërbime, minibar). */
+function isRecepcionAcceptPendingOrder(cloudOrder) {
+  return isRecepcionCloudPendingOrder(cloudOrder);
+}
+
+/** Të gjitha pending që ruhen në radhë cloud (restorant + recepsion). */
+function isAnyStaffAcceptPendingOrder(cloudOrder) {
+  if (!cloudOrder?.id) return false;
+  return isCloudPosAcceptQueueOrder(cloudOrder) || isRecepcionAcceptPendingOrder(cloudOrder);
+}
+
+/** Alarm / login admin — vetëm restorant (takeaway, QR tavolinë), jo recepsion. */
+function isRestaurantLoginNotifyOrder(cloudOrder) {
+  if (!cloudOrder?.id) return false;
+  if (isRecepcionCloudPendingOrder(cloudOrder)) return false;
+  const device = orderDeviceId(cloudOrder);
+  if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return false;
+  if (isCloudStaffWaiterOrder(cloudOrder)) return false;
+  if (isCloudPosAcceptQueueOrder(cloudOrder)) return true;
+  if (isCloudOnlinePickupOrder(cloudOrder)) return true;
+  return device === "WEB-PUBLIC";
 }
 
 /** Porosi nga QR i tavolinës fizike të lokalit (T1…T20) */
@@ -6824,12 +6938,14 @@ function enrichCloudOrderForWaiter(cloudOrder) {
   if (!cloudOrder?.id) return cloudOrder;
   const staff = isCloudStaffWaiterOrder(cloudOrder);
   const guestSvc = isGuestHotelServiceOrder(cloudOrder);
+  const guestMenu = isGuestRoomMenuOrder(cloudOrder);
   const recepQr = isRecepcionCloudPendingOrder(cloudOrder);
-  const qr = !staff && !guestSvc && !recepQr && isCloudQrTableOrder(cloudOrder);
+  const qr = !staff && !guestSvc && !guestMenu && !recepQr && isCloudQrTableOrder(cloudOrder);
   return {
     ...cloudOrder,
     is_staff_waiter: staff,
     is_guest_hotel_service: guestSvc,
+    is_guest_room_menu: guestMenu,
     is_recepcion_qr: recepQr,
     is_qr_table: qr,
     is_online_pickup: !staff && !qr && !guestSvc && !recepQr && isCloudOnlinePickupOrder(cloudOrder),
@@ -13361,6 +13477,9 @@ function getVersionInfo() {
     parseTableNumberFromCloudOrder,
     isCloudQrTableOrder,
     isCloudPosAcceptQueueOrder,
+    isAnyStaffAcceptPendingOrder,
+    isRecepcionAcceptPendingOrder,
+    isRestaurantLoginNotifyOrder,
     isCloudOnlinePickupOrder,
     isGuestHotelServiceOrder,
     isRecepcionCloudPendingOrder,

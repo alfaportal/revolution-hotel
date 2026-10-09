@@ -43,6 +43,7 @@ const FILES = {
   "biskota.jpg": P("230325"),
   "chips.jpg": U("photo-1566478989037-eec170784d0b"),
   "kikirke.jpg": S("LYsjSweO3cM"),
+  "chocolate-bar.jpg": S("y6E7dHDK8pE"),
 };
 
 function fetchBuffer(url, redirects = 0) {
@@ -69,8 +70,8 @@ function fetchBuffer(url, redirects = 0) {
 
 async function main() {
   const targets = [
-    path.join(root, "hotel-system", "desktop", "public", "menu-stock"),
-    path.join(root, "revolution-hotel-server", "public", "menu-stock"),
+    path.join(root, "public", "menu-stock"),
+    path.join(root, "..", "revolution-hotel-server", "public", "menu-stock"),
   ];
   for (const dir of targets) fs.mkdirSync(dir, { recursive: true });
 

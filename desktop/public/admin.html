@@ -2029,6 +2029,22 @@
     }
     body.admin-app .rooms-legend-reserved i { background: #3b82f6 !important; }
     body.admin-app .admin-room-guest { color: #e8e8ef !important; }
+    body.admin-app .admin-room-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      padding: 0.45rem 0.55rem 0.55rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    body.admin-app .admin-room-actions .room-action-btn--delete {
+      color: #fca5a5 !important;
+      border-color: rgba(248, 113, 113, 0.45) !important;
+    }
+    body.admin-app #room-modal-delete {
+      color: #fecaca !important;
+      border-color: rgba(248, 113, 113, 0.55) !important;
+      margin-right: auto;
+    }
     body.admin-app .checkout-bill-box {
       background: #252538 !important;
       border-color: #3a3a55 !important;
@@ -5460,7 +5476,7 @@
     <div class="table-modal-backdrop" id="room-modal-backdrop"></div>
     <div class="table-modal-content purchase-modal-content">
       <h2 id="room-modal-title">Dhomë e re</h2>
-      <p class="table-modal-sub">Numri, kati, lloji, çmimi për natë dhe statusi</p>
+      <p class="table-modal-sub">Numri, kati, lloji, çmimi për natë dhe statusi. Për të hequr dhomën: «Fshi dhomën» (jo mysafir aktiv).</p>
       <input type="hidden" id="room-edit-id" value="">
       <div class="purchase-form-grid">
         <div class="purchase-form-field">
@@ -5495,7 +5511,7 @@
       </div>
       <div class="fiscal-save-msg" id="room-modal-msg"></div>
       <div class="purchase-modal-actions">
-        <button type="button" class="btn btn-ghost" id="room-modal-delete" hidden>Fshi</button>
+        <button type="button" class="btn btn-ghost" id="room-modal-delete" hidden>Fshi dhomën</button>
         <button type="button" class="btn btn-ghost" id="room-modal-cancel">Anulo</button>
         <button type="button" class="btn btn-primary" id="room-modal-save">Ruaj</button>
       </div>
@@ -12962,6 +12978,34 @@
       msg.style.color = ok ? "var(--ngjyr-success, #16a34a)" : "var(--ngjyr-danger, #dc2626)";
     }
 
+    async function fshiDhomenAdmin(room) {
+      if (!room?.id) return;
+      const num = String(room.room_number || room.id);
+      if (room.active_guest || String(room.status) === "occupied" || resolveAdminRoomDisplayStatus(room) === "occupied") {
+        showRoomsMsg("Dhoma ka mysafir aktiv — bëni check-out fillimisht.", false);
+        return;
+      }
+      const ok = confirm(
+        `Heq dhomën «${num}» nga lista?\n`
+        + "Recepsioni e sheh të njëjtën listë pas rifreskimit.\n"
+        + "Nëse ka histori mysafirësh, dhoma fshihet vetëm nga pamja (archived).",
+      );
+      if (!ok) return;
+      try {
+        const res = await api(`/api/admin/rooms/${room.id}`, { method: "DELETE" });
+        mbyllModalRoom();
+        await ngarkoDhomat();
+        showRoomsMsg(res?.message || `Dhoma ${num} u hoq.`, true);
+      } catch (err) {
+        showRoomsMsg(err.message || "Gabim gjatë fshirjes.", false);
+        const msg = document.getElementById("room-modal-msg");
+        if (msg && document.getElementById("modal-room") && !document.getElementById("modal-room").hidden) {
+          msg.textContent = err.message || "Gabim gjatë fshirjes.";
+          msg.style.color = "var(--ngjyr-danger)";
+        }
+      }
+    }
+
     function renderRoomsGrid(rooms) {
       const grid = document.getElementById("grida-dhomave");
       if (!grid) return;
@@ -12989,6 +13033,10 @@
           actions = `<button type="button" class="btn btn-primary btn-sm room-action-btn" data-room-checkout="${r.id}">Shiko faturën</button>`;
         } else if (st === "dirty") {
           actions = `<button type="button" class="btn btn-ghost btn-sm room-action-btn" data-room-clean="${r.id}">Pastro → E Lirë</button>`;
+        }
+        if (st !== "occupied" && !guest) {
+          actions +=
+            `<button type="button" class="btn btn-ghost btn-sm room-action-btn room-action-btn--delete" data-room-delete="${r.id}" title="Heq dhomën">Fshi</button>`;
         }
         const guestLine = guest
           ? `<div class="admin-room-guest">${escMenuAttr(guest.guest_name)} · ${Number(guest.persons) || 1} pers.</div>`
@@ -13050,6 +13098,10 @@
           } catch (err) {
             showRoomsMsg(err.message || "Gabim gjatë pastrimit.", false);
           }
+        });
+        card.querySelector("[data-room-delete]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          fshiDhomenAdmin(r);
         });
       }
     }
@@ -13282,6 +13334,7 @@
       try {
         const rooms = await api("/api/admin/rooms");
         const list = Array.isArray(rooms) ? rooms : [];
+        ngarkoDhomat.lastRooms = list;
         renderRoomsGrid(list);
         try { localStorage.setItem("hotel_cache_rooms", JSON.stringify(list)); } catch { /* ignore */ }
         showRoomsMsg("", true);
@@ -14085,21 +14138,13 @@
     });
     document.getElementById("room-modal-delete")?.addEventListener("click", async () => {
       const id = document.getElementById("room-edit-id")?.value?.trim();
-      const num = document.getElementById("room-number")?.value?.trim() || id;
       if (!id) return;
-      if (!confirm(`Fshini dhomën «${num}»?`)) return;
-      try {
-        await api(`/api/admin/rooms/${id}`, { method: "DELETE" });
-        mbyllModalRoom();
-        await ngarkoDhomat();
-        showRoomsMsg("Dhoma u fshi.", true);
-      } catch (err) {
-        const msg = document.getElementById("room-modal-msg");
-        if (msg) {
-          msg.textContent = err.message || "Gabim gjatë fshirjes.";
-          msg.style.color = "var(--ngjyr-danger)";
-        }
-      }
+      const room = (ngarkoDhomat.lastRooms || []).find((x) => String(x.id) === String(id));
+      await fshiDhomenAdmin(room || {
+        id,
+        room_number: document.getElementById("room-number")?.value?.trim(),
+        status: document.getElementById("room-status")?.value,
+      });
     });
 
     document.getElementById("checkin-modal-backdrop")?.addEventListener("click", mbyllModalCheckIn);
@@ -17837,7 +17882,9 @@
     function applyLocalWaiterLanPayload(s) {
       if (!s) return;
       const localWaiterUrl =
-        s.local_waiter_panel_url
+        s.local_waiter_url
+        || s.local_staff_wifi?.kamarier
+        || s.local_waiter_panel_url
         || (s.local_lan_ip && s.local_server_port
           ? `http://${s.local_lan_ip}:${s.local_server_port}/waiter.html`
           : "");
@@ -17913,10 +17960,10 @@
       toggleRow("cloud-row-reception", !cloudDisabled && !!s.reception_url);
 
       const localWaiterUrl =
-        s.local_waiter_panel_url
-        || (s.local_base_url ? `${String(s.local_base_url).replace(/\/+$/, "")}/waiter.html` : "")
-        || s.local_waiter_url
+        s.local_waiter_url
         || s.local_staff_wifi?.kamarier
+        || s.local_waiter_panel_url
+        || (s.local_base_url ? `${String(s.local_base_url).replace(/\/+$/, "")}/waiter.html` : "")
         || "";
       let localRecepsionUrl = s.local_recepsion_url || s.local_staff_wifi?.recepsion || "";
       if (!localRecepsionUrl && localWaiterUrl) {

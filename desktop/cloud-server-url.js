@@ -301,8 +301,8 @@ function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "", slug = "") {
   }
   if (p === "room-service" || p === "room_service") {
     return room
-      ? `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html?room=${room}${slugQ}`
-      : `${base}${HOTEL_WEB_PREFIX}/guest/room-service.html${s ? `?slug=${s}` : ""}`;
+      ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`
+      : `${base}${HOTEL_WEB_PREFIX}/guest/services.html${s ? `?slug=${s}` : ""}`;
   }
   return "";
 }

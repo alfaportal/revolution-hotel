@@ -125,15 +125,12 @@
         btn.type = "button";
         btn.className = "menu-item-btn has-photo";
         const photo = guestPhotoUrl(it);
-        const vatPct = Number(it.vat_percent ?? it.vat_rate ?? 18);
-        const vatLetter = String(it.vat_letter || it.vat_norm || (vatPct === 8 ? "D" : vatPct === 0 ? "A" : "E"));
         btn.innerHTML =
           `<div class="menu-item-card has-photo">` +
           photoImgHtml(photo, it.name) +
           `<div class="menu-item-meta">` +
           `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
           `<span class="cmimi cmimi-badge">${fmt(it.price)}</span>` +
-          `<span class="menu-item-vat-flag">${vatLetter} · ${vatPct}%</span>` +
           `</div></div>`;
         btn.addEventListener("click", () => {
           onSelect?.(it, btn);
@@ -233,10 +230,182 @@
     renderGrid();
   }
 
+  /**
+   * Një faqe — Restorant (i pari) + kategoritë e shërbimeve hoteli; restoranti ka nën-taba kategori me foto.
+   */
+  function renderGuestHub({
+    hubBarEl,
+    subBarEl,
+    gridEl,
+    restaurantLabel = "Restorant",
+    menuItems,
+    menuCategories,
+    serviceGroups,
+    onMenuSelect,
+    onServiceAdd,
+    priceLabel,
+    formatEuro,
+  }) {
+    if (!hubBarEl || !gridEl) return;
+    const fmt = typeof formatEuro === "function" ? formatEuro : (n) => Number(n || 0).toFixed(2) + " €";
+    const menuList = (Array.isArray(menuItems) ? menuItems : []).filter(
+      (it) => String(it.category || "").trim().toLowerCase() !== "minibar",
+    );
+    const menuCats = orderedCategories(menuList, menuCategories).filter(
+      (c) => String(c || "").trim().toLowerCase() !== "minibar",
+    );
+    const gs = (serviceGroups || []).filter((g) => (g.services || []).length);
+
+    const tabs = [];
+    if (menuList.length) {
+      tabs.push({ kind: "restaurant", label: restaurantLabel, menuCats, menuList });
+    }
+    for (const g of gs) {
+      tabs.push({ kind: "service", label: g.name || "Të tjera", group: g, services: g.services || [] });
+    }
+    if (!tabs.length) {
+      hubBarEl.innerHTML = "";
+      if (subBarEl) {
+        subBarEl.hidden = true;
+        subBarEl.innerHTML = "";
+      }
+      gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka menu ose shërbime — kontrolloni te pronari.</p>';
+      return;
+    }
+
+    let activeTab = 0;
+    let activeMenuCat = menuCats[0] || "";
+
+    function renderServiceGrid(services, group) {
+      gridEl.innerHTML = "";
+      if (!services.length) {
+        gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka shërbime për këtë kategori.</p>';
+        return;
+      }
+      const grid = document.createElement("div");
+      grid.className = "menu-photo-grid-inner menu-text-grid-inner";
+      for (const s of services) {
+        const card = document.createElement("div");
+        card.className = "guest-svc-card";
+        const photo = guestServicePhotoUrl(s, group);
+        card.innerHTML =
+          (photo
+            ? `<img class="guest-svc-photo" src="${photo.replace(/"/g, "&quot;")}" alt="" loading="lazy" onerror="this.style.display='none'">`
+            : `<div class="guest-svc-photo guest-svc-photo-ph">✨</div>`) +
+          `<div class="guest-svc-name">${String(s.name || "").replace(/</g, "&lt;")}</div>` +
+          `<div class="guest-svc-price">${String(priceLabel?.(s) || "").replace(/</g, "&lt;")}</div>` +
+          `<button type="button" class="guest-svc-add">+ Shto</button>`;
+        card.querySelector(".guest-svc-add")?.addEventListener("click", () => onServiceAdd?.(s));
+        grid.appendChild(card);
+      }
+      gridEl.appendChild(grid);
+    }
+
+    function renderRestaurantGrid() {
+      gridEl.innerHTML = "";
+      const filtered = menuList
+        .filter((it) => it.category === activeMenuCat)
+        .sort(
+          (a, b) =>
+            (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)
+            || (Number(a.id) || 0) - (Number(b.id) || 0),
+        );
+      if (!filtered.length) {
+        gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj për këtë kategori.</p>';
+        return;
+      }
+      const grid = document.createElement("div");
+      grid.className = "menu-photo-grid-inner menu-text-grid-inner";
+      for (const it of filtered) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "menu-item-btn has-photo";
+        const photo = guestPhotoUrl(it);
+        btn.innerHTML =
+          `<div class="menu-item-card has-photo">` +
+          photoImgHtml(photo, it.name) +
+          `<div class="menu-item-meta">` +
+          `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
+          `<span class="cmimi cmimi-badge">${fmt(it.price)}</span>` +
+          `</div></div>`;
+        btn.addEventListener("click", () => {
+          onMenuSelect?.(it, btn);
+          global.MenuPosUI?.flashButton?.(btn);
+        });
+        grid.appendChild(btn);
+      }
+      gridEl.appendChild(grid);
+    }
+
+    function buildMenuSubBar() {
+      if (!subBarEl) return;
+      if (tabs[activeTab]?.kind !== "restaurant" || !menuCats.length) {
+        subBarEl.hidden = true;
+        subBarEl.innerHTML = "";
+        return;
+      }
+      subBarEl.hidden = false;
+      subBarEl.innerHTML = "";
+      for (const cat of menuCats) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "menu-group-btn" + (cat === activeMenuCat ? " active" : "");
+        btn.dataset.group = cat;
+        btn.textContent = cat;
+        btn.addEventListener("click", () => {
+          activeMenuCat = cat;
+          subBarEl.querySelectorAll(".menu-group-btn").forEach((b) => {
+            b.classList.toggle("active", b.dataset.group === cat);
+          });
+          renderRestaurantGrid();
+          btn.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+        });
+        subBarEl.appendChild(btn);
+      }
+      bindCategoryBarScroll(subBarEl);
+    }
+
+    function renderActive() {
+      const tab = tabs[activeTab];
+      if (!tab) return;
+      if (tab.kind === "restaurant") {
+        buildMenuSubBar();
+        renderRestaurantGrid();
+      } else {
+        if (subBarEl) {
+          subBarEl.hidden = true;
+          subBarEl.innerHTML = "";
+        }
+        renderServiceGrid(tab.services, tab.group);
+      }
+    }
+
+    hubBarEl.innerHTML = "";
+    tabs.forEach((tab, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "menu-group-btn" + (idx === activeTab ? " active" : "");
+      btn.dataset.idx = String(idx);
+      btn.textContent = tab.label;
+      btn.addEventListener("click", () => {
+        activeTab = idx;
+        hubBarEl.querySelectorAll(".menu-group-btn").forEach((b) => {
+          b.classList.toggle("active", Number(b.dataset.idx) === idx);
+        });
+        renderActive();
+        btn.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+      });
+      hubBarEl.appendChild(btn);
+    });
+    bindCategoryBarScroll(hubBarEl);
+    renderActive();
+  }
+
   global.GuestMenuUI = {
     guestPhotoUrl,
     guestServicePhotoUrl,
     renderGuestMenu,
     renderGuestServices,
+    renderGuestHub,
   };
 })(window);

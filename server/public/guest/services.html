@@ -24,12 +24,10 @@
 <body>
   <h1 id="title">Shërbimet</h1>
   <p class="sub" id="sub">Shërbime hoteli — e njëjta si Admin → Shërbimet</p>
-  <p class="nav-links" id="food-link-wrap" hidden>
-    <a href="#" id="link-room-food">Porosit ushqim (room service)</a>
-  </p>
   <div id="msg" class="sub"></div>
   <div id="menu-shell" class="guest-menu-shell" hidden>
-    <div class="menu-group-bar" id="cat-bar"></div>
+    <div class="menu-group-bar" id="hub-bar"></div>
+    <div class="menu-group-bar menu-sub-bar" id="menu-cat-bar" hidden></div>
     <div class="menu-photo-grid" id="svc-grid"></div>
   </div>
   <div id="list">Duke ngarkuar…</div>
@@ -52,29 +50,23 @@
       const list = document.getElementById("list");
       const shell = document.getElementById("menu-shell");
       const msg = document.getElementById("msg");
+      const menuCart = G.createCart();
       const serviceCart = G.createCart();
       const minibarCart = G.createCart();
 
       document.getElementById("sub").textContent = G.room
-        ? `${G.orderModeLabel()} — shërbime hoteli (spa, bazen, transport…)`
-        : "Skanoni QR-në e dhomës suaj për shërbime hoteli.";
-
-      if (G.room) {
-        const foodWrap = document.getElementById("food-link-wrap");
-        const foodLink = document.getElementById("link-room-food");
-        if (foodWrap && foodLink) {
-          foodWrap.hidden = false;
-          const sq = G.guestSlug() ? `&slug=${encodeURIComponent(G.guestSlug())}` : "";
-          foodLink.href = `room-service.html?room=${encodeURIComponent(G.room)}${sq}`;
-        }
-      }
+        ? `${G.orderModeLabel()} — restorant, shërbime hoteli dhe minibar`
+        : "Skanoni QR-në e dhomës suaj.";
 
       function refreshCart() {
+        const menuTotal = menuCart.total();
         const svcTotal = serviceCart.total();
         const miniTotal = minibarCart.total();
+        const menuN = menuCart.count();
         const svcN = serviceCart.count();
         const miniN = minibarCart.count();
         const parts = [];
+        if (menuN) parts.push(`${menuN} ushqim · ${G.fmt(menuTotal)}`);
         if (svcN) parts.push(`${svcN} shërbime · ${G.fmt(svcTotal)}`);
         if (miniN) parts.push(`${miniN} minibar · ${G.fmt(miniTotal)}`);
         document.getElementById("cart-label").textContent = parts.length
@@ -132,25 +124,41 @@
           document.getElementById("btn-send").disabled = true;
           return;
         }
-        const r = await fetch(G.withSlugQuery("/api/guest/services"));
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.gabim || "Gabim");
-        document.getElementById("title").textContent = (d.hotel_name || "Hotel") + " — Shërbime";
+        const [svcRes, menuRes] = await Promise.all([
+          fetch(G.withSlugQuery("/api/guest/services")),
+          fetch(G.withSlugQuery("/api/guest/menu")),
+        ]);
+        const d = await svcRes.json();
+        const menuData = await menuRes.json();
+        if (!svcRes.ok) throw new Error(d.gabim || "Gabim shërbime");
+        if (!menuRes.ok) throw new Error(menuData.gabim || "Gabim menu");
+        document.getElementById("title").textContent = (d.hotel_name || menuData.hotel_name || "Hotel") + " — Shërbime";
         const groups = d.groups || [];
-        if (!groups.length && !(d.services || []).length) {
-          list.innerHTML = "<p class='sub'>Nuk ka shërbime të listuara — provoni minibar ose room service.</p>";
+        const normalizedGroups = groups.length
+          ? groups
+          : [{ id: null, name: "Të tjera", services: d.services || [] }];
+        const menuItems = menuData.items || [];
+        const hasHub = menuItems.length || normalizedGroups.some((g) => (g.services || []).length);
+        if (!hasHub) {
+          list.innerHTML = "<p class='sub'>Nuk ka menu ose shërbime — kontrolloni te pronari.</p>";
         } else {
-          const normalizedGroups = groups.length
-            ? groups
-            : [{ id: null, name: "Të tjera", services: d.services || [] }];
           list.hidden = true;
           shell.hidden = false;
-          GuestMenuUI.renderGuestServices({
-            barEl: document.getElementById("cat-bar"),
+          GuestMenuUI.renderGuestHub({
+            hubBarEl: document.getElementById("hub-bar"),
+            subBarEl: document.getElementById("menu-cat-bar"),
             gridEl: document.getElementById("svc-grid"),
-            groups: normalizedGroups,
+            restaurantLabel: "Restorant",
+            menuItems,
+            menuCategories: menuData.categories || [],
+            serviceGroups: normalizedGroups,
+            formatEuro: G.fmt,
             priceLabel,
-            onAdd: addService,
+            onMenuSelect: (it) => {
+              menuCart.add(it);
+              refreshCart();
+            },
+            onServiceAdd: addService,
           });
         }
         await loadMinibar();
@@ -160,15 +168,21 @@
 
       document.getElementById("btn-send").addEventListener("click", async () => {
         msg.className = "sub";
+        const hasMenu = !menuCart.isEmpty();
         const hasSvc = !serviceCart.isEmpty();
         const hasMini = !minibarCart.isEmpty();
-        if (!hasSvc && !hasMini) {
+        if (!hasMenu && !hasSvc && !hasMini) {
           msg.className = "sub err";
-          msg.textContent = "Shtoni shërbime ose produkte minibar.";
+          msg.textContent = "Shtoni ushqim, shërbime ose minibar.";
           return;
         }
         try {
           const notes = [];
+          if (hasMenu) {
+            const result = await G.submitMenuCart(menuCart, {});
+            menuCart.clear();
+            notes.push(result.message || "Ushqimi u dërgua në dhomë.");
+          }
           if (hasSvc) {
             const result = await G.submitServiceCart(serviceCart, {});
             serviceCart.clear();
