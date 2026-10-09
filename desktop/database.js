@@ -1658,6 +1658,7 @@ const DEFAULT_ADMIN_TAB_ORDER = [
   "rezervime",
   "stoku",
   "stafi",
+  "tavolinat",
   "dhomat",
   "sherbimet",
   "rezervime-dhomash",
@@ -2747,7 +2748,7 @@ function nextTableNumber() {
 
 /** Zona default për Restorant & Bar të hotelit (pa prekur zona ekzistuese). */
 function ensureHotelFnbZones() {
-  const wanted = ["Restoranti", "Bari", "Terrasa"];
+  const wanted = ["Restoranti", "Bari", "Terrasa", "Ballokoni"];
   const existing = listTableZones();
   const byLower = new Map(
     existing.map((z) => [String(z.name || "").trim().toLowerCase(), z]),
@@ -2775,6 +2776,7 @@ function ensureHotelFnbZones() {
       restoranti: ["restaurant", "restorant"],
       bari: ["bar", "barı"],
       terrasa: ["terrace", "terrasa", "terraca", "terasa"],
+      ballokoni: ["ballkoni", "balcony", "ballkon"],
     };
     const hit = (aliases[key] || []).some((a) => byLower.has(a));
     if (hit) continue;

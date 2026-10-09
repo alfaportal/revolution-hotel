@@ -170,7 +170,7 @@
     #panel-cloud,
     #panel-faqja-publike,
     #panel-licenca,
-    #panel-restorant {
+    #panel-tavolinat {
       font-family: "Inter", system-ui, -apple-system, sans-serif;
     }
 
@@ -2327,8 +2327,6 @@
     }
     body.admin-app .hotel-reports-block .dashboard-chart-bars,
     body.admin-app .hotel-reports-block .dashboard-chart-area { min-height: 140px; }
-    /* Tavolinat si tab kryesor u hoq — menaxhimi te Cilësimet → Restorant & Bar (#panel-restorant). */
-    body.admin-app [data-panel="tavolinat"] { display: none !important; }
     body.admin-app .admin-hk-filters { display:flex; flex-wrap:wrap; gap:0.45rem; margin-bottom:0.75rem; }
     body.admin-app .admin-hk-filter {
       background:#252538; border:1px solid #3a3a55; color:#c8c8d8;
@@ -2418,6 +2416,7 @@
       <button type="button" class="admin-tab-btn active" data-panel="pasqyra">Pasqyra</button>
       <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
       <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
+      <button type="button" class="admin-tab-btn" data-panel="tavolinat">Tavolinat</button>
       <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
       <button type="button" class="admin-tab-btn" data-panel="stoku">Stoku</button>
       <button type="button" class="admin-tab-btn" data-panel="stafi">Punonjësit</button>
@@ -2765,13 +2764,13 @@
       </div>
     </section>
 
-    <!-- RESTORANT & BAR — nën Cilësimet (jo tab i veçantë) -->
-    <section id="panel-restorant" class="panel">
-      <button type="button" class="btn btn-ghost settings-sub-back" data-settings-back>← Kthehu te cilësimet</button>
+    <!-- TAVOLINAT (tab kryesor + Cilësimet → Restorant & Bar) -->
+    <section id="panel-tavolinat" class="panel">
+      <button type="button" class="btn btn-ghost settings-sub-back" data-settings-back hidden>← Kthehu te cilësimet</button>
       <div class="tables-panel-header">
         <div>
-          <h2 class="tables-panel-title">Restorant &amp; Bar — Tavolinat</h2>
-          <p class="tables-panel-sub">Zona: Restoranti, Bari, Terrasa — shto / ndrysho / fshi tavolina. Shfaqen te kamarierët.</p>
+          <h2 class="tables-panel-title">Tavolinat &amp; Zonat</h2>
+          <p class="tables-panel-sub">Restoranti, Bari, Terrasa, Ballokoni — shtoni zona, tavolina; ndryshimet shfaqen te kamarierët.</p>
         </div>
         <div class="tables-panel-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="btn-add-zone">+ Zonë e re</button>
@@ -6380,8 +6379,10 @@
       document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
       showSettingsSubnavBar(true);
       updateSettingsSubnav(name);
-      const panel = document.getElementById("panel-" + name);
+      const panelKey = name === "restorant" ? "tavolinat" : name;
+      const panel = document.getElementById("panel-" + panelKey);
       if (panel) panel.classList.add("active");
+      panel?.querySelector(".settings-sub-back")?.toggleAttribute("hidden", false);
       if (name === "fiskale") {
         ngarkoPrinterin();
         ngarkoArkenFiskale();
@@ -6536,6 +6537,11 @@
       if (name === "rezervime-dhomash") ngarkoRezervimeDhomash();
       if (name === "pastrimi") ngarkoAdminPastrimi();
       if (name === "qr-tavolinat") ngarkoHotelQrs();
+      if (name === "tavolinat") {
+        document.getElementById("panel-tavolinat")?.querySelector(".settings-sub-back")?.setAttribute("hidden", "");
+        ngarkoMenaxhimTavolinash();
+        ngarkoTavolinat();
+      }
       if (name === "rezervime") ngarkoRezervimet();
       if (name === "promocione") ngarkoPromocionet();
       if (name === "raportet") {
@@ -19517,7 +19523,7 @@
     })();
 
     setInterval(() => {
-      if (document.getElementById("panel-restorant")?.classList.contains("active")) {
+      if (document.getElementById("panel-tavolinat")?.classList.contains("active")) {
         ngarkoTavolinat();
         ngarkoMenaxhimTavolinash();
       }
