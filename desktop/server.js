@@ -3232,7 +3232,7 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
       req.body?.handover_to_staff_id,
       { sessionRole: req.session.role },
     );
-    const salesDetail = db.getShiftSalesDetail(closed.shift.id);
+    const salesDetail = db.getShiftSalesDetail(closed.shift.id, req.session.role);
     const printerConfig = printer.getPrinterConfig(db);
     const printEnabled = printerConfig.waiter_shift_print_enabled !== false;
 
@@ -4099,9 +4099,9 @@ app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, (req, res) => {
   }
 });
 
-app.get("/api/waiter/active-orders", auth, staffOrAdmin, (_req, res) => {
+app.get("/api/waiter/active-orders", auth, staffOrAdmin, (req, res) => {
   try {
-    const data = db.listActiveHotelOrdersForWaiter();
+    const data = db.listActiveHotelOrdersForWaiter({ sessionRole: req.session.role });
     res.json({ ok: true, ...data });
   } catch (e) {
     res.status(400).json({ gabim: e.message });

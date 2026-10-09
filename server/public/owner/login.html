@@ -21,7 +21,8 @@
         <h1 id="login-heading">Paneli i pronarit</h1>
         <h2 id="login-biz-name" class="owner-login-biz hidden"></h2>
         <p id="login-sub">Shitjet, raportet dhe tavolinat live — nga telefoni.</p>
-        <p class="owner-login-note">Kjo hyrje është vetëm për pronarët. Kamarierët dhe admini POS përdorin aplikacionin në kompjuter.</p>
+        <p class="owner-login-note">Kjo hyrje është vetëm për pronarët e <strong>hotelit</strong>. Kamarierët dhe recepsioni përdorin linkun e stafit — jo email këtu.</p>
+        <p class="owner-login-note owner-login-url-hint">Adresa e saktë: <code>revolution-pos.com/hotel/owner/login</code> — <strong>jo</strong> <code>/owner/login</code> (ai është për kafene/restorant).</p>
       </div>
       <div id="login-error" class="alert alert-error hidden"></div>
       <div id="login-info" class="alert alert-ok hidden"></div>
@@ -68,9 +69,11 @@
 
     const MIN_PASSWORD = 6;
     let mode = "login";
+    let brandingKnown = false;
 
     function clientTypeLabel(tipi) {
       const labels = {
+        hotel: "Hotel",
         kafene: "Kafene",
         restorant: "Restorant",
         bar: "Bar",
@@ -97,11 +100,13 @@
       subEl.textContent = typeLbl
         ? `${typeLbl} · shitjet dhe raportet tuaja`
         : "Shitjet, raportet dhe tavolinat live — nga telefoni.";
-      if (data.client_type === "kafene") iconEl.textContent = "☕";
+      if (data.client_type === "hotel") iconEl.textContent = "🏨";
+      else if (data.client_type === "kafene") iconEl.textContent = "☕";
       else if (data.client_type === "bar") iconEl.textContent = "🍹";
       else if (data.client_type === "market" || data.client_type === "dyqan") iconEl.textContent = "🛒";
       else if (data.client_type === "restorant") iconEl.textContent = "🍽️";
       else iconEl.textContent = "🏪";
+      brandingKnown = true;
     }
 
     async function loadBrandingForEmail(email) {
@@ -110,7 +115,11 @@
       try {
         const res = await fetch(`/hotel/api/auth/owner/branding?email=${encodeURIComponent(e)}`);
         const data = await res.json();
-        if (data.ok) applyBranding(data);
+        if (data.ok) {
+          applyBranding(data);
+        } else {
+          brandingKnown = false;
+        }
       } catch { /* ignore */ }
     }
 
@@ -221,7 +230,7 @@
           credentials: "include",
           body: JSON.stringify({
             email: document.getElementById("email").value.trim().toLowerCase(),
-            password: document.getElementById("password").value.trim(),
+            password: document.getElementById("password").value,
           }),
         });
         const data = await res.json();
@@ -241,7 +250,14 @@
             showInfo(data.gabim || "Kodi u dërgua në email.");
             return;
           }
-          throw new Error(data.gabim || "Gabim");
+          let msg = data.gabim || "Gabim";
+          if (data.hint) msg += " " + data.hint;
+          else if (!brandingKnown) {
+            msg += " Për hotel: https://revolution-pos.com/hotel/owner/login — emaili mund të jetë regjistruar vetëm te kafene/restorant.";
+          } else {
+            msg += " Kontrollo fjalëkalimin (Caps Lock) ose «Harrove fjalëkalimin?».";
+          }
+          throw new Error(msg);
         }
         localStorage.setItem("owner_token", data.token);
         location.href = "/hotel/owner/panel";

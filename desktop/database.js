@@ -7818,12 +7818,14 @@ function listLocalActiveOrders() {
 }
 
 /**
- * Lista e porosive aktive për recepsion:
- * — tavolina (restorant/bar)
- * — fatura dhome / Room Service (room_charges sot për mysafirë aktivë)
+ * Porosi aktive — recepsioni: dhomë/RS; kamarieri: tavolina restoranti; admin/pa rol: të dyja.
  */
-function listActiveHotelOrdersForWaiter() {
-  const tableRows = sqlite.prepare(`
+function listActiveHotelOrdersForWaiter(opts = {}) {
+  const role = String(opts.sessionRole || "").trim().toLowerCase();
+  const includeTables = !role || role === "kamarier" || role === "admin";
+  const includeRooms = !role || role === "recepsion" || role === "admin";
+
+  const tableRows = includeTables ? sqlite.prepare(`
     SELECT
       o.id,
       o.waiter_name,
@@ -7839,7 +7841,7 @@ function listActiveHotelOrdersForWaiter() {
     JOIN tables t ON t.id = o.table_id
     WHERE o.status = 'active'
     ORDER BY o.created_at DESC, o.id DESC
-  `).all();
+  `).all() : [];
 
   const tables = tableRows.map((o, idx) => {
     let items = [];
@@ -7868,7 +7870,7 @@ function listActiveHotelOrdersForWaiter() {
     };
   });
 
-  const roomRows = sqlite.prepare(`
+  const roomRows = includeRooms ? sqlite.prepare(`
     SELECT
       g.id AS guest_id,
       g.guest_name,
@@ -7884,7 +7886,7 @@ function listActiveHotelOrdersForWaiter() {
       AND rc.created_at < date('now', 'localtime', '+1 day')
     GROUP BY g.id, g.guest_name, g.room_id, r.room_number
     ORDER BY MIN(rc.created_at) DESC
-  `).all();
+  `).all() : [];
 
   const rooms = roomRows.map((row, idx) => ({
     id: `r-${row.guest_id}`,
@@ -8456,8 +8458,27 @@ const SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL = `
         ELSE COALESCE(NULLIF(card_amount, 0), 0)
       END), 0) AS card_total`;
 
-function computeShiftTotals(shiftId, staffId = null, waiterName = null) {
+/** Ditari / mbyllje ndërrimi — recepsion (CO-/RC-) vs restorant (tavolina). */
+function shiftDailyLogRoleWhereSql(sessionRole, prefix = "AND") {
+  const role = String(sessionRole || "").trim().toLowerCase();
+  if (role === "recepsion") {
+    return ` ${prefix} (
+      UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
+      OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+    )`;
+  }
+  if (role === "kamarier") {
+    return ` ${prefix} NOT (
+      UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
+      OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+    )`;
+  }
+  return "";
+}
+
+function computeShiftTotals(shiftId, staffId = null, waiterName = null, sessionRole = "") {
   const sid = Number(shiftId);
+  const roleFilter = shiftDailyLogRoleWhereSql(sessionRole);
   const row = sqlite.prepare(`
     SELECT
       COUNT(*) AS order_count,
@@ -8465,7 +8486,7 @@ function computeShiftTotals(shiftId, staffId = null, waiterName = null) {
       ${SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL},
       COALESCE(SUM(discount_total), 0) AS discount_total
     FROM daily_log
-    WHERE status = 'completed' AND shift_id = ?
+    WHERE status = 'completed' AND shift_id = ?${roleFilter}
   `).get(sid);
   return {
     order_count: Number(row?.order_count) || 0,
@@ -8477,7 +8498,7 @@ function computeShiftTotals(shiftId, staffId = null, waiterName = null) {
 }
 
 /** Shitje në daily_log pa shift_id (p.sh. WEB-WAITER para hapjes së ndërrimit). */
-function computeOrphanDailyLogTotals(staffId, waiterName = null) {
+function computeOrphanDailyLogTotals(staffId, waiterName = null, sessionRole = "") {
   const id = Number(staffId);
   const wname = String(waiterName || "").trim();
   if (!id && !wname) {
@@ -8498,6 +8519,7 @@ function computeOrphanDailyLogTotals(staffId, waiterName = null) {
     )`);
     params.push(wname);
   }
+  const roleFilter = shiftDailyLogRoleWhereSql(sessionRole);
   const row = sqlite.prepare(`
     SELECT
       COUNT(*) AS order_count,
@@ -8505,7 +8527,7 @@ function computeOrphanDailyLogTotals(staffId, waiterName = null) {
       ${SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL},
       COALESCE(SUM(discount_total), 0) AS discount_total
     FROM daily_log
-    WHERE shift_id IS NULL AND status = 'completed' AND (${parts.join(" OR ")})
+    WHERE shift_id IS NULL AND status = 'completed' AND (${parts.join(" OR ")})${roleFilter}
   `).get(...params);
   return {
     order_count: Number(row?.order_count) || 0,
@@ -8530,7 +8552,7 @@ function parseShiftLogItems(itemsJson) {
   })).filter(it => it.name && it.quantity > 0);
 }
 
-function getShiftSalesDetail(shiftId) {
+function getShiftSalesDetail(shiftId, sessionRole = "") {
   const sid = Number(shiftId);
   if (!sid) {
     return {
@@ -8540,11 +8562,12 @@ function getShiftSalesDetail(shiftId) {
     };
   }
 
+  const roleFilter = shiftDailyLogRoleWhereSql(sessionRole);
   const entries = sqlite.prepare(`
     SELECT id, date, time, table_number, waiter_name, items_json, total, receipt_number,
            payment_method, discount_total, promotion_name, subtotal
     FROM daily_log
-    WHERE shift_id = ? AND status = 'completed'
+    WHERE shift_id = ? AND status = 'completed'${roleFilter}
     ORDER BY date ASC, time ASC, id ASC
   `).all(sid);
 
@@ -8590,7 +8613,7 @@ function getShiftSalesDetail(shiftId) {
   return {
     orders,
     item_summary,
-    totals: computeShiftTotals(sid),
+    totals: computeShiftTotals(sid, null, null, sessionRole),
   };
 }
 
@@ -9066,8 +9089,9 @@ function getWaiterShiftSummary(staffId, opts = {}) {
     LIMIT 5
   `).all(id, staff.name);
 
+  const sessionRole = opts.sessionRole || "";
   if (!shift) {
-    const totals = computeOrphanDailyLogTotals(id, staff.name);
+    const totals = computeOrphanDailyLogTotals(id, staff.name, sessionRole);
     const summary = enrichShiftSummary(null, { ...totals, active_tables: activeLabels.length }, staff, {
       pendingHandover,
       active_table_labels: activeLabels,
@@ -9088,7 +9112,7 @@ function getWaiterShiftSummary(staffId, opts = {}) {
     );
     return summary;
   }
-  const totals = computeShiftTotals(shift.id, staff.id, staff.name);
+  const totals = computeShiftTotals(shift.id, staff.id, staff.name, sessionRole);
   const summary = enrichShiftSummary(shift, { ...totals, active_tables: activeLabels.length }, staff, {
     pendingHandover,
     active_table_labels: activeLabels,
@@ -9141,7 +9165,8 @@ function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId, opts = 
     throw new Error(`Mbyllni fillimisht tavolinat dhe pagesat: ${activeLabels.join(", ")}.`);
   }
 
-  const totals = computeShiftTotals(shift.id);
+  const sessionRole = opts.sessionRole || "";
+  const totals = computeShiftTotals(shift.id, staff.id, staff.name, sessionRole);
   const opening = Number(shift.opening_cash) || 0;
   const actual = normalizeCashAmount(actualClosingCash);
   const expected = opening + (Number(totals.cash_total) || 0);

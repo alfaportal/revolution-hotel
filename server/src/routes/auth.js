@@ -106,14 +106,18 @@ router.post("/login", async (req, res) => {
 router.post("/owner/login", async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
-    const password = String(req.body?.password || "").trim();
+    const password = String(req.body?.password ?? "");
     if (!email || !password) {
       return res.status(400).json({ gabim: "Email dhe fjalëkalimi janë të detyrueshëm." });
     }
 
     const user = await findUserByEmail(email);
     if (!user) {
-      return res.status(401).json({ gabim: "Kredencialet janë të gabuara." });
+      return res.status(401).json({
+        gabim: "Kredencialet janë të gabuara.",
+        code: "OWNER_LOGIN_FAILED",
+        hint: "Për hotel përdorni https://revolution-pos.com/hotel/owner/login (jo /owner/login pa «hotel»).",
+      });
     }
 
     if (!user.passwordi) {

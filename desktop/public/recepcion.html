@@ -528,9 +528,9 @@
       </div>
 
       <div id="recep-orders-panel" class="waiter-hotel-panel recep-hotel-panel" hidden>
-        <div class="rez-toolbar"><h2>Porositë aktive</h2></div>
+        <div class="rez-toolbar"><h2>Porositë aktive — recepsion</h2></div>
         <p style="margin:-0.35rem 0 0.75rem;color:#64748b;font-size:0.88rem;font-weight:600">
-          Room Service / fatura dhome · porositë restoranti (tavolina te kamarieri)
+          Room Service, fatura dhome dhe porosi QR për dhomë — jo tavolinat e restorantit (ato te kamarieri).
         </p>
         <div id="recep-orders-msg"></div>
         <div class="orders-board-wrap">
@@ -1259,7 +1259,7 @@
           reservations: "Rezervimet — konverto në Check-in ose ndrysho",
           services: "Katalogu i shërbimeve — shtimi në folio nga dhoma e zënë",
           housekeeping: "Pastrimi — statuset dhe pastruesi",
-          orders: "Porositë aktive — Room Service dhe restorant",
+          orders: "Porositë aktive — recepsion (dhomë / RS)",
         };
         sub.textContent = subs[recepView] || subs.rooms;
       }
@@ -1675,7 +1675,7 @@
         api("/api/waiter/online-orders/pending").catch(() => ({ orders: [] })),
       ]);
       const pendingRows = filtroPorosiSherbimiRecep(pendingData.orders || []);
-      const rows = activeData.orders || [];
+      const rows = (activeData.orders || []).filter((o) => o.kind !== "table");
       if (!tbody) return;
       tbody.innerHTML = "";
       if (!pendingRows.length && !rows.length) {
@@ -1710,9 +1710,7 @@
           `<td>${formatEuro(o.total)}</td>` +
           `<td><span class="ord-status ${stClass}">${escHtml(o.status || "—")}</span></td>` +
           `<td>${escHtml(formatOrderTime(o.created_at))}</td>`;
-        if (o.kind === "table") {
-          tr.title = "Porosi restoranti — menaxhohet te kamarieri (tavolina)";
-        } else if (o.kind === "room" && o.room_id) {
+        if (o.kind === "room" && o.room_id) {
           tr.style.cursor = "pointer";
           tr.addEventListener("click", () => {
             setRecepView("rooms");

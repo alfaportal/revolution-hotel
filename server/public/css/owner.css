@@ -199,6 +199,16 @@
   line-height: 1.4;
 }
 
+.owner-login-url-hint {
+  margin-top: 0.5rem;
+}
+
+.owner-login-url-hint code {
+  font-size: 0.72rem;
+  color: #38bdf8;
+  word-break: break-all;
+}
+
 .owner-auth-form.hidden {
   display: none;
 }
@@ -516,14 +526,15 @@
   align-items: center;
 }
 
-.ai-report-summary {
-  background: #f8fafc;
+.owner-panel .ai-report-summary {
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1rem 1.1rem;
   line-height: 1.55;
   white-space: pre-wrap;
   margin: 0.75rem 0;
+  color: var(--text);
 }
 
 .ai-report-details {
@@ -533,19 +544,21 @@
   margin-bottom: 0.75rem;
 }
 
-.ai-report-stat {
-  background: #fff;
+.owner-panel .ai-report-stat {
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.75rem;
+  color: var(--text);
 }
 
-.ai-report-stat .val {
+.owner-panel .ai-report-stat .val {
   font-size: 1.2rem;
   font-weight: 800;
+  color: var(--text);
 }
 
-.ai-report-stat .lbl {
+.owner-panel .ai-report-stat .lbl {
   font-size: 0.8rem;
   color: var(--muted);
   margin-top: 0.15rem;
@@ -594,22 +607,24 @@
   margin-bottom: 0.75rem;
 }
 
-.profit-forecast-box {
-  background: #fff;
+.owner-panel .profit-forecast-box {
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.75rem;
+  color: var(--text);
 }
 
-.profit-forecast-box .title {
+.owner-panel .profit-forecast-box .title {
   font-size: 0.78rem;
   color: var(--muted);
   margin-bottom: 0.35rem;
 }
 
-.profit-forecast-box .val {
+.owner-panel .profit-forecast-box .val {
   font-size: 1.15rem;
   font-weight: 800;
+  color: var(--text);
 }
 
 .profit-forecast-box .delta {
@@ -619,7 +634,7 @@
 
 .profit-forecast-box .delta.up { color: #15803d; }
 .profit-forecast-box .delta.down { color: #b91c1c; }
-.profit-forecast-box .delta.flat { color: var(--muted); }
+.owner-panel .profit-forecast-box .delta.flat { color: var(--muted); }
 
 .tab.ai-feature-tab.hidden {
   display: none;
