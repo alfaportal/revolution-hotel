@@ -1605,6 +1605,8 @@ function cloudSyncLinksPayload(settings, status) {
   const kitchen_url = status.kitchen_url || built.kitchen_url;
   const kiosk_url = status.kiosk_url || built.kiosk_url;
   const public_page_url = status.public_page_url || built.public_page_url;
+  const owner_panel_url =
+    status.owner_panel_url || status.owner_url || built.owner_panel_url || built.owner_url || "";
   const venue = resolveLocalVenueSegments();
   return {
     connected: !!health.online && !!status.connected,
@@ -1620,13 +1622,23 @@ function cloudSyncLinksPayload(settings, status) {
     kitchen_slug: String(slug || "").trim(),
     kitchen_key: String(key || "").trim(),
     local_base_url: getLocalServerBaseUrl(),
-    links_ready: !!(waiter_url || bar_url || kitchen_url || kiosk_url || public_page_url || getLocalWaiterUrl()),
+    links_ready: !!(
+      waiter_url
+      || bar_url
+      || kitchen_url
+      || kiosk_url
+      || public_page_url
+      || owner_panel_url
+      || getLocalWaiterUrl()
+    ),
     waiter_url,
     reception_url,
     bar_url,
     kitchen_url,
     kiosk_url,
     public_page_url,
+    owner_url: owner_panel_url,
+    owner_panel_url,
     cloud_waiter_disabled: cloudDisabled,
     local_waiter_url: getLocalWaiterUrl(),
     ...buildLocalWaiterLanLinkPayload(),

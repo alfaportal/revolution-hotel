@@ -3949,8 +3949,8 @@
         </button>
         <button type="button" class="settings-hub-btn" data-settings-go="cloud">
           <span class="settings-hub-icon settings-hub-icon-cyan">L</span>
-          <strong>Linke stafi</strong>
-          <span>Kamarier &amp; recepsion (WiFi), kuzhinë, bar — kopjo linkun</span>
+          <strong>Linke stafi &amp; pronari</strong>
+          <span>Pronari (cloud, email) · kamarier/recepsion WiFi · kuzhinë, bar</span>
         </button>
       </div>
 
@@ -5012,8 +5012,8 @@
         <div class="settings-card-head">
           <span class="settings-hub-icon settings-hub-icon-cyan">C</span>
           <div>
-            <div class="settings-card-title">Linke stafi</div>
-            <p class="settings-card-desc">Kopjoni linkun për çdo rol (telefon/tablet në të njëjtin Wi‑Fi). QR takeaway/recepsion — te skeda <strong>QR Kodet</strong>.</p>
+            <div class="settings-card-title">Linke stafi &amp; pronari</div>
+            <p class="settings-card-desc">Pronari (cloud, email) · staf WiFi/cloud · QR mysafirë — te skeda <strong>QR Kodet</strong>.</p>
           </div>
         </div>
         <div id="cloud-status-box" class="printer-status-box pending">
@@ -5051,6 +5051,17 @@
             (revolution-pos.com/hotel/emri-hotelit/kamarier) — të dyja me PIN; porositë shkojnë te i njëjti POS.
           </p>
           <p id="cloud-links-hint" style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem"></p>
+          <div class="fiscal-field-row" id="cloud-row-owner">
+            <label>Pronari (cloud — telefon/tablet)</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-owner-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/owner?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-owner-url">Kopjo</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-open-owner-url">Hap</button>
+            </div>
+            <p class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">
+              Hapni në telefon — regjistrohuni ose hyni me <strong>email-in e pronarit</strong> (Revolution POS). Paneli cloud për raporte, AI dhe menaxhim nga jashtë.
+            </p>
+          </div>
           <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
             <label>Kamarierë (cloud — internet)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
@@ -17960,6 +17971,9 @@
       if (!cloudWaiterDisplay && !cloudDisabled && s.bar_url) {
         cloudWaiterDisplay = String(s.bar_url).replace(/\/bar(\?|$)/i, "/kamarier$1");
       }
+      const ownerUrl = s.owner_panel_url || s.owner_url || "";
+      setVal("cloud-owner-url", ownerUrl);
+      toggleRow("cloud-row-owner", !!ownerUrl);
       setVal("cloud-waiter-url", cloudWaiterDisplay);
       setVal("cloud-kitchen-url", s.kitchen_url);
       setVal("cloud-bar-url", s.bar_url);
@@ -18034,7 +18048,8 @@
     async function ngarkoCloudSync() {
       try {
         const s = await api("/api/cloud-sync");
-        document.getElementById("cloud-server-fixed").value = s.server_url || s.local_base_url || "";
+        document.getElementById("cloud-server-fixed").value =
+          s.public_server || s.server_url || "https://revolution-pos.com";
         document.getElementById("cloud-license-key").value = s.celesi || "";
         document.getElementById("cloud-device-id").value = s.device_id || "";
         vendosStatusinCloud(
@@ -18094,6 +18109,13 @@
     });
     document.getElementById("btn-open-local-recepsion-url")?.addEventListener("click", function () {
       const url = document.getElementById("cloud-local-recepsion-url")?.value || "";
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    });
+    document.getElementById("btn-copy-owner-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-owner-url", this);
+    });
+    document.getElementById("btn-open-owner-url")?.addEventListener("click", function () {
+      const url = document.getElementById("cloud-owner-url")?.value || "";
       if (url) window.open(url, "_blank", "noopener,noreferrer");
     });
     document.getElementById("btn-copy-waiter-url")?.addEventListener("click", function () {

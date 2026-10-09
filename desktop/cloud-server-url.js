@@ -166,6 +166,17 @@ const HOTEL_PUBLIC_STAFF_SEGMENT = {
 /**
  * Stafi — https://revolution-pos.com/hotel/{slug}/{roli}?key=…
  */
+/** Pronari — https://revolution-pos.com/hotel/{slug}/owner?key=… (hyrje me email në cloud). */
+function buildOwnerAccessLink(baseUrl, slug, key) {
+  const s = normalizeSlug(slug);
+  const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
+  if (!s || !base) return "";
+  let url = `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}/owner`;
+  const k = String(key || "").trim();
+  if (k) url += `?key=${encodeURIComponent(k)}`;
+  return url;
+}
+
 function buildStaffAccessLink(baseUrl, slug, key, role, extraQuery = "") {
   const s = normalizeSlug(slug);
   const base = trimTrailingSlash(baseUrl);
@@ -203,6 +214,9 @@ function buildAccessLink(_baseUrl, slug, key, role, extraQuery = "") {
   if (r === "kiosk" || r === "menu" || r === "public_menu") {
     return buildPublicMenuUrl(origin, s, 1);
   }
+  if (r === "owner" || r === "pronari") {
+    return buildOwnerAccessLink(origin, s, key);
+  }
   return buildStaffAccessLink(origin, s, key, r, extraQuery);
 }
 
@@ -237,10 +251,13 @@ function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
       public_order: "",
       housekeeping_url: "",
       reception_url: "",
+      owner_url: "",
+      owner_panel_url: "",
     };
   }
 
   const origin = getPublicCloudServerUrl(s) || PUBLIC_HOTEL_ORIGIN;
+  const ownerLink = buildOwnerAccessLink(origin, s, accessKey);
   const menuUrl = buildPublicMenuUrl(origin, s, 1);
   const waiter = buildStaffAccessLink(origin, s, accessKey, "waiter");
   const bar = buildStaffAccessLink(origin, s, accessKey, "bar");
@@ -262,6 +279,8 @@ function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
     public_order: menuUrl,
     housekeeping_url: housekeeping,
     reception_url: reception,
+    owner_url: ownerLink,
+    owner_panel_url: ownerLink,
   };
 }
 
@@ -323,6 +342,7 @@ module.exports = {
   getPublicCloudServerUrl,
   getCloudServerCandidates,
   buildAccessLink,
+  buildOwnerAccessLink,
   buildCloudAccessLinks,
   buildLocalAccessLink,
   buildLocalAccessLinks,

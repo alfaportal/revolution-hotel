@@ -303,6 +303,8 @@ function extractCloudCredentials(parsed) {
     bar_url: parsed.bar_url || "",
     kiosk_url: parsed.kiosk_url || "",
     public_page_url: parsed.public_page_url || "",
+    owner_url: parsed.owner_url || parsed.owner_panel_url || "",
+    owner_panel_url: parsed.owner_panel_url || parsed.owner_url || "",
     package_tier: parsed.package_tier || "",
   };
 }
