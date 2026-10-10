@@ -35,6 +35,16 @@
 
 `node tests/run-all.js` (11 suite, përfshirë `hotel-business-date.test.js`); `node tmp-hotel-accounting-real-path-audit.js` → **15/16 PO**.
 
+### Release 2026-10-11 (Naseri OK)
+
+| Hapi | Rezultat |
+|------|----------|
+| **Git desktop** | `5de6881` → `origin/master` (revolution-hotel) |
+| **Git cloud** | `8e9453e` → Railway (`/hotel/health` `git_commit` 8e9453e) |
+| **Setup** | **1.0.602 → 1.0.603** — `dist/Revolution HOTEL Setup.exe` + kopje Desktop |
+
+**Instalo:** Setup i ri → mbyll HOTEL plotësisht → hape përsëri.
+
 ---
 
 ## 2026-10-11 — Dita e biznesit — inventar i vjetër (para OK)
