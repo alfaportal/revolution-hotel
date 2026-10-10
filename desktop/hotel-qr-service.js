@@ -55,16 +55,27 @@ function isCloudQrBase(base) {
   return !isLocalOrPrivateServerUrl(b);
 }
 
-function buildHotelQrUrls(base, roomNumber, slug = "") {
+function buildHotelQrUrls(base, roomNumber, slug = "", venueSpot = null) {
   const b = String(base || "").replace(/\/+$/, "");
   const roomRaw = String(roomNumber || "").trim();
   const venueSlug = String(slug || "").trim();
+  const spotOpts = venueSpot && typeof venueSpot === "object" ? venueSpot : null;
 
   if (isCloudQrBase(b) && venueSlug) {
-    const hubUrl = buildHotelGuestPublicUrl(b, "services", roomRaw, venueSlug);
+    const hubUrl = buildHotelGuestPublicUrl(b, "services", roomRaw, venueSlug, spotOpts);
+    if (roomRaw) {
+      return {
+        room_service: hubUrl,
+        menu: hubUrl,
+        services: hubUrl,
+      };
+    }
+    const menuUrl = spotOpts
+      ? buildHotelGuestPublicUrl(b, "services", "", venueSlug, spotOpts)
+      : buildHotelGuestPublicUrl(b, "guest_menu", "", venueSlug);
     return {
       room_service: hubUrl,
-      menu: hubUrl,
+      menu: menuUrl,
       services: hubUrl,
     };
   }
@@ -111,6 +122,7 @@ async function listHotelQrs(db) {
       business_name,
       count: 0,
       shared: { menu: null, services: null },
+      venues: [],
       rooms: [],
     };
   }
@@ -128,6 +140,7 @@ async function listHotelQrs(db) {
       business_name,
       count: 0,
       shared: { menu: null, services: null },
+      venues: [],
       rooms: [],
     };
   }
@@ -138,8 +151,31 @@ async function listHotelQrs(db) {
   }
   const rooms = typeof db.listRooms === "function" ? db.listRooms() : [];
   const qrSlug = useCloudQr ? slug : "";
-  const sharedMenu = await qrEntry("menu", "QR Menyja", buildHotelQrUrls(qrBase, "", qrSlug).menu);
-  const sharedServices = await qrEntry("services", "QR Shërbime", buildHotelQrUrls(qrBase, "", qrSlug).services);
+  const sharedMenu = await qrEntry("menu", "QR Menyja (pa vend)", buildHotelQrUrls(qrBase, "", qrSlug).menu);
+  const sharedServices = await qrEntry("services", "QR Shërbime (pa vend)", buildHotelQrUrls(qrBase, "", qrSlug).services);
+
+  const venueRows = [];
+  const venueList = typeof db.listHotelQrVenues === "function"
+    ? db.listHotelQrVenues({ activeOnly: true })
+    : [];
+  for (const v of venueList) {
+    const spotOpts = {
+      tableNumber: v.table_number,
+      venueCode: v.venue_code,
+    };
+    const urls = buildHotelQrUrls(qrBase, "", qrSlug, spotOpts);
+    const label = typeof db.formatHotelQrVenueLabel === "function"
+      ? db.formatHotelQrVenueLabel(v)
+      : `${v.name} ${v.table_number}`;
+    venueRows.push({
+      venue_id: v.id,
+      name: v.name,
+      table_number: v.table_number,
+      venue_code: v.venue_code,
+      label,
+      services: await qrEntry("venue", label, urls.services),
+    });
+  }
 
     const roomRows = [];
   for (const room of rooms) {
@@ -178,6 +214,7 @@ async function listHotelQrs(db) {
     business_name,
     count: roomRows.length,
     shared: { menu: sharedMenu, services: sharedServices },
+    venues: venueRows,
     rooms: roomRows,
   };
 }

@@ -5,6 +5,7 @@ const {
   resolveLineSurchargeAmount,
 } = require("./fiscal/fiscal-line-discount");
 const { round4, normalizeQty } = require("./fiscal/fiscal-vat");
+const { businessYmd } = require("./lib/hotel-business-date");
 
 function parseTargets(raw) {
   try {
@@ -22,7 +23,7 @@ function normalizeTime(raw) {
 
 function isPromotionActiveNow(promo, now = new Date()) {
   if (!promo || !Number(promo.active)) return false;
-  const date = now.toISOString().slice(0, 10);
+  const date = businessYmd(now);
   const from = String(promo.date_from || "").slice(0, 10);
   const to = String(promo.date_to || "").slice(0, 10);
   if (from && date < from) return false;

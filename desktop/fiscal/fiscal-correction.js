@@ -497,6 +497,21 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     console.warn("[fiscal-correction] audit:", e.message);
   }
 
+  try {
+    const db = require("../database");
+    const restoreItems = (correctionItems || []).map((it) => ({
+      menu_item_id: it.menu_item_id,
+      name: it.name,
+      quantity: Number(it.quantity) || 0,
+      qty: Number(it.quantity) || 0,
+    }));
+    if (restoreItems.length && typeof db.restoreMenuItemStockFromSale === "function") {
+      db.restoreMenuItemStockFromSale(restoreItems);
+    }
+  } catch (e) {
+    console.warn("[fiscal-correction] stock restore:", e.message);
+  }
+
   return {
     id: insertedId,
     nuikf,

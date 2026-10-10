@@ -10,8 +10,12 @@ const {
   getPublicCloudServerUrl,
   hotelCloudApiPath,
 } = require("./cloud-server-url");
+const { isStaffPinSyncable } = require("./lib/staffPinPolicy");
+const { businessYmd } = require("./lib/hotel-business-date");
 
 const SERVER_URL = PUBLIC_CLOUD_SERVER;
+
+let reconcileInFlight = false;
 
 /** Porosi cloud «fantazmë» — vetëm auto-pastim kur lokalisht lirë dhe mbi këtë moshe. */
 const STALE_CLOUD_TABLE_GHOST_MS = 2 * 60 * 60 * 1000;
@@ -112,14 +116,67 @@ function requestJson(method, _baseUrl, path, payload, options = {}) {
 }
 
 function normalizeItems(raw) {
-  const arr = Array.isArray(raw) ? raw : [];
+  let parsed = raw;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = [];
+    }
+  }
+  const arr = Array.isArray(parsed) ? parsed : [];
   return arr
-    .map(it => ({
-      name: String(it.name || it.emri || "").trim(),
-      quantity: Number(it.quantity ?? it.sasia ?? 1) || 1,
-      price: Number(it.price ?? it.cmimi ?? 0) || 0,
-    }))
+    .map(it => {
+      const row = {
+        name: String(it.name || it.emri || "").trim(),
+        quantity: Number(it.quantity ?? it.sasia ?? 1) || 1,
+        price: Number(it.price ?? it.cmimi ?? it.unit_price ?? 0) || 0,
+      };
+      const cat = String(it.category || it.kategoria || "").trim();
+      if (cat) row.category = cat;
+      const menuId = it.menu_item_id ?? it.menu_id ?? it.local_id ?? it.id;
+      if (menuId != null && String(menuId).trim() !== "") {
+        const id = menuId;
+        row.menu_item_id = id;
+        row.menu_id = id;
+        row.local_id = id;
+      }
+      return row;
+    })
     .filter(it => it.name);
+}
+
+/** KDS cloud klasifikon ushqim nga kategoria — shto nga menuja lokale kur mungon në rreshtin e porosisë. */
+function enrichSaleItemsFromMenu(db, items) {
+  if (!db || !Array.isArray(items) || !items.length) return items || [];
+  let byId = null;
+  let byName = null;
+  const ensureMaps = () => {
+    if (byId) return;
+    byId = new Map();
+    byName = new Map();
+    for (const m of db.getMenuItems(false) || []) {
+      byId.set(String(m.id), m);
+      const n = String(m.name || "").trim().toLowerCase();
+      if (n) byName.set(n, m);
+    }
+  };
+  return items.map(it => {
+    if (String(it.category || "").trim()) return it;
+    ensureMaps();
+    const mid = it.menu_item_id ?? it.menu_id ?? it.local_id ?? it.id;
+    const hit =
+      (mid != null && byId.get(String(mid))) ||
+      byName.get(String(it.name || "").trim().toLowerCase());
+    if (!hit?.category) return it;
+    return {
+      ...it,
+      category: hit.category,
+      menu_item_id: it.menu_item_id ?? hit.id,
+      menu_id: it.menu_id ?? hit.id,
+      local_id: it.local_id ?? hit.id,
+    };
+  });
 }
 
 function resolveTableNumber(db, order, table_number) {
@@ -402,7 +459,8 @@ async function checkConnection(db) {
     }
 
     if (response.status < 400 && parsed.valid) {
-      const creds = extractCloudCredentials(parsed);
+      const { applyHotelLicenseLinks } = require("./cloud-server-url");
+      const creds = applyHotelLicenseLinks(extractCloudCredentials(parsed));
       if (creds.client_id || (creds.kitchen_slug && creds.kitchen_key)) {
         db.updateKitchenAccess(creds);
       }
@@ -505,7 +563,7 @@ function buildSalePayload(db, order, opts = {}) {
       return [];
     }
   })();
-  const items = normalizeItems(rawItems);
+  const items = enrichSaleItemsFromMenu(db, normalizeItems(rawItems));
   const tbl = resolveTableNumber(db, order, table_number);
   const saleStatus = status || "closed";
   const now = new Date().toISOString();
@@ -555,6 +613,7 @@ function buildSalePayload(db, order, opts = {}) {
 }
 
 const CLOUD_CLOSE_PUSH_TIMEOUT_MS = 5000;
+const CLOUD_WAITER_PUSH_TIMEOUT_MS = 12000;
 
 function pushSale(db, order, opts = {}) {
   if (orderMirrorsRemoteCloud(order)) return;
@@ -605,7 +664,6 @@ async function pushSaleSync(db, order, opts = {}) {
 
 /** Porosi aktive — update menjëherë për tavolinat live të pronarit */
 function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } = {}) {
-  if (orderMirrorsRemoteCloud(order)) return;
   const built = buildSalePayload(db, order, {
     table_number,
     status: "ordered",
@@ -624,6 +682,54 @@ function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } 
     })
     .catch(err => {
       console.warn("Cloud update dështoi:", err.message);
+    });
+}
+
+/** Si pushActiveOrderUpdate — pret përgjigjen (telefon/cloud sheh tavolinë të zënë). */
+async function pushActiveOrderUpdateSync(
+  db,
+  order,
+  { table_number = 0, ordered_at = "", timeoutMs = 12000 } = {},
+) {
+  const built = buildSalePayload(db, order, {
+    table_number,
+    status: "ordered",
+    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
+  });
+  if (!built) return { ok: false, reason: "no_payload" };
+  const waitMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
+  try {
+    const r = await requestJson(
+      "POST",
+      built.cfg.serverUrl,
+      "/api/v1/sales/update",
+      built.payload,
+      { timeoutMs: waitMs },
+    );
+    if (r.status >= 400) {
+      console.warn("Cloud update:", r.status, r.data?.slice?.(0, 120));
+      return { ok: false, status: r.status };
+    }
+    console.log("Cloud update OK: T", built.payload.table_number);
+    attachCloudIdFromSyncResponse(db, order, r);
+    return { ok: true };
+  } catch (err) {
+    console.warn("Cloud update dështoi:", err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+/** POS/kamarier — mos blloko UI; cloud merr tavolinat live (si KAFENE). */
+function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered_at = "" } = {}) {
+  if (!order) return;
+  const opts = {
+    table_number,
+    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
+  };
+  pushActiveOrderUpdate(db, order, opts);
+  void pushActiveOrderUpdateSync(db, order, { ...opts, timeoutMs: CLOUD_WAITER_PUSH_TIMEOUT_MS })
+    .then(r => {
+      if (!r?.ok) pushActiveOrderUpdate(db, order, opts);
     });
 }
 
@@ -720,8 +826,15 @@ function getProtectedPendingTableNumbers(db) {
   return nums;
 }
 
+/**
+ * PROTECTED (PROTECTED-FUNCTIONS.md #17) — pre-build test + Cursor rule.
+ * Mos heq `orderMirrorsRemoteCloud` skip: reconcile + pushActiveOrderUpdate
+ * mbishkruante Supabase me items lokale të vjetra (telefon → zhduket në ~3s).
+ */
 function reconcileAllTablesWithCloud(db) {
   if (!isCloudConfigured(db)) return;
+  if (reconcileInFlight) return;
+  reconcileInFlight = true;
   try {
     const tables = db.getTablesWithOrders();
     const protectedNums = getProtectedPendingTableNumbers(db);
@@ -729,12 +842,12 @@ function reconcileAllTablesWithCloud(db) {
       const num = Number(t.number);
       if (!num) continue;
       if (t.order) {
-        if (!orderMirrorsRemoteCloud(t.order)) {
-          pushActiveOrderUpdate(db, t.order, {
-            table_number: num,
-            ordered_at: t.order.created_at,
-          });
-        }
+        // PROTECTED: skip push për cloud_order_id — cloud është burimi (telefon/QR).
+        if (orderMirrorsRemoteCloud(t.order)) continue;
+        pushActiveOrderUpdate(db, t.order, {
+          table_number: num,
+          ordered_at: t.order.created_at,
+        });
         continue;
       }
       if (protectedNums.has(num)) continue;
@@ -742,6 +855,8 @@ function reconcileAllTablesWithCloud(db) {
     }
   } catch (err) {
     console.warn("Cloud table reconcile:", err.message);
+  } finally {
+    reconcileInFlight = false;
   }
 }
 
@@ -786,7 +901,7 @@ async function collectCloudOrdersForTable(db, tableNumber) {
 async function forceCancelCloudSalesOrder(db, cloudOrder) {
   const num = Number(cloudOrder?.table_number) || 0;
   const cloudUuid = String(cloudOrder?.id || "").trim();
-  const accepted = isCloudOrderAccepted(cloudOrder);
+  const accepted = isCloudOrderAccepted(cloudOrder, db);
   const orderedRawGuard = cloudOrder?.ordered_at || cloudOrder?.created_at || "";
   const orderedTsGuard = orderedRawGuard ? new Date(orderedRawGuard).getTime() : 0;
   const ageMsGuard = Number.isFinite(orderedTsGuard) ? Date.now() - orderedTsGuard : 0;
@@ -886,7 +1001,7 @@ async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
   const results = [];
   const now = Date.now();
   for (const o of orders) {
-    const accepted = isCloudOrderAccepted(o);
+    const accepted = isCloudOrderAccepted(o, db);
     const orderedRaw = o?.ordered_at || o?.created_at || "";
     const orderedTs = orderedRaw ? new Date(orderedRaw).getTime() : 0;
     const ageMs = Number.isFinite(orderedTs) ? now - orderedTs : 0;
@@ -902,7 +1017,7 @@ async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
   const pendingKitchenOnly =
     orders.length > 0
     && !results.length
-    && orders.some(o => !isCloudOrderAccepted(o));
+    && orders.some(o => !isCloudOrderAccepted(o, db));
   if (!pendingKitchenOnly) {
     pushTableFree(db, num);
     sseFreedTableNums.add(num);
@@ -1026,13 +1141,27 @@ function buildCatalogPayload(db) {
       stock_alert_threshold: threshold,
     };
   });
-  const staff = db.getStaff().map(s => ({
-    name: s.name,
-    active: !!s.active,
-    pin: String(s.pin || "").trim(),
-    staff_role: String(s.staff_role || "kamarier").trim(),
-    role: String(s.staff_role || "kamarier").trim(),
-  }));
+  const staff = db.getStaff().map(s => {
+    const raw = String(s.staff_role || "kamarier").trim().toLowerCase();
+    let cloudRole = "waiter";
+    if (raw === "recepsion" || raw === "receptionist" || raw === "recepsionist") {
+      cloudRole = "receptionist";
+    } else if (
+      raw === "pastrim" ||
+      raw === "pastrimi" ||
+      raw === "housekeeping" ||
+      raw === "sherbimi"
+    ) {
+      cloudRole = "housekeeping";
+    }
+    return {
+      name: s.name,
+      active: !!s.active,
+      pin: String(s.pin || "").trim(),
+      staff_role: cloudRole,
+      role: cloudRole,
+    };
+  });
 
   let staff_local_links = null;
   try {
@@ -1207,6 +1336,80 @@ async function pullNewCatalogItemsFromCloud(db) {
   }
 }
 
+/**
+ * Dërgon vetëm staff_local_links (Wi‑Fi LAN) te cloud — pa katalog të plotë.
+ * Përdoret kur ndryshon IP-ja; mos thirr çdo interval pa ndryshim fingerprint.
+ */
+async function pushStaffLocalLinksAsync(db, options = {}) {
+  if (!isCloudConfigured(db)) {
+    return { ok: false, skipped: true, message: "Cloud nuk është konfiguruar." };
+  }
+  if (secondaryRegisterNumber()) {
+    return { ok: true, skipped: true, message: "Arka sekondare — LAN links nga kryesorja." };
+  }
+  const {
+    buildStaffLocalLinksSyncPayload,
+    staffLocalLinksFingerprint,
+    readStoredStaffLocalLinksFingerprint,
+    storeStaffLocalLinksFingerprint,
+  } = require("./local-staff-links");
+
+  const payload = options.payload || buildStaffLocalLinksSyncPayload(db);
+  const fp = options.fingerprint || staffLocalLinksFingerprint(payload);
+  if (!fp) {
+    return { ok: false, skipped: true, message: "LAN i paplotë — pa IP/slug." };
+  }
+  const prev = readStoredStaffLocalLinksFingerprint(db);
+  if (!options.force && fp === prev) {
+    return { ok: true, skipped: true, message: "Pa ndryshim LAN." };
+  }
+
+  const health = cloudHealth.getHealthStatus();
+  if (!health.online) {
+    return { ok: false, skipped: true, message: health.message || "Cloud offline." };
+  }
+
+  try {
+    const cfg = getConfig(db);
+    const settings = db.getCloudSettings();
+    const body = {
+      celesi: cfg.celesi,
+      device_id: cfg.deviceId,
+      restaurant_name: settings.restaurant_name || db.getSetting("restaurant_name", "") || "",
+      table_count:
+        typeof db.getPhysicalTableCount === "function"
+          ? db.getPhysicalTableCount()
+          : settings.table_count || 10,
+      staff_local_links: payload,
+    };
+    const r = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      "/api/v1/pos/catalog/sync",
+      body,
+      { timeoutMs: 20000 },
+    );
+    let parsed = {};
+    try {
+      parsed = JSON.parse(r.data || "{}");
+    } catch {
+      /* ignore */
+    }
+    if (r.status >= 400) {
+      const msg = parsed.gabim || parsed.message || `HTTP ${r.status}`;
+      return { ok: false, message: msg };
+    }
+    storeStaffLocalLinksFingerprint(db, fp);
+    console.log(
+      `[cloud] staff_local_links u dërgua (LAN ${payload.local_lan_ip || "—"}:${payload.local_server_port || ""})`,
+    );
+    return { ok: true, pushed: true, fingerprint: fp, ...parsed };
+  } catch (err) {
+    console.warn("[cloud] staff_local_links push:", err.message);
+    return { ok: false, message: err.message };
+  }
+}
+
 async function pushCatalogAsync(db) {
   if (!isCloudConfigured(db)) {
     return { ok: false, message: "Cloud nuk është konfiguruar." };
@@ -1246,10 +1449,19 @@ async function pushCatalogAsync(db) {
     const menuItems = Number(parsed.menu_items) || localCount;
     const categories = Number(parsed.categories) || (payload.categories?.length || 0);
     const staffSynced = Number(parsed.staff) || 0;
-    const localStaffWithPin = (payload.staff || []).filter(s => /^\d{6}$/.test(String(s.pin || ""))).length;
+    const localStaffWithPin = (payload.staff || []).filter(s => isStaffPinSyncable(s.pin)).length;
     console.log(`Catalog sync OK — ${menuItems} artikuj, ${categories} kategori, ${staffSynced} kamarierë cloud`);
     if (localStaffWithPin && !staffSynced) {
       console.warn("[cloud] Kujdes: kamarierët me PIN nuk u sinkronizuan te cloud — pranimi i porosive QR dështon.");
+    }
+    try {
+      const { buildStaffLocalLinksSyncPayload, staffLocalLinksFingerprint, storeStaffLocalLinksFingerprint } =
+        require("./local-staff-links");
+      const localPayload = buildStaffLocalLinksSyncPayload(db);
+      const fp = staffLocalLinksFingerprint(localPayload);
+      if (fp) storeStaffLocalLinksFingerprint(db, fp);
+    } catch {
+      /* ignore */
     }
     return {
       ok: true,
@@ -1428,19 +1640,26 @@ async function syncRestaurantIdentityFromCloud(db) {
   }
 }
 
-function isCloudOrderAccepted(o) {
+function isCloudOrderAccepted(o, db) {
   if (!o) return false;
-  if (o.accepted_at) return true;
+  if (
+    db
+    && typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(o)
+  ) {
+    return typeof db.isCloudOrderAcceptedForImport === "function"
+      && db.isCloudOrderAcceptedForImport(o);
+  }
+  if (o.accepted_at != null && String(o.accepted_at).trim() !== "") return true;
   if (String(o.accepted_by_waiter_name || "").trim()) return true;
   const handler = String(o.accepted_by || "").trim();
   const customer = String(o.customer_label || "").trim();
-  if (handler && handler !== customer) return true;
-  return false;
+  return !!(handler && handler !== customer);
 }
 
 function isLoginPendingCloudOrder(db, o) {
   if (!o?.id) return false;
-  if (isCloudOrderAccepted(o)) return false;
+  if (isCloudOrderAccepted(o, db)) return false;
   if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
     return db.isRestaurantLoginNotifyOrder(o);
   }
@@ -1462,7 +1681,7 @@ function isPosWaiterNotifyOrder(db, o) {
 
 function isBarOnlyNotifyOrder(db, o) {
   if (!o?.id) return false;
-  if (isCloudOrderAccepted(o)) return false;
+  if (isCloudOrderAccepted(o, db)) return false;
   if (typeof db?.isCloudStaffWaiterOrder === "function" && db.isCloudStaffWaiterOrder(o)) return false;
   if (isPosWaiterNotifyOrder(db, o)) return false;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;
@@ -1474,7 +1693,7 @@ function filterLoginNotifyOrders(db, payload) {
   if (!payload) return payload;
   const rawPending = Array.isArray(payload.orders) && payload.orders.length
     ? payload.orders
-    : (payload.all_orders || []).filter(o => !isCloudOrderAccepted(o));
+    : (payload.all_orders || []).filter(o => !isCloudOrderAccepted(o, db));
   const orders = rawPending.filter(o => isLoginPendingCloudOrder(db, o));
   const barOrders = rawPending.filter(o => isBarOnlyNotifyOrder(db, o));
   const total = orders.length + barOrders.length;
@@ -1490,7 +1709,7 @@ function filterLoginNotifyOrders(db, payload) {
 }
 
 function buildLoginNotifyFromOrders(db, orders, snapMeta = {}) {
-  const pool = (orders || []).filter(o => !isCloudOrderAccepted(o));
+  const pool = (orders || []).filter(o => !isCloudOrderAccepted(o, db));
   const filtered = pool.filter(o => isLoginPendingCloudOrder(db, o));
   const barOrders = pool.filter(o => isBarOnlyNotifyOrder(db, o));
   const totalPending = filtered.length + barOrders.length;
@@ -1528,7 +1747,7 @@ async function fetchOnlineOrdersViaKitchen(db) {
   if (!cfg.serverUrl || !slug || !key) return null;
 
   try {
-    const q = `?key=${encodeURIComponent(key)}`;
+    const q = `?key=${encodeURIComponent(key)}&portal=waiter`;
     const res = await requestJson(
       "GET",
       cfg.serverUrl,
@@ -1593,7 +1812,7 @@ async function fetchOnlineOrders(db) {
       const pendingFromApi = Array.isArray(parsed.orders) ? parsed.orders : [];
       const orders = pendingFromApi.length
         ? pendingFromApi
-        : allOrders.filter(o => !isCloudOrderAccepted(o));
+        : allOrders.filter(o => !isCloudOrderAccepted(o, db));
       return {
         ok: true,
         connected: true,
@@ -1643,9 +1862,13 @@ async function pushStaffAsync(db) {
     };
   }
   const { cfg, payload } = buildCatalogPayload(db);
-  const localWithPin = (payload.staff || []).filter(s => /^\d{6}$/.test(String(s.pin || ""))).length;
+  const localWithPin = (payload.staff || []).filter(s => isStaffPinSyncable(s.pin)).length;
   if (!localWithPin) {
-    return { ok: false, skipped: true, message: "Nuk ka kamarierë me PIN lokalisht." };
+    return {
+      ok: false,
+      skipped: true,
+      message: "Nuk ka staf (kamarier/recepsion) me PIN 4 ose 6 shifra lokalisht.",
+    };
   }
   try {
     const r = await requestJson(
@@ -2120,6 +2343,11 @@ async function rebuildRegisterFromCloud(db) {
   return result;
 }
 
+/** Mbyllje telefoni: print në fluturim — mos lejo free/import/cancel të vrasë faturën. */
+const pendingClosePrintTables = new Set();
+/** Takeaway/Delivery (table_number=0): bllokim importi gjatë printit sipas cloud UUID. */
+const pendingClosePrintCloudIds = new Set();
+
 /** Merr porosi WEB-WAITER të mbyllura nga cloud dhe i shton në daily_log (pazari i kamarierit). */
 async function syncClosedWebWaiterSales(db) {
   if (!isCloudConfigured(db)) {
@@ -2136,7 +2364,7 @@ async function syncClosedWebWaiterSales(db) {
     : "";
   // Nëse s'ka cursor, mos merr shitje të vjetra — fillo nga sot
   if (!since) {
-    since = new Date().toISOString().slice(0, 10) + "T00:00:00";
+    since = businessYmd() + "T00:00:00";
   }
   console.log("[cloud/sync] GET /api/v1/license/waiter-closed-sales since=" + since);
 
@@ -2148,8 +2376,66 @@ async function syncClosedWebWaiterSales(db) {
     let imported = 0;
     let skipped = 0;
     let failed = 0;
+    let deferred = false;
     let maxClosedAt = since;
     for (const sale of sales) {
+      const device = String(sale.device_id || "").trim().toUpperCase();
+      if (device && !device.startsWith("WEB-")) {
+        skipped += 1;
+        const caSkip = String(sale.closed_at || "").trim();
+        if (caSkip && caSkip > maxClosedAt) maxClosedAt = caSkip;
+        continue;
+      }
+
+      const tableNum = Number(sale.table_number) || 0;
+      const cloudId = String(sale.id || "").trim();
+      const already =
+        cloudId && typeof db.isCloudWaiterSaleImported === "function"
+          ? db.isCloudWaiterSaleImported(cloudId)
+          : false;
+
+      if (tableNum >= 1 && !already && pendingClosePrintTables.has(tableNum)) {
+        deferred = true;
+        console.log(`[cloud/sync] T${tableNum} import DELAY — fatura e mbylljes ende në print`);
+        continue;
+      }
+      if (tableNum === 0 && cloudId && !already && pendingClosePrintCloudIds.has(cloudId)) {
+        deferred = true;
+        console.log(
+          `[cloud/sync] Online ${cloudId.slice(0, 8)} import DELAY — fatura e mbylljes ende në print`,
+        );
+        continue;
+      }
+
+      if (!already && cloudId && (tableNum >= 1 || tableNum === 0)) {
+        if (tableNum >= 1) pendingClosePrintTables.add(tableNum);
+        else pendingClosePrintCloudIds.add(cloudId);
+        try {
+          const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
+          const pr = await printClosingReceiptIfActiveCloudOrder(db, tableNum, {
+            paymentMethod: sale.payment_method,
+            order_id: cloudId,
+            local_order_id: sale.local_order_id || "",
+            device_id: sale.device_id || "",
+          });
+          const syncLabel = tableNum >= 1 ? "T" + tableNum : "Online cloudId=" + cloudId.slice(0, 8);
+          console.log("[cloud/sync] closing print before import " + syncLabel, {
+            printed: !!pr?.printed,
+            skipped: !!pr?.skipped,
+            reason: pr?.reason || null,
+          });
+        } catch (err) {
+          const syncLabel = tableNum >= 1 ? "T" + tableNum : "Online cloudId=" + cloudId.slice(0, 8);
+          console.warn(
+            "[cloud/sync] closing print before import " + syncLabel + ":",
+            err.message || err,
+          );
+        } finally {
+          if (tableNum >= 1) pendingClosePrintTables.delete(tableNum);
+          else pendingClosePrintCloudIds.delete(cloudId);
+        }
+      }
+
       const result = db.importClosedWebWaiterSaleFromCloud(sale);
       if (result?.imported) imported += 1;
       else if (result?.skipped) skipped += 1;
@@ -2157,13 +2443,19 @@ async function syncClosedWebWaiterSales(db) {
       const ca = String(sale.closed_at || "").trim();
       if (ca && ca > maxClosedAt) maxClosedAt = ca;
     }
-    if (maxClosedAt && typeof db.setCloudWaiterClosedSyncSince === "function") {
+    if (!deferred && maxClosedAt && typeof db.setCloudWaiterClosedSyncSince === "function") {
       db.setCloudWaiterClosedSyncSince(maxClosedAt);
     }
-    if (imported || failed || sales.length) {
-      console.log("[cloud/sync] përmbledhje:", { fetched: sales.length, imported, skipped, failed });
+    if (imported || failed || sales.length || deferred) {
+      console.log("[cloud/sync] përmbledhje:", {
+        fetched: sales.length,
+        imported,
+        skipped,
+        failed,
+        deferred,
+      });
     }
-    return { ok: true, imported, skipped, failed, fetched: sales.length };
+    return { ok: true, imported, skipped, failed, fetched: sales.length, deferred };
   } catch (err) {
     console.warn("[cloud/sync] Sync WEB-WAITER closed dështoi:", err.message);
     return { ok: false, imported: 0, message: err.message };
@@ -2222,11 +2514,24 @@ async function syncLocalCancelledFromCloud(db) {
       localTables.filter(t => t.order).map(t => Number(t.number)),
     );
 
+    const tableHasActiveLocalOrder = (num) => {
+      const n = Number(num);
+      if (!n) return false;
+      if (localOccupied.has(n)) return true;
+      try {
+        const row = db.getTableByNumber?.(n);
+        if (row?.id && db.getActiveOrderForTable(row.id)) return true;
+      } catch {
+        /* ignore */
+      }
+      return false;
+    };
+
     for (const ct of cloudData.tables) {
       if (ct.status !== "occupied") continue;
       const tNum = Number(ct.number);
       if (!tNum) continue;
-      if (localOccupied.has(tNum)) continue; // lokalisht e zënë gjithashtu → OK
+      if (tableHasActiveLocalOrder(tNum)) continue; // lokalisht e zënë → mos pastro cloud
 
       // Lokalisht e lirë, cloud e ka si të zënë
       const cloudDevice = String(ct.device_id || ct.order?.device_id || "")
@@ -2260,7 +2565,7 @@ async function syncLocalCancelledFromCloud(db) {
       }
 
       const orderBlob = ct.order || {};
-      const accepted = isCloudOrderAccepted(orderBlob);
+      const accepted = isCloudOrderAccepted(orderBlob, db);
       const isKiosk = cloudDevice === "WEB-KIOSK";
       const ageMs =
         orderedAtRaw && Number.isFinite(new Date(orderedAtRaw).getTime())
@@ -2274,6 +2579,7 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
+      // Porosi në radhë kuzhine (POS / takeaway / public) — sync nuk e anulon vetë.
       const cloudSt = String(orderBlob.status || ct.order?.status || "ordered").toLowerCase();
       if (
         (isPosLikeCloudDevice(cloudDevice) || cloudDevice === "WEB-PUBLIC" || cloudSt === "ordered")
@@ -2284,6 +2590,7 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
+      // POS dine-in — kuzhina ende nuk ka PRANO: mos anulo (edhe nëse lokalisht duket «lirë» për race).
       if (localDeviceId && cloudDevice === localDeviceId && !accepted) {
         const young =
           !orderedAtRaw
@@ -2311,6 +2618,7 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
+      // WEB-KIOSK/telefon: table-free nuk i anulon — pastrim i plotë pas 3 min ose pas pranimit
       if (accepted || ageMs >= STUCK_TABLE_AUTO_CLEAR_MS) {
         scheduleAutoClearStuckCloudTable(db, tNum);
       }
@@ -2328,6 +2636,18 @@ async function syncLocalCancelledFromCloud(db) {
         .map(t => String(t.order?.id || t.id || ""))
         .filter(Boolean),
     );
+
+    try {
+      const onlineSlots = await fetchOnlineSlotLayout(db);
+      if (Array.isArray(onlineSlots)) {
+        for (const slot of onlineSlots) {
+          const slotOrderId = String(slot?.order?.id || "").trim();
+          if (slotOrderId) cloudOrderedIds.add(slotOrderId);
+        }
+      }
+    } catch {
+      /* offline */
+    }
 
     let pendingCloudCloseImport = false;
     for (const order of activeOrders) {
@@ -2356,9 +2676,58 @@ async function syncLocalCancelledFromCloud(db) {
       const cId = String(order.cloud_order_id).trim();
       if (cloudOrderedIds.has(cId)) continue; // ekziston ende në cloud → OK
 
-      // Porosia cloud u anulua/mbyll, por lokalisht është ende aktive → anulo
       const srcLabel = String(order.source_label ?? "").trim();
-      // MBROJTJE: Asnjë porosi aktive nuk anulohet automatikisht nga cloud sync
+      if (!srcLabel) {
+        console.log(`[sync] T${tableNum} SKIP cancel — porosi dine-in POS (source_label bosh)`);
+        continue;
+      }
+
+      try {
+        const cur = db.db?.prepare?.(
+          "SELECT id, status FROM orders WHERE id = ?",
+        ).get(order.id);
+        if (!cur || (cur.status !== "active" && cur.status !== "ordered")) continue;
+      } catch { /* ignore */ }
+
+      if (pendingClosePrintTables.has(tableNum)) {
+        console.log(
+          `[sync] T${tableNum} cancel SKIP — fatura e mbylljes ende në print`,
+        );
+        continue;
+      }
+      if (cId && pendingClosePrintCloudIds.has(cId)) {
+        console.log(
+          `[sync] Online ${cId.slice(0, 8)} cancel SKIP — fatura e mbylljes ende në print`,
+        );
+        continue;
+      }
+
+      try {
+        pendingClosePrintTables.add(tableNum);
+        const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
+        const pr = await printClosingReceiptIfActiveCloudOrder(db, tableNum, {
+          paymentMethod: order.payment_method,
+          order_id: cId,
+          local_order_id: String(order.id || ""),
+        });
+        if (
+          pr?.printed ||
+          pr?.reason === "already_in_daily_log" ||
+          pr?.reason === "printed_after_daily_log" ||
+          pr?.reason === "no_active"
+        ) {
+          console.log(
+            `[sync] T${tableNum} close-print pas cloud-missing:`,
+            pr?.reason || "printed",
+          );
+          continue;
+        }
+      } catch (err) {
+        console.warn(`[sync] T${tableNum} close-print:`, err.message || err);
+      } finally {
+        pendingClosePrintTables.delete(tableNum);
+      }
+
       console.log(`[sync] SKIP auto-cancel — porosi aktive e mbrojtur, table_id=${order.table_id}, source_label=${srcLabel || '(POS)'}`);
       continue;
       try {
@@ -2868,6 +3237,18 @@ function handleKdsKitchenSsePayload(db, payload) {
   const status = String(payload.status || "").trim().toLowerCase();
   const num = Number(payload.table_number);
   console.log(`[STATUS-CHANGE][cloud-sync.handleKdsKitchenSsePayload] SSE event:`, JSON.stringify(payload));
+
+  if (status === "ordered") {
+    try {
+      const watcher = require("./online-orders-watcher");
+      if (typeof watcher.refreshOnKitchenSseOrdered === "function") {
+        watcher.refreshOnKitchenSseOrdered(db, payload);
+      }
+    } catch (err) {
+      console.warn("[cloud/sse] ordered refresh:", err.message);
+    }
+  }
+
   const remoteIds = [
     ...(Array.isArray(payload.order_ids) ? payload.order_ids : []),
     ...(payload.order_id ? [payload.order_id] : []),
@@ -2885,22 +3266,49 @@ function handleKdsKitchenSsePayload(db, payload) {
   }
 
   if (status === "closed" && num >= 1) {
-    // Mbyllje nga telefon: printo faturën PARA se freeLocal ta anulojë porosinë.
-    // Nëse paneli e mbylli tashmë (completed) → printClosing no-op, pa dyfishim.
+    pendingClosePrintTables.add(num);
     const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
     void Promise.resolve(printClosingReceiptIfActiveCloudOrder(db, num, {
       paymentMethod: payload.payment_method,
       fiscal_skip: payload.fiscal_skip,
       coupon_type: payload.coupon_type,
+      order_id: payload.order_id || (remoteIds[0] || ""),
+      local_order_id: payload.local_order_id || "",
+      device_id: payload.device_id || "",
     }))
       .catch(err => console.warn("[cloud/sse] closing print:", err.message || err))
       .finally(() => {
         freeLocalTableFromCloudEvent(db, num);
+        pendingClosePrintTables.delete(num);
         sseFreedTableNums.add(num);
         scheduleClosedWebWaiterSync(db);
         console.log(`[cloud/sse] T${num} u mbyll (status=closed) — lokal + arka sync`);
       });
+  } else if (status === "closed" && num === 0) {
+    const cloudId = String(payload.order_id || remoteIds[0] || "").trim();
+    if (!cloudId) {
+      scheduleClosedWebWaiterSync(db);
+      return;
+    }
+    pendingClosePrintCloudIds.add(cloudId);
+    const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
+    void Promise.resolve(printClosingReceiptIfActiveCloudOrder(db, 0, {
+      paymentMethod: payload.payment_method,
+      order_id: cloudId,
+      local_order_id: payload.local_order_id || "",
+      device_id: payload.device_id || "",
+    }))
+      .catch(err => console.warn("[cloud/sse] closing print online:", err.message || err))
+      .finally(() => {
+        pendingClosePrintCloudIds.delete(cloudId);
+        scheduleClosedWebWaiterSync(db);
+        console.log(`[cloud/sse] Online ${cloudId.slice(0, 8)} u mbyll (status=closed) — print + arka sync`);
+      });
   } else if (status === "free" && num >= 1) {
+    if (pendingClosePrintTables.has(num)) {
+      console.log(`[cloud/sse] T${num} free IGNORUAR — fatura e mbylljes ende në print`);
+      return;
+    }
     freeLocalTableFromCloudEvent(db, num);
     sseFreedTableNums.add(num);
     scheduleClosedWebWaiterSync(db);
@@ -3027,6 +3435,9 @@ module.exports = {
   pushSaleSync,
   CLOUD_CLOSE_PUSH_TIMEOUT_MS,
   pushActiveOrderUpdate,
+  pushActiveOrderUpdateSync,
+  pushWaiterOrderToCloudBackground,
+  CLOUD_WAITER_PUSH_TIMEOUT_MS,
   pushQrWaiterAcceptToCloudKitchen,
   pushAllActiveTables,
   reconcileAllTablesWithCloud,
@@ -3034,6 +3445,7 @@ module.exports = {
   pushTableCancelled,
   pushCatalog,
   pushCatalogAsync,
+  pushStaffLocalLinksAsync,
   pushStaffAsync,
   syncCatalogToCloud,
   fullCloudSync,

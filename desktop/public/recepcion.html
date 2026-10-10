@@ -656,6 +656,73 @@
     </div>
   </div>
 
+  <div id="modal-rc-shift-open" class="shift-overlay" hidden>
+    <div class="shift-start-card">
+      <div class="shift-start-icon" aria-hidden="true">€</div>
+      <h2 class="shift-start-title">Mirë se erdhe, <span id="rc-shift-open-staff-name"></span>!</h2>
+      <p class="shift-start-q">Paratë e nisjes (kusuri)</p>
+      <p class="shift-start-hint">Sa para keni në kuletë në fillim të ndërrimit? (mund të jetë edhe 0 €)</p>
+      <div class="shift-amount-display" id="rc-shift-open-display">€0</div>
+      <div class="shift-keypad" id="rc-shift-open-keypad">
+        <button type="button" class="shift-key" data-digit="1">1</button>
+        <button type="button" class="shift-key" data-digit="2">2</button>
+        <button type="button" class="shift-key" data-digit="3">3</button>
+        <button type="button" class="shift-key" data-digit="4">4</button>
+        <button type="button" class="shift-key" data-digit="5">5</button>
+        <button type="button" class="shift-key" data-digit="6">6</button>
+        <button type="button" class="shift-key" data-digit="7">7</button>
+        <button type="button" class="shift-key" data-digit="8">8</button>
+        <button type="button" class="shift-key" data-digit="9">9</button>
+        <button type="button" class="shift-key" data-digit=".">.</button>
+        <button type="button" class="shift-key" data-digit="0">0</button>
+        <button type="button" class="shift-key shift-key-back" data-action="back" aria-label="Fshi">⌫</button>
+      </div>
+      <div class="shift-presets">
+        <button type="button" class="shift-preset" data-amount="10">€10</button>
+        <button type="button" class="shift-preset" data-amount="20">€20</button>
+        <button type="button" class="shift-preset" data-amount="50">€50</button>
+        <button type="button" class="shift-preset" data-amount="100">€100</button>
+      </div>
+      <button type="button" class="shift-start-btn" id="btn-rc-shift-open-start">Fillo ndërrimin</button>
+      <div id="rc-shift-open-msg" class="alert alert-error" hidden></div>
+    </div>
+  </div>
+
+  <div id="modal-rc-shift-accept" class="shift-overlay" hidden>
+    <div class="shift-start-card shift-accept-card">
+      <div class="shift-start-icon shift-accept-icon" aria-hidden="true">⇄</div>
+      <h2 class="shift-start-title">Pranoj ndërrimin</h2>
+      <p class="shift-start-q"><span id="rc-shift-accept-from">—</span> ju dorëzoi kuletën.</p>
+      <p class="shift-start-hint">Konfirmoni shumën me të cilën filloni — mund ta rregulloni nëse ka mospërputhje.</p>
+      <div class="shift-accept-amount-box">
+        <span class="shift-accept-amount-label">Paratë e dorëzuara</span>
+        <strong id="rc-shift-accept-handover-amt">€0.00</strong>
+      </div>
+      <label class="shift-close-label">Paratë në kuletë (fillimi juaj)</label>
+      <div class="shift-amount-display" id="rc-shift-accept-display">€0</div>
+      <div class="shift-keypad" id="rc-shift-accept-keypad">
+        <button type="button" class="shift-key" data-digit="1">1</button>
+        <button type="button" class="shift-key" data-digit="2">2</button>
+        <button type="button" class="shift-key" data-digit="3">3</button>
+        <button type="button" class="shift-key" data-digit="4">4</button>
+        <button type="button" class="shift-key" data-digit="5">5</button>
+        <button type="button" class="shift-key" data-digit="6">6</button>
+        <button type="button" class="shift-key" data-digit="7">7</button>
+        <button type="button" class="shift-key" data-digit="8">8</button>
+        <button type="button" class="shift-key" data-digit="9">9</button>
+        <button type="button" class="shift-key" data-digit=".">.</button>
+        <button type="button" class="shift-key" data-digit="0">0</button>
+        <button type="button" class="shift-key shift-key-back" data-action="back" aria-label="Fshi">⌫</button>
+      </div>
+      <div class="shift-close-diff" id="rc-shift-accept-diff-wrap" hidden>
+        <span id="rc-shift-accept-diff-label">Ndryshim nga dorëzimi</span>
+        <strong id="rc-shift-accept-diff-value">0.00 €</strong>
+      </div>
+      <button type="button" class="shift-start-btn" id="btn-rc-shift-accept-confirm">Pranoj ndërrimin</button>
+      <div id="rc-shift-accept-msg" class="alert alert-error" hidden></div>
+    </div>
+  </div>
+
   <div id="modal-rc-shift-end" class="shift-overlay" hidden>
     <div class="shift-start-card shift-close-card">
       <h2 class="shift-start-title shift-close-title">Mbyll ndërrimin — Recepsion</h2>
@@ -2293,7 +2360,7 @@
       el.textContent = d.toLocaleTimeString("sq-AL", { hour: "2-digit", minute: "2-digit", hour12: false });
     }
 
-    function createCashKeypad({ displayEl, keypadEl, onChange, initial = "0" }) {
+    function createCashKeypad({ displayEl, keypadEl, presetRoot, onChange, initial = "0" }) {
       let raw = String(initial).replace(/[^\d.]/g, "") || "0";
       function normalize() {
         if (!raw || raw === ".") raw = "0";
@@ -2320,12 +2387,48 @@
           render();
         });
       });
+      presetRoot?.querySelectorAll(".shift-preset").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          raw = String(btn.dataset.amount || "0");
+          render();
+        });
+      });
       render();
       return {
         getValue() { normalize(); return Number(raw) || 0; },
         setValue(v) { raw = String(v ?? "0"); render(); },
       };
     }
+
+    let pendingRcHandoverData = null;
+
+    const rcShiftOpenPad = createCashKeypad({
+      displayEl: document.getElementById("rc-shift-open-display"),
+      keypadEl: document.getElementById("rc-shift-open-keypad"),
+      presetRoot: document.querySelector("#modal-rc-shift-open .shift-presets"),
+      onChange: (n) => {
+        const btn = document.getElementById("btn-rc-shift-open-start");
+        if (btn) btn.textContent = `Fillo me ${formatEuro(n)} në kuletë`;
+      },
+      initial: "50",
+    });
+
+    const rcShiftAcceptPad = createCashKeypad({
+      displayEl: document.getElementById("rc-shift-accept-display"),
+      keypadEl: document.getElementById("rc-shift-accept-keypad"),
+      onChange: (actual) => {
+        if (!pendingRcHandoverData) return;
+        const expected = Number(pendingRcHandoverData.handover_cash) || 0;
+        const diff = Math.round((actual - expected) * 100) / 100;
+        const wrap = document.getElementById("rc-shift-accept-diff-wrap");
+        const val = document.getElementById("rc-shift-accept-diff-value");
+        if (!wrap || !val) return;
+        wrap.hidden = Math.abs(diff) < 0.005;
+        if (!wrap.hidden) {
+          val.textContent = (diff >= 0 ? "+" : "") + formatEuro(diff);
+        }
+      },
+    });
 
     const rcShiftClosePad = createCashKeypad({
       displayEl: document.getElementById("rc-shift-close-display"),
@@ -2442,7 +2545,91 @@
       }
     }
 
-    /** Pas login: hap ndërrimin automatikisht (0 € arkë) si waiter modal — recepsion fillon direkt. */
+    function showRcShiftOpenModal() {
+      const nameEl = document.getElementById("rc-shift-open-staff-name");
+      if (nameEl) nameEl.textContent = user?.emri || "Recepsion";
+      const msg = document.getElementById("rc-shift-open-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      rcShiftOpenPad.setValue(50);
+      document.getElementById("modal-rc-shift-open").hidden = false;
+    }
+
+    function hideRcShiftOpenModal() {
+      document.getElementById("modal-rc-shift-open").hidden = true;
+    }
+
+    function showRcShiftAcceptModal(handover) {
+      pendingRcHandoverData = handover;
+      document.getElementById("rc-shift-accept-from").textContent = handover.from_waiter_name || "—";
+      document.getElementById("rc-shift-accept-handover-amt").textContent =
+        formatEuro(handover.handover_cash || 0);
+      rcShiftAcceptPad.setValue(handover.handover_cash || 0);
+      const msg = document.getElementById("rc-shift-accept-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      document.getElementById("modal-rc-shift-accept").hidden = false;
+    }
+
+    function hideRcShiftAcceptModal() {
+      document.getElementById("modal-rc-shift-accept").hidden = true;
+      pendingRcHandoverData = null;
+    }
+
+    async function filloNderriminRecep() {
+      const msg = document.getElementById("rc-shift-open-msg");
+      const btn = document.getElementById("btn-rc-shift-open-start");
+      if (msg) msg.hidden = true;
+      if (btn) btn.disabled = true;
+      try {
+        await api("/api/waiter/shift/open", {
+          method: "POST",
+          body: JSON.stringify({ opening_cash: rcShiftOpenPad.getValue() }),
+        });
+        hideRcShiftOpenModal();
+        recepShiftOpen = true;
+        syncRcShiftCloseButton();
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Ndërrimi nuk u hap.";
+          msg.hidden = false;
+        }
+        recepShiftOpen = false;
+        syncRcShiftCloseButton();
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function pranoNderriminRecep() {
+      const msg = document.getElementById("rc-shift-accept-msg");
+      const btn = document.getElementById("btn-rc-shift-accept-confirm");
+      if (!pendingRcHandoverData?.id) return;
+      if (msg) msg.hidden = true;
+      if (btn) btn.disabled = true;
+      try {
+        await api("/api/waiter/shift/accept-handover", {
+          method: "POST",
+          body: JSON.stringify({
+            handover_id: pendingRcHandoverData.id,
+            opening_cash: rcShiftAcceptPad.getValue(),
+          }),
+        });
+        hideRcShiftAcceptModal();
+        recepShiftOpen = true;
+        syncRcShiftCloseButton();
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Pranimi dështoi.";
+          msg.hidden = false;
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    document.getElementById("btn-rc-shift-open-start")?.addEventListener("click", filloNderriminRecep);
+    document.getElementById("btn-rc-shift-accept-confirm")?.addEventListener("click", pranoNderriminRecep);
+
+    /** Pas login: ndërrimi si kamarieri — kusuri + pranim dorëzimi (jo hapje auto 0 €). */
     async function ensureRecepShiftOpen() {
       let s;
       try {
@@ -2460,36 +2647,22 @@
         return;
       }
 
-      if (s.needs_handover_acceptance) {
+      if (s.needs_handover_acceptance && s.pending_handover) {
         recepShiftOpen = false;
         syncRcShiftCloseButton();
-        showMsg(
-          "recep-rooms-msg",
-          "Keni ndërrim për pranim — pranoni dorëzimin (kamarier) ose kontaktoni administratorin.",
-          false,
-        );
+        showRcShiftAcceptModal(s.pending_handover);
         return;
       }
 
-      const needsAutoOpen = !s.open || s.needs_opening_cash;
-      if (!needsAutoOpen) {
-        recepShiftOpen = true;
+      if (s.needs_opening_cash) {
+        recepShiftOpen = false;
         syncRcShiftCloseButton();
+        showRcShiftOpenModal();
         return;
       }
 
-      try {
-        await api("/api/waiter/shift/open", {
-          method: "POST",
-          body: JSON.stringify({ opening_cash: 0 }),
-        });
-        recepShiftOpen = true;
-        syncRcShiftCloseButton();
-      } catch (err) {
-        recepShiftOpen = false;
-        syncRcShiftCloseButton();
-        showMsg("recep-rooms-msg", err.message || "Ndërrimi nuk u hap automatikisht.", false);
-      }
+      recepShiftOpen = !!s.open;
+      syncRcShiftCloseButton();
     }
 
     async function mbyllNderriminRecep() {

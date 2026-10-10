@@ -1,6 +1,7 @@
 /**
  * Sync PMS hotel (dhoma, mysafirë, charges, pastrim, rezervime) ↔ Revolution HOTEL Server.
  */
+const os = require("os");
 const cloudHealth = require("./cloud-health");
 const cloudSync = require("./cloud-sync");
 const { hotelCloudApiPath } = require("./cloud-server-url");
@@ -138,7 +139,13 @@ async function postSyncBatch(db, path, bodyKey, rows) {
   }
   const cfg = getCfg(db);
   if (!cfg.celesi) return { ok: false, skipped: true, upserted: 0 };
-  const payload = { celesi: cfg.celesi, [bodyKey]: rows };
+  const payload = {
+    celesi: cfg.celesi,
+    device_id: cfg.deviceId,
+    app_type: cfg.appType,
+    hostname: os.hostname(),
+    [bodyKey]: rows,
+  };
   const r = await requestJson("POST", path, payload);
   const parsed = parseJsonResponse(r);
   return { ok: true, upserted: Number(parsed.upserted) || rows.length, ...parsed };
@@ -242,6 +249,26 @@ async function pushServicesToCloud(db) {
   return postSyncBatch(db, "/api/v1/hotel/services/sync", "services", services);
 }
 
+function mapHotelQrVenueToCloud(row) {
+  return {
+    local_venue_id: row.id,
+    id: row.id,
+    name: row.name,
+    table_number: row.table_number,
+    venue_code: row.venue_code || "",
+    sort_order: row.sort_order ?? 0,
+    active: row.active !== 0 && row.active !== false,
+  };
+}
+
+async function pushHotelQrVenuesToCloud(db) {
+  if (typeof db.listHotelQrVenues !== "function") {
+    return { ok: false, skipped: true, upserted: 0 };
+  }
+  const venues = db.listHotelQrVenues({ activeOnly: false }).map(mapHotelQrVenueToCloud);
+  return postSyncBatch(db, "/api/v1/hotel/qr-venues/sync", "qr_venues", venues);
+}
+
 function upsertRoomFromCloud(db, row) {
   const id = Number(row.local_room_id);
   if (!id) return false;
@@ -340,6 +367,16 @@ function parseAssignedToLocal(raw) {
   return null;
 }
 
+function roomStatusFromHousekeepingTask(hkStatus, currentRoomStatus) {
+  const s = String(hkStatus || "").trim().toLowerCase();
+  const cur = String(currentRoomStatus || "free").trim().toLowerCase();
+  if (cur === "occupied") return "occupied";
+  if (s === "maintenance") return "maintenance";
+  if (s === "in_progress" || s === "dirty" || s === "pending") return "dirty";
+  if (s === "clean") return "free";
+  return cur;
+}
+
 function upsertHousekeepingFromCloud(db, row) {
   const id = Number(row.local_task_id);
   const roomId = Number(row.room_id);
@@ -359,6 +396,13 @@ function upsertHousekeepingFromCloud(db, row) {
       INSERT INTO housekeeping_tasks (id, room_id, assigned_to, status, priority, notes)
       VALUES (?, ?, ?, ?, 0, ?)
     `).run(id, roomId, assigned, status, notes);
+  }
+  const room = db.getRoomById(roomId);
+  if (room) {
+    const nextStatus = roomStatusFromHousekeepingTask(status, room.status);
+    if (nextStatus !== room.status) {
+      db.updateRoom(roomId, { status: nextStatus });
+    }
   }
   return true;
 }
@@ -449,10 +493,35 @@ async function pullHotelDataFromCloud(db) {
   } };
 }
 
+/** Menjëherë pas check-in / check-out — mysafirët + statusi i dhomave (QR dhomë). */
+async function pushGuestStaySnapshotToCloud(db) {
+  if (!db || !cloudSync.isCloudConfigured(db)) {
+    return { ok: false, skipped: true };
+  }
+  const cfg = getCfg(db);
+  if (!cfg.celesi) return { ok: false, skipped: true };
+  const rooms = await pushRoomsToCloud(db);
+  const guests = await pushGuestsToCloud(db);
+  const housekeeping = await pushHousekeepingToCloud(db);
+  return { ok: true, rooms, guests, housekeeping };
+}
+
 async function fullHotelSync(db) {
   if (!db) return { ok: false, message: "DB mungon." };
   if (!cloudSync.isCloudConfigured(db)) {
     return { ok: false, skipped: true, message: "Cloud nuk është konfiguruar." };
+  }
+  try {
+    const license = require("./license");
+    if (license.terminalRegisterNumber() >= 2) {
+      return {
+        ok: true,
+        skipped: true,
+        message: "Arka 2+ — PMS cloud push/pull vetëm nga Kryesorja.",
+      };
+    }
+  } catch {
+    /* ignore */
   }
 
   const syncStartedAt = new Date().toISOString();
@@ -464,6 +533,7 @@ async function fullHotelSync(db) {
     reservations: await pushReservationsToCloud(db),
     service_categories: await pushServiceCategoriesToCloud(db),
     services: await pushServicesToCloud(db),
+    qr_venues: await pushHotelQrVenuesToCloud(db),
   };
 
   const pull = await pullHotelDataFromCloud(db);
@@ -483,15 +553,51 @@ async function fullHotelSync(db) {
   };
 }
 
+async function listPublicBookingRequestsPending(db) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) return { ok: true, skipped: true, requests: [] };
+  const q = `celesi=${encodeURIComponent(cfg.celesi)}`;
+  const r = await requestJson("GET", `/api/v1/hotel/public-booking-requests/pending?${q}`, null);
+  return parseJsonResponse(r);
+}
+
+async function respondPublicBookingRequest(db, id, payload = {}) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
+  const r = await requestJson(
+    "POST",
+    `/api/v1/hotel/public-booking-requests/${encodeURIComponent(id)}/respond`,
+    { celesi: cfg.celesi, ...payload },
+  );
+  return parseJsonResponse(r);
+}
+
+async function deletePublicBookingRequest(db, id) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
+  const q = `celesi=${encodeURIComponent(cfg.celesi)}`;
+  const r = await requestJson(
+    "DELETE",
+    `/api/v1/hotel/public-booking-requests/${encodeURIComponent(id)}?${q}`,
+    null,
+  );
+  return parseJsonResponse(r);
+}
+
 module.exports = {
   LAST_SYNC_KEY,
+  listPublicBookingRequestsPending,
+  respondPublicBookingRequest,
+  deletePublicBookingRequest,
   pushRoomsToCloud,
   pushGuestsToCloud,
+  pushGuestStaySnapshotToCloud,
   pushChargesToCloud,
   pushHousekeepingToCloud,
   pushReservationsToCloud,
   pushServiceCategoriesToCloud,
   pushServicesToCloud,
+  pushHotelQrVenuesToCloud,
   pullHotelDataFromCloud,
   fullHotelSync,
 };

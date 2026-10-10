@@ -701,14 +701,14 @@ html.login-mode-staff-kamarier .login-col-divider,
 html.login-mode-staff-kamarier #btn-online-orders,
 html.login-mode-staff-kamarier #btn-emergency-waiter,
 html.login-mode-staff-kamarier #login-rfid-section,
-html.login-mode-staff-kamarier #login-staff-role-pick,
+html.login-mode-staff-kamarier #login-zone-pick,
 html.login-mode-staff-recepsion .staff-main-head,
 html.login-mode-staff-recepsion .login-col-admin,
 html.login-mode-staff-recepsion .login-col-divider,
 html.login-mode-staff-recepsion #btn-online-orders,
 html.login-mode-staff-recepsion #btn-emergency-waiter,
 html.login-mode-staff-recepsion #login-rfid-section,
-html.login-mode-staff-recepsion #login-staff-role-pick {
+html.login-mode-staff-recepsion #login-zone-pick {
   display: none !important;
 }
 

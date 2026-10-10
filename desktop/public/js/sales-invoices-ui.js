@@ -13,6 +13,8 @@
   let settings = { vatEnabled: false, vatPercent: 18, companyLogoUrl: "" };
   let seller = {};
   let invoices = [];
+  let businessDebts = [];
+  let payInvoiceId = null;
   let menuItemsCache = [];
   let salesCatFilter = null;
   let screen = "list";
@@ -170,6 +172,17 @@
     return map[s] || s;
   }
 
+  function payStatusLabel(s) {
+    const map = { unpaid: "E papaguar", partial: "Pjesërisht", paid: "E paguar" };
+    return map[s] || s;
+  }
+
+  function payBadgeClass(s) {
+    if (s === "paid") return "b2b-pay-paid";
+    if (s === "partial") return "b2b-pay-partial";
+    return "b2b-pay-unpaid";
+  }
+
   async function loadAll() {
     const data = await invApi("/settings");
     settings = data.settings || settings;
@@ -178,6 +191,37 @@
       ? `?q=${encodeURIComponent(q)}&status=${encodeURIComponent(statusFilter)}`
       : "");
     invoices = list.invoices || [];
+    try {
+      const debts = await invApi("/business-debts");
+      businessDebts = debts.businesses || [];
+    } catch {
+      businessDebts = [];
+    }
+  }
+
+  async function submitPayment() {
+    const inv = invoices.find((i) => String(i.id) === String(payInvoiceId));
+    if (!inv) return;
+    const amount = Number(document.getElementById("inv-pay-amount")?.value);
+    const payment_date = document.getElementById("inv-pay-date")?.value || todayYmd();
+    const payment_method = document.getElementById("inv-pay-method")?.value || "cash";
+    const note = document.getElementById("inv-pay-note")?.value || "";
+    busy = true;
+    render();
+    try {
+      await invApi(`/${inv.id}/payments`, {
+        method: "POST",
+        body: JSON.stringify({ amount, payment_date, payment_method, note }),
+      });
+      okMsg = "Pagesa u regjistrua.";
+      payInvoiceId = null;
+      await loadAll();
+    } catch (e) {
+      errorMsg = e.message || "Pagesa dështoi.";
+    } finally {
+      busy = false;
+      render();
+    }
   }
 
   function salesCategoryList() {
@@ -439,6 +483,22 @@
     return `
     ${renderSettingsCard()}
     <div class="card" style="margin-top:0.75rem">
+      <div class="card-title">Borxhet B2B (klientë kompani)</div>
+      <table class="dashboard-top-table">
+        <thead><tr><th>Kompania</th><th>NUI</th><th>Fatura</th><th>Totali</th><th>Paguar</th><th>Borxh</th></tr></thead>
+        <tbody>
+          ${businessDebts.length ? businessDebts.map((b) => `<tr>
+            <td>${Html.esc(b.companyName)}</td>
+            <td>${Html.esc(b.nui)}</td>
+            <td>${b.invoiceCount}</td>
+            <td>${euro(b.invoicedTotal)}</td>
+            <td>${euro(b.paidTotal)}</td>
+            <td><strong>${euro(b.balanceDue)}</strong></td>
+          </tr>`).join("") : "<tr><td colspan=\"6\">Asnjë borxh i hapur.</td></tr>"}
+        </tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>Faturat shitje (A4)</span>
         <button type="button" class="btn btn-primary btn-sm" id="inv-new">+ Faturë e re</button>
@@ -452,22 +512,27 @@
         <button type="button" class="btn btn-ghost btn-sm" id="inv-reload">Rifresko</button>
       </div>
       <table class="dashboard-top-table">
-        <thead><tr><th>Numri</th><th>Data</th><th>Mysafir / Klient</th><th>Totali</th><th>Statusi</th><th></th></tr></thead>
+        <thead><tr><th>Numri</th><th>Data</th><th>Mysafir / Klient</th><th>Totali</th><th>Pagesa</th><th>Statusi</th><th></th></tr></thead>
         <tbody>
           ${invoices.length ? invoices.map((inv) => {
             const g = inv.guest || {};
+            const ps = inv.paymentStatus || "unpaid";
+            const canPay = g.kind === "company" && ps !== "paid" && ["final", "printed", "emailed"].includes(inv.status);
             return `<tr>
             <td>${Html.esc(inv.number)}</td>
             <td>${Html.esc(inv.date)}</td>
             <td>${Html.esc(g.kind === "company" ? g.companyName : g.name)}</td>
             <td>${euro(inv.totals?.grandTotal)}</td>
+            <td><span class="b2b-badge ${payBadgeClass(ps)}">${payStatusLabel(ps)}</span>
+              ${inv.amountPaid > 0 ? `<br><span class="purchases-panel-sub">${euro(inv.amountPaid)} / borxh ${euro(inv.balanceDue)}</span>` : ""}</td>
             <td>${statusLabel(inv.status)}</td>
             <td>
               <button type="button" class="btn btn-ghost btn-sm inv-view" data-id="${escAttr(inv.id)}">Shiko</button>
+              ${canPay ? `<button type="button" class="btn btn-primary btn-sm inv-pay" data-id="${escAttr(inv.id)}">Pagesë</button>` : ""}
               <button type="button" class="btn btn-ghost btn-sm inv-del" data-id="${escAttr(inv.id)}">Fshi</button>
             </td>
           </tr>`;
-          }).join("") : "<tr><td colspan=\"6\">Asnjë faturë.</td></tr>"}
+          }).join("") : "<tr><td colspan=\"7\">Asnjë faturë.</td></tr>"}
         </tbody>
       </table>
     </div>`;
@@ -671,10 +736,35 @@
     });
   }
 
+  function renderPayModal() {
+    const inv = invoices.find((i) => String(i.id) === String(payInvoiceId));
+    if (!inv) return "";
+    const bal = Number(inv.balanceDue) || Number(inv.totals?.grandTotal) || 0;
+    return `
+    <div class="card" style="margin:0.75rem 0;border:1px solid #FF6B35">
+      <div class="card-title">Pagesë — ${Html.esc(inv.number)} (borxh ${euro(bal)})</div>
+      <div class="form-row"><label>Data</label><input type="date" id="inv-pay-date" value="${todayYmd()}" /></div>
+      <div class="form-row"><label>Shuma (€)</label><input type="number" id="inv-pay-amount" min="0.01" step="0.01" value="${bal.toFixed(2)}" /></div>
+      <div class="form-row"><label>Mënyra</label>
+        <select id="inv-pay-method">
+          <option value="cash">Cash</option>
+          <option value="bank">Bankë</option>
+          <option value="karte">Kartë</option>
+        </select>
+      </div>
+      <div class="form-row"><label>Shënim</label><input type="text" id="inv-pay-note" placeholder="Opsionale" /></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+        <button type="button" class="btn btn-primary" id="inv-pay-submit" ${busy ? "disabled" : ""}>Regjistro pagesën</button>
+        <button type="button" class="btn btn-ghost" id="inv-pay-cancel">Anulo</button>
+      </div>
+    </div>`;
+  }
+
   function render() {
     let body = "";
     if (errorMsg) body += `<p style="color:#f87171">${Html.esc(errorMsg)}</p>`;
     if (okMsg) body += `<p style="color:#86efac">${Html.esc(okMsg)}</p>`;
+    if (payInvoiceId && screen === "list") body += renderPayModal();
     if (screen === "list") body += renderList();
     else if (screen === "edit") body += renderEdit();
     else if (screen === "preview") body += renderPreview();
@@ -739,6 +829,19 @@
           const inv = invoices.find((i) => String(i.id) === btn.dataset.id);
           if (inv) openView(inv);
         });
+      });
+      root.querySelectorAll(".inv-pay").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          payInvoiceId = btn.dataset.id;
+          errorMsg = "";
+          okMsg = "";
+          render();
+        });
+      });
+      document.getElementById("inv-pay-submit")?.addEventListener("click", submitPayment);
+      document.getElementById("inv-pay-cancel")?.addEventListener("click", () => {
+        payInvoiceId = null;
+        render();
       });
       root.querySelectorAll(".inv-del").forEach((btn) => {
         btn.addEventListener("click", async () => {

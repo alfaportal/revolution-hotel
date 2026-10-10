@@ -13,7 +13,7 @@ function parseJsonSafe(raw) {
   }
 }
 
-async function notifyShiftCloseEmail(db, closed) {
+async function notifyShiftCloseEmail(db, closed, opts = {}) {
   if (!db || !closed) return { ok: false, skipped: true, reason: "missing_data" };
   if (!cloudSync.isCloudConfigured(db)) {
     console.log("[shift-email] skip: cloud_not_configured");
@@ -40,8 +40,14 @@ async function notifyShiftCloseEmail(db, closed) {
   const shift = closed.shift || {};
   const lowStock = typeof db.getLowStockItems === "function" ? db.getLowStockItems() : [];
 
+  const sessionRole = String(opts.sessionRole || "").trim().toLowerCase();
+  const shiftDepartment =
+    String(opts.shift_department || "").trim()
+    || (sessionRole === "recepsion" ? "Recepsion" : "Restorant");
+
   const payload = {
     waiter_name: String(closed.waiter_name || "").trim(),
+    shift_department: shiftDepartment,
     shift_date: shift.closed_at || shift.opened_at || new Date().toISOString(),
     closed_at: shift.closed_at || null,
     opened_at: shift.opened_at || null,
@@ -49,6 +55,7 @@ async function notifyShiftCloseEmail(db, closed) {
     order_count: Number(closed.order_count) || 0,
     cash_total: Number(closed.cash_total) || 0,
     card_total: Number(closed.card_total) || 0,
+    room_total: Number(closed.room_total) || 0,
     restaurant_name: restaurantName,
     low_stock_items: (lowStock || []).map(item => ({
       name: String(item.name || "").trim(),

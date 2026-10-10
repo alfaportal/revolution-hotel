@@ -1778,6 +1778,10 @@
       border: 1px solid rgba(148, 163, 184, 0.25);
       border-radius: 8px;
     }
+    #admin-sales-invoices-root .b2b-badge { font-weight: 700; font-size: 0.78rem; padding: 0.2rem 0.45rem; border-radius: 6px; }
+    #admin-sales-invoices-root .b2b-pay-paid { color: #22c55e; background: rgba(34, 197, 94, 0.12); }
+    #admin-sales-invoices-root .b2b-pay-partial { color: #eab308; background: rgba(234, 179, 8, 0.15); }
+    #admin-sales-invoices-root .b2b-pay-unpaid { color: #ef4444; background: rgba(239, 68, 68, 0.12); }
     #admin-sales-invoices-root table.inv-lines.hotel-inv-lines,
     #modal-receipt-scan table.inv-lines.hotel-inv-lines,
     #modal-purchase table.inv-lines.hotel-inv-lines {
@@ -2392,6 +2396,7 @@
 </head>
 <body class="admin-app">
   <div id="master-only-banner" class="master-only-banner" hidden role="status" aria-live="polite"></div>
+  <div id="pc-timezone-banner" class="master-only-banner" hidden role="alert" style="background:#b45309;color:#fff"></div>
   <div class="admin-shell">
     <header class="admin-topbar">
       <div class="admin-topbar-left">
@@ -2402,7 +2407,7 @@
       </div>
       <div class="admin-topbar-right">
         <span class="app-version-pill" id="hdr-app-version" hidden></span>
-        <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Offline — pa cloud">☁ Offline</span>
+        <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Jashtë linje">☁ Jashtë linje</span>
         <span class="admin-topbar-clock" id="admin-clock">--:--</span>
         <span class="admin-user-badge">
           <span class="user-initial" id="hdr-user-initial">P</span>
@@ -2624,7 +2629,7 @@
       <div class="purchases-panel-header">
         <div>
           <h2 class="purchases-panel-title">Menuja &amp; produktet</h2>
-          <p class="purchases-panel-sub">Kategoritë, artikujt dhe import me AI (Pako 4)</p>
+          <p class="purchases-panel-sub">Kategoritë, artikujt dhe import me AI (Pako 3)</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-vat-apply-smart" title="Vendos TVSH automatikisht për të gjithë produktet sipas emrit">TVSH smart → të gjithë</button>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-menu-scan-ai" hidden title="Skano menynë nga foto">Skano Meny me AI</button>
@@ -2755,6 +2760,50 @@
         </form>
         <div id="stoku-kontabilist-warning" class="fiscal-save-msg" role="status" style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-success,#059669);background:rgba(5,150,105,0.08);color:var(--ngjyr-text,#e8e8ef)">
           <strong>+ Shto stok</strong> dhe <strong>barcode</strong> krijojnë faturë blerjeje → <strong>Blerjet</strong> dhe <strong>Kontabilisti</strong>.
+        </div>
+        <div class="card settings-card" style="margin-bottom:1rem">
+          <div class="card-title">Përbërësit (receta / blerje kg·l)</div>
+          <p class="field-hint" style="margin:0 0 0.5rem">Blerjet mund të targetojnë përbërës — recetat lidhen te Menuja → Ndrysho artikullin.</p>
+          <div style="overflow-x:auto;margin-bottom:0.75rem">
+            <table class="purchases-table">
+              <thead><tr><th>Emri</th><th>Njësia</th><th>Stoku</th><th>Kosto/njësi</th><th>Min</th><th></th></tr></thead>
+              <tbody id="ingredients-table-body"><tr><td colspan="6">Hapni tab-in Stoku…</td></tr></tbody>
+            </table>
+          </div>
+          <form id="forma-ingredient-shto" class="form-row" style="flex-wrap:wrap;align-items:flex-end">
+            <div><label for="ing-emri">Emri</label><input type="text" id="ing-emri" required placeholder="p.sh. Mish"></div>
+            <div><label for="ing-unit">Njësia</label>
+              <select id="ing-unit"><option value="kg">kg</option><option value="l">l</option><option value="copë">copë</option></select>
+            </div>
+            <div><label for="ing-min">Stok minimal</label><input type="number" id="ing-min" min="0" step="any" value="0"></div>
+            <div style="flex:0"><label>&nbsp;</label><button type="submit" class="btn btn-primary btn-sm">Shto përbërës</button></div>
+          </form>
+          <span id="ingredient-form-msg" class="field-hint"></span>
+        </div>
+        <div class="card settings-card" style="margin-bottom:1rem">
+          <div class="card-title">Numërim stoku &amp; humbje (përbërës + copë)</div>
+          <p class="field-hint" style="margin:0 0 0.5rem">Fut sasinë reale — programi tregon diferencën (sasi + €) dhe e regjistron me operator/kohë.</p>
+          <div id="stock-count-lines" style="max-height:220px;overflow:auto;margin-bottom:0.5rem"></div>
+          <div class="form-row" style="flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:1;min-width:160px"><label for="stock-count-note">Shënim</label><input type="text" id="stock-count-note" placeholder="p.sh. numërim javor"></div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-stock-count-save">Ruaj numërimin</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-stock-count-reload">Rifresko listën</button>
+          </div>
+          <span id="stock-count-msg" class="field-hint"></span>
+        </div>
+        <div class="card settings-card" style="margin-bottom:1rem">
+          <div class="card-title">Krahasim harxhimi (javë / muaj)</div>
+          <div class="form-row" style="margin-bottom:0.5rem">
+            <div><label for="variance-from">Nga</label><input type="date" id="variance-from"></div>
+            <div><label for="variance-to">Deri</label><input type="date" id="variance-to"></div>
+            <div style="flex:0"><label>&nbsp;</label><button type="button" class="btn btn-ghost btn-sm" id="btn-variance-load">Shfaq</button></div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="purchases-table">
+              <thead><tr><th>Përbërës</th><th>Duhej</th><th>Harxhoi</th><th>Diferenca</th><th>€</th><th>%</th></tr></thead>
+              <tbody id="variance-table-body"><tr><td colspan="6">Klikoni Shfaq…</td></tr></tbody>
+            </table>
+          </div>
         </div>
         <div id="stoku-reconcile-panel" class="fiscal-save-msg" hidden style="margin-bottom:0.65rem;padding:0.55rem 0.75rem;border-left:3px solid var(--ngjyr-primary,#6366f1);background:rgba(99,102,241,0.08)"></div>
         <div id="stoku-summary" class="fiscal-save-msg" style="margin-bottom:0.65rem"></div>
@@ -3049,6 +3098,35 @@
         <div id="table-qr-msg" class="fiscal-save-msg"></div>
         <div class="card-title" style="margin:0.5rem 0">QR të përbashkëta</div>
         <div class="hotel-qr-shared" id="hotel-qr-shared"></div>
+        <div class="card-title" style="margin:0.75rem 0 0.35rem">Vende hoteli (pishinë, sauna, bar…)</div>
+        <p class="table-qr-hint" style="margin:0 0 0.5rem">
+          Çdo vend ka <strong>emër + numër të caktuar</strong> (p.sh. Pishina 200). Numri nuk duhet të përsëritet me tavolinat e restorantit apo vende të tjera.
+        </p>
+        <div class="reports-filter-bar" style="margin:0 0 0.75rem;flex-wrap:wrap;gap:0.5rem;align-items:end">
+          <label style="font-size:0.85rem;min-width:160px">Emri i vendit
+            <input type="text" id="hotel-qr-venue-name" maxlength="80" placeholder="Pishina" style="width:100%;margin-top:0.25rem">
+          </label>
+          <label style="font-size:0.85rem;width:110px">Numri
+            <input type="number" id="hotel-qr-venue-number" min="1" step="1" placeholder="200" style="width:100%;margin-top:0.25rem">
+          </label>
+          <button type="button" class="btn btn-primary" id="btn-hotel-qr-venue-add">Shto vend &amp; QR</button>
+        </div>
+        <div class="purchases-table-wrap" style="margin-bottom:0.75rem">
+          <table class="dashboard-top-table table-qr-table">
+            <thead>
+              <tr>
+                <th>Vendi</th>
+                <th>Numri</th>
+                <th>URL QR</th>
+                <th>QR</th>
+                <th class="col-actions">Veprime</th>
+              </tr>
+            </thead>
+            <tbody id="hotel-qr-venues-body">
+              <tr><td colspan="5" class="purchases-empty">Ngarko skedën QR për vendet…</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="card-title" style="margin:0.75rem 0 0.5rem">QR Room Service — sipas dhomës</div>
         <div class="purchases-table-wrap">
           <table class="dashboard-top-table table-qr-table">
@@ -3296,6 +3374,22 @@
         </div>
       </div>
 
+      <div class="card" id="card-stock-breakage-report">
+        <div class="card-title">Thyerje dhe humbje</div>
+        <p class="tables-panel-sub" style="margin:-0.35rem 0 0.75rem">Humbje stoku → shpenzim (jo shitje). Filtroni sipas periudhës së raporteve.</p>
+        <div id="stock-breakage-summary" style="font-size:0.95rem;margin-bottom:0.65rem;color:var(--ngjyr-muted,#64748b)">—</div>
+        <div class="reports-table-wrap">
+          <table class="dashboard-top-table">
+            <thead>
+              <tr><th>Kur</th><th>Artikulli</th><th>Sasia</th><th>Arsyeja</th><th>Kush</th><th>Kosto</th></tr>
+            </thead>
+            <tbody id="stock-breakage-table">
+              <tr><td colspan="6" class="purchases-empty">Zgjidhni periudhën e raportit</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="card shift-reports-card">
         <div class="card-title">Raportet e nderrimeve (Stafi)</div>
         <p class="tables-panel-sub" style="margin:-0.35rem 0 0.75rem">Paratë e nisjes, shitjet dhe mospërputhjet cash për barazim</p>
@@ -3339,7 +3433,7 @@
         <div>
           <h2 class="reports-panel-title">Faturat</h2>
           <p class="reports-panel-sub" style="margin:0.25rem 0 0;color:var(--ngjyr-muted);font-size:0.85rem">
-            Fatura shitje A4 — mysafir/klient, artikuj, preview, print dhe email (lokal SQLite)
+            Fatura shitje A4 — mysafir/klient, artikuj, preview, print dhe email
           </p>
         </div>
       </div>
@@ -3373,8 +3467,8 @@
             </select>
           </div>
           <div>
-            <label>PIN (6 shifra)</label>
-            <input type="text" id="staf-pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required>
+            <label id="staf-pin-label">PIN (4 shifra)</label>
+            <input type="text" id="staf-pin" inputmode="numeric" maxlength="6" placeholder="1234" required>
           </div>
           <div style="flex:0">
             <label>&nbsp;</label>
@@ -3497,7 +3591,7 @@
       </div>
       <div class="card">
         <div class="card-title">Kategoritë AI</div>
-        <p id="ai-usage-line">Duke ngarkuar përdorimin e tokenëve…</p>
+        <p id="ai-usage-line">Duke ngarkuar përdorimin e AI…</p>
         <div class="ai-cat-grid">
           <button type="button" class="ai-cat-btn" id="btn-receipt-scan-ai" title="Hap Blerjet për skanim fature">
             <span class="ai-cat-icon" aria-hidden="true">🛒</span>
@@ -3950,7 +4044,7 @@
         <button type="button" class="settings-hub-btn" data-settings-go="cloud">
           <span class="settings-hub-icon settings-hub-icon-cyan">L</span>
           <strong>Linke stafi &amp; pronari</strong>
-          <span>Pronari (cloud, email) · kamarier/recepsion WiFi · kuzhinë, bar</span>
+          <span>Pronari · stafi · linke</span>
         </button>
       </div>
 
@@ -4046,7 +4140,7 @@
       <div class="card settings-card">
         <div class="card-title">Licenca e aplikacionit</div>
         <p style="margin-bottom:1rem;color:var(--ngjyr-muted);font-size:0.85rem">
-          Çelësi lidhet me kompjuterin POS (jo me telefonin). Dërgojini shitësit ID-në e pajisjes për të marrë licencën.
+          Çelësi lidhet me kompjuterin në recepsion. Dërgojini shitësit ID-në e pajisjes për të marrë licencën.
         </p>
         <div id="license-status-box" class="printer-status-box pending">
           <strong id="license-status-icon">⏳</strong>
@@ -4125,7 +4219,7 @@
           <span class="settings-hub-icon settings-hub-icon-blue">B</span>
           <div>
             <div class="settings-card-title">Të dhënat e biznesit</div>
-            <p class="settings-card-desc">Për faturën fiskale (ATK Kosovë) — ruhen lokalisht në SQLite</p>
+            <p class="settings-card-desc">Për faturën fiskale (ATK Kosovë)</p>
           </div>
         </div>
         <div id="fiscal-fields" class="fiscal-form-grid"></div>
@@ -4399,7 +4493,7 @@
         <div class="sef-audit-box" id="sef-fiscal-reports-box">
           <div class="sef-audit-title">Raportet X / Z (SEF direkt)</div>
           <p class="sef-field8-desc" style="margin:0 0 0.75rem">
-            POST direkt te <code>/api/fiscal/x-report</code>, <code>z-report</code>, <code>z-report/send-atk</code> — si BIZNES.
+            Raporte fiskale — vetëm për test intern.
           </p>
           <div class="sef-audit-actions">
             <button type="button" class="btn btn-sm btn-sef-audit" id="btn-fiscal-x-report">Printo / shiko Raportin X</button>
@@ -4412,7 +4506,7 @@
         <div class="sef-audit-box" id="sef-fiscal-periodic-box">
           <div class="sef-audit-title">Raportet periodike (SEF direkt)</div>
           <p class="sef-field8-desc" style="margin:0 0 0.65rem">
-            POST direkt — Periodik, i shkurtër, mujor memorie ATK (si BIZNES).
+            Raporte periodike — vetëm për test intern.
           </p>
           <div class="sef-periodic-dates">
             <div class="settings-field">
@@ -4596,7 +4690,7 @@
         </div>
         <p style="margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.85rem">
           Zgjidhni nëse kamarierët zgjedhin vetë (Auto), apo detyrohen gjithmonë Termik ose Fiskal (ATK).
-          Nëse pronari ndryshon modalitetin nga telefoni (cloud), ai mbizotëron mbi zgjedhjen lokale.
+          Nëse pronari ndryshon modalitetin nga telefoni, ai mbizotëron mbi zgjedhjen në recepsion.
         </p>
         <div class="fiscal-field-row">
           <label for="register-mode-select">Modaliteti për kamarierët</label>
@@ -4818,7 +4912,7 @@
 
         <h3 class="settings-subtitle">Arka fiskale</h3>
         <p style="margin-bottom:0.75rem;color:var(--ngjyr-muted);font-size:0.85rem">
-          Regjistroni arkën fiskale (emër/numër, port COM, baud rate). Të dhënat ruhen në SQLite.
+          Regjistroni arkën fiskale (emër/numër, port COM, baud rate).
         </p>
         <div id="fiscal-register-status-box" class="printer-status-box pending">
           <strong id="fiscal-register-status-icon">⏳</strong>
@@ -5013,19 +5107,18 @@
           <span class="settings-hub-icon settings-hub-icon-cyan">C</span>
           <div>
             <div class="settings-card-title">Linke stafi &amp; pronari</div>
-            <p class="settings-card-desc">Pronari (cloud, email) · staf WiFi/cloud · QR mysafirë — te skeda <strong>QR Kodet</strong>.</p>
+            <p class="settings-card-desc">Link për pronarin dhe stafin. QR mysafirë — te skeda <strong>QR Kodet</strong>.</p>
           </div>
         </div>
         <div id="cloud-status-box" class="printer-status-box pending">
           <strong id="cloud-status-icon">○</strong>
-          <span id="cloud-status-text">Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.</span>
+          <span id="cloud-status-text">Nuk jeni të lidhur me internetin — hoteli punon normalisht në recepsion.</span>
         </div>
         <div class="fiscal-field-row">
-          <label>Server cloud</label>
+          <label>Lidhja online</label>
           <div class="fiscal-field-actions">
-            <input type="text" id="cloud-server-fixed" readonly value="" placeholder="Do të konfigurohet më vonë" style="font-family:monospace;background:var(--ngjyr-bg-soft,#f1f5f9)">
+            <input type="text" id="cloud-server-fixed" readonly value="" placeholder="" style="font-family:monospace;background:var(--ngjyr-bg-soft,#f1f5f9)">
           </div>
-          <p class="field-hint" style="margin:0.35rem 0 0">Bosh — do të konfigurohet kur hoteli të ketë serverin e vet.</p>
         </div>
         <div class="fiscal-field-row">
           <label for="cloud-license-key">Çelësi i licencës</label>
@@ -5034,43 +5127,39 @@
           </div>
         </div>
         <div class="fiscal-field-row">
-          <label>ID pajisje (device_id)</label>
+          <label>ID e pajisjes</label>
           <div class="fiscal-field-actions">
             <input type="text" id="cloud-device-id" readonly style="font-family:monospace">
           </div>
         </div>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.25rem">
           <button type="button" class="btn btn-primary btn-sm" id="btn-cloud-save">Ruaj</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btn-cloud-sync-all">Sinkronizo gjithçka</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-cloud-sync-all">Përditëso të dhënat</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-cloud-test">Testo lidhjen</button>
         </div>
         <div class="fiscal-save-msg" id="msg-cloud"></div>
         <div id="web-app-links" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--ngjyr-border)">
-          <p style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem">
-            Kamarier: <strong>WiFi</strong> (http://IP:3001/waiter.html) dhe <strong>cloud</strong>
-            (revolution-pos.com/hotel/emri-hotelit/kamarier) — të dyja me PIN; porositë shkojnë te i njëjti POS.
-          </p>
           <p id="cloud-links-hint" style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem"></p>
           <div class="fiscal-field-row" id="cloud-row-owner">
-            <label>Pronari (cloud — telefon/tablet)</label>
+            <label>Pronari — telefon / tablet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-owner-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/owner?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-owner-url">Kopjo</button>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-open-owner-url">Hap</button>
             </div>
             <p class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">
-              Hapni në telefon — regjistrohuni ose hyni me <strong>email-in e pronarit</strong> (Revolution POS). Paneli cloud për raporte, AI dhe menaxhim nga jashtë.
+              Hapni në telefon — hyni me email-in e pronarit.
             </p>
           </div>
           <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
-            <label>Kamarierë (cloud — internet)</label>
+            <label>Kamarier — internet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-waiter-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-waiter-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-local-waiter">
-            <label id="cloud-local-waiter-label">Kamarieri — WiFi lokal</label>
+            <label id="cloud-local-waiter-label">Kamarier — WiFi i hotelit</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-local-waiter-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-waiter-url">Kopjo</button>
@@ -5088,7 +5177,7 @@
             <div id="cloud-local-waiter-hostnames" hidden style="margin-top:0.65rem"></div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-local-recepsion">
-            <label id="cloud-local-recepsion-label">Recepsioni — WiFi lokal</label>
+            <label id="cloud-local-recepsion-label">Recepsion — WiFi i hotelit</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-local-recepsion-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-recepsion-url">Kopjo</button>
@@ -5096,43 +5185,59 @@
             </div>
             <p id="cloud-local-recepsion-hint" class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)"></p>
           </div>
+          <div class="fiscal-field-row" id="cloud-row-local-sherbimi">
+            <label id="cloud-local-sherbimi-label">Pastrim — WiFi i hotelit</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-local-sherbimi-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-sherbimi-url">Kopjo</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-open-local-sherbimi-url">Hap</button>
+            </div>
+            <p id="cloud-local-sherbimi-hint" class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">Punon vetëm në Wi‑Fi të hotelit.</p>
+          </div>
           <div class="fiscal-field-row" id="cloud-row-kitchen">
             <label>Kuzhina (ekran porosish)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-kitchen-url" readonly placeholder="https://revolution-pos.com/kitchen/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-kitchen-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/kuzhina?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kitchen-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-bar">
             <label>Bar (pije)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-bar-url" readonly placeholder="https://revolution-pos.com/bar/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-bar-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/bar?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-bar-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-kiosk">
-            <label>Takeaway / Meny publike (recepsion)</label>
+            <label>Tavolinë (QR menu)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-kiosk-url" readonly placeholder="https://revolution-pos.com/menu/emri-i-hotelit/1" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-kiosk-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/menu/1" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kiosk-url">Kopjo</button>
             </div>
           </div>
-          <div class="fiscal-field-row" id="cloud-row-public">
-            <label>Meny mysafir (QR tavolinë / pa dhomë)</label>
+          <div class="fiscal-field-row" id="cloud-row-takeaway" hidden>
+            <label>Takeaway / porosi online</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-public-url" readonly placeholder="https://revolution-pos.com/menu/emri-i-hotelit/1" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-takeaway-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/takeaway" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-takeaway-url">Kopjo</button>
+            </div>
+          </div>
+          <div class="fiscal-field-row" id="cloud-row-public">
+            <label>Faqja publike</label>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+              <input type="text" id="cloud-public-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-public-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-housekeeping">
-            <label>Pastrues (housekeeping)</label>
+            <label>Pastrim — internet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-hk-url" readonly placeholder="https://revolution-pos.com/housekeeping/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-hk-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-reception" hidden>
-            <label>Recepsion (cloud — i çaktivizuar)</label>
+            <label>Recepsion — internet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-reception-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-reception-url">Kopjo</button>
@@ -5160,7 +5265,7 @@
           <a class="btn btn-ghost btn-sm" id="btn-public-preview" href="#" target="_blank" rel="noopener">Shiko faqen</a>
         </div>
         <p style="font-size:0.85rem;color:var(--ngjyr-muted);margin:0 0 0.75rem">
-          Logo, cover, oferta, orari — ruhet në cloud (pa login pronari).
+          Logo, cover, oferta dhe orari i faqes publike.
         </p>
         <div id="public-page-upgrade" class="fiscal-save-msg" hidden></div>
         <label style="display:flex;align-items:center;gap:0.5rem;margin:0.75rem 0;font-size:0.9rem">
@@ -5239,12 +5344,12 @@
           <div class="card-title" style="margin-top:1rem;font-size:0.95rem">Orari i punës</div>
           <div id="public-hours-grid" class="public-hours-grid"></div>
           <div class="fiscal-field-row" style="margin-top:1rem">
-            <label for="public-page-slug">Slug i faqes publike</label>
-            <p style="font-size:0.8rem;margin:0.25rem 0;color:var(--ngjyr-muted)">URL: <code>revolution-pos.com<span id="public-slug-path">/hotel/</span><span id="public-slug-preview">slug</span></code></p>
+            <label for="public-page-slug">Emri i shkurtër i faqes</label>
+            <p style="font-size:0.8rem;margin:0.25rem 0;color:var(--ngjyr-muted)" id="public-slug-url-hint">Shkronja të vogla, numra dhe vizë (-).</p>
             <div class="fiscal-field-actions public-slug-actions" style="flex-wrap:wrap">
-              <span class="public-slug-prefix" id="public-slug-prefix">/hotel/</span>
+              <span class="public-slug-prefix" id="public-slug-prefix" hidden></span>
               <input type="text" id="public-page-slug" maxlength="48" autocomplete="off" spellcheck="false" style="font-family:monospace;flex:1;min-width:10rem">
-              <button type="button" class="btn btn-primary btn-sm" id="btn-public-save-slug">Ruaj slug</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-public-save-slug">Ruaj</button>
             </div>
           </div>
           <div class="fiscal-field-row">
@@ -5285,7 +5390,7 @@
           <button type="button" class="btn-coupon btn-coupon-fiscal" data-coupon="fiscal" id="modal-kupon-fiskal">Kuponi Fiskal</button>
         </div>
         <button type="button" class="btn btn-danger" id="btn-anullo-porosi">Anullo porosinë</button>
-        <button type="button" class="btn btn-warning" id="btn-pastro-cloud-tavoline" hidden>Pastro tavolinën (☁ cloud)</button>
+        <button type="button" class="btn btn-warning" id="btn-pastro-cloud-tavoline" hidden>Pastro tavolinën</button>
         <button type="button" class="btn btn-ghost" id="btn-mbyll-modal">Mbyll</button>
       </div>
     </div>
@@ -5296,6 +5401,20 @@
     <div class="table-modal-content staff-modal-content">
       <h2 id="staff-modal-title">Ndrysho punonjësin</h2>
       <p id="staff-modal-sub" class="table-modal-sub"></p>
+      <div class="staff-modal-profile" style="margin:0.75rem 0 1rem;display:grid;gap:0.5rem">
+        <div>
+          <label for="staff-modal-name">Emri</label>
+          <input type="text" id="staff-modal-name" class="staff-rfid-input" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:0.25rem">
+        </div>
+        <div>
+          <label for="staff-modal-role">Roli</label>
+          <select id="staff-modal-role" class="staff-rfid-input" style="width:100%;box-sizing:border-box;margin-top:0.25rem">
+            <option value="kamarier">Kamarier</option>
+            <option value="recepsion">Recepsion</option>
+          </select>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="staff-modal-save-profile" style="justify-self:start">Ruaj emrin / rolin</button>
+      </div>
       <dl class="staff-modal-details">
         <div class="staff-modal-row">
           <dt>Turi</dt>
@@ -5307,7 +5426,7 @@
         </div>
       </dl>
       <div class="staff-modal-kds-block" id="staff-modal-cloud-waiter-block" hidden>
-        <label for="staff-modal-cloud-waiter-url" id="staff-modal-cloud-waiter-label">Link cloud (telefon)</label>
+        <label for="staff-modal-cloud-waiter-url" id="staff-modal-cloud-waiter-label">Link për telefon</label>
         <input
           type="text"
           id="staff-modal-cloud-waiter-url"
@@ -5317,7 +5436,7 @@
         >
         <div class="staff-rfid-actions" style="margin-top:0.35rem;flex-wrap:wrap">
           <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-copy-cloud-waiter">Kopjo</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-regenerate-cloud">Rigjenero link cloud</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-regenerate-cloud">Rigjenero linkun</button>
         </div>
         <p id="staff-modal-cloud-waiter-hint" class="links-hint" style="margin:0.35rem 0 0" hidden></p>
       </div>
@@ -5396,7 +5515,7 @@
     <div class="table-modal-backdrop" id="reservation-modal-backdrop"></div>
     <div class="table-modal-content purchase-modal-content">
       <h2 id="reservation-modal-title">Shto rezervim</h2>
-      <p class="table-modal-sub">Rezervimi shfaqet te kamarieri dhe në cloud</p>
+      <p class="table-modal-sub">Rezervimi shfaqet te kamarieri</p>
       <div class="purchase-form-grid">
         <div class="purchase-form-field">
           <label for="reservation-customer-name">Emri i klientit</label>
@@ -6091,12 +6210,14 @@
 
   <div id="print-fature" class="print-receipt"></div>
 
+  <script src="/js/hotel-business-date.js?v=1"></script>
   <script src="/js/app.js"></script>
   <script src="/js/virt-window.js?v=1"></script>
   <script src="/js/vat-smart-mapping.js"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/cloud-status.js"></script>
   <script src="/js/hotel-inv-lines-shared.js?v=1"></script>
+  <script src="/js/hotel-ingredients-recipes-admin.js?v=1"></script>
   <script src="/js/sales-invoice-html.js?v=2"></script>
   <script src="/js/sales-invoices-ui.js?v=2"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
@@ -6902,9 +7023,7 @@
 
     function initRefuseDateInputs() {
       const to = sotISO();
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - 30);
-      const from = fromDate.toISOString().slice(0, 10);
+      const from = addDaysISO(to, -30);
       const fromEl = document.getElementById("refuse-from");
       const toEl = document.getElementById("refuse-to");
       if (fromEl && !fromEl.value) fromEl.value = from;
@@ -6979,15 +7098,13 @@
 
     function applyDitariPreset(period) {
       ditariPeriod = period;
-      const today = new Date();
       const toDate = sotISO();
       let fromDate = toDate;
       if (period === "java") {
-        const d = new Date(today);
-        d.setDate(d.getDate() - 6);
-        fromDate = d.toISOString().slice(0, 10);
+        fromDate = addDaysISO(toDate, -6);
       } else if (period === "muaj") {
-        fromDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+        const [y, m] = toDate.split("-");
+        fromDate = `${y}-${m}-01`;
       }
       document.getElementById("ditari-from-date").value = fromDate;
       document.getElementById("ditari-to-date").value = toDate;
@@ -7806,6 +7923,17 @@
 
     async function ngarkoSettings() {
       const s = await api("/api/settings");
+      const tzBanner = document.getElementById("pc-timezone-banner");
+      if (tzBanner) {
+        const warn = s.pc_timezone && s.pc_timezone.warning;
+        if (warn) {
+          tzBanner.hidden = false;
+          tzBanner.textContent = warn;
+        } else {
+          tzBanner.hidden = true;
+          tzBanner.textContent = "";
+        }
+      }
       if (Array.isArray(s.admin_tab_order) && s.admin_tab_order.length) {
         applyAdminTabOrder(s.admin_tab_order);
       }
@@ -7862,7 +7990,7 @@
     document.getElementById("btn-raporti-x-fiskal").addEventListener("click", () =>
       printoNgaApi("/api/admin/reports/fiscal-x/print"));
     document.getElementById("btn-raporti-periodik").addEventListener("click", async () => {
-      const from = prompt("Raport periodik — data Nga (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+      const from = prompt("Raport periodik — data Nga (YYYY-MM-DD)", sotISO());
       if (!from) return;
       const to = prompt("Raport periodik — data Deri (YYYY-MM-DD)", from);
       if (!to) return;
@@ -7873,7 +8001,7 @@
       }
     });
     document.getElementById("btn-raporti-shkurt-periodik").addEventListener("click", async () => {
-      const from = prompt("Raport i shkurtër — data Nga (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+      const from = prompt("Raport i shkurtër — data Nga (YYYY-MM-DD)", sotISO());
       if (!from) return;
       const to = prompt("Raport i shkurtër — data Deri (YYYY-MM-DD)", from);
       if (!to) return;
@@ -7887,11 +8015,9 @@
       });
     });
     document.getElementById("btn-raporti-mujor-memorie").addEventListener("click", async () => {
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const defTo = sotISO();
+      const [y, m] = defTo.split("-");
       const defFrom = `${y}-${m}-01`;
-      const defTo = now.toISOString().slice(0, 10);
       const from = prompt("Raport mujor memorie ATK — Nga (YYYY-MM-DD)", defFrom);
       if (!from) return;
       const to = prompt("Raport mujor memorie ATK — Deri (YYYY-MM-DD)", defTo);
@@ -8325,6 +8451,7 @@
                 <p class="menu-vat-hint" hidden></p>
                 <label class="menu-in-desc-label">Përmbajtja / Përshkrimi</label>
                 <textarea class="menu-in-desc" rows="3" maxlength="2000" placeholder="p.sh. Salcë domate, mozzarella, speca, proshutë…">${escMenuAttr(it.description || "")}</textarea>
+                <div class="menu-recipe-editor" style="margin-top:0.65rem"></div>
               </div>
               <div class="product-card-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-save="${it.id}">Ruaje</button>
@@ -8361,7 +8488,12 @@
             </div>`;
         }
         grid.appendChild(card);
-        if (editing) bindProductVatSmartMapping(card);
+        if (editing) {
+          bindProductVatSmartMapping(card);
+          if (window.HotelIngredientsRecipes) {
+            HotelIngredientsRecipes.mountMenuRecipeEditor(card, it.id);
+          }
+        }
       }
       if (canReorder) bindProductDragReorder(grid);
       if (!forceAll && filtered.length > 100) {
@@ -8711,11 +8843,9 @@
       const fromEl = document.getElementById("purchase-filter-from");
       const toEl = document.getElementById("purchase-filter-to");
       if (!fromEl || !toEl || fromEl.value) return;
-      const to = new Date();
-      const from = new Date();
-      from.setDate(from.getDate() - 29);
-      toEl.value = to.toISOString().slice(0, 10);
-      fromEl.value = from.toISOString().slice(0, 10);
+      const to = sotISO();
+      toEl.value = to;
+      fromEl.value = addDaysISO(to, -29);
     }
 
     function purchaseFilterQuery() {
@@ -8791,6 +8921,8 @@
     function newPurchaseLine() {
       const defaultVat = Number(document.getElementById("purchase-vat-rate")?.value ?? 18);
       return {
+        line_kind: "menu",
+        ingredient_id: "",
         menu_item_id: "",
         category: "",
         pack_qty: purchaseMode === "adjustment" ? 0 : 1,
@@ -8841,9 +8973,16 @@
       const discInp = document.querySelector(`.purchase-line-discount[data-idx="${idx}"]`);
       const packInp = document.querySelector(`.purchase-line-packs[data-idx="${idx}"]`);
       const vatSel = document.querySelector(`.purchase-line-vat[data-idx="${idx}"]`);
+      const kindSel = document.querySelector(`.purchase-line-kind[data-idx="${idx}"]`);
       const prodSel = document.querySelector(`.purchase-line-product[data-idx="${idx}"]`);
+      const ingSel = document.querySelector(`.purchase-line-ingredient[data-idx="${idx}"]`);
       const src = sourceEl?.classList || { contains: () => false };
-      if (prodSel) {
+      if (kindSel) line.line_kind = kindSel.value === "ingredient" ? "ingredient" : "menu";
+      if (line.line_kind === "ingredient" && ingSel) {
+        line.ingredient_id = ingSel.value;
+        line.menu_item_id = "";
+      } else if (prodSel) {
+        line.ingredient_id = "";
         line.menu_item_id = prodSel.value;
         const item = menuItemsCache.find((m) => String(m.id) === prodSel.value);
         if (item) {
@@ -9141,9 +9280,11 @@
         return `
           <tr data-line="${idx}">
             <td class="c">${idx + 1}${delBtn}</td>
-            <td class="purchase-inv-desc-cell">
-              <select class="purchase-line-product" data-idx="${idx}">${purchaseProductOptionsHtml(line)}</select>
-            </td>
+            <td class="purchase-inv-desc-cell">${
+              window.HotelIngredientsRecipes
+                ? HotelIngredientsRecipes.purchaseDescCellHtml(line, idx)
+                : `<select class="purchase-line-product" data-idx="${idx}">${purchaseProductOptionsHtml(line)}</select>`
+            }</td>
             <td class="c purchase-inv-pako-cell"><input type="number" class="purchase-line-packs" data-idx="${idx}" ${isAdj ? 'step="any"' : 'min="0" step="any"'} value="${packs}" title="Pako" aria-label="Pako"></td>
             <td class="n"><input type="number" class="purchase-line-sasia" data-idx="${idx}" ${isAdj ? 'step="any"' : 'min="0" step="any"'} value="${amt.sasia}" title="Sasia (copë totale)"></td>
             <td class="n"><input type="number" class="purchase-line-price-net" data-idx="${idx}" min="0" step="any" value="${netVal ? netVal : ""}" title="Çmimi pa TVSH / copë"></td>
@@ -9174,6 +9315,18 @@
           renderPurchaseFormLines();
         });
       });
+      tbody.querySelectorAll(".purchase-line-kind").forEach((sel) => {
+        sel.addEventListener("change", () => {
+          const idx = Number(sel.dataset.idx);
+          syncPurchaseLineFromDom(idx, sel);
+          renderPurchaseFormLines();
+        });
+      });
+      tbody.querySelectorAll(".purchase-line-ingredient").forEach((sel) => {
+        sel.addEventListener("change", () => {
+          syncPurchaseLineFromDom(Number(sel.dataset.idx), sel);
+        });
+      });
       tbody.querySelectorAll(".purchase-line-remove").forEach((btn) => {
         btn.addEventListener("click", () => {
           const idx = Number(btn.dataset.idx);
@@ -9193,6 +9346,9 @@
       try {
         if (!menuItemsCache.length) await ngarkoMenu();
       } catch (_) { /* dropdown mbetet bosh */ }
+      try {
+        if (window.HotelIngredientsRecipes) await HotelIngredientsRecipes.loadIngredients();
+      } catch (_) { /* ok */ }
       try { await ngarkoKategorite(); } catch (_) { /* ok — merren nga produktet */ }
       try {
         const meta = await api("/api/purchases/meta/latest-date");
@@ -9204,7 +9360,7 @@
       document.getElementById("purchase-supplier-nui").value = "";
       document.getElementById("purchase-supplier-vat").value = "";
       document.getElementById("purchase-invoice-no").value = "";
-      document.getElementById("purchase-invoice-date").value = new Date().toISOString().slice(0, 10);
+      document.getElementById("purchase-invoice-date").value = sotISO();
       const vatEl = document.getElementById("purchase-vat-rate");
       if (vatEl) vatEl.value = "18";
       const kindEl = document.getElementById("purchase-kind");
@@ -9259,13 +9415,18 @@
         }
       }
       const items = purchaseLines
-        .filter(l => l.menu_item_id)
-        .map(l => ({
-          menu_item_id: Number(l.menu_item_id),
-          quantity: purchaseLineSasiaForInvoice(l),
-          unit_price: purchaseLineUnitPrice(l),
-          vat_rate: normalizePurchaseLineVat(l.vat_rate ?? vat_rate),
-        }));
+        .filter((l) => (l.line_kind === "ingredient" ? l.ingredient_id : l.menu_item_id))
+        .map((l) => {
+          const base = {
+            quantity: purchaseLineSasiaForInvoice(l),
+            unit_price: purchaseLineUnitPrice(l),
+            vat_rate: normalizePurchaseLineVat(l.vat_rate ?? vat_rate),
+          };
+          if (l.line_kind === "ingredient") {
+            return { ...base, ingredient_id: Number(l.ingredient_id) };
+          }
+          return { ...base, menu_item_id: Number(l.menu_item_id) };
+        });
       if (!supplier) {
         msg.textContent = "Shkruani emrin e furnizuesit";
         msg.style.color = "var(--ngjyr-danger)";
@@ -9648,7 +9809,7 @@
     }
 
     function hapModalShpenzim() {
-      document.getElementById("kont-shp-data").value = new Date().toISOString().slice(0, 10);
+      document.getElementById("kont-shp-data").value = sotISO();
       document.getElementById("kont-shp-firma").value = "";
       const nuiEl = document.getElementById("kont-shp-nui");
       if (nuiEl) nuiEl.value = "";
@@ -9875,6 +10036,29 @@
               <button type="button" class="btn btn-ghost btn-sm" data-copy-qr-url="${escAttr(q.url)}">Kopjo URL</button>
             </div>`).join("");
         }
+        const venuesBody = document.getElementById("hotel-qr-venues-body");
+        const venues = data.venues || [];
+        if (venuesBody) {
+          if (!venues.length) {
+            venuesBody.innerHTML = '<tr><td colspan="5" class="purchases-empty">Nuk ka vende QR — shtoni p.sh. Pishina 200.</td></tr>';
+          } else {
+            venuesBody.innerHTML = venues.map((v) => {
+              const qr = v.services || {};
+              return `<tr>
+                <td><strong>${escHtml(v.label || v.name)}</strong></td>
+                <td>${escHtml(String(v.table_number))}</td>
+                <td>
+                  <code class="table-qr-url">${escHtml(qr.url || "")}</code>
+                  <button type="button" class="btn btn-ghost btn-sm" data-copy-qr-url="${escAttr(qr.url || "")}">Kopjo</button>
+                </td>
+                <td><img src="${escHtml(qr.data_url || "")}" alt="" class="table-qr-preview-img" width="72" height="72"></td>
+                <td class="purchases-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" data-del-hotel-venue="${escAttr(String(v.venue_id))}">Fshi</button>
+                </td>
+              </tr>`;
+            }).join("");
+          }
+        }
         const rooms = data.rooms || [];
         if (!rooms.length) {
           body.innerHTML = '<tr><td colspan="4" class="purchases-empty">Nuk ka dhoma. Shtoni dhoma te skeda Dhomat.</td></tr>';
@@ -9896,7 +10080,20 @@
             </tr>`).join("");
         }
         bindHotelQrActions();
-        setTableQrMsg(`${rooms.length} QR Room Service u përditësuan.`, true);
+        document.querySelectorAll("[data-del-hotel-venue]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-del-hotel-venue");
+            if (!id || !confirm("Fshi këtë vend QR?")) return;
+            try {
+              await api(`/api/hotel-qr-venues/${encodeURIComponent(id)}`, { method: "DELETE" });
+              await ngarkoHotelQrs();
+              setTableQrMsg("Vendi u fshi.", true);
+            } catch (err) {
+              setTableQrMsg(err.message || "Fshirja dështoi.", false);
+            }
+          });
+        });
+        setTableQrMsg(`${venues.length} vend(e) QR · ${rooms.length} QR Room Service.`, true);
       } catch (err) {
         body.innerHTML = `<tr><td colspan="4" class="purchases-empty">${escHtml(err.message || "QR nuk u ngarkuan.")}</td></tr>`;
         setTableQrMsg(err.message || "QR nuk u ngarkuan.", false);
@@ -9928,6 +10125,35 @@
     });
     document.getElementById("btn-print-hotel-qr-services")?.addEventListener("click", () => {
       window.open("/api/hotel-qrs/print?kind=services", "_blank", "noopener");
+    });
+
+    document.getElementById("btn-hotel-qr-venue-add")?.addEventListener("click", async () => {
+      const btn = document.getElementById("btn-hotel-qr-venue-add");
+      const name = document.getElementById("hotel-qr-venue-name")?.value?.trim() || "";
+      const table_number = Number(document.getElementById("hotel-qr-venue-number")?.value);
+      if (!name) {
+        setTableQrMsg("Shkruani emrin e vendit (p.sh. Pishina).", false);
+        return;
+      }
+      if (!table_number || table_number < 1) {
+        setTableQrMsg("Numri i vendit duhet ≥ 1 (p.sh. 200).", false);
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        await api("/api/hotel-qr-venues", {
+          method: "POST",
+          body: JSON.stringify({ name, table_number }),
+        });
+        document.getElementById("hotel-qr-venue-name").value = "";
+        document.getElementById("hotel-qr-venue-number").value = "";
+        await ngarkoHotelQrs();
+        setTableQrMsg(`Vendi «${name} ${table_number}» u shtua — QR u gjenerua.`, true);
+      } catch (err) {
+        setTableQrMsg(err.message || "Shtimi dështoi.", false);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     });
 
     let adminHkCache = { rooms: [], counts: {}, staff: [] };
@@ -10089,9 +10315,7 @@
     let reservationsFilter = "today";
 
     function isoDateOffset(days) {
-      const d = new Date();
-      d.setDate(d.getDate() + days);
-      return d.toISOString().slice(0, 10);
+      return addDaysISO(sotISO(), days);
     }
 
     function fmtDateSq(iso) {
@@ -10111,7 +10335,7 @@
         return `<span class="reservation-sync-badge reservation-sync-conflict" title="${escAttr(r.conflict_message || "Konflikt")}">⚠️ Konflikt</span>`;
       }
       if (r.pending_sync) {
-        return `<span class="reservation-sync-badge reservation-sync-pending" title="Në pritje të sinkronizimit me cloud">☁️ Në pritje</span>`;
+        return `<span class="reservation-sync-badge reservation-sync-pending" title="Në pritje">☁️ Në pritje</span>`;
       }
       return "";
     }
@@ -10200,19 +10424,19 @@
           } else if (Number(data.pending_sync_count) > 0) {
             banner.hidden = false;
             banner.className = "reservation-sync-banner reservation-sync-pending-banner";
-            banner.textContent = `${data.pending_sync_count} rezervim(e) në pritje të sinkronizimit me cloud.`;
+            banner.textContent = `${data.pending_sync_count} rezervim(e) në pritje të dërgimit online.`;
           }
         }
       } catch (err) {
         if (retryAfterSync && /cloud|licenc|lidh|reservation/i.test(err.message || "")) {
-          setReservationsMsg("Duke sinkronizuar me cloud…", true);
+          setReservationsMsg("Duke përditësuar…", true);
           try {
             await api("/api/cloud-sync/sync-all", { method: "POST" });
             return ngarkoRezervimet(false);
           } catch { /* vazhdo */ }
         }
         if (list) list.innerHTML = `<p class="purchases-empty">${escHtml(err.message || "Gabim")}</p>`;
-        setReservationsMsg((err.message || "Gabim") + " — provoni Cloud → Sinkronizo gjithçka.", false);
+        setReservationsMsg((err.message || "Gabim") + " — provoni Cilësimet → Përditëso të dhënat.", false);
       }
     }
 
@@ -10718,7 +10942,7 @@
         menuScanItems = Array.isArray(data.items) ? data.items : [];
         renderMenuScanItems();
         setMenuScanStatus(
-          `${menuScanItems.length} artikuj u gjetën (${Number(data.usage?.tokens_used || 0).toLocaleString("sq-AL")} tokenë).`,
+          `${menuScanItems.length} artikuj u gjetën.`,
           true,
         );
       } catch (err) {
@@ -10787,21 +11011,21 @@
       try {
         const u = await api("/api/ai/usage");
         if (!u.ok) {
-          el.textContent = u.gabim || "Përdorimi i tokenëve nuk u lexua.";
+          el.textContent = u.gabim || "Përdorimi i AI nuk u lexua.";
           return;
         }
         el.textContent =
           `Tokenë këtë muaj: ${Number(u.tokens_total || 0).toLocaleString("sq-AL")} · ` +
           `Kosto: ${Number(u.cost_eur_total || 0).toFixed(4)} € · Thirrje: ${Number(u.calls || 0)}`;
       } catch (err) {
-        el.textContent = err.message || "Përdorimi i tokenëve nuk u lexua.";
+        el.textContent = err.message || "Përdorimi i AI nuk u lexua.";
       }
     }
 
     async function applyMenuAiUiState() {
       const scanBtn = document.getElementById("btn-menu-scan-ai");
       const usageLine = document.getElementById("ai-usage-line");
-      const cloudDefault = "AI kërkon Cloud + Pako 3 — Premium (pako_3).";
+      const cloudDefault = "AI kërkon paketën Premium.";
       try {
         const data = await api("/api/ai/status");
         const active = !!data.enabled;
@@ -10813,7 +11037,7 @@
         const inactiveMsg =
           data.gabim ||
           (data.package_ai === false
-            ? "Pakoja aktuale nuk përfshin AI — te Super Admin zgjidhni «Pako 3 — Premium» (pako_3)."
+            ? "Pakoja aktuale nuk përfshin AI — kontaktoni mbështetjen për Premium."
             : cloudDefault);
         if (scanBtn) {
           if (active) {
@@ -12334,7 +12558,7 @@
           method: "POST",
           body: JSON.stringify({
             supplier: "Blerje barcode",
-            invoice_date: new Date().toISOString().slice(0, 10),
+            invoice_date: sotISO(),
             vat_rate,
             purchase_kind: "goods",
             items: [{ menu_item_id: Number(item.id), quantity: sasia, unit_price: price, vat_rate }],
@@ -12428,7 +12652,7 @@
           method: "POST",
           body: JSON.stringify({
             supplier: "Blerje barcode",
-            invoice_date: new Date().toISOString().slice(0, 10),
+            invoice_date: sotISO(),
             vat_rate,
             purchase_kind: "goods",
             items: [{ menu_item_id: Number(item.id), quantity: sasia, unit_price: price }],
@@ -12483,7 +12707,7 @@
         const total = Number(clo.total) || 0;
         document.getElementById("modal-artikuj").innerHTML =
           `<li style="color:var(--ngjyr-muted);padding:0.75rem 0;text-align:center;list-style:none">
-            Tavolina ${t.number} është e lirë lokalisht, por cloud ka porosi të hapur (☁).<br>
+            Tavolina ${t.number} është e lirë këtu, por ka porosi të hapur online (☁).<br>
             <span style="font-size:0.85rem">${formatEuro(total)} — pastroni nëse është e ngecur.</span>
           </li>`;
         if (btnPastro) {
@@ -14439,15 +14663,13 @@
     });
     function applyRaportPreset(period) {
       raportPeriod = period;
-      const today = new Date();
       const toDate = sotISO();
       let fromDate = toDate;
       if (period === "java") {
-        const d = new Date(today);
-        d.setDate(d.getDate() - 6);
-        fromDate = d.toISOString().slice(0, 10);
+        fromDate = addDaysISO(toDate, -6);
       } else if (period === "muaj") {
-        fromDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+        const [y, m] = toDate.split("-");
+        fromDate = `${y}-${m}-01`;
       }
       document.getElementById("raport-nga").value = fromDate;
       document.getElementById("raport-deri").value = toDate;
@@ -14843,7 +15065,36 @@
       await Promise.all([
         ngarkoShiftRaportet(nga, deri),
         ngarkoHotelRaportet(nga, deri),
+        ngarkoStockBreakageRaport(nga, deri),
       ]);
+    }
+
+    async function ngarkoStockBreakageRaport(nga, deri) {
+      const sumEl = document.getElementById("stock-breakage-summary");
+      const tbody = document.getElementById("stock-breakage-table");
+      if (!sumEl || !tbody) return;
+      try {
+        const data = await api(`/api/admin/stock-breakage/report?from=${nga}&to=${deri}`);
+        const s = data.summary || {};
+        const byReason = (s.by_reason || []).map((r) => `${r.label}: ${formatEuro(r.total_cost)}`).join(" · ");
+        sumEl.textContent =
+          `Total humbje: ${formatEuro(s.total_cost || 0)} · ${s.events || 0} regjistrime`
+          + (byReason ? ` — ${byReason}` : "");
+        const entries = data.entries || [];
+        tbody.innerHTML = entries.length
+          ? entries.map((e) => `<tr>
+              <td>${escHtml(String(e.created_at || "").slice(0, 16))}</td>
+              <td>${escHtml(e.item_name || "—")}</td>
+              <td>${Number(e.quantity) || 0}</td>
+              <td>${escHtml(e.reason || "—")}</td>
+              <td>${escHtml(e.operator_name || "—")}</td>
+              <td>${formatEuro(e.total_cost || 0)}</td>
+            </tr>`).join("")
+          : '<tr><td colspan="6" class="purchases-empty">Nuk ka thyerje/humbje për këtë periudhë</td></tr>';
+      } catch (err) {
+        sumEl.textContent = err.message || "Gabim";
+        tbody.innerHTML = '<tr><td colspan="6" class="purchases-empty">—</td></tr>';
+      }
     }
 
     document.querySelectorAll(".reports-filter-btn").forEach(btn => {
@@ -15222,6 +15473,38 @@
       return "";
     }
 
+    async function refreshStaffModalLocalWifiUi(staff) {
+      const block = document.getElementById("staff-modal-local-wifi-block");
+      const input = document.getElementById("staff-modal-local-wifi-url");
+      const copyBtn = document.getElementById("staff-modal-copy-local-wifi");
+      const genBtn = document.getElementById("staff-modal-generate-local-wifi");
+      const hint = document.getElementById("staff-modal-local-wifi-hint");
+      const wifiLbl = document.getElementById("staff-modal-local-wifi-label");
+      if (!block || !staff) {
+        if (block) block.hidden = true;
+        return;
+      }
+      block.hidden = false;
+      const roleLabel = staff.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
+      if (wifiLbl) {
+        wifiLbl.textContent = staff.staff_role === "recepsion"
+          ? "Link recepsion (WiFi)"
+          : "Link kamarier (WiFi)";
+      }
+      if (hint) hint.textContent = `${roleLabel} — hap linkun në WiFi të hotelit, pastaj PIN.`;
+      const row = await findStaffLocalWifiCodeRow(staff);
+      const url = staffLocalWifiUrlFromRow(row, staff);
+      if (!url) {
+        if (input) { input.value = ""; input.placeholder = "Klikoni Gjenero link"; }
+        if (copyBtn) copyBtn.hidden = true;
+        if (genBtn) genBtn.hidden = false;
+        return;
+      }
+      if (input) { input.value = url; input.placeholder = ""; }
+      if (copyBtn) { copyBtn.hidden = false; copyBtn.disabled = false; }
+      if (genBtn) genBtn.hidden = true;
+    }
+
     function refreshStaffModalCloudWaiterUi(staff) {
       const block = document.getElementById("staff-modal-cloud-waiter-block");
       const input = document.getElementById("staff-modal-cloud-waiter-url");
@@ -15259,38 +15542,6 @@
       }
     }
 
-    async function refreshStaffModalLocalWifiUi(staff) {
-      const block = document.getElementById("staff-modal-local-wifi-block");
-      const input = document.getElementById("staff-modal-local-wifi-url");
-      const copyBtn = document.getElementById("staff-modal-copy-local-wifi");
-      const genBtn = document.getElementById("staff-modal-generate-local-wifi");
-      const hint = document.getElementById("staff-modal-local-wifi-hint");
-      const wifiLbl = document.getElementById("staff-modal-local-wifi-label");
-      if (!block || !staff) {
-        if (block) block.hidden = true;
-        return;
-      }
-      block.hidden = false;
-      const roleLabel = staff.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
-      if (wifiLbl) {
-        wifiLbl.textContent = staff.staff_role === "recepsion"
-          ? "Link recepsion (WiFi)"
-          : "Link kamarier (WiFi)";
-      }
-      if (hint) hint.textContent = `${roleLabel} — hap linkun në WiFi të hotelit, pastaj PIN.`;
-      const row = await findStaffLocalWifiCodeRow(staff);
-      const url = staffLocalWifiUrlFromRow(row, staff);
-      if (!url) {
-        if (input) { input.value = ""; input.placeholder = "Klikoni Gjenero link"; }
-        if (copyBtn) copyBtn.hidden = true;
-        if (genBtn) genBtn.hidden = false;
-        return;
-      }
-      if (input) { input.value = url; input.placeholder = ""; }
-      if (copyBtn) { copyBtn.hidden = false; copyBtn.disabled = false; }
-      if (genBtn) genBtn.hidden = true;
-    }
-
     function mbyllModalStafit() {
       document.getElementById("modal-staff").hidden = true;
       stafModalAktual = null;
@@ -15311,6 +15562,9 @@
       }
       stafModalAktual = s;
       document.getElementById("staff-modal-title").textContent = s.name;
+      document.getElementById("staff-modal-name").value = s.name || "";
+      document.getElementById("staff-modal-role").value =
+        s.staff_role === "recepsion" ? "recepsion" : "kamarier";
       const roleLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
       document.getElementById("staff-modal-sub").textContent = cloudWaiterDisabled
         ? `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`
@@ -15415,6 +15669,29 @@
       filloEditimPin(stafModalAktual.id, document.getElementById("staff-modal-pin"));
     });
 
+    document.getElementById("staff-modal-save-profile")?.addEventListener("click", async () => {
+      if (!stafModalAktual?.id) return;
+      const btn = document.getElementById("staff-modal-save-profile");
+      btn.disabled = true;
+      try {
+        await api(`/api/staff/${stafModalAktual.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: document.getElementById("staff-modal-name").value,
+            staff_role: document.getElementById("staff-modal-role").value,
+          }),
+        });
+        await ngarkoStafin();
+        const d = await api("/api/staff");
+        const fresh = (d.staff || []).find(x => String(x.id) === String(stafModalAktual.id));
+        if (fresh) await hapModalStafit(fresh);
+      } catch (err) {
+        alert(err?.message || "Nuk u ruajt profili i punonjësit.");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     async function ruajRfidStafit(staffId, uid) {
       const kod = String(uid || "").trim();
       if (kod.length < 4) {
@@ -15482,16 +15759,51 @@
       ngarkoStafin();
     });
 
+    function staffPinRulesForRole(role) {
+      const r = String(role || "kamarier").trim().toLowerCase();
+      if (r === "recepsion") {
+        return {
+          re: /^\d{6}$/,
+          msg: "PIN duhet të jetë 6 shifra",
+          label: "PIN (6 shifra)",
+          placeholder: "123456",
+          mask: "••••••",
+        };
+      }
+      return {
+        re: /^\d{4}$/,
+        msg: "PIN duhet të jetë 4 shifra (restorant)",
+        label: "PIN (4 shifra)",
+        placeholder: "1234",
+        mask: "••••",
+      };
+    }
+
+    function syncStaffAddPinUi() {
+      const role = document.getElementById("staf-roli")?.value || "kamarier";
+      const rules = staffPinRulesForRole(role);
+      const lab = document.getElementById("staf-pin-label");
+      const inp = document.getElementById("staf-pin");
+      if (lab) lab.textContent = rules.label;
+      if (inp) {
+        inp.placeholder = rules.placeholder;
+        inp.maxLength = role === "recepsion" ? 6 : 4;
+      }
+    }
+    document.getElementById("staf-roli")?.addEventListener("change", syncStaffAddPinUi);
+    syncStaffAddPinUi();
+
     function filloEditimPin(staffId, cell) {
       if (cell.querySelector("input")) return;
       const orig = cell.textContent;
+      const role = stafModalAktual?.staff_role || "kamarier";
+      const rules = staffPinRulesForRole(role);
       const input = document.createElement("input");
       input.type="text";
       input.inputMode = "numeric";
-      input.maxLength = 6;
-      input.pattern = "[0-9]{6}";
+      input.maxLength = role === "recepsion" ? 6 : 4;
       input.className = "pin-edit-input";
-      input.placeholder = "123456";
+      input.placeholder = rules.placeholder;
       cell.textContent = "";
       cell.appendChild(input);
       input.focus();
@@ -15502,9 +15814,9 @@
         if (done) return;
         done = true;
         const pin = input.value.trim();
-        if (!/^\d{6}$/.test(pin)) {
+        if (!rules.re.test(pin)) {
           cell.textContent = orig;
-          alert("PIN duhet të jetë 6 shifra");
+          alert(rules.msg);
           return;
         }
         try {
@@ -15512,7 +15824,7 @@
             method: "PUT",
             body: JSON.stringify({ pin }),
           });
-          cell.textContent = "••••••";
+          cell.textContent = rules.mask;
         } catch (err) {
           cell.textContent = orig;
           alert(err.message || "Gabim");
@@ -15534,9 +15846,11 @@
 
     document.getElementById("forma-staf").addEventListener("submit", async e => {
       e.preventDefault();
+      const staff_role = document.getElementById("staf-roli")?.value || "kamarier";
       const pin = document.getElementById("staf-pin").value.trim();
-      if (!/^\d{6}$/.test(pin)) {
-        alert("PIN duhet të jetë 6 shifra");
+      const pinRules = staffPinRulesForRole(staff_role);
+      if (!pinRules.re.test(pin)) {
+        alert(pinRules.msg);
         return;
       }
       const created = await api("/api/staff", {
@@ -15544,7 +15858,7 @@
         body: JSON.stringify({
           name: document.getElementById("staf-emri").value,
           pin,
-          staff_role: document.getElementById("staf-roli")?.value || "kamarier",
+          staff_role,
         }),
       });
       document.getElementById("staf-emri").value = "";
@@ -15552,7 +15866,7 @@
       document.getElementById("staff-add-card").hidden = true;
       await ngarkoStafin();
       if (created?.staff_id) {
-        alert("Punonjësi u shtua. Hapni «Ndrysho» për linkun WiFi lokal.");
+        alert("Punonjësi u shtua. Hapni «Ndrysho» për linkun WiFi lokal dhe cloud.");
       }
     });
 
@@ -17842,7 +18156,7 @@
       } else if (offline) {
         box.className = "printer-status-box disconnected";
         icon.textContent = "⚠️";
-        text.textContent = message || "Cloud offline — POS vazhdon lokalisht.";
+        text.textContent = message || "Jashtë linje — hoteli vazhdon normalisht.";
       } else {
         box.className = "printer-status-box disconnected";
         icon.textContent = "❌";
@@ -17988,14 +18302,80 @@
       }
     }
 
+    /** Si distributor — /hotel/{slug}/…, jo /kafene/…-hex6 */
+    function normalizeHotelCloudUrl(url) {
+      const raw = String(url || "").trim();
+      if (!raw) return "";
+      try {
+        const u = new URL(raw);
+        u.pathname = u.pathname
+          .replace(/^\/kafene\//i, "/hotel/")
+          .replace(/\/([a-z0-9][a-z0-9-]*?)-[a-f0-9]{6}(\/|$)/gi, "/$1$2");
+        return u.toString();
+      } catch {
+        return raw.replace(/\/kafene\//gi, "/hotel/");
+      }
+    }
+
+    const HOTEL_CLOUD_ORIGIN = "https://revolution-pos.com";
+
+    function stripLegacyKitchenSlugSuffix(slug) {
+      const s = String(slug || "").trim().toLowerCase();
+      if (!s || !/-[a-f0-9]{6}$/i.test(s)) return s;
+      const base = s.replace(/-[a-f0-9]{6}$/i, "");
+      return base.length >= 3 ? base : s;
+    }
+
+    /** I njëjti format si «Linqet e lokalit tuaj» te paneli i pronarit (telefon). */
+    function buildOwnerPanelHotelLink(slug, key, segment, { withKey = true } = {}) {
+      const s = stripLegacyKitchenSlugSuffix(slug);
+      if (!s) return "";
+      const path = `/hotel/${encodeURIComponent(s)}/${segment}`;
+      const k = String(key || "").trim();
+      if (withKey && k) {
+        return `${HOTEL_CLOUD_ORIGIN}${path}?key=${encodeURIComponent(k)}`;
+      }
+      return `${HOTEL_CLOUD_ORIGIN}${path}`;
+    }
+
+    function applyOwnerPanelHotelLinks(s) {
+      const src = s && typeof s === "object" ? s : {};
+      const slug =
+        src.kitchen_slug
+        || src.client_id
+        || src.hotel_slug
+        || src.local_waiter_slug
+        || "";
+      const key = String(src.kitchen_key || "").trim();
+      if (!slug || !key) return src;
+      const sl = stripLegacyKitchenSlugSuffix(slug);
+      return {
+        ...src,
+        kitchen_slug: sl,
+        client_tipi: "hotel",
+        owner_panel_url: "https://revolution-pos.com/owner/panel",
+        owner_url: "https://revolution-pos.com/owner/panel",
+        waiter_url: buildOwnerPanelHotelLink(sl, key, "kamarier"),
+        reception_url: buildOwnerPanelHotelLink(sl, key, "recepsion"),
+        bar_url: buildOwnerPanelHotelLink(sl, key, "bar"),
+        kitchen_url: buildOwnerPanelHotelLink(sl, key, "kuzhina"),
+        kiosk_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/menu/1`,
+        public_page_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}`,
+        takeaway_url: buildOwnerPanelHotelLink(sl, key, "takeaway", { withKey: false }),
+        public_order_url: buildOwnerPanelHotelLink(sl, key, "takeaway", { withKey: false }),
+        housekeeping_url: buildOwnerPanelHotelLink(sl, key, "sherbimi"),
+      };
+    }
+
     function vendosLinketCloud(s) {
+      s = applyOwnerPanelHotelLinks(s);
       const links = document.getElementById("web-app-links");
       const hint = document.getElementById("cloud-links-hint");
       if (links) links.hidden = false;
 
       const setVal = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.value = val || "";
+        if (el) el.value = normalizeHotelCloudUrl(val || "");
       };
       const toggleRow = (rowId, show) => {
         const row = document.getElementById(rowId);
@@ -18006,21 +18386,29 @@
       if (!cloudWaiterDisplay && !cloudDisabled && s.bar_url) {
         cloudWaiterDisplay = String(s.bar_url).replace(/\/bar(\?|$)/i, "/kamarier$1");
       }
-      const ownerUrl = s.owner_panel_url || s.owner_url || "";
+      const ownerUrl = s.owner_panel_url || s.owner_url || "https://revolution-pos.com/owner/panel";
       setVal("cloud-owner-url", ownerUrl);
       toggleRow("cloud-row-owner", !!ownerUrl);
       setVal("cloud-waiter-url", cloudWaiterDisplay);
       setVal("cloud-kitchen-url", s.kitchen_url);
       setVal("cloud-bar-url", s.bar_url);
-      setVal("cloud-kiosk-url", s.kiosk_url);
+      setVal("cloud-kiosk-url", s.kiosk_url || s.public_menu);
       setVal("cloud-public-url", s.public_page_url);
+      const takeawayUrl = s.takeaway_url || s.public_order_url || "";
+      const takeawayEl = document.getElementById("cloud-takeaway-url");
+      if (takeawayEl) setVal("cloud-takeaway-url", takeawayUrl);
+      toggleRow("cloud-row-takeaway", !!(takeawayUrl || s.kitchen_slug || s.kitchen_key));
       setVal("cloud-hk-url", s.housekeeping_url || "");
       setVal("cloud-reception-url", cloudDisabled ? "" : (s.reception_url || ""));
       toggleRow(
         "cloud-row-waiter",
         !cloudDisabled && !!(cloudWaiterDisplay || s.kitchen_slug || s.hotel_slug || s.bar_url),
       );
-      toggleRow("cloud-row-reception", !cloudDisabled && !!s.reception_url);
+      toggleRow("cloud-row-reception", !cloudDisabled && !!(s.reception_url || normalizeHotelCloudUrl(s.reception_url)));
+      if (!cloudDisabled && s.reception_url) {
+        const recLbl = document.querySelector("#cloud-row-reception label");
+        if (recLbl) recLbl.textContent = "Recepsion — internet";
+      }
 
       const localWaiterUrl =
         s.local_waiter_url
@@ -18032,10 +18420,18 @@
       if (!localRecepsionUrl && localWaiterUrl) {
         localRecepsionUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/recepsion$1");
       }
+      let localSherbimiUrl = s.local_sherbimi_url || s.local_staff_wifi?.sherbimi || "";
+      if (!localSherbimiUrl && localRecepsionUrl) {
+        localSherbimiUrl = localRecepsionUrl.replace(/\/recepsion(\/\d{3})?\/?$/i, "/sherbimi$1");
+      } else if (!localSherbimiUrl && localWaiterUrl) {
+        localSherbimiUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/sherbimi$1");
+      }
       setVal("cloud-local-waiter-url", localWaiterUrl);
       setVal("cloud-local-recepsion-url", localRecepsionUrl);
+      setVal("cloud-local-sherbimi-url", localSherbimiUrl);
       toggleRow("cloud-row-local-waiter", true);
       toggleRow("cloud-row-local-recepsion", !!(localRecepsionUrl || localWaiterUrl));
+      toggleRow("cloud-row-local-sherbimi", !!(localSherbimiUrl || localRecepsionUrl || localWaiterUrl));
       const recepHint = document.getElementById("cloud-local-recepsion-hint");
       if (recepHint) {
         recepHint.textContent = localRecepsionUrl
@@ -18045,8 +18441,8 @@
       const venue = String(emriRestorantit || s.client_name || "").trim();
       const wLbl = document.getElementById("cloud-local-waiter-label");
       const rLbl = document.getElementById("cloud-local-recepsion-label");
-      if (wLbl) wLbl.textContent = venue ? `Kamarieri — ${venue}` : "Kamarieri — WiFi lokal";
-      if (rLbl) rLbl.textContent = venue ? `Recepsioni — ${venue}` : "Recepsioni — WiFi lokal";
+      if (wLbl) wLbl.textContent = venue ? `Kamarier — ${venue}` : "Kamarier — WiFi i hotelit";
+      if (rLbl) rLbl.textContent = venue ? `Recepsion — ${venue}` : "Recepsion — WiFi i hotelit";
       void provoLidhjenLokalTeKamarierit(localWaiterUrl);
       refreshLocalWaiterQrUi(localWaiterUrl);
       renderLocalWaiterHostnameAlternatives(s.local_waiter_hostname_urls);
@@ -18062,20 +18458,13 @@
       if (hint) {
         hint.hidden = false;
         if (localWaiterUrl && !cloudDisabled && s.waiter_url) {
-          hint.textContent =
-            "WiFi lokal (telefon në rrjetin e hotelit) + cloud (internet) — të dyja me PIN 6-shifror. Link personal WiFi me kod 3-shifror te Stafi → Ndrysho.";
+          hint.textContent = "WiFi i hotelit dhe internet — hyrje me PIN. Link personal te Stafi → Ndrysho.";
         } else if (localWaiterUrl || localRecepsionUrl) {
-          hint.textContent =
-            "Kamarier/recepsion — WiFi i hotelit. Link personal me kod 3-shifror te Stafi → Ndrysho."
-            + (!cloudDisabled && s.waiter_url ? " Cloud kamarier — kopjoni linkun më sipër." : "");
-        } else if (s.hotel_slug) {
-          hint.textContent = "Emri i hotelit → slug: hotel/" + s.hotel_slug + " · Link WiFi lokal — te Stafi.";
+          hint.textContent = "Kopjoni linkun për stafin. Link personal te Stafi → Ndrysho.";
         } else if (s.links_ready) {
-          hint.textContent = cloudDisabled
-            ? "Linke cloud (kuzhinë/bar). Kamarier/recepsion vetëm WiFi lokal."
-            : "Linke cloud (kamarier, kuzhinë, bar). WiFi lokal mbetet te rreshtat më poshtë.";
+          hint.textContent = "Kopjoni linket dhe dërgojini stafit.";
         } else {
-          hint.textContent = "Vendosni emrin e hotelit te Cilësimet dhe çelësin e licencës.";
+          hint.textContent = "Vendosni emrin e hotelit dhe çelësin e licencës.";
         }
       }
     }
@@ -18146,6 +18535,13 @@
       const url = document.getElementById("cloud-local-recepsion-url")?.value || "";
       if (url) window.open(url, "_blank", "noopener,noreferrer");
     });
+    document.getElementById("btn-copy-local-sherbimi-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-local-sherbimi-url", this);
+    });
+    document.getElementById("btn-open-local-sherbimi-url")?.addEventListener("click", function () {
+      const url = document.getElementById("cloud-local-sherbimi-url")?.value || "";
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    });
     document.getElementById("btn-copy-owner-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-owner-url", this);
     });
@@ -18164,6 +18560,9 @@
     });
     document.getElementById("btn-copy-kiosk-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-kiosk-url", this);
+    });
+    document.getElementById("btn-copy-takeaway-url")?.addEventListener("click", function () {
+      kopjoLinkun("cloud-takeaway-url", this);
     });
     document.getElementById("btn-copy-public-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-public-url", this);
@@ -18197,7 +18596,7 @@
 
     document.getElementById("btn-cloud-test").addEventListener("click", async () => {
       const msg = document.getElementById("msg-cloud");
-      vendosStatusinCloud(false, "Duke testuar dhe sinkronizuar…");
+      vendosStatusinCloud(false, "Duke testuar lidhjen…");
       document.getElementById("cloud-status-icon").textContent = "⏳";
       try {
         const r = await api("/api/cloud-sync/test", { method: "POST" });
@@ -18217,13 +18616,13 @@
       const msg = document.getElementById("msg-cloud");
       const btn = document.getElementById("btn-cloud-sync-all");
       btn.disabled = true;
-      vendosStatusinCloud(false, "Duke sinkronizuar menu, tavolina dhe linket…");
+      vendosStatusinCloud(false, "Duke përditësuar menunë dhe linket…");
       document.getElementById("cloud-status-icon").textContent = "⏳";
       try {
         const r = await api("/api/cloud-sync/sync-all", { method: "POST" });
         vendosStatusinCloud(r.connected, r.sync?.message || r.message);
         vendosLinketCloud(r);
-        msg.textContent = r.sync?.message || (r.connected ? "Sinkronizimi u krye!" : (r.message || "Sinkronizimi dështoi."));
+        msg.textContent = r.sync?.message || (r.connected ? "U përditësua!" : (r.message || "Përditësimi dështoi."));
         msg.style.color = r.connected || r.sync?.catalog_ok ? "var(--ngjyr-success)" : "var(--ngjyr-danger)";
         setTimeout(() => { msg.textContent = ""; }, 6000);
       } catch (err) {

@@ -69,7 +69,11 @@ function resolveLocalVenueSegments(db) {
 function localStaffPathSuffix(db, role, code) {
   const { tipi, slug } = resolveLocalVenueSegments(db);
   if (!slug) return null;
-  const seg = role === "recepsion" ? "recepsion" : "kamarier";
+  const r = String(role || "kamarier").trim().toLowerCase();
+  const seg =
+    r === "recepsion" ? "recepsion"
+      : r === "sherbimi" || r === "pastrim" || r === "housekeeping" ? "sherbimi"
+        : "kamarier";
   let path = `/${tipi}/${slug}/${seg}`;
   const c = String(code ?? "").trim();
   if (c && /^\d{3}$/.test(c)) path += `/${c}`;
@@ -86,6 +90,13 @@ function getLocalWaiterUrl(db) {
 function getLocalRecepsionUrl(db) {
   const base = getLocalLanBaseUrl();
   const suffix = localStaffPathSuffix(db, "recepsion");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
+function getLocalSherbimiUrl(db) {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix(db, "sherbimi");
   if (!base || !suffix) return null;
   return `${base}${suffix}`;
 }
@@ -111,21 +122,93 @@ function getLocalWaiterHostnamePanelUrls(db) {
   return out;
 }
 
+const STAFF_LOCAL_LINKS_FP_KEY = "staff_local_links_cloud_fp";
+
+/** Fingerprint pa synced_at — për të dërguar cloud vetëm kur ndryshon LAN. */
+function staffLocalLinksFingerprint(links) {
+  if (!links || typeof links !== "object") return "";
+  return JSON.stringify({
+    ip: String(links.local_lan_ip || "").trim(),
+    port: Number(links.local_server_port) || 0,
+    kamarier: String(links.local_waiter_url || links.local_staff_wifi?.kamarier || "").trim(),
+    recepsion: String(links.local_recepsion_url || links.local_staff_wifi?.recepsion || "").trim(),
+    sherbimi: String(links.local_sherbimi_url || links.local_staff_wifi?.sherbimi || "").trim(),
+  });
+}
+
+function readStoredStaffLocalLinksFingerprint(db) {
+  if (!db || typeof db.getSetting !== "function") return "";
+  return String(db.getSetting(STAFF_LOCAL_LINKS_FP_KEY, "") || "").trim();
+}
+
+function storeStaffLocalLinksFingerprint(db, fp) {
+  if (!db || typeof db.setSetting !== "function" || !fp) return;
+  db.setSetting(STAFF_LOCAL_LINKS_FP_KEY, String(fp));
+}
+
 /** Payload për sync te cloud (owner panel). */
 function buildStaffLocalLinksSyncPayload(db) {
   const kamarier = getLocalWaiterUrl(db) || "";
   const recepsion = getLocalRecepsionUrl(db) || "";
+  const sherbimi = getLocalSherbimiUrl(db) || "";
   return {
     local_waiter_url: kamarier,
     local_recepsion_url: recepsion,
+    local_sherbimi_url: sherbimi,
     local_lan_ip: pickLanIPv4Address() || "",
     local_server_port: getLocalServerPort(),
     local_waiter_hostname_urls: getLocalWaiterHostnamePanelUrls(db),
-    local_staff_wifi: { kamarier, recepsion },
+    local_staff_wifi: { kamarier, recepsion, sherbimi },
     synced_at: new Date().toISOString(),
   };
 }
 
+const LAN_STAFF_LINKS_WATCH_MS = 15000;
+let lanStaffLinksWatchStarted = false;
+let lanStaffLinksPushInFlight = false;
+
+/**
+ * Në server (pa Admin): kontrollon IP LAN; dërgon staff_local_links te cloud vetëm kur ndryshon.
+ */
+function startStaffLocalLinksLanWatcher(db) {
+  if (lanStaffLinksWatchStarted || !db) return;
+  lanStaffLinksWatchStarted = true;
+
+  const tick = () => {
+    if (lanStaffLinksPushInFlight) return;
+    try {
+      const cloudSync = require("./cloud-sync");
+      if (!cloudSync.isCloudConfigured(db)) return;
+      const payload = buildStaffLocalLinksSyncPayload(db);
+      const fp = staffLocalLinksFingerprint(payload);
+      if (!fp) return;
+      const prev = readStoredStaffLocalLinksFingerprint(db);
+      if (fp === prev) return;
+
+      lanStaffLinksPushInFlight = true;
+      cloudSync
+        .pushStaffLocalLinksAsync(db, { payload, fingerprint: fp })
+        .catch((err) => {
+          console.warn("[lan-staff-links] cloud push:", err?.message || err);
+        })
+        .finally(() => {
+          lanStaffLinksPushInFlight = false;
+        });
+    } catch (err) {
+      console.warn("[lan-staff-links] watch:", err?.message || err);
+    }
+  };
+
+  setTimeout(tick, 4000);
+  setInterval(tick, LAN_STAFF_LINKS_WATCH_MS);
+}
+
 module.exports = {
   buildStaffLocalLinksSyncPayload,
+  staffLocalLinksFingerprint,
+  readStoredStaffLocalLinksFingerprint,
+  storeStaffLocalLinksFingerprint,
+  STAFF_LOCAL_LINKS_FP_KEY,
+  pickLanIPv4Address,
+  startStaffLocalLinksLanWatcher,
 };

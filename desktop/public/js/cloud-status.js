@@ -1,5 +1,5 @@
 /**
- * Revolution HOTEL — cloud status pill (polling si KAFENE).
+ * Revolution HOTEL — tregues lidhjeje (polling).
  */
 (function () {
   const POLL_MS = 10000;
@@ -25,27 +25,27 @@
 
     const msg = data.message || data.owner_message || "";
     if (linked) {
-      el.setAttribute("aria-label", menuOk ? "Cloud i lidhur" : "Cloud i lidhur — katalog duhet sync");
+      el.setAttribute("aria-label", menuOk ? "I lidhur" : "I lidhur — kontrolloni menunë");
       el.title = msg || (menuOk
-        ? "Licenca dhe cloud hotel janë aktiv."
-        : "Cloud i lidhur. Kontrolloni sinkronizimin e katalogut nëse mungon online.");
-      el.textContent = "☁ Cloud";
+        ? "Programi është i lidhur me internetin."
+        : "I lidhur — kontrolloni menunë nëse mungon online.");
+      el.textContent = "☁ Online";
     } else if (offline) {
-      el.setAttribute("aria-label", "Cloud offline");
-      el.title = msg || "Pa internet — cloud hotel offline; POS punon lokalisht.";
-      el.textContent = "☁ Offline";
+      el.setAttribute("aria-label", "Jashtë linje");
+      el.title = msg || "Pa internet — programi vazhdon normalisht në hotel.";
+      el.textContent = "☁ Jashtë linje";
     } else if (syncing) {
-      el.setAttribute("aria-label", "Duke u lidhur me cloud");
-      el.title = msg || "Duke validuar licencën…";
-      el.textContent = "☁ Sync";
+      el.setAttribute("aria-label", "Duke u lidhur");
+      el.title = msg || "Duke kontrolluar licencën…";
+      el.textContent = "☁ Duke u lidhur";
     } else if (reachable && !data.configured) {
       el.setAttribute("aria-label", "Licenca mungon");
-      el.title = msg || "Aktivizoni licencën për cloud hotel.";
-      el.textContent = "☁ Cloud";
+      el.title = msg || "Vendosni çelësin e licencës te Cilësimet.";
+      el.textContent = "☁ Online";
     } else {
-      el.setAttribute("aria-label", "Cloud jo i lidhur");
-      el.title = msg || "Cloud jo i lidhur";
-      el.textContent = "☁ Cloud";
+      el.setAttribute("aria-label", "Jo i lidhur");
+      el.title = msg || "Nuk jeni të lidhur me internetin.";
+      el.textContent = "☁ Online";
     }
   }
 
@@ -61,7 +61,7 @@
       try {
         applyCloudStatus(el, await fetchCloudStatus());
       } catch {
-        applyCloudStatus(el, { offline: true, message: "Pa përgjigje — hotel lokalisht." });
+        applyCloudStatus(el, { offline: true, message: "Pa përgjigje — hoteli punon normalisht." });
       } finally {
         tick._busy = false;
       }

@@ -44,10 +44,38 @@ function registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly }) {
         invoices: svc.listInvoices({
           q: req.query.q,
           status: req.query.status,
+          payment_status: req.query.payment_status,
         }),
       });
     } catch (e) {
       res.status(500).json({ ok: false, gabim: e.message });
+    }
+  });
+
+  app.get("/api/admin/sales-invoices/business-debts", ...admin, (_req, res) => {
+    try {
+      res.json({ ok: true, businesses: svc.listBusinessDebts() });
+    } catch (e) {
+      res.status(500).json({ ok: false, gabim: e.message });
+    }
+  });
+
+  app.get("/api/admin/sales-invoices/:id/payments", ...admin, (req, res) => {
+    try {
+      const inv = svc.getInvoiceById(req.params.id);
+      if (!inv) return res.status(404).json({ ok: false, gabim: "Nuk u gjet." });
+      res.json({ ok: true, payments: inv.payments || [] });
+    } catch (e) {
+      res.status(500).json({ ok: false, gabim: e.message });
+    }
+  });
+
+  app.post("/api/admin/sales-invoices/:id/payments", ...admin, (req, res) => {
+    try {
+      const result = svc.addInvoicePayment(req.params.id, req.body || {});
+      res.status(201).json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, gabim: e.message });
     }
   });
 

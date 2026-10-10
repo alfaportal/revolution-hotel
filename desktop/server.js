@@ -25,6 +25,62 @@ try {
   console.warn("[hotel] fiscal-boot:", e.message);
 }
 const db = require("./database");
+const bizDate = require("./lib/hotel-business-date");
+const businessTodayYmd = () => bizDate.businessYmd();
+const staffPinPolicy = require("./lib/staffPinPolicy");
+
+function isHotelPmsCloudMaster() {
+  try {
+    return license.terminalRegisterNumber() < 2;
+  } catch {
+    return true;
+  }
+}
+
+/** Check-in/out → cloud menjëherë (QR dhomë lexon mysafirin nga Supabase). Vetëm Kryesorja. */
+function pushHotelGuestStayToCloudAsync(reason) {
+  if (!isHotelPmsCloudMaster()) return;
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    void hotelCloudSync.pushGuestStaySnapshotToCloud(db).catch((err) => {
+      console.warn(`[hotel/cloud] pushGuestStay (${reason}):`, err.message);
+    });
+  } catch (e) {
+    console.warn(`[hotel/cloud] pushGuestStay (${reason}):`, e.message);
+  }
+}
+
+function pushHousekeepingToCloudAsync(reason) {
+  if (!isHotelPmsCloudMaster()) return;
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    void hotelCloudSync.pushHousekeepingToCloud(db).catch((err) => {
+      console.warn(`[hotel/cloud] pushHousekeeping (${reason}):`, err.message);
+    });
+    void hotelCloudSync.pushRoomsToCloud(db).catch((err) => {
+      console.warn(`[hotel/cloud] pushRooms (${reason}):`, err.message);
+    });
+  } catch (e) {
+    console.warn(`[hotel/cloud] pushHousekeeping (${reason}):`, e.message);
+  }
+}
+
+/** Rezervime dhomash + status dhomash (reserved/free) — cloud QR / kalendar. Vetëm Kryesorja. */
+function pushHotelReservationsToCloudAsync(reason) {
+  if (!isHotelPmsCloudMaster()) return;
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    void hotelCloudSync.pushReservationsToCloud(db).catch((err) => {
+      console.warn(`[hotel/cloud] pushReservations (${reason}):`, err.message);
+    });
+    void hotelCloudSync.pushRoomsToCloud(db).catch((err) => {
+      console.warn(`[hotel/cloud] pushRooms (${reason}):`, err.message);
+    });
+  } catch (e) {
+    console.warn(`[hotel/cloud] pushReservations (${reason}):`, e.message);
+  }
+}
+
 const { registerSalesInvoiceRoutes } = require("./sales-invoices-routes");
 const printer = require("./printer");
 const fiscalRegister = require("./fiscal-register");
@@ -261,6 +317,10 @@ function roundPaymentMoney(n) {
 }
 
 function normalizeSplitMethod(raw) {
+  const canonical = db.normalizePaymentMethod(raw);
+  if (canonical === "room") return "room";
+  if (canonical === "karte") return "credit_card";
+  if (canonical === "mixed" || canonical === "perzier") return "mixed";
   const v = String(raw || "cash").trim().toLowerCase();
   if (["karte", "kartë", "card", "pos"].includes(v)) return "credit_card";
   if (["cheque", "cek", "çek"].includes(v)) return "check";
@@ -275,6 +335,7 @@ function normalizeSplitMethod(raw) {
       "sms",
       "crypto",
       "cryptocurrency",
+      "room",
     ].includes(v)
   ) {
     return v;
@@ -548,7 +609,10 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     ordersBefore = ordersBefore.filter((o) => !db.isRecepcionCloudPendingOrder(o));
     if (!ordersBefore.length) {
       throw Object.assign(
-        new Error("Porosi dhome/shërbimi hoteli — pranoni nga recepsioni, jo nga restoranti."),
+        new Error(
+          "Porosi shërbimi hoteli (spa/saunë) — pranoni nga recepsioni. "
+          + "Ushqim/pije QR dhomë i pranon kamarieri.",
+        ),
         { status: 403 },
       );
     }
@@ -586,9 +650,12 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   const imported = [];
   for (const order of ordersBefore) {
+    const orderForApply = typeof db.hydrateCloudOrderForAccept === "function"
+      ? db.hydrateCloudOrderForAccept(order)
+      : order;
     if (typeof db.tryApplyCloudRoomMenuOrder === "function") {
       try {
-        const roomResult = db.tryApplyCloudRoomMenuOrder(order);
+        const roomResult = db.tryApplyCloudRoomMenuOrder(orderForApply);
         if (roomResult?.ok && !roomResult.pending) {
           imported.push({
             ok: true,
@@ -702,8 +769,60 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
           table_number: tblNum,
         });
       } catch (pushErr) {
-        console.warn("[accept] push QR → kuzhinë:", pushErr.message || pushErr);
+        console.warn("[accept] push QR → kuzhinë:", pushErr);
       }
+    }
+  }
+
+  for (let i = 0; i < ordersBefore.length; i++) {
+    const r = imported[i];
+    const cloudOrder = ordersBefore[i];
+    if (!r?.ok || !r.room_menu || !cloudOrder?.id) continue;
+    const roomNum = String(
+      r.room_number || db.parseRoomNumberFromCloudOrder(cloudOrder) || "",
+    ).trim();
+    let slipItems = [];
+    try {
+      let raw = cloudOrder.items ?? cloudOrder.items_json;
+      if (typeof raw === "string") raw = JSON.parse(raw);
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        raw = raw.items || raw.nested_items || [];
+      }
+      if (typeof db.mapCloudItemsToLocal === "function") {
+        slipItems = db.mapCloudItemsToLocal(Array.isArray(raw) ? raw : []);
+      }
+    } catch {
+      slipItems = [];
+    }
+    if (!slipItems.length) continue;
+    const tableLabel = roomNum ? `Dh.${roomNum}` : "Dhoma";
+    void autoPrintOrderSlip(db, {
+      tableNumber: tableLabel,
+      waiterName,
+      items: slipItems,
+      acceptedBy: waiterName,
+    });
+    const total = slipItems.reduce(
+      (s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+      0,
+    );
+    const synthOrder = {
+      id: `guest-room-${cloudOrder.id}`,
+      items_json: JSON.stringify(slipItems),
+      total,
+      waiter_name: waiterName,
+      created_at: cloudOrder.created_at || new Date().toISOString(),
+      cloud_order_id: cloudOrder.id,
+    };
+    try {
+      await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
+        cloudOrderId: cloudOrder.id,
+        waiterName,
+        waiterId: ackMeta.waiterId,
+        table_number: 0,
+      });
+    } catch (pushErr) {
+      console.warn("[accept] push QR dhomë → kuzhinë:", pushErr.message || pushErr);
     }
   }
 
@@ -1413,6 +1532,7 @@ function buildLocalWaiterLanLinkPayload() {
     /** Hyrje stafi WiFi — PIN kamarier/recepsion (jo pronari / login.html). */
     local_waiter_url: getLocalWaiterUrl(),
     local_recepsion_url: getLocalRecepsionUrl(),
+    local_sherbimi_url: getLocalSherbimiUrl(),
     local_waiter_panel_url: getLocalWaiterPanelUrl(),
     local_lan_ip: pickLanIPv4Address() || "",
     local_server_port: getLocalServerPort(),
@@ -1459,7 +1579,11 @@ function normalizeVenuePathSegment(value) {
 function localStaffPathSuffix(role, code) {
   const { tipi, slug } = resolveLocalVenueSegments();
   if (!slug) return null;
-  const seg = role === "recepsion" ? "recepsion" : "kamarier";
+  const r = String(role || "kamarier").trim().toLowerCase();
+  const seg =
+    r === "recepsion" ? "recepsion"
+      : r === "sherbimi" || r === "pastrim" || r === "housekeeping" ? "sherbimi"
+        : "kamarier";
   let path = `/${tipi}/${slug}/${seg}`;
   const c = String(code ?? "").trim();
   if (c && /^\d{3}$/.test(c)) path += `/${c}`;
@@ -1487,6 +1611,13 @@ function getLocalRecepsionUrl() {
   return `${base}${suffix}`;
 }
 
+function getLocalSherbimiUrl() {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix("sherbimi");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
 function buildLocalStaffCodeUrl(role, code) {
   const base = getLocalLanBaseUrl();
   const suffix = localStaffPathSuffix(role, code);
@@ -1496,7 +1627,7 @@ function buildLocalStaffCodeUrl(role, code) {
 
 function isLocalStaffEntryPath(pathname) {
   const p = String(pathname || "").toLowerCase().replace(/\/+$/, "");
-  return /^\/[a-z0-9-]+\/[a-z0-9-]+\/(kamarier|recepsion)(?:\/\d{3})?$/.test(p);
+  return /^\/[a-z0-9-]+\/[a-z0-9-]+\/(kamarier|recepsion|sherbimi)(?:\/\d{3})?$/.test(p);
 }
 
 /** Statikë + API minimale për faqen e hyrjes stafi në WiFi (telefon). */
@@ -1567,8 +1698,11 @@ function resolveHotelVenueAccess(db) {
     || db.getSetting?.("restaurant_name", "")
     || "hotel"
   );
-  let slug = String(settings.kitchen_slug || settings.cloud_client_id || "").trim();
-  if (!slug) slug = buildHotelVenueSlug(bizName, deviceId);
+  const hasLicense = String(settings.cloud_license_key || "").trim();
+  let slug = String(settings.kitchen_slug || "").trim();
+  if (!slug && !hasLicense) {
+    slug = buildHotelVenueSlug(bizName, deviceId);
+  }
   slug = stripLegacyKitchenSlugSuffix(slug) || slug;
   const key = String(settings.kitchen_key || "").trim();
   return { slug, key, deviceId, bizName: String(bizName || "").trim() };
@@ -1611,19 +1745,22 @@ function resolveStaffLinksPayload(db) {
 
 function cloudSyncLinksPayload(settings, status) {
   const health = require("./cloud-health").getHealthStatus();
-  const serverUrl = getPublicCloudServerUrl();
-  const slug = status.kitchen_slug || settings.kitchen_slug || status.client_id || settings.cloud_client_id || "";
+  const rawSlug =
+    status.kitchen_slug || settings.kitchen_slug || status.client_id || settings.cloud_client_id || "";
+  const slug = stripLegacyKitchenSlugSuffix(String(rawSlug || "").trim()) || String(rawSlug || "").trim();
   const key = status.kitchen_key || settings.kitchen_key || "";
-  const built = buildCloudAccessLinks(serverUrl, { kitchen_slug: slug, kitchen_key: key, client_id: slug });
+  const serverUrl = getPublicCloudServerUrl(slug) || PUBLIC_HOTEL_ORIGIN;
+  const built = buildCloudAccessLinks(serverUrl, { kitchen_slug: slug, kitchen_key: key, client_id: slug }, key);
   const cloudDisabled = isCloudWaiterDisabledSetting();
-  const waiter_url = cloudDisabled ? "" : (status.waiter_url || built.waiter_url);
+  // HOTEL: mos përdor URL nga licenca (/kafene/) — vetëm /hotel/{slug}/…
+  const waiter_url = cloudDisabled ? "" : (built.waiter_url || "");
   const reception_url = cloudDisabled ? "" : (built.reception_url || "");
-  const bar_url = status.bar_url || built.bar_url;
-  const kitchen_url = status.kitchen_url || built.kitchen_url;
-  const kiosk_url = status.kiosk_url || built.kiosk_url;
-  const public_page_url = status.public_page_url || built.public_page_url;
-  const owner_panel_url =
-    status.owner_panel_url || status.owner_url || built.owner_panel_url || built.owner_url || "";
+  const bar_url = built.bar_url || "";
+  const kitchen_url = built.kitchen_url || "";
+  const kiosk_url = built.kiosk_url || "";
+  const public_page_url = built.public_page_url || "";
+  const takeaway_url = built.takeaway_url || built.public_order || "";
+  const owner_panel_url = built.owner_panel_url || built.owner_url || "";
   const venue = resolveLocalVenueSegments();
   return {
     connected: !!health.online && !!status.connected,
@@ -1638,6 +1775,7 @@ function cloudSyncLinksPayload(settings, status) {
     client_name: status.client_name || settings.cloud_client_name || "",
     kitchen_slug: String(slug || "").trim(),
     kitchen_key: String(key || "").trim(),
+    client_tipi: "hotel",
     local_base_url: getLocalServerBaseUrl(),
     links_ready: !!(
       waiter_url
@@ -1654,6 +1792,8 @@ function cloudSyncLinksPayload(settings, status) {
     kitchen_url,
     kiosk_url,
     public_page_url,
+    takeaway_url,
+    public_order_url: takeaway_url,
     owner_url: owner_panel_url,
     owner_panel_url,
     cloud_waiter_disabled: cloudDisabled,
@@ -1665,7 +1805,10 @@ function cloudSyncLinksPayload(settings, status) {
     local_staff_wifi: {
       kamarier: getLocalWaiterUrl() || "",
       recepsion: getLocalRecepsionUrl() || "",
+      sherbimi: getLocalSherbimiUrl() || "",
     },
+    local_sherbimi_url: getLocalSherbimiUrl() || "",
+    housekeeping_url: built.housekeeping_url || built.sherbimi_url || "",
   };
 }
 
@@ -2075,6 +2218,21 @@ function handleStaffWifiEntry(req, res, mode) {
 
 app.get("/:tipi/:slug/kamarier/:kod?", (req, res) => handleStaffWifiEntry(req, res, "kamarier"));
 app.get("/:tipi/:slug/recepsion/:kod?", (req, res) => handleStaffWifiEntry(req, res, "recepsion"));
+app.get("/:tipi/:slug/sherbimi", (req, res) => {
+  const expected = resolveLocalVenueSegments();
+  const reqTipi = normalizeVenuePathSegment(req.params.tipi);
+  const reqSlug = normalizeVenuePathSegment(req.params.slug);
+  const expTipi = normalizeVenuePathSegment(expected.tipi);
+  const expSlug = normalizeVenuePathSegment(expected.slug);
+  if (!expSlug || reqTipi !== expTipi || reqSlug !== expSlug) {
+    return res.status(404).send("404 — lokali nuk u gjet.");
+  }
+  const cloud = buildHotelStaffLinks(db).housekeeping_url || "";
+  if (cloud) return res.redirect(302, cloud);
+  return res.status(503).type("html").send(
+    "<p>Pastrimi cloud nuk është gati. Vendosni çelësin e licencës te Admin → Cloud.</p>",
+  );
+});
 
 app.get("/api/venue-logo", (_req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -2218,6 +2376,14 @@ app.get("/api/setup/status", (_req, res) => {
     } catch {
       payload.license = null;
     }
+  }
+  const licName = String(payload.license?.client_name || "").trim();
+  if (licName) {
+    payload.business_display_name = licName;
+    payload.window_title = db.getAppWindowTitle({
+      business_subtype: payload.business_subtype,
+      restaurant_name: licName,
+    });
   }
   res.json(payload);
 });
@@ -2527,8 +2693,12 @@ app.post("/api/login/pin", async (req, res) => {
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
   const webToken = String(req.body.web_token || req.body.w || "").trim();
   const loginMode = db.normalizeStaffRole(req.body.login_mode || req.body.mode || "kamarier");
-  if (!/^\d{6}$/.test(pin)) {
-    return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra" });
+  if (!staffPinPolicy.acceptsLoginPin(pin, loginMode)) {
+    return res.status(400).json({
+      gabim: loginMode === "recepsion"
+        ? "PIN duhet të jetë 6 shifra"
+        : "PIN duhet 4 shifra (ose 6 për PIN të vjetër restoranti)",
+    });
   }
   try {
     const staff = db.findStaffByPin(pin);
@@ -2537,7 +2707,11 @@ app.post("/api/login/pin", async (req, res) => {
     }
     const staffRole = db.normalizeStaffRole(staff.staff_role);
     if (staffRole !== loginMode) {
-      return res.status(401).json({ gabim: "Ky PIN nuk lejohet për këtë panel" });
+      const zoneMsg = staffPinPolicy.wrongZoneMessage(staff.staff_role, loginMode);
+      return res.status(401).json({
+        gabim: zoneMsg || "Ky PIN nuk lejohet për këtë panel",
+        wrong_zone: true,
+      });
     }
     if (webToken) {
       const linked = db.findStaffByWebToken(webToken);
@@ -2551,7 +2725,7 @@ app.post("/api/login/pin", async (req, res) => {
 
     const sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
     const sess = createSession(sessionRole, staff.name, staff.id);
-    auditActivity(staff.name, sessionRole, "Hyrje PIN", "6 shifra");
+    auditActivity(staff.name, sessionRole, "Hyrje PIN", `${pin.length} shifra`);
     logFiscalLoginAudit(req, staff.name, staff.id);
 
     return res.json({
@@ -2650,7 +2824,11 @@ app.post("/api/login/card", async (req, res) => {
     if (loginModeRaw) {
       const loginMode = db.normalizeStaffRole(loginModeRaw);
       if (staffRole !== loginMode) {
-        return res.status(401).json({ gabim: "Ky PIN nuk lejohet për këtë panel" });
+        const zoneMsg = staffPinPolicy.wrongZoneMessage(staff.staff_role, loginMode);
+        return res.status(401).json({
+          gabim: zoneMsg || "Ky PIN nuk lejohet për këtë panel",
+          wrong_zone: true,
+        });
       }
       sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
     }
@@ -3038,6 +3216,30 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
   }
 });
 
+app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const data = await hotelCloudSync.listPublicBookingRequestsPending(db);
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, requests: [] });
+  }
+});
+
+app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const data = await hotelCloudSync.respondPublicBookingRequest(db, req.params.id, {
+      reply_kind: req.body?.reply_kind,
+      staff_message: req.body?.staff_message,
+      staff_name: req.body?.staff_name || req.session?.emri || "Recepsion",
+    });
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/online-orders/cancel", auth, waiterOnly, async (req, res) => {
   try {
     const orderIds = Array.isArray(req.body?.order_ids)
@@ -3161,7 +3363,7 @@ app.get("/api/waiter/shift/peers", auth, waiterOrRecepsion, (req, res) => {
     if (!staffId) {
       return res.status(400).json({ gabim: "Kamarieri nuk u identifikua." });
     }
-    res.json({ ok: true, peers: db.listHandoverPeers(staffId) });
+    res.json({ ok: true, peers: db.listHandoverPeers(staffId, req.session.role) });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -3273,9 +3475,17 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
         keyPresent: Boolean(key),
         waiter: closed.waiter_name,
       });
-      notifyShiftCloseEmail(db, closed).catch(err => {
+      notifyShiftCloseEmail(db, closed, { sessionRole: req.session.role }).catch(err => {
         console.warn("[shift-close-email]", err.message || err);
       });
+      try {
+        const ownerReportSync = require("./owner-report-sync");
+        const day = businessTodayYmd();
+        ownerReportSync.queueOwnerReportDates(db, [day]);
+        ownerReportSync.runOwnerReportSync(db).catch(() => {});
+      } catch {
+        /* ignore */
+      }
     });
 
     if (!printEnabled) return;
@@ -3565,6 +3775,7 @@ app.post("/api/admin/rooms/:id/check-in", auth, adminOnly, (req, res) => {
       room_id: Number(req.params.id),
     });
     auditReq(req, "Check-in", `${result.room.room_number} — ${result.guest.guest_name}`);
+    pushHotelGuestStayToCloudAsync("admin-check-in");
     res.status(201).json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3601,6 +3812,7 @@ app.post("/api/admin/rooms/:id/check-out", auth, adminOnly, (req, res) => {
       "Check-out",
       `${result.room.room_number} — ${result.guest.guest_name} · ${result.bill.total}€`,
     );
+    pushHotelGuestStayToCloudAsync("admin-check-out");
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3611,6 +3823,7 @@ app.post("/api/admin/rooms/:id/clean", auth, adminOnly, (req, res) => {
   try {
     const room = db.markRoomClean(req.params.id);
     auditReq(req, "Pastrimi i dhomës", room.room_number);
+    pushHousekeepingToCloudAsync("admin-room-clean");
     res.json({ ok: true, room });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3756,6 +3969,13 @@ registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly });
 
 /** Recepsioni — dhomat (PIN / kamarier). Pa cloud. */
 app.get("/api/waiter/rooms", auth, staffOrAdmin, (_req, res) => {
+  if (terminalRegisterNumberLocal() >= 2) {
+    const state = db.getTerminalOccupiedCacheState();
+    if (!state.has_list) {
+      return res.json([]);
+    }
+    return res.json(db.listRoomsWithGuestsFromTerminalCache());
+  }
   res.json(db.listRoomsWithGuests());
 });
 
@@ -3766,6 +3986,7 @@ app.post("/api/waiter/rooms/:id/check-in", auth, staffOrAdmin, (req, res) => {
       room_id: Number(req.params.id),
     });
     auditReq(req, "Check-in", `${result.room.room_number} — ${result.guest.guest_name}`);
+    pushHotelGuestStayToCloudAsync("recepsion-check-in");
     res.status(201).json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3797,6 +4018,19 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
     });
+    if (
+      preview.pending_room_charges?.has_pending
+      && !body.confirm_pending_room_charges
+      && !body.force_checkout_pending_room_charges
+    ) {
+      return res.status(409).json({
+        ok: false,
+        code: "PENDING_ROOM_CHARGES_FROM_TERMINAL",
+        gabim: preview.pending_room_charges.message,
+        pending_room_charges: preview.pending_room_charges,
+        preview: { guest: preview.guest, room: preview.room, bill: preview.bill },
+      });
+    }
     const checkoutPayTotal =
       Number(preview.bill.total_due) != null && Number.isFinite(Number(preview.bill.total_due))
         ? Number(preview.bill.total_due)
@@ -3847,6 +4081,17 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       "Check-out",
       `${result.room.room_number} — ${result.guest.guest_name} · ${result.bill.total}€ · ${payInfo.payment_method} · ${printResult.coupon_type || couponType}`,
     );
+    pushHotelGuestStayToCloudAsync("recepsion-check-out");
+    setImmediate(() => {
+      try {
+        const ownerReportSync = require("./owner-report-sync");
+        const coDay = String(body.check_out_date || businessTodayYmd()).slice(0, 10);
+        ownerReportSync.queueOwnerReportDates(db, [coDay, businessTodayYmd()]);
+        ownerReportSync.runOwnerReportSync(db).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    });
     res.json({
       ok: true,
       ...result,
@@ -3913,6 +4158,7 @@ app.post("/api/waiter/rooms/:id/clean", auth, staffOrAdmin, (req, res) => {
   try {
     const room = db.markRoomClean(req.params.id);
     auditReq(req, "Pastrimi i dhomës", room.room_number);
+    pushHousekeepingToCloudAsync("recepsion-room-clean");
     res.json({ ok: true, room });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3933,6 +4179,7 @@ app.post("/api/waiter/housekeeping/:roomId/assign", auth, staffOrAdmin, (req, re
   try {
     const row = db.assignHousekeepingStaff(req.params.roomId, req.body?.staff_id);
     auditReq(req, "Caktim pastruesi", `Dhoma ${row?.room_number} · ${row?.assigned_name || "—"}`);
+    pushHousekeepingToCloudAsync("hk-assign");
     res.json({ ok: true, room: row });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3942,6 +4189,7 @@ app.post("/api/waiter/housekeeping/:roomId/assign", auth, staffOrAdmin, (req, re
 app.post("/api/waiter/housekeeping/:roomId/notes", auth, staffOrAdmin, (req, res) => {
   try {
     const row = db.updateHousekeepingNotes(req.params.roomId, req.body?.notes);
+    pushHousekeepingToCloudAsync("hk-notes");
     res.json({ ok: true, room: row });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3952,6 +4200,7 @@ app.post("/api/waiter/housekeeping/:roomId/start", auth, staffOrAdmin, (req, res
   try {
     const row = db.startHousekeepingCleaning(req.params.roomId);
     auditReq(req, "Fillim pastrimi", `Dhoma ${row?.room_number}`);
+    pushHousekeepingToCloudAsync("hk-start");
     res.json({ ok: true, room: row });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3962,6 +4211,7 @@ app.post("/api/waiter/housekeeping/:roomId/complete", auth, staffOrAdmin, (req, 
   try {
     const room = db.completeHousekeepingRoom(req.params.roomId);
     auditReq(req, "Përfundim pastrimi", room.room_number);
+    pushHousekeepingToCloudAsync("hk-complete");
     res.json({ ok: true, room });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3972,6 +4222,7 @@ app.post("/api/waiter/housekeeping/:roomId/maintenance", auth, staffOrAdmin, (re
   try {
     const row = db.setHousekeepingMaintenance(req.params.roomId, req.body?.notes);
     auditReq(req, "Mirëmbajtje dhome", `Dhoma ${row?.room_number}`);
+    pushHousekeepingToCloudAsync("hk-maintenance");
     res.json({ ok: true, room: row });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -3982,6 +4233,7 @@ app.post("/api/waiter/housekeeping/:roomId/ready", auth, staffOrAdmin, (req, res
   try {
     const room = db.readyHousekeepingFromMaintenance(req.params.roomId);
     auditReq(req, "Gati nga mirëmbajtja", room.room_number);
+    pushHousekeepingToCloudAsync("hk-ready");
     res.json({ ok: true, room });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4177,6 +4429,7 @@ app.post("/api/admin/room-reservations", auth, adminOnly, (req, res) => {
   try {
     const reservation = db.createRoomReservation(req.body || {});
     auditReq(req, "Rezervim dhome", `${reservation.room_number} — ${reservation.guest_name}`);
+    pushHotelReservationsToCloudAsync("admin-reservation-create");
     res.status(201).json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4187,6 +4440,7 @@ app.put("/api/admin/room-reservations/:id", auth, adminOnly, (req, res) => {
   try {
     const reservation = db.updateRoomReservation(req.params.id, req.body || {});
     auditReq(req, "Ndryshim rezervimi dhome", `${reservation.room_number} — ${reservation.guest_name}`);
+    pushHotelReservationsToCloudAsync("admin-reservation-update");
     res.json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4197,6 +4451,7 @@ app.post("/api/admin/room-reservations/:id/cancel", auth, adminOnly, (req, res) 
   try {
     const reservation = db.cancelRoomReservation(req.params.id);
     auditReq(req, "Anulim rezervimi dhome", `${reservation.room_number} — ${reservation.guest_name}`);
+    pushHotelReservationsToCloudAsync("admin-reservation-cancel");
     res.json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4207,6 +4462,7 @@ app.post("/api/admin/room-reservations/:id/check-in", auth, adminOnly, (req, res
   try {
     const result = db.convertReservationToCheckIn(req.params.id);
     auditReq(req, "Check-in nga rezervimi", `${result.room.room_number} — ${result.guest.guest_name}`);
+    pushHotelGuestStayToCloudAsync("admin-reservation-check-in");
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4273,6 +4529,7 @@ app.post("/api/waiter/room-reservations", auth, staffOrAdmin, (req, res) => {
   try {
     const reservation = db.createRoomReservation(req.body || {});
     auditReq(req, "Rezervim dhome", `${reservation.room_number} — ${reservation.guest_name}`);
+    pushHotelReservationsToCloudAsync("recepsion-reservation-create");
     res.status(201).json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4283,6 +4540,7 @@ app.put("/api/waiter/room-reservations/:id", auth, staffOrAdmin, (req, res) => {
   try {
     const reservation = db.updateRoomReservation(req.params.id, req.body || {});
     auditReq(req, "Ndryshim rezervimi dhome", `${reservation.room_number} — ${reservation.guest_name}`);
+    pushHotelReservationsToCloudAsync("recepsion-reservation-update");
     res.json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4293,6 +4551,7 @@ app.post("/api/waiter/room-reservations/:id/cancel", auth, staffOrAdmin, (req, r
   try {
     const reservation = db.cancelRoomReservation(req.params.id);
     auditReq(req, "Anulim rezervimi dhome", `${reservation.room_number} — ${reservation.guest_name}`);
+    pushHotelReservationsToCloudAsync("recepsion-reservation-cancel");
     res.json({ ok: true, reservation });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4303,6 +4562,7 @@ app.post("/api/waiter/room-reservations/:id/check-in", auth, staffOrAdmin, (req,
   try {
     const result = db.convertReservationToCheckIn(req.params.id);
     auditReq(req, "Check-in nga rezervimi", `${result.room.room_number} — ${result.guest.guest_name}`);
+    pushHotelGuestStayToCloudAsync("recepsion-reservation-check-in");
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4321,13 +4581,25 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   if (!roomId) return res.status(400).json({ gabim: "Dhoma mungon" });
 
-  const room = db.getRoomById(roomId);
-  if (!room) return res.status(400).json({ gabim: "Dhoma nuk u gjet." });
-  if (room.status !== "occupied") {
-    return res.status(400).json({ gabim: "Vetëm dhomat e zëna mund të faturohen." });
+  const onSecondaryRegisterEarly = terminalRegisterNumberLocal() >= 2;
+  let room = db.getRoomById(roomId);
+  let guest = null;
+  if (onSecondaryRegisterEarly) {
+    try {
+      const ok = db.assertChargeToRoomAgainstMasterOccupiedList(roomId);
+      room = { ...ok.room, status: "occupied", room_number: ok.room_number };
+      guest = ok.guest;
+    } catch (e) {
+      return res.status(400).json({ gabim: e.message || String(e) });
+    }
+  } else {
+    if (!room) return res.status(400).json({ gabim: "Dhoma nuk u gjet." });
+    if (room.status !== "occupied") {
+      return res.status(400).json({ gabim: "Vetëm dhomat e zëna mund të faturohen." });
+    }
+    guest = db.getActiveGuestForRoom(roomId);
+    if (!guest) return res.status(400).json({ gabim: "Nuk ka mysafir aktiv në këtë dhomë." });
   }
-  const guest = db.getActiveGuestForRoom(roomId);
-  if (!guest) return res.status(400).json({ gabim: "Nuk ka mysafir aktiv në këtë dhomë." });
 
   const couponType = registerMode.resolveEffectiveCouponType(db, coupon_type);
 
@@ -4344,7 +4616,7 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       const afterSend = db.getActiveOrderForTable(tableId);
       if (afterSend) {
         const tbl = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-        cloudSync.pushActiveOrderUpdate(db, afterSend, {
+        cloudSync.pushWaiterOrderToCloudBackground(db, afterSend, {
           table_number: tbl?.number || 0,
           ordered_at: afterSend.created_at,
         });
@@ -4373,22 +4645,34 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
 
     const chargeItems = db.parseOrderItems(order.items_json);
     let charges = [];
-    try {
-      charges = db.addRoomChargesFromOrderItems(guest.id, roomId, chargeItems, {
+    const onSecondaryRegister = terminalRegisterNumberLocal() >= 2;
+    if (onSecondaryRegister) {
+      db.enqueueRoomChargeToMaster({
+        ref: Number(order.id),
+        room_number: room.room_number,
+        guest_name: guest.guest_name,
         table_number: tableRow?.number,
-        decrement_stock: false, /* stoku zbret te closeTable */
+        items: chargeItems,
+        fallback_total: Number(order.total) || 0,
       });
-    } catch (chargeErr) {
-      // Porosia u mbyll — mos e lë pa charge: rresht përmbledhës
-      console.warn("[charge-to-room] itemize failed:", chargeErr.message);
-      charges = [
-        db.addRoomCharge({
-          guest_id: guest.id,
-          room_id: roomId,
-          description: `Porosi T${tableRow?.number || "?"} (faturë dhome)`,
-          amount: Number(order.total) || 0,
-        }),
-      ];
+      charges = [{ queued_to_master: true, ref: Number(order.id) }];
+    } else {
+      try {
+        charges = db.addRoomChargesFromOrderItems(guest.id, roomId, chargeItems, {
+          table_number: tableRow?.number,
+          decrement_stock: false, /* stoku zbret te closeTable */
+        });
+      } catch (chargeErr) {
+        console.warn("[charge-to-room] itemize failed:", chargeErr.message);
+        charges = [
+          db.addRoomCharge({
+            guest_id: guest.id,
+            room_id: roomId,
+            description: `Porosi T${tableRow?.number || "?"} (faturë dhome)`,
+            amount: Number(order.total) || 0,
+          }),
+        ];
+      }
     }
 
     const receipt = db.createReceipt(order.id);
@@ -4434,7 +4718,7 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       `T${table?.number || "?"} → Dhoma ${room.room_number} · ${guest.guest_name} · ${order.total}€`,
     );
 
-    const bill = db.getCheckoutPreview(roomId).bill;
+    const bill = onSecondaryRegister ? null : db.getCheckoutPreview(roomId).bill;
     res.json({
       ok: true,
       receipt,
@@ -4494,7 +4778,7 @@ app.post("/api/orders", auth, async (req, res) => {
     const tables = db.getTablesWithOrders();
     const t = tables.find(x => x.id === Number(table_id));
     if (order) {
-      cloudSync.pushActiveOrderUpdate(db, order, {
+      cloudSync.pushWaiterOrderToCloudBackground(db, order, {
         table_number: t?.number || 0,
         ordered_at: order.created_at,
       });
@@ -4644,7 +4928,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       const afterSend = db.getActiveOrderForTable(tableId);
       if (afterSend) {
         const tbl = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-        cloudSync.pushActiveOrderUpdate(db, afterSend, {
+        cloudSync.pushWaiterOrderToCloudBackground(db, afterSend, {
           table_number: tbl?.number || 0,
           ordered_at: afterSend.created_at,
         });
@@ -4791,7 +5075,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       const afterSend = db.getActiveOrderForTable(tableId);
       if (afterSend) {
         const tbl = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-        cloudSync.pushActiveOrderUpdate(db, afterSend, {
+        cloudSync.pushWaiterOrderToCloudBackground(db, afterSend, {
           table_number: tbl?.number || 0,
           ordered_at: afterSend.created_at,
         });
@@ -4897,7 +5181,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
     if (!result.tableFreed) {
       const remaining = db.getActiveOrderForTable(tableId);
       if (remaining) {
-        cloudSync.pushActiveOrderUpdate(db, remaining, {
+        cloudSync.pushWaiterOrderToCloudBackground(db, remaining, {
           table_number: table?.number || 0,
           ordered_at: remaining.created_at,
         });
@@ -4947,6 +5231,12 @@ app.get("/api/settings", auth, adminOnly, async (_req, res) => {
   } catch {
     /* mbaj VERSION.packageTier */
   }
+  payload.pc_timezone = {
+    business_tz: bizDate.BUSINESS_TZ,
+    system_tz: bizDate.systemTimezoneId(),
+    aligned: bizDate.isSystemTimezoneBusinessAligned(),
+    warning: bizDate.pcTimezoneMismatchWarning(),
+  };
   res.json(payload);
 });
 
@@ -5018,6 +5308,86 @@ app.get("/api/admin/stock/reconcile", auth, adminOnly, (_req, res) => {
   try {
     const data = db.reconcileStock();
     res.json({ ok: true, ...data });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+function stockBreakageStaffAllowed(req) {
+  const role = String(req.session?.role || "").trim().toLowerCase();
+  if (role === "admin") return true;
+  if (role === "kamarier" || role === "waiter") return true;
+  if (role === "recepsion" || role === "reception" || role === "receptionist") return true;
+  if (role === "sherbimi" || role === "pastrim" || role === "housekeeping") return true;
+  return false;
+}
+
+function stockBreakageStaffAuth(req, res, next) {
+  if (!req.session?.emri) {
+    return res.status(401).json({ gabim: "Kërkohet autentifikim." });
+  }
+  if (!stockBreakageStaffAllowed(req)) {
+    return res.status(403).json({ gabim: "Nuk keni leje për thyerje/humbje." });
+  }
+  next();
+}
+
+app.get("/api/stock-breakage/items", auth, stockBreakageStaffAuth, (_req, res) => {
+  try {
+    res.json({
+      ok: true,
+      reasons: db.STOCK_BREAKAGE_REASONS.map((code) => ({
+        code,
+        label: db.stockBreakageReasonLabel(code),
+      })),
+      menu_items: db.listStockBreakagePickableMenu(),
+      local_inventory: db.listHotelLocalInventory(),
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/stock-breakage", auth, stockBreakageStaffAuth, (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = db.registerStockBreakageLoss({
+      source_type: body.source_type,
+      source_id: body.source_id,
+      quantity: body.quantity,
+      reason: body.reason,
+      note: body.note,
+      operator_name: req.session.emri || req.session.name || "Staf",
+      operator_role: req.session.role || "",
+    });
+    auditReq(req, "Thyerje/humbje", `${result.item_name} × ${result.quantity} (${result.reason})`);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/admin/stock-breakage/report", auth, adminOnly, (req, res) => {
+  try {
+    const summary = db.summarizeStockBreakageLoss({
+      from: req.query.from,
+      to: req.query.to,
+    });
+    const entries = db.listStockBreakageLoss({
+      from: req.query.from,
+      to: req.query.to,
+      limit: req.query.limit,
+    });
+    res.json({ ok: true, summary, entries });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/admin/local-inventory", auth, adminOnly, (req, res) => {
+  try {
+    const row = db.upsertHotelLocalInventoryItem(req.body || {});
+    res.json({ ok: true, item: row });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }
@@ -5149,7 +5519,7 @@ app.post("/api/admin/ditari/print", auth, adminOnly, async (req, res) => {
 app.get("/api/admin/ditari/export", auth, adminOnly, (req, res) => {
   const opts = ditariOptsFromQuery(req.query);
   const txt = db.exportDitariText(opts);
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   auditReq(req, "Ditari — shkarkim txt", opts.period || "custom");
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="ditari-${data}.txt"`);
@@ -5214,6 +5584,106 @@ app.put("/api/categories/:name/toggle-active", auth, adminOnly, (req, res) => {
 
 app.get("/api/menu/all", auth, adminOnly, (_req, res) => {
   res.json(db.getMenuItems(false).map(toMenuItemDto));
+});
+
+app.get("/api/ingredients", auth, adminOnly, (_req, res) => {
+  try {
+    res.json({ ok: true, ingredients: db.listIngredients() });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/ingredients", auth, adminOnly, (req, res) => {
+  try {
+    const row = db.createIngredient(req.body || {});
+    auditReq(req, "Përbërës i ri", row.name);
+    res.json({ ok: true, ingredient: row });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.put("/api/ingredients/:id", auth, adminOnly, (req, res) => {
+  try {
+    const row = db.updateIngredient(Number(req.params.id), req.body || {});
+    auditReq(req, "Ndryshim përbërës", row.name);
+    res.json({ ok: true, ingredient: row });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.delete("/api/ingredients/:id", auth, adminOnly, (req, res) => {
+  try {
+    const row = db.deleteIngredient(Number(req.params.id));
+    auditReq(req, "Fshirje përbërës", row.name);
+    res.json({ ok: true, ...row });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/menu/:id/recipe", auth, adminOnly, (req, res) => {
+  try {
+    res.json({ ok: true, recipe: db.getMenuItemRecipeBundle(Number(req.params.id)) });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.put("/api/menu/:id/recipe", auth, adminOnly, (req, res) => {
+  try {
+    const lines = Array.isArray(req.body?.lines) ? req.body.lines : req.body?.items;
+    const recipe = db.setMenuItemRecipe(Number(req.params.id), lines);
+    auditReq(req, "Recetë menu", `Artikull #${req.params.id}`);
+    res.json({ ok: true, recipe });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/stock-count/targets", auth, adminOnly, (_req, res) => {
+  try {
+    res.json({ ok: true, targets: db.listStockCountTargets() });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/stock-count/latest", auth, adminOnly, (_req, res) => {
+  try {
+    res.json({ ok: true, summary: db.getLatestStockCountSummary() });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/stock-count", auth, adminOnly, (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = db.submitStockCount({
+      lines: body.lines || body.items,
+      operator_name: body.operator_name || req.session?.emri || "Admin",
+      operator_role: body.operator_role || req.session?.roli || "admin",
+      note: body.note,
+    });
+    auditReq(req, "Numërim stoku", `${result.lines.length} rreshta`);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/inventory/consumption-variance", auth, adminOnly, (req, res) => {
+  try {
+    const from = req.query.from || req.query.from_date;
+    const to = req.query.to || req.query.to_date;
+    const report = db.buildConsumptionVarianceReport({ from, to });
+    res.json({ ok: true, report });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
 });
 
 /** Open Food Facts — USB barcode scanner (numra + Enter) → emër produkti. */
@@ -5370,7 +5840,7 @@ app.post("/api/stock/add", auth, adminOnly, (req, res) => {
     if (Number.isFinite(sellFromBody) && sellFromBody >= 0) {
       db.updateMenuPrice(menuItemId, sellFromBody);
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessTodayYmd();
     const invoice = db.createPurchaseInvoice({
       supplier: "Shtesë manuale (Stoku)",
       invoice_number: `STK-${Date.now()}-${menuItemId}`,
@@ -5490,7 +5960,7 @@ app.delete("/api/menu/:id", auth, adminOnly, (req, res) => {
 
 app.get("/api/menu/export", auth, adminOnly, (_req, res) => {
   const txt = db.exportMenuText();
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="menu-${data}.txt"`);
   res.send(txt);
@@ -5556,7 +6026,7 @@ app.get("/api/reports", auth, adminOnly, (req, res) => {
 app.get("/api/reports/export", auth, adminOnly, (req, res) => {
   const { from, to } = req.query;
   const txt = db.exportReportText(from, to);
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="raporti-${data}.txt"`);
   res.send(txt);
@@ -5564,7 +6034,7 @@ app.get("/api/reports/export", auth, adminOnly, (req, res) => {
 
 app.post("/api/reports/print", auth, adminOnly, async (req, res) => {
   try {
-    const sot = new Date().toISOString().slice(0, 10);
+    const sot = businessTodayYmd();
     const from = req.body?.from || req.query?.from || sot;
     const to = req.body?.to || req.query?.to || sot;
     const report = db.getReports(from, to);
@@ -5893,8 +6363,10 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
   const { name, pin } = req.body;
   const staff_role = db.normalizeStaffRole(req.body?.staff_role || req.body?.role || "kamarier");
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e kamarierit" });
-  if (!/^\d{6}$/.test(String(pin ?? "").trim())) {
-    return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra" });
+  try {
+    staffPinPolicy.validateNewStaffPin(pin, staff_role);
+  } catch (e) {
+    return res.status(400).json({ gabim: e.message });
   }
   try {
     const created = db.addStaff(name, pin, staff_role);
@@ -5908,9 +6380,24 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
   }
 });
 
+app.put("/api/staff/:id", auth, adminOnly, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    db.updateStaffProfile(id, {
+      name: req.body?.name,
+      staff_role: req.body?.staff_role ?? req.body?.role,
+    });
+    syncCatalogToCloud();
+    void cloudSync.pushStaffAsync(db);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
 app.put("/api/staff/:id/pin", auth, adminOnly, (req, res) => {
   const { pin } = req.body;
-  if (!pin) return res.status(400).json({ gabim: "Shkruani PIN-in (6 shifra)" });
+  if (!pin) return res.status(400).json({ gabim: "Shkruani PIN-in" });
   try {
     const id = Number(req.params.id);
     db.updateStaffPin(id, pin);
@@ -6047,7 +6534,7 @@ app.get("/api/purchases/export/pdf", auth, adminOnly, (req, res) => {
   res.json({ html, count: invoices.length });
 });
 
-// ---- KONTABILISTI (vetëm Pako 3 Full / Pako 4 AI — jo Pako 1–2) ----
+// ---- KONTABILISTI (vetëm Pako 3 Premium + AI — jo Pako 1–2) ----
 function accountantAllowed() {
   try {
     const { localFeaturesForTier } = require("./ai-cloud");
@@ -6075,7 +6562,7 @@ app.use("/api/kontabilisti", (req, res, next) => {
   if (!accountantAllowed()) {
     return res.status(403).json({
       ok: false,
-      gabim: "Kontabilisti nuk përfshihet në Pako 1–2. Duhet Pako 3 (Full) ose Pako 4 (AI).",
+      gabim: "Kontabilisti nuk përfshihet në Pako 1–2. Duhet Pako 3 (Premium + AI).",
       code: "NO_ACCOUNTANT",
     });
   }
@@ -6092,7 +6579,7 @@ app.get("/api/kontabilisti/sales-ledger", auth, adminOnly, (req, res) => {
 
 app.get("/api/kontabilisti/sales-ledger/export.csv", auth, adminOnly, (req, res) => {
   const csv = db.exportSalesLedgerCsv(req.query);
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="libri-shitjeve-${data}.csv"`);
   res.send(csv);
@@ -6137,7 +6624,7 @@ app.delete("/api/kontabilisti/expenses/:id", auth, adminOnly, (req, res) => {
 
 app.get("/api/kontabilisti/expenses/export.csv", auth, adminOnly, (req, res) => {
   const csv = db.exportExpensesCsv(req.query);
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="libri-shpenzimeve-${data}.csv"`);
   res.send(csv);
@@ -6486,7 +6973,7 @@ app.get("/api/kontabilisti/purchases", auth, adminOnly, (req, res) => {
 
 app.get("/api/kontabilisti/purchases/export.csv", auth, adminOnly, (req, res) => {
   const csv = db.exportPurchasesLedgerCsv(req.query);
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="kontabilisti-blerjet-${data}.csv"`);
   res.send(csv);
@@ -6512,7 +6999,7 @@ app.get("/api/kontabilisti/bilanc", auth, adminOnly, (req, res) => {
 
 app.get("/api/kontabilisti/bilanc/export.csv", auth, adminOnly, (req, res) => {
   const csv = db.exportKontabilistiBilancCsv(req.query);
-  const data = new Date().toISOString().slice(0, 10);
+  const data = businessTodayYmd();
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="kontabilisti-bilanc-${data}.csv"`);
   res.send(csv);
@@ -6663,6 +7150,56 @@ app.post("/api/table-qrs/regenerate", auth, adminOnly, async (_req, res) => {
   try {
     const data = await getTableQrService().regenerateTableQrs(db);
     res.json({ ok: true, ...data, message: "QR u rigjeneruan nga cloud." });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+async function syncHotelQrVenuesToCloudQuiet() {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    if (typeof hotelCloudSync.pushHotelQrVenuesToCloud === "function") {
+      await hotelCloudSync.pushHotelQrVenuesToCloud(db);
+    }
+  } catch (err) {
+    console.warn("[hotel-qr-venues] cloud sync:", err.message);
+  }
+}
+
+app.get("/api/hotel-qr-venues", auth, adminOnly, (_req, res) => {
+  try {
+    const venues = db.listHotelQrVenues({ activeOnly: false });
+    res.json({ ok: true, venues });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/hotel-qr-venues", auth, adminOnly, async (req, res) => {
+  try {
+    const row = db.createHotelQrVenue(req.body || {});
+    await syncHotelQrVenuesToCloudQuiet();
+    res.status(201).json({ ok: true, venue: row });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.put("/api/hotel-qr-venues/:id", auth, adminOnly, async (req, res) => {
+  try {
+    const row = db.updateHotelQrVenue(req.params.id, req.body || {});
+    await syncHotelQrVenuesToCloudQuiet();
+    res.json({ ok: true, venue: row });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.delete("/api/hotel-qr-venues/:id", auth, adminOnly, async (req, res) => {
+  try {
+    const result = db.deleteHotelQrVenue(req.params.id);
+    await syncHotelQrVenuesToCloudQuiet();
+    res.json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }
@@ -6977,15 +7514,64 @@ app.get("/api/cloud/failures", auth, adminOnly, (req, res) => {
   }
 });
 
+const CLOUD_ADMIN_LINK_KEYS = new Set([
+  "waiter_url",
+  "reception_url",
+  "bar_url",
+  "kitchen_url",
+  "kiosk_url",
+  "public_page_url",
+  "takeaway_url",
+  "public_order_url",
+  "owner_url",
+  "owner_panel_url",
+  "housekeeping_url",
+  "kitchen_slug",
+  "kitchen_key",
+  "client_tipi",
+  "client_id",
+  "client_name",
+]);
+
+function stripLicenseLinkFieldsFromExtra(extra = {}) {
+  const out = { ...extra };
+  CLOUD_ADMIN_LINK_KEYS.forEach((k) => {
+    delete out[k];
+  });
+  if (out.sync && typeof out.sync === "object") {
+    const sync = { ...out.sync };
+    CLOUD_ADMIN_LINK_KEYS.forEach((k) => {
+      delete sync[k];
+    });
+    out.sync = sync;
+  }
+  return out;
+}
+
+/** Admin «Linke stafi» — i njëjti format si paneli i pronarit (/hotel/{slug}/…). */
+function mergeCloudSyncAdminResponse(settings, status, extra = {}) {
+  const links = cloudSyncLinksPayload(settings, status);
+  const safeExtra = stripLicenseLinkFieldsFromExtra(extra);
+  return {
+    ok: status.ok !== false,
+    connected: links.connected,
+    offline: links.offline,
+    cloud_license_key: settings.cloud_license_key,
+    celesi: settings.cloud_license_key,
+    device_id: settings.device_id,
+    server_url: settings.cloud_server_url || links.public_server,
+    message: status.message,
+    status_message: links.status_message,
+    ...safeExtra,
+    ...links,
+  };
+}
+
 app.get("/api/cloud-sync", auth, adminOnly, async (_req, res) => {
   try {
     const settings = db.getCloudSettings();
     const status = await cloudSync.checkConnection(db);
-    res.json({
-      ok: true,
-      ...settings,
-      ...cloudSyncLinksPayload(settings, status),
-    });
+    res.json(mergeCloudSyncAdminResponse(settings, status));
   } catch (e) {
     res.status(500).json({ gabim: e.message });
   }
@@ -6997,12 +7583,7 @@ app.put("/api/cloud-sync", auth, adminOnly, async (req, res) => {
     const settings = db.getCloudSettings();
     const sync = await cloudSync.fullCloudSync(db);
     const status = await cloudSync.checkConnection(db);
-    res.json({
-      ok: true,
-      ...settings,
-      ...cloudSyncLinksPayload(settings, status),
-      sync,
-    });
+    res.json(mergeCloudSyncAdminResponse(settings, status, { sync }));
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -7013,13 +7594,19 @@ app.post("/api/cloud-sync/test", auth, adminOnly, async (_req, res) => {
     const sync = await cloudSync.fullCloudSync(db);
     const settings = db.getCloudSettings();
     const status = await cloudSync.checkConnection(db);
-    res.json({
-      ...status,
-      ...cloudSyncLinksPayload(settings, status),
-      sync,
-    });
+    res.json(mergeCloudSyncAdminResponse(settings, status, { sync }));
   } catch (e) {
     res.status(500).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/cloud-sync/push-guest-stays", auth, adminOnly, async (_req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const result = await hotelCloudSync.pushGuestStaySnapshotToCloud(db);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || "Gabim." });
   }
 });
 
@@ -7028,12 +7615,10 @@ app.post("/api/cloud-sync/sync-all", auth, adminOnly, async (_req, res) => {
     const sync = await cloudSync.fullCloudSync(db);
     const settings = db.getCloudSettings();
     const status = await cloudSync.checkConnection(db);
-    res.json({
+    res.json(mergeCloudSyncAdminResponse(settings, status, {
       ok: sync.connected || sync.catalog_ok,
-      ...status,
-      ...cloudSyncLinksPayload(settings, status),
       sync,
-    });
+    }));
   } catch (e) {
     res.status(500).json({ gabim: e.message });
   }
@@ -9379,6 +9964,16 @@ async function masterCloudRelayTick() {
         } else if (rejected_shifts.length) {
           console.warn(`[relay] queue#${row.id} ndërrim: ${rejected_shifts[0].gabim}`);
         }
+      } else if (row.kind === "room_charge") {
+        const { accepted, rejected } = db.importRoomChargesFromTerminal([row.body], source);
+        imported = accepted.length > 0 && rejected.length === 0;
+        if (imported) {
+          console.log(
+            `[relay] Arka ${reg} (${dev}) room_charge#${accepted[0]} u importua te Kryesorja (queue#${row.id})`,
+          );
+        } else if (rejected.length) {
+          console.warn(`[relay] queue#${row.id} room_charge: ${rejected[0].gabim}`);
+        }
       }
       if (imported) {
         ackIds.push(row.id);
@@ -9533,7 +10128,15 @@ function processTerminalRegisterReport(
   const source = { device_id: deviceId, register_number: registerNumber };
   const { accepted, rejected } = db.importSalesFromTerminal(body?.sales, source);
   const { accepted_shifts, rejected_shifts } = db.importShiftsFromTerminal(body?.shifts, source);
-  return { accepted, rejected, accepted_shifts, rejected_shifts };
+  const roomImport = db.importRoomChargesFromTerminal(body?.room_charges, source);
+  return {
+    accepted,
+    rejected,
+    accepted_shifts,
+    rejected_shifts,
+    accepted_room_charges: roomImport.accepted,
+    rejected_room_charges: roomImport.rejected,
+  };
 }
 
 app.get("/api/terminal/ping", (req, res) => {
@@ -9596,6 +10199,15 @@ app.get("/api/terminal/services", (req, res) => {
   }
 });
 
+app.get("/api/terminal/occupied-rooms", (req, res) => {
+  if (!assertLanTerminalMaster(req, res)) return;
+  try {
+    res.json({ ok: true, rooms: db.buildOccupiedRoomsTerminalPayload() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || String(e) });
+  }
+});
+
 /** Arka 2+ → Kryesore (LAN): shitjet nga daily_log (lan_outbox). */
 app.post("/api/terminal/report", (req, res) => {
   if (!isPrivateLanAddress(req.socket?.remoteAddress)) {
@@ -9622,7 +10234,13 @@ app.post("/api/terminal/report", (req, res) => {
       req.body?.status && typeof req.body.status === "object"
         ? { ...req.body.status, via: "lan" }
         : { via: "lan", register_number: registerNumber, app_version: masterRemoteAppVersion() };
-    const { accepted, rejected, accepted_shifts, rejected_shifts } = processTerminalRegisterReport(
+    const {
+      accepted,
+      rejected,
+      accepted_shifts,
+      rejected_shifts,
+      accepted_room_charges,
+    } = processTerminalRegisterReport(
       deviceId,
       registerNumber,
       req.body,
@@ -9644,7 +10262,20 @@ app.post("/api/terminal/report", (req, res) => {
         `[lan-report] Arka ${registerNumber} (${deviceId}) ndërrimi#${ref} u importua te Kryesorja`,
       );
     }
-    res.json({ ok: true, accepted, rejected, accepted_shifts, rejected_shifts });
+    for (const ref of accepted_room_charges || []) {
+      if (!ref) continue;
+      console.log(
+        `[lan-report] Arka ${registerNumber} (${deviceId}) room_charge#${ref} u importua te Kryesorja`,
+      );
+    }
+    res.json({
+      ok: true,
+      accepted,
+      rejected,
+      accepted_shifts,
+      rejected_shifts,
+      accepted_room_charges: accepted_room_charges || [],
+    });
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message || String(e) });
   }
@@ -9926,40 +10557,59 @@ app.get("/api/ai/usage", auth, adminOnly, async (req, res) => {
         gabim: AI_HOTEL_OFF.gabim,
       });
     }
-    const tokenBilling = require("./ai/ai-token-billing");
-    const summary = await tokenBilling.getUsageSummary(db, { month: req.query.month });
+    const summary = await aiCloud.fetchAiUsageFromCloud(db, { month: req.query.month });
     res.json(summary);
   } catch (e) {
-    res.status(500).json({ ok: false, gabim: e.message });
+    res.status(Number(e.status) || 500).json({ ok: false, gabim: e.message });
   }
 });
 
-app.get("/api/ai/waiter-rating", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+async function proxyAiCloudGet(req, res, cloudPath) {
+  try {
+    if (!aiCloud.AI_ENABLED) return res.status(503).json(AI_HOTEL_OFF);
+    const data = await aiCloud.fetchOwnerAi(db, cloudPath, { query: req.query });
+    res.json(data);
+  } catch (e) {
+    res.status(Number(e.status) || 400).json({ ok: false, gabim: e.message, code: e.code || null });
+  }
+}
+
+async function proxyAiCloudPost(req, res, cloudPath) {
+  try {
+    if (!aiCloud.AI_ENABLED) return res.status(503).json(AI_HOTEL_OFF);
+    const data = await aiCloud.postOwnerAi(db, cloudPath, req.body || {});
+    res.json(data);
+  } catch (e) {
+    res.status(Number(e.status) || 400).json({ ok: false, gabim: e.message, code: e.code || null });
+  }
+}
+
+app.get("/api/ai/waiter-rating", auth, adminOnly, (req, res) => {
+  void proxyAiCloudGet(req, res, "/api/ai/waiter-rating");
 });
 
-app.post("/api/ai/waiter-rating/analyze", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.post("/api/ai/waiter-rating/analyze", auth, adminOnly, (req, res) => {
+  void proxyAiCloudPost(req, res, "/api/ai/waiter-rating/analyze");
 });
 
-app.get("/api/ai/stock-predict", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.get("/api/ai/stock-predict", auth, adminOnly, (req, res) => {
+  void proxyAiCloudGet(req, res, "/api/ai/stock-predict");
 });
 
-app.post("/api/ai/stock-predict/analyze", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.post("/api/ai/stock-predict/analyze", auth, adminOnly, (req, res) => {
+  void proxyAiCloudPost(req, res, "/api/ai/stock-predict/analyze");
 });
 
-app.get("/api/ai/weekly-reports", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.get("/api/ai/weekly-reports", auth, adminOnly, (req, res) => {
+  void proxyAiCloudGet(req, res, "/api/ai/weekly-reports");
 });
 
-app.post("/api/ai/weekly-reports/generate", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.post("/api/ai/weekly-reports/generate", auth, adminOnly, (req, res) => {
+  void proxyAiCloudPost(req, res, "/api/ai/weekly-reports/generate");
 });
 
-app.post("/api/ai/assistant/chat", auth, adminOnly, async (_req, res) => {
-  res.status(503).json(AI_HOTEL_OFF);
+app.post("/api/ai/assistant/chat", auth, adminOnly, (req, res) => {
+  void proxyAiCloudPost(req, res, "/api/ai/owner-chat");
 });
 
 app.get("/api/system/disk-status", auth, adminOnly, (_req, res) => {
@@ -10174,6 +10824,33 @@ function onServerListening(server, port) {
     try {
       cloudAutoSync.startCloudAutoSync(db);
     } catch (_) {}
+    try {
+      const { startStaffLocalLinksLanWatcher } = require("./local-staff-links");
+      startStaffLocalLinksLanWatcher(db);
+    } catch (e) {
+      console.warn("[lan-staff-links] watcher:", e.message);
+    }
+    setTimeout(() => {
+      try {
+        ensureOnlineOrdersWatcher();
+      } catch (e) {
+        console.warn("[cloud] online-orders-watcher:", e.message);
+      }
+    }, 1500);
+    setTimeout(() => {
+      try {
+        setInterval(() => cloudSync.reconcileAllTablesWithCloud(db), 60000);
+      } catch {
+        /* ignore */
+      }
+    }, 15000);
+    setTimeout(() => {
+      try {
+        setInterval(() => cloudSync.syncLocalCancelledFromCloud(db).catch(() => {}), 25000);
+      } catch {
+        /* ignore */
+      }
+    }, 90000);
     try {
       const autoBackup = require("./auto-backup");
       const paths = resolveAutoBackupPaths();

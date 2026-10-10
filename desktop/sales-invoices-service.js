@@ -10,6 +10,67 @@ function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+const PAYABLE_INVOICE_STATUSES = new Set(["final", "printed", "emailed"]);
+
+function computePaymentStatus(amountPaid, grandTotal) {
+  const paid = roundMoney(amountPaid);
+  const total = roundMoney(grandTotal);
+  const tol = 0.02;
+  if (total <= 0 && paid > 0) return "paid";
+  if (total > 0 && paid + tol >= total) return "paid";
+  if (paid > 0) return "partial";
+  return "unpaid";
+}
+
+function normalizeB2bPaymentMethod(raw) {
+  const v = String(raw || "cash").trim().toLowerCase();
+  if (["bank", "banke", "bankë", "transfer", "bank_transfer"].includes(v)) return "bank_account";
+  if (["karte", "kartë", "card", "kart"].includes(v)) return "karte";
+  if (["cash", "para"].includes(v)) return "cash";
+  return dbMod.normalizePaymentMethod(v);
+}
+
+function paymentMethodLabel(method) {
+  const m = normalizeB2bPaymentMethod(method);
+  if (m === "bank_account") return "Bankë";
+  if (m === "karte") return "Kartë";
+  return "Cash";
+}
+
+function enrichInvoicePaymentFields(invRow, invoiceObj) {
+  const grand = roundMoney(invoiceObj.totals?.grandTotal ?? invRow.grand_total);
+  const paid = roundMoney(invRow.amount_paid);
+  const balanceDue = roundMoney(Math.max(0, grand - paid));
+  const paymentStatus = computePaymentStatus(paid, grand);
+  return {
+    ...invoiceObj,
+    amountPaid: paid,
+    paymentStatus,
+    balanceDue,
+  };
+}
+
+function listPaymentsForInvoice(invoiceId) {
+  return sqlite()
+    .prepare(`
+      SELECT * FROM sales_invoice_payments
+      WHERE invoice_id = ?
+      ORDER BY payment_date ASC, id ASC
+    `)
+    .all(Number(invoiceId))
+    .map((row) => ({
+      id: row.id,
+      invoiceId: row.invoice_id,
+      paymentDate: row.payment_date,
+      amount: roundMoney(row.amount),
+      paymentMethod: normalizeB2bPaymentMethod(row.payment_method),
+      paymentMethodLabel: paymentMethodLabel(row.payment_method),
+      note: row.note || "",
+      dailyLogId: row.daily_log_id,
+      createdAt: row.created_at,
+    }));
+}
+
 function lineTotal(line) {
   const qty = Number(line.qty) || 0;
   const price = Number(line.unitPrice) || 0;
@@ -159,7 +220,7 @@ function rowToInvoice(row, lines) {
     discount: { type: ln.discount_type || "amount", value: ln.discount_value || 0 },
     lineTotal: ln.line_total,
   }));
-  return {
+  const base = {
     id: row.id,
     number: row.number,
     date: row.invoice_date,
@@ -178,14 +239,21 @@ function rowToInvoice(row, lines) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+  const enriched = enrichInvoicePaymentFields(row, base);
+  enriched.payments = listPaymentsForInvoice(row.id);
+  return enriched;
 }
 
-function listInvoices({ q, status, limit = 200 } = {}) {
+function listInvoices({ q, status, payment_status, limit = 200 } = {}) {
   let sql = "SELECT * FROM sales_invoices WHERE 1=1";
   const params = [];
   if (status && status !== "Të gjitha") {
     sql += " AND status = ?";
     params.push(status);
+  }
+  if (payment_status && payment_status !== "Të gjitha") {
+    sql += " AND payment_status = ?";
+    params.push(payment_status);
   }
   sql += " ORDER BY id DESC LIMIT ?";
   params.push(Math.min(500, Math.max(1, Number(limit) || 200)));
@@ -271,9 +339,12 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
 
   return sqlite().transaction(() => {
     let invoiceId = id ? Number(id) : null;
+    let amountPaid = 0;
     if (invoiceId) {
-      const existing = sqlite().prepare("SELECT id FROM sales_invoices WHERE id = ?").get(invoiceId);
+      const existing = sqlite().prepare("SELECT * FROM sales_invoices WHERE id = ?").get(invoiceId);
       if (!existing) throw new Error("Fatura nuk u gjet.");
+      amountPaid = roundMoney(existing.amount_paid);
+      const paymentStatus = computePaymentStatus(amountPaid, totals.grandTotal);
       sqlite().prepare(`
         UPDATE sales_invoices SET
           number = ?, invoice_date = ?, status = ?,
@@ -282,6 +353,7 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
           guest_email = ?, guest_phone = ?,
           vat_enabled = ?, vat_percent = ?,
           subtotal = ?, vat_amount = ?, grand_total = ?,
+          amount_paid = ?, payment_status = ?,
           order_id = ?, updated_at = ?
         WHERE id = ?
       `).run(
@@ -301,6 +373,8 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
         totals.subtotal,
         totals.vatAmount,
         totals.grandTotal,
+        amountPaid,
+        paymentStatus,
         orderId,
         now,
         invoiceId,
@@ -315,8 +389,9 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
           guest_email, guest_phone,
           vat_enabled, vat_percent,
           subtotal, vat_amount, grand_total,
+          amount_paid, payment_status,
           order_id, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `).run(
         number,
         date,
@@ -334,6 +409,8 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
         totals.subtotal,
         totals.vatAmount,
         totals.grandTotal,
+        0,
+        "unpaid",
         orderId,
         now,
         now,
@@ -365,10 +442,120 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
 function deleteInvoice(id) {
   const n = Number(id);
   if (!n) throw new Error("ID i pavlefshëm.");
+  sqlite().prepare("DELETE FROM sales_invoice_payments WHERE invoice_id = ?").run(n);
   sqlite().prepare("DELETE FROM sales_invoice_lines WHERE invoice_id = ?").run(n);
   const r = sqlite().prepare("DELETE FROM sales_invoices WHERE id = ?").run(n);
   if (!r.changes) throw new Error("Fatura nuk u gjet.");
   return { ok: true };
+}
+
+function addInvoicePayment(invoiceId, body = {}) {
+  const id = Number(invoiceId);
+  if (!id) throw new Error("ID i pavlefshëm.");
+  const row = sqlite().prepare("SELECT * FROM sales_invoices WHERE id = ?").get(id);
+  if (!row) throw new Error("Fatura nuk u gjet.");
+  const st = String(row.status || "").trim();
+  if (!PAYABLE_INVOICE_STATUSES.has(st)) {
+    throw new Error("Pagesa lejohet vetëm për fatura finalizuar (final / printuar / email).");
+  }
+  if (String(row.guest_kind || "") !== "company") {
+    throw new Error("Pagesat me borxh vlejnë për klientët B2B (kompani).");
+  }
+  const add = roundMoney(body.amount);
+  if (!Number.isFinite(add) || add <= 0) throw new Error("Shuma e pagesës duhet > 0.");
+  const grand = roundMoney(row.grand_total);
+  const paidBefore = roundMoney(row.amount_paid);
+  const balance = roundMoney(Math.max(0, grand - paidBefore));
+  if (balance <= 0) throw new Error("Fatura është e paguar.");
+  const payAmount = add > balance + 0.02 ? balance : add;
+  const method = normalizeB2bPaymentMethod(body.payment_method);
+  const paymentDate = String(body.payment_date || body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const note = String(body.note || body.notes || "").trim();
+  const waiterName = String(body.waiter_name || "Recepsion").trim() || "Recepsion";
+
+  let dailyLogId = null;
+  const company = String(row.guest_company_name || row.guest_name || "B2B").trim();
+  const label = `Pagesë faturë B2B ${row.number} — ${company}`;
+  if (method === "cash" || method === "karte") {
+    dbMod.recordRecepcionKasaSale({
+      items: [{ name: label, quantity: 1, price: payAmount }],
+      payment_method: method === "karte" ? "karte" : "cash",
+      waiter_name: waiterName,
+    });
+    dailyLogId = sqlite()
+      .prepare(`
+        SELECT id FROM daily_log
+        WHERE receipt_number LIKE 'RC-%'
+        ORDER BY id DESC LIMIT 1
+      `)
+      .get()?.id || null;
+  }
+
+  return sqlite().transaction(() => {
+    const ins = sqlite().prepare(`
+      INSERT INTO sales_invoice_payments (
+        invoice_id, payment_date, amount, payment_method, note, daily_log_id
+      ) VALUES (?,?,?,?,?,?)
+    `).run(id, paymentDate, payAmount, method, note, dailyLogId);
+
+    const newPaid = roundMoney(paidBefore + payAmount);
+    const paymentStatus = computePaymentStatus(newPaid, grand);
+    sqlite().prepare(`
+      UPDATE sales_invoices SET amount_paid = ?, payment_status = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(newPaid, paymentStatus, id);
+
+    return {
+      payment: {
+        id: Number(ins.lastInsertRowid),
+        invoiceId: id,
+        paymentDate,
+        amount: payAmount,
+        paymentMethod: method,
+        paymentMethodLabel: paymentMethodLabel(method),
+        note,
+        dailyLogId,
+      },
+      invoice: getInvoiceById(id),
+    };
+  })();
+}
+
+function listBusinessDebts() {
+  const rows = sqlite().prepare(`
+    SELECT
+      guest_company_name,
+      guest_nui,
+      guest_name,
+      guest_phone,
+      guest_email,
+      COUNT(*) AS invoice_count,
+      COALESCE(SUM(grand_total), 0) AS invoiced_total,
+      COALESCE(SUM(amount_paid), 0) AS paid_total
+    FROM sales_invoices
+    WHERE guest_kind = 'company'
+      AND status IN ('final', 'printed', 'emailed')
+    GROUP BY guest_company_name, guest_nui
+    HAVING invoiced_total - paid_total > 0.02
+    ORDER BY (invoiced_total - paid_total) DESC, guest_company_name ASC
+  `).all();
+
+  return rows.map((r) => {
+    const invoiced = roundMoney(r.invoiced_total);
+    const paid = roundMoney(r.paid_total);
+    const balance = roundMoney(Math.max(0, invoiced - paid));
+    return {
+      companyName: String(r.guest_company_name || "").trim(),
+      nui: String(r.guest_nui || "").trim(),
+      contactName: String(r.guest_name || "").trim(),
+      phone: String(r.guest_phone || "").trim(),
+      email: String(r.guest_email || "").trim(),
+      invoiceCount: Number(r.invoice_count) || 0,
+      invoicedTotal: invoiced,
+      paidTotal: paid,
+      balanceDue: balance,
+    };
+  });
 }
 
 function mapItemsToLines(items) {
@@ -457,6 +644,10 @@ module.exports = {
   getInvoiceById,
   saveInvoice,
   deleteInvoice,
+  addInvoicePayment,
+  listPaymentsForInvoice,
+  listBusinessDebts,
+  computePaymentStatus,
   prefillFromSale,
   buildInvoiceDocFromPayload,
   computeTotals,

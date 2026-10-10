@@ -552,6 +552,9 @@ function normalizeSplitMethod(method) {
   const v = String(method || "cash")
     .trim()
     .toLowerCase();
+  if (["room", "ne_dhome", "në_dhomë", "nedehome", "charge_to_room", "charge-to-room"].includes(v)) {
+    return "room";
+  }
   if (["card", "karte", "kartë", "pos", "debit", "credit"].includes(v)) return "card";
   if (v === "debit_card") return "debit_card";
   if (v === "credit_card") return "credit_card";
@@ -570,6 +573,7 @@ function paymentSplitPrintLabel(method) {
   if (v === "check") return t("pay_check");
   if (v === "bank_account") return t("pay_bank");
   if (v === "sms") return t("pay_sms");
+  if (v === "room") return t("pay_room") || "Në dhomë";
   return paymentLabelSq(method);
 }
 

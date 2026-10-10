@@ -249,6 +249,8 @@ function terminalModulePath(app) {
 
 /** Numri i arkës për sync/relay — arka1, arka2, … (si MARKET/KAFENE). */
 function readTerminalRole(app) {
+  const envRole = String(process.env.HOTEL_TERMINAL_ROLE || "").trim().toLowerCase();
+  if (/^arka([1-9]|1[0-6])$/.test(envRole)) return envRole;
   const ea = app || _electronApp;
   if (!ea) return "";
   try {

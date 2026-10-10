@@ -11,6 +11,7 @@ const cloudSync = require("./cloud-sync");
 const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
 const hotelCloudSync = require("./hotel-cloud-sync");
+const ownerReportSync = require("./owner-report-sync");
 const license = require("./license");
 
 function isSecondaryCashRegister() {
@@ -29,6 +30,7 @@ const REGISTER_MODE_MS = 12 * 60 * 60 * 1000;
 const CATALOG_AUTO_MS = 180000;
 const CATALOG_DEBOUNCE_MS = 5000;
 const HOTEL_PMS_SYNC_MS = 2 * 60 * 1000;
+const OWNER_REPORT_SYNC_MS = ownerReportSync.OWNER_REPORT_SYNC_MS;
 const STARTUP_BURST_MS = 4000;
 
 let lastStatus = {
@@ -59,6 +61,7 @@ let ownerPasswordSyncInFlight = false;
 let staffPushInFlight = false;
 let hotelPmsSyncInFlight = false;
 let hotelPmsSyncTimer = null;
+let ownerReportSyncTimer = null;
 let started = false;
 let boundDb = null;
 
@@ -251,6 +254,7 @@ async function runRegisterModeSync(db) {
 }
 
 async function runHotelPmsSync(db) {
+  if (isSecondaryCashRegister()) return;
   if (!canRunCloudSideJobs(db)) return;
   if (hotelPmsSyncInFlight) return;
   hotelPmsSyncInFlight = true;
@@ -281,12 +285,23 @@ async function runHotelPmsSync(db) {
   }
 }
 
+async function runOwnerReportSyncJob(db) {
+  if (isSecondaryCashRegister()) return;
+  if (!canRunCloudSideJobs(db)) return;
+  try {
+    await ownerReportSync.runOwnerReportSync(db);
+  } catch (err) {
+    console.warn("[owner-report-sync]", err.message || err);
+  }
+}
+
 function runAllSideSyncJobs(db) {
   runClosedWaiterSalesSync(db).catch(() => {});
   runOwnerAdminPasswordSync(db).catch(() => {});
   runStaffPushSync(db).catch(() => {});
   runRegisterModeSync(db).catch(() => {});
   runHotelPmsSync(db).catch(() => {});
+  runOwnerReportSyncJob(db).catch(() => {});
 }
 
 function startPeriodicJob(db, fn, intervalMs) {
@@ -426,6 +441,10 @@ function startCloudAutoSync(db) {
   hotelPmsSyncTimer = setInterval(() => {
     runHotelPmsSync(db).catch(() => {});
   }, HOTEL_PMS_SYNC_MS);
+
+  ownerReportSyncTimer = setInterval(() => {
+    runOwnerReportSyncJob(db).catch(() => {});
+  }, OWNER_REPORT_SYNC_MS);
 }
 
 module.exports = {
@@ -437,6 +456,7 @@ module.exports = {
   CATALOG_AUTO_MS,
   CATALOG_DEBOUNCE_MS,
   HOTEL_PMS_SYNC_MS,
+  OWNER_REPORT_SYNC_MS,
   getStatus,
   runFullSync,
   runLicenseCheck,

@@ -120,7 +120,19 @@ function applyAppWindowTitle(settingsOrTitle) {
 }
 
 function sotISO() {
+  if (typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd) {
+    return HotelBusinessDate.businessYmd();
+  }
   return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysISO(ymd, days) {
+  if (typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.addBusinessDays) {
+    return HotelBusinessDate.addBusinessDays(ymd, days);
+  }
+  const d = new Date(`${String(ymd).slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() + (Number(days) || 0));
+  return d.toISOString().slice(0, 10);
 }
 
 /** Badge versioni në UI (login, admin, kamarier). */

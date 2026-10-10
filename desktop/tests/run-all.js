@@ -5,10 +5,16 @@ const path = require("path");
 
 /** Bazë → ATK → B2B → blerje/AI → factory reset */
 const tests = [
+  "hotel-business-date.test.js",
   "protected-functions.test.js",
+  "stock-breakage-loss.test.js",
+  "owner-report-analytics.test.js",
   "kontabilisti-atk.test.js",
   "hotel-b2b-kontabilist.test.js",
+  "hotel-b2b-payments.test.js",
   "purchase-neto-bruto.test.js",
+  "ingredients-recipes.test.js",
+  "ingredients-stock-count-b.test.js",
   "factory-reset-wipe.test.js",
 ];
 

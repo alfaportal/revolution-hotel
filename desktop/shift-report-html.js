@@ -42,6 +42,7 @@ function totalsBlock(data) {
     <div class="receipt-item"><span>Porosi:</span><span>${Number(data.order_count) || 0}</span></div>
     <div class="receipt-item"><span>Shitje cash:</span><span>${formatEuro(data.cash_total)}</span></div>
     <div class="receipt-item"><span>Shitje kartë:</span><span>${formatEuro(data.card_total)}</span></div>
+    ${Number(data.room_total) > 0.005 ? `<div class="receipt-item"><span>Në dhomë:</span><span>${formatEuro(data.room_total)}</span></div>` : ""}
     ${Number(data.discount_total) > 0
       ? `<div class="receipt-item receipt-discount"><span>Zbritje totale:</span><span>−${formatEuro(data.discount_total)}</span></div>`
       : ""}
@@ -173,6 +174,9 @@ function totalsLines(data, w) {
     labelValueLine("Shitje cash:", money(data.cash_total), w),
     labelValueLine("Shitje kartë:", money(data.card_total), w),
   ];
+  if (Number(data.room_total) > 0.005) {
+    lines.push(labelValueLine("Në dhomë:", money(data.room_total), w));
+  }
   if (Number(data.discount_total) > 0) {
     lines.push(labelValueLine("Zbritje totale:", `-${formatMoney(data.discount_total)} EUR`, w));
   }

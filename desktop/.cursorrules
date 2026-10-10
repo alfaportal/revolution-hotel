@@ -1,3 +1,39 @@
+﻿## RREGULL ABSOLUT — IZOLIMI I PROJEKTEVE (nuk thyhet në asnjë rrethanë)
+
+1. Çdo projekt ka serverin, të dhënat dhe strukturën e VET. Projektet NUK përzihen kurrë.
+
+2. revolution-pos.com/owner/login është VETÊM DERA (hyrja). Pas hyrjes, çdo pronar
+   shkon VETÊM te paneli dhe serveri i projektit të vet (kafene → restaurant,
+   hotel → hotel, etj.). Asnjë projekt nuk mban faqe, kod apo të dhëna të projektit tjetër.
+
+3. Kur punon brenda një projekti, ndryshon normalisht vetëm atë projekt.
+
+4. Projekti tjetër: VETËM LEXIM. NDALOHET ABSOLUTISHT të ndryshosh, shtosh, fshish
+   apo zhvendosësh ÇFARËDO në një projekt tjetër (server, kod, skedarë, konfigurim,
+   databazë, deploy, gjithçka) pa lejen e Naserit.
+
+5. Para çdo ndryshimi në projekt tjetër, pyet Naserin 4 HERË, një nga një, dhe prit
+   konfirmimin e qartë "PO" çdo herë. Pa 4 konfirmime = MOS PREK.
+
+6. Nëse nuk je i sigurt në cilin projekt je, NDALO dhe pyet.
+7. KUJTESA E PUNËS — çdo projekt ka skedarin PUNA.md në rrënjë.
+   - Para çdo detyre: LEXO PUNA.md që të dish çka është bërë, çka punon dhe çka jo.
+   - Pas çdo ndryshimi: SHKRUAJ te PUNA.md: data, çka ndryshove (skedar + rresht),
+     pse, çka provove, a funksionoi. Shkurt, por e saktë.
+   - Nëse humbet, ngec ose nuk e di ku ishe: NDALO, lexo PUNA.md dhe git log,
+     pastaj pyet Naserin. MOS vazhdo duke supozuar.
+8. MOS PRISH ATË QË PUNON.
+   - Një ndryshim në një kohë. Mos rregullo 3 gjëra njëherësh.
+   - Para ndryshimit: kontrollo çka tjetër e përdor atë funksion/skedar.
+   - Pas ndryshimit: ekzekuto testet (p.sh. protected-functions) dhe shiko git diff.
+     Nëse diçka tjetër prishet, ktheje mbrapsht menjëherë dhe raporto.
+   - Nëse një rregullim prish diçka tjetër, NDALO dhe raporto. Mos e mbulo
+     me ndryshime të tjera.
+9. MOS SHPIK. Nëse nuk e di si funksionon diçka, lexo kodin ose pyet.
+   Mos supozo, mos thuaj "u rregullua" pa e provuar.
+
+---
+
 # Revolution HOTEL — rregulla Cursor
 
 ## RREGULL I DETYRUESHËM — LEXO PARA ÇFARËDO PUNE

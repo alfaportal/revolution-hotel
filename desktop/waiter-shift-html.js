@@ -44,6 +44,7 @@ function buildShiftCloseHtml({
   const opening = Number(totals.opening_cash ?? shift.opening_cash ?? 0);
   const cashSales = Number(totals.cash_total ?? shift.cash_sales_total ?? 0);
   const cardSales = Number(totals.card_total ?? shift.card_sales_total ?? 0);
+  const roomSales = Number(totals.room_total ?? shift.room_sales_total ?? 0);
   const discountTotal = Number(totals.discount_total ?? shift.discount_total ?? 0);
   const totalSales = Number(totals.total_sales ?? shift.total_sales ?? 0);
   const expected = Number(totals.expected_closing_cash ?? shift.expected_closing_cash ?? opening + cashSales);
@@ -101,6 +102,7 @@ function buildShiftCloseHtml({
       <div class="receipt-item"><span>Porosi:</span><span>${orderCount}</span></div>
       <div class="receipt-item"><span>Shitje cash:</span><span>${formatEuro(cashSales)}</span></div>
       <div class="receipt-item"><span>Shitje kartë:</span><span>${formatEuro(cardSales)}</span></div>
+      ${roomSales > 0.005 ? `<div class="receipt-item"><span>Në dhomë:</span><span>${formatEuro(roomSales)}</span></div>` : ""}
       ${discountLine}
       <div class="receipt-total"><span>TOTALI:</span><span>${formatEuro(totalSales)}</span></div>
       <div class="receipt-rule">--------------------------------</div>
@@ -134,6 +136,7 @@ function buildShiftCloseLines({
   const opening = Number(totals.opening_cash ?? shift.opening_cash ?? 0);
   const cashSales = Number(totals.cash_total ?? shift.cash_sales_total ?? 0);
   const cardSales = Number(totals.card_total ?? shift.card_sales_total ?? 0);
+  const roomSales = Number(totals.room_total ?? shift.room_sales_total ?? 0);
   const discountTotal = Number(totals.discount_total ?? shift.discount_total ?? 0);
   const totalSales = Number(totals.total_sales ?? shift.total_sales ?? 0);
   const expected = Number(totals.expected_closing_cash ?? shift.expected_closing_cash ?? opening + cashSales);
@@ -171,6 +174,9 @@ function buildShiftCloseLines({
   lines.push(labelValueLine("Porosi:", String(orderCount), w));
   lines.push(labelValueLine("Shitje cash:", money(cashSales), w));
   lines.push(labelValueLine("Shitje kartë:", money(cardSales), w));
+  if (roomSales > 0.005) {
+    lines.push(labelValueLine("Në dhomë:", money(roomSales), w));
+  }
   if (discountTotal > 0) {
     lines.push(labelValueLine("Zbritje totale:", `-${formatMoney(discountTotal)} EUR`, w));
   }

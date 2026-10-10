@@ -156,15 +156,14 @@ const STAFF_ACCESS_ROLES = new Set([
 ]);
 
 /**
- * Meny publike / QR — si restoranti: /menu/{slug}/{tavolina}
- * https://revolution-pos.com/menu/restaurant-naser-c57eb7/1
+ * QR tavolinë — https://revolution-pos.com/hotel/{slug}/menu/{tavolina}
  */
 function buildPublicMenuUrl(baseUrl, slug, tableNumber = 1) {
   const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
   const s = normalizeSlug(slug);
   if (!s || !base) return "";
   const table = Math.max(1, Number(tableNumber) || 1);
-  return `${base}${HOTEL_WEB_PREFIX}/menu/${encodeURIComponent(s)}/${table}`;
+  return `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}/menu/${table}`;
 }
 
 /** Rol i brendshëm (waiter) → segment publik hotel (kamarier). */
@@ -179,15 +178,27 @@ const HOTEL_PUBLIC_STAFF_SEGMENT = {
 /**
  * Stafi — https://revolution-pos.com/hotel/{slug}/{roli}?key=…
  */
-/** Pronari — https://revolution-pos.com/hotel/{slug}/owner?key=… (hyrje me email në cloud). */
-function buildOwnerAccessLink(baseUrl, slug, key) {
+/** Pronari — paneli cloud (i njëjtë si distributor): https://revolution-pos.com/owner/panel */
+function buildOwnerAccessLink(baseUrl, _slug, _key) {
+  const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
+  if (!base) return "";
+  return `${base}/owner/panel`;
+}
+
+/** Faqja publike e hotelit — https://revolution-pos.com/hotel/{slug} */
+function buildHotelStorefrontUrl(baseUrl, slug) {
   const s = normalizeSlug(slug);
   const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
   if (!s || !base) return "";
-  let url = `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}/owner`;
-  const k = String(key || "").trim();
-  if (k) url += `?key=${encodeURIComponent(k)}`;
-  return url;
+  return `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}`;
+}
+
+/** Takeaway / porosi online — https://revolution-pos.com/hotel/{slug}/takeaway */
+function buildHotelTakeawayUrl(baseUrl, slug) {
+  const s = normalizeSlug(slug);
+  const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
+  if (!s || !base) return "";
+  return `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}/takeaway`;
 }
 
 function buildStaffAccessLink(baseUrl, slug, key, role, extraQuery = "") {
@@ -246,6 +257,37 @@ function resolveCloudAccessCredentials(slugOrOpts, key) {
   };
 }
 
+/**
+ * Licenca cloud (restaurant-server) kthen shpesh /kafene/{slug}/… — HOTEL duhet /hotel/{slug}/….
+ * Përdor slug+key lokale dhe rindërto gjithmonë linket publike.
+ */
+function applyHotelLicenseLinks(creds = {}) {
+  const slug = normalizeSlug(creds.kitchen_slug || creds.client_id || "");
+  const key = String(creds.kitchen_key || "").trim();
+  if (!slug || !key) {
+    return { ...creds, kitchen_slug: slug || creds.kitchen_slug || "" };
+  }
+  const origin = PUBLIC_HOTEL_ORIGIN;
+  const built = buildCloudAccessLinks(origin, { kitchen_slug: slug, kitchen_key: key, client_id: slug }, key);
+  return {
+    ...creds,
+    client_id: slug,
+    kitchen_slug: slug,
+    client_tipi: "hotel",
+    waiter_url: built.waiter_url,
+    bar_url: built.bar_url,
+    kitchen_url: built.kitchen_url,
+    kiosk_url: built.kiosk_url,
+    public_page_url: built.public_page_url,
+    owner_url: built.owner_url,
+    owner_panel_url: built.owner_panel_url,
+    reception_url: built.reception_url,
+    housekeeping_url: built.housekeeping_url,
+    takeaway_url: built.takeaway_url,
+    public_order_url: built.public_order,
+  };
+}
+
 /** Linqe staf + meny publike — format restoranti. */
 function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
   const { slug: s, key: accessKey } = resolveCloudAccessCredentials(slugOrOpts, key);
@@ -272,6 +314,8 @@ function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
   const origin = getPublicCloudServerUrl(s) || PUBLIC_HOTEL_ORIGIN;
   const ownerLink = buildOwnerAccessLink(origin, s, accessKey);
   const menuUrl = buildPublicMenuUrl(origin, s, 1);
+  const storefrontUrl = buildHotelStorefrontUrl(origin, s);
+  const takeawayUrl = buildHotelTakeawayUrl(origin, s);
   const waiter = buildStaffAccessLink(origin, s, accessKey, "waiter");
   const bar = buildStaffAccessLink(origin, s, accessKey, "bar");
   const kitchen = buildStaffAccessLink(origin, s, accessKey, "kitchen");
@@ -288,8 +332,9 @@ function buildCloudAccessLinks(_baseUrl, slugOrOpts, key) {
     kiosk: menuUrl,
     kiosk_url: menuUrl,
     public_menu: menuUrl,
-    public_page_url: menuUrl,
-    public_order: menuUrl,
+    public_page_url: storefrontUrl,
+    public_order: takeawayUrl,
+    takeaway_url: takeawayUrl,
     housekeeping_url: housekeeping,
     reception_url: reception,
     owner_url: ownerLink,
@@ -328,21 +373,32 @@ function buildStaffPersonalUrl(slug, key, webToken, staffRole) {
 }
 
 /** Mysafir — shërbime / room service (cloud; hotel-server duhet t’i servojë statiket). */
-function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "", slug = "") {
+function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "", slug = "", venueOpts = null) {
   const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
   const room = encodeURIComponent(String(roomNumber || "").trim());
   const s = encodeURIComponent(String(slug || "").trim());
   const slugQ = s ? `&slug=${s}` : "";
+  const opts = venueOpts && typeof venueOpts === "object" ? venueOpts : {};
+  const tableNum = Number(opts.tableNumber ?? opts.table_number ?? 0);
+  const venueCode = encodeURIComponent(String(opts.venueCode ?? opts.venue_code ?? opts.venue ?? "").trim());
   const p = String(page || "").trim().toLowerCase();
+  if (p === "guest_menu" || p === "menu_public") {
+    return `${base}${HOTEL_WEB_PREFIX}/guest/menu.html${s ? `?slug=${s}` : ""}`;
+  }
   if (p === "services") {
-    return room
-      ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`
-      : `${base}${HOTEL_WEB_PREFIX}/guest/services.html${s ? `?slug=${s}` : ""}`;
+    if (room) {
+      return `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`;
+    }
+    if (tableNum >= 1 && venueCode) {
+      return `${base}${HOTEL_WEB_PREFIX}/guest/services.html?table=${tableNum}&venue=${venueCode}${slugQ}`;
+    }
+    const q = s ? `slug=${s}` : "";
+    return `${base}${HOTEL_WEB_PREFIX}/guest/services.html${q ? `?${q}` : ""}`;
   }
   if (p === "room-service" || p === "room_service") {
     return room
       ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`
-      : `${base}${HOTEL_WEB_PREFIX}/guest/services.html${s ? `?slug=${s}` : ""}`;
+      : buildHotelGuestPublicUrl(baseUrl, "services", "", slug, venueOpts);
   }
   return "";
 }
@@ -365,6 +421,7 @@ module.exports = {
   buildAccessLink,
   buildOwnerAccessLink,
   buildCloudAccessLinks,
+  applyHotelLicenseLinks,
   buildLocalAccessLink,
   buildLocalAccessLinks,
   buildPublicMenuUrl,

@@ -516,7 +516,8 @@ async function mountHotelMainWindow(started, userData) {
 
   appReadyForQuit = true;
 
-  const url = started.url || `http://127.0.0.1:${started.port}/`;
+  const base = String(started.url || `http://127.0.0.1:${started.port}/`).replace(/\/+$/, "");
+  const url = `${base}/login.html`;
   const httpReady = await waitForLocalHttp(started.port, 15000);
   if (!httpReady) {
     closeSplash();

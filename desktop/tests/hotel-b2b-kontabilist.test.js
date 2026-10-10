@@ -101,7 +101,7 @@ function setupData() {
   db.addCategory("B2BKontCat");
   menuItemId = db.addMenuItem({ name: "B2B Kafe", category: "B2BKontCat", price: 2 });
   db.db.prepare("UPDATE menu_items SET stock_qty = ? WHERE id = ?").run(50, menuItemId);
-  db.addStaff("B2BWaiter", "654321");
+  db.addStaff("B2BWaiter", "4321");
   const staff = db.findStaffByName("B2BWaiter");
   db.openWaiterShiftWithCash(staff.id, 0);
   const table = db.getTableByNumber(1);

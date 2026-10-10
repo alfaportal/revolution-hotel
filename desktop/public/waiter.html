@@ -844,7 +844,7 @@
           <strong id="hdr-kamarier-top">Kamarier</strong>
         </div>
         <span class="app-version-pill" id="waiter-app-version" hidden></span>
-        <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Offline — pa cloud">☁ Offline</span>
+        <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Jashtë linje">☁ Jashtë linje</span>
         <div class="waiter-topbar-time" id="waiter-clock">--:--</div>
       </header>
 
@@ -875,6 +875,9 @@
         <button type="button" class="waiter-nav-btn" id="btn-nav-housekeeping" data-view="housekeeping" hidden style="display:none">Pastrimi</button>
         <button type="button" class="waiter-nav-btn" id="btn-nav-porosi" hidden style="display:none">Porositë</button>
       </nav>
+      <p style="margin:0.35rem 0 0.5rem;text-align:center">
+        <a href="/stock-loss.html" style="font-size:0.85rem;font-weight:600;color:#4f46e5">Thyerje / humbje stoku</a>
+      </p>
 
       <div id="waiter-online-backdrop" class="waiter-online-backdrop hidden" aria-hidden="true"></div>
       <div id="waiter-online-pop" class="waiter-online-pop hidden" role="dialog" aria-modal="true" aria-label="Prano porosi online">
@@ -1413,6 +1416,7 @@
         <div><dt>Paratë e nisjes</dt><dd id="shift-close-opening">0.00 €</dd></div>
         <div><dt>Shitje cash</dt><dd id="shift-close-cash-sales">0.00 €</dd></div>
         <div><dt>Shitje kartë</dt><dd id="shift-close-card-sales">0.00 €</dd></div>
+        <div><dt>Në dhomë</dt><dd id="shift-close-room-sales">0.00 €</dd></div>
         <div class="shift-close-expected"><dt>Paratë e pritshme në arkë</dt><dd id="shift-close-expected">0.00 €</dd></div>
       </dl>
       <label class="shift-close-label" for="shift-close-display">Paratë e numëruar</label>
@@ -1465,6 +1469,7 @@
         <div class="shift-done-wallet-row"><span>Fond Fillestar</span><span id="shift-done-opening">€0.00</span></div>
         <div class="shift-done-wallet-row shift-done-wallet-cash"><span>Shitje Cash (Të Ardhura – Zbritje)</span><span id="shift-done-cash">+€0.00</span></div>
         <div class="shift-done-wallet-row shift-done-wallet-card"><span>Shitje Kartë</span><span id="shift-done-card">€0.00</span></div>
+        <div class="shift-done-wallet-row shift-done-wallet-room"><span>Në dhomë</span><span id="shift-done-room">€0.00</span></div>
         <div class="shift-done-wallet-row shift-done-wallet-diff" id="shift-done-diff-row" hidden><span id="shift-done-diff-label">Diferenca</span><span id="shift-done-diff">€0.00</span></div>
         <div class="shift-done-wallet-total"><span>Kuleta Aktuale</span><strong id="shift-done-wallet">€0.00</strong></div>
       </div>
@@ -1626,14 +1631,20 @@
       return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
     }
 
+    /** Spa/sauna/shërbime hoteli — vetëm recepsioni (server: isRecepcionCloudPendingOrder). */
     function eshtePorosiVetemRecepsioni(o) {
-      if (eshtePorosiSherbimiHoteliQr(o) || o?.is_recepcion_qr) return true;
+      if (eshtePorosiSherbimiHoteliQr(o)) return true;
       const device = String(o?.device_id || "").toUpperCase();
-      if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return true;
-      if (String(o?.order_kind || "") === "guest_room_menu") return true;
-      const room = String(o?.room_number || "").trim();
-      if (room && !eshtePorosiQrTavoline(o)) return true;
+      if (device === "WEB-GUEST-SERVICE") return true;
+      if (String(o?.order_kind || "") === "guest_hotel_service") return true;
       return false;
+    }
+
+    function eshtePorosiQrDhome(o) {
+      if (o?.is_guest_room_menu) return true;
+      const device = String(o?.device_id || "").toUpperCase();
+      if (device === "WEB-GUEST-ROOM") return true;
+      return String(o?.order_kind || "") === "guest_room_menu";
     }
 
     /** Restorant: QR tavolinë + takeaway — jo dhomë / shërbime hoteli (ato te recepsioni). */
@@ -1719,9 +1730,15 @@
       }).join("");
       const tn = parseTableNumFromCloudOrder(o);
       const qr = eshtePorosiQrTavoline(o);
-      const src = qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway");
+      const qrRoom = eshtePorosiQrDhome(o);
+      const roomNum = String(o?.room_number || "").trim();
+      const src = qrRoom
+        ? `${tt("QR dhomë")} · Dh. ${roomNum || "?"}`
+        : (qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway"));
       const customer = o.customer_label || o.waiter_name || "Klient";
-      const table = qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway");
+      const table = qrRoom
+        ? `${tt("Dhoma")} ${roomNum || "?"}`
+        : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway"));
       const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} ${tt("tjetër në radhë")}</p>` : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <div class="waiter-online-pop-meta">
@@ -1739,7 +1756,14 @@
       if (!first?.id) return null;
       const ids = [];
       const tn = parseTableNumFromCloudOrder(first);
-      if (tn > 0 && eshtePorosiQrTavoline(first)) {
+      if (eshtePorosiQrDhome(first)) {
+        const room = String(first.room_number || "").trim();
+        for (const o of waiterOnlineOrders) {
+          if (!o?.id || !eshtePorosiQrDhome(o)) continue;
+          const r = String(o.room_number || "").trim();
+          if (!room || r === room) ids.push(String(o.id));
+        }
+      } else if (tn > 0 && eshtePorosiQrTavoline(first)) {
         for (const o of waiterOnlineOrders) {
           if (!o?.id || !eshtePorosiQrTavoline(o)) continue;
           if (parseTableNumFromCloudOrder(o) === tn) ids.push(String(o.id));
@@ -1769,7 +1793,7 @@
         if (!data) return;
         lastImp = (data.imported || []).find(r => r.ok);
         if (data.cloud_ok && !lastImp && msg) {
-          msg.textContent = "Pranuar në cloud — rifreskoni tavolinën nëse duhet.";
+          msg.textContent = "U pranua — rifreskoni tavolinën nëse duhet.";
           msg.hidden = false;
         } else if (data.cloud_message && !data.cloud_ok && msg) {
           msg.textContent = data.cloud_message;
@@ -3720,6 +3744,7 @@
       document.getElementById("shift-close-opening").textContent = formatEuro(preview.opening_cash || 0);
       document.getElementById("shift-close-cash-sales").textContent = formatEuro(preview.cash_total || 0);
       document.getElementById("shift-close-card-sales").textContent = formatEuro(preview.card_total || 0);
+      document.getElementById("shift-close-room-sales").textContent = formatEuro(preview.room_total || 0);
       document.getElementById("shift-close-expected").textContent = formatEuro(preview.expected_closing_cash || 0);
       shiftClosePad.setValue(preview.expected_closing_cash || 0);
       document.getElementById("shift-close-msg").hidden = true;
@@ -3737,6 +3762,7 @@
       document.getElementById("shift-done-opening").textContent = formatEuro(res.opening_cash || 0);
       document.getElementById("shift-done-cash").textContent = "+" + formatEuro(res.cash_total || 0);
       document.getElementById("shift-done-card").textContent = formatEuro(res.card_total || 0);
+      document.getElementById("shift-done-room").textContent = formatEuro(res.room_total || 0);
       document.getElementById("shift-done-wallet").textContent = formatEuro(res.closing_cash_actual || res.expected_closing_cash || 0);
       const d = Number(res.cash_difference) || 0;
       const diffRow = document.getElementById("shift-done-diff-row");

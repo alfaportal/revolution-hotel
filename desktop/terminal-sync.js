@@ -53,10 +53,15 @@ function buildRegisterPresence(db, registerNumber) {
       ? db.getLanOutboxStatus()
       : { pending: 0, last_error: null, last_sent_at: null };
   const ver = typeof db.getVersionInfo === "function" ? db.getVersionInfo() : {};
+  const pendingRoom =
+    typeof db.countPendingLanOutboxKind === "function"
+      ? db.countPendingLanOutboxKind("room_charge")
+      : 0;
   return {
     register_number: registerNumber,
     app_version: String(ver.app_version || ver.version || "").slice(0, 40),
     pending: outbox.pending,
+    pending_room_charges: pendingRoom,
     last_error: outbox.last_error,
     last_sent_at: outbox.last_sent_at,
   };
@@ -69,6 +74,7 @@ function createLanPullStatus() {
     menu_at: null,
     stock_at: null,
     services_at: null,
+    occupied_rooms_at: null,
     stock_skipped_pending: 0,
     via: null,
   };
@@ -162,6 +168,22 @@ function createTerminalLanSync(deps) {
     masterLanLocator.markOk();
   }
 
+  async function syncOccupiedRoomsFromMaster() {
+    const celesi = storedLicenseKeyForCloud();
+    if (!celesi) return;
+    const res = await getMasterJson(celesi, "/api/terminal/occupied-rooms", 8000);
+    if (!res || !Array.isArray(res.parsed.rooms)) return;
+    if (typeof db.cacheTerminalOccupiedRoomsFromMaster === "function") {
+      const n = db.cacheTerminalOccupiedRoomsFromMaster(res.parsed.rooms);
+      if (n) {
+        console.log(`[lan-sync] dhoma të zëna nga ${res.base}: ${n}`);
+      }
+      lanPullStatus.occupied_rooms_at = new Date().toISOString();
+      lanPullStatus.via = "lan";
+      masterLanLocator.markOk();
+    }
+  }
+
   async function syncServicesFromMaster() {
     const celesi = storedLicenseKeyForCloud();
     if (!celesi) return;
@@ -238,7 +260,7 @@ function createTerminalLanSync(deps) {
     masterLanLocator.markOk();
   }
 
-  async function sendOutboxOverLan(base, celesi, num, deviceId, saleBatch, shiftBatch) {
+  async function sendOutboxOverLan(base, celesi, num, deviceId, saleBatch, shiftBatch, roomBatch) {
     const r = await cloudHealth.requestJsonOnce(
       "POST",
       base,
@@ -248,6 +270,7 @@ function createTerminalLanSync(deps) {
         register_number: num,
         sales: saleBatch.map((x) => x.payload),
         shifts: shiftBatch.map((x) => x.payload),
+        room_charges: roomBatch.map((x) => x.payload),
         status: registerReportStatus(num, "lan"),
       },
       15000,
@@ -264,15 +287,24 @@ function createTerminalLanSync(deps) {
     }
     const nSales = settleLanOutbox(saleBatch, parsed.accepted, parsed.rejected, db);
     const nShifts = settleLanOutbox(shiftBatch, parsed.accepted_shifts, parsed.rejected_shifts, db);
-    if (nSales || nShifts) {
-      console.log(`[lan-outbox] → Kryesore ${base}: ${nSales} shitje, ${nShifts} ndërrime`);
+    const nRoom = settleLanOutbox(
+      roomBatch,
+      parsed.accepted_room_charges,
+      parsed.rejected_room_charges,
+      db,
+    );
+    if (nSales || nShifts || nRoom) {
+      console.log(
+        `[lan-outbox] → Kryesore ${base}: ${nSales} shitje, ${nShifts} ndërrime, ${nRoom} faturë dhome`,
+      );
     }
   }
 
-  async function sendOutboxOverCloud(celesi, num, deviceId, saleBatch, shiftBatch) {
+  async function sendOutboxOverCloud(celesi, num, deviceId, saleBatch, shiftBatch, roomBatch) {
     const items = [
       ...saleBatch.map((x) => ({ kind: "sale", payload: x.payload })),
       ...shiftBatch.map((x) => ({ kind: "shift", payload: x.payload })),
+      ...roomBatch.map((x) => ({ kind: "room_charge", payload: x.payload })),
     ];
     const pushRes = await terminalRelay.pushQueueItems({
       celesi,
@@ -285,7 +317,7 @@ function createTerminalLanSync(deps) {
     if (queueIds.length && typeof db.setRelayLastPushedQueueId === "function") {
       db.setRelayLastPushedQueueId(Math.max(...queueIds));
     }
-    db.markLanOutboxSent([...saleBatch, ...shiftBatch].map((x) => x.id));
+    db.markLanOutboxSent([...saleBatch, ...shiftBatch, ...roomBatch].map((x) => x.id));
     if (pushRes?.primary_last_seen_at) {
       const online = terminalRelay.isMasterPrimaryOnlineOnCloud();
       console.log(
@@ -330,7 +362,7 @@ function createTerminalLanSync(deps) {
 
     const pending = db
       .getLanOutboxPending(50)
-      .filter((r) => (r.kind === "sale" || r.kind === "shift") && r.payload);
+      .filter((r) => (r.kind === "sale" || r.kind === "shift" || r.kind === "room_charge") && r.payload);
 
     const num = terminalRegisterNumber();
     const deviceId = String(license.getMachineId() || "").trim().toUpperCase();
@@ -342,7 +374,7 @@ function createTerminalLanSync(deps) {
         const base = await masterLanLocator.locate();
         if (base) {
           try {
-            await sendOutboxOverLan(base, celesi, num, deviceId, [], []);
+            await sendOutboxOverLan(base, celesi, num, deviceId, [], [], []);
             masterLanLocator.markOk();
             lastCloudPresenceAt = Date.now();
             return;
@@ -362,13 +394,14 @@ function createTerminalLanSync(deps) {
     }
     const saleBatch = pending.filter((x) => x.kind === "sale");
     const shiftBatch = pending.filter((x) => x.kind === "shift");
+    const roomBatch = pending.filter((x) => x.kind === "room_charge");
 
     outboxBusy = true;
     try {
       const base = await masterLanLocator.locate();
       if (base) {
         try {
-          await sendOutboxOverLan(base, celesi, num, deviceId, saleBatch, shiftBatch);
+          await sendOutboxOverLan(base, celesi, num, deviceId, saleBatch, shiftBatch, roomBatch);
           masterLanLocator.markOk();
           return;
         } catch (e) {
@@ -382,7 +415,7 @@ function createTerminalLanSync(deps) {
       }
 
       try {
-        await sendOutboxOverCloud(celesi, num, deviceId, saleBatch, shiftBatch);
+        await sendOutboxOverCloud(celesi, num, deviceId, saleBatch, shiftBatch, roomBatch);
       } catch (e) {
         const transient = e.code === "RELAY_UNAVAILABLE" || Number(e.status) >= 500;
         if (!transient) {
@@ -527,6 +560,7 @@ function createTerminalLanSync(deps) {
       const up = await pingMasterRegister(celesi);
       if (up) {
         await syncStaffFromMaster();
+        await syncOccupiedRoomsFromMaster();
         await syncMenuFromMaster();
         await syncStockFromMaster();
         await syncServicesFromMaster();

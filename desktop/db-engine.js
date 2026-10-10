@@ -1655,6 +1655,8 @@ function initSchema() {
           subtotal REAL NOT NULL DEFAULT 0,
           vat_amount REAL NOT NULL DEFAULT 0,
           grand_total REAL NOT NULL DEFAULT 0,
+          amount_paid REAL NOT NULL DEFAULT 0,
+          payment_status TEXT NOT NULL DEFAULT 'unpaid',
           order_id INTEGER,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1672,6 +1674,39 @@ function initSchema() {
           FOREIGN KEY (invoice_id) REFERENCES sales_invoices(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_sales_invoice_lines_inv ON sales_invoice_lines(invoice_id);
+      `);
+    },
+  );
+
+  migrateAddColumns(
+    "sales-invoice-payments-v1",
+    "sales_invoices",
+    [
+      ["amount_paid", "REAL NOT NULL DEFAULT 0"],
+      ["payment_status", "TEXT NOT NULL DEFAULT 'unpaid'"],
+    ],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "sales-invoice-payments-table-v1",
+    backupCtx,
+    () => !tableExists("sales_invoice_payments"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS sales_invoice_payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_id INTEGER NOT NULL,
+          payment_date TEXT NOT NULL,
+          amount REAL NOT NULL,
+          payment_method TEXT NOT NULL DEFAULT 'cash',
+          note TEXT NOT NULL DEFAULT '',
+          daily_log_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (invoice_id) REFERENCES sales_invoices(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_sales_invoice_payments_inv
+          ON sales_invoice_payments(invoice_id);
       `);
     },
   );
@@ -1715,6 +1750,153 @@ function initSchema() {
           claimed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         );
       `);
+    },
+  );
+
+  runSchemaMigration(
+    "stock-breakage-loss-v1",
+    backupCtx,
+    () => !tableExists("stock_breakage_loss"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS hotel_local_inventory (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          quantity REAL NOT NULL DEFAULT 0,
+          unit_cost REAL NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS stock_breakage_loss (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_type TEXT NOT NULL DEFAULT 'menu',
+          source_id INTEGER NOT NULL,
+          item_name TEXT NOT NULL DEFAULT '',
+          quantity REAL NOT NULL DEFAULT 0,
+          reason TEXT NOT NULL DEFAULT 'tjeter',
+          note TEXT NOT NULL DEFAULT '',
+          operator_name TEXT NOT NULL DEFAULT '',
+          operator_role TEXT NOT NULL DEFAULT '',
+          unit_cost REAL NOT NULL DEFAULT 0,
+          total_cost REAL NOT NULL DEFAULT 0,
+          expense_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+      `);
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_stock_breakage_loss_created ON stock_breakage_loss(created_at)");
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_stock_breakage_loss_reason ON stock_breakage_loss(reason)");
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_hotel_local_inventory_name ON hotel_local_inventory(name)");
+    },
+  );
+
+  runSchemaMigration(
+    "hotel-ingredients-recipes-v1",
+    backupCtx,
+    () => !tableExists("ingredients"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS ingredients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          unit TEXT NOT NULL DEFAULT 'copë'
+            CHECK (unit IN ('kg', 'l', 'copë')),
+          stock_qty REAL NOT NULL DEFAULT 0,
+          avg_cost_per_unit REAL NOT NULL DEFAULT 0,
+          min_stock_qty REAL NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredients_name_lower
+          ON ingredients (lower(trim(name)));
+        CREATE TABLE IF NOT EXISTS menu_recipe_lines (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          menu_item_id INTEGER NOT NULL,
+          ingredient_id INTEGER NOT NULL,
+          quantity_used REAL NOT NULL CHECK (quantity_used > 0),
+          FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE CASCADE,
+          FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE RESTRICT,
+          UNIQUE (menu_item_id, ingredient_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_menu_recipe_lines_menu ON menu_recipe_lines (menu_item_id);
+        CREATE INDEX IF NOT EXISTS idx_menu_recipe_lines_ingredient ON menu_recipe_lines (ingredient_id);
+      `);
+    },
+  );
+
+  migrateAddColumns(
+    "purchase-invoice-items-ingredient-id",
+    "purchase_invoice_items",
+    [["ingredient_id", "INTEGER"]],
+    backupCtx,
+  );
+
+  runSchemaMigration(
+    "hotel-stock-count-v1",
+    backupCtx,
+    () => !tableExists("stock_count_sessions"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS stock_count_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          counted_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          operator_name TEXT NOT NULL DEFAULT '',
+          operator_role TEXT NOT NULL DEFAULT '',
+          note TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'completed'
+        );
+        CREATE TABLE IF NOT EXISTS stock_count_lines (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          target_type TEXT NOT NULL CHECK (target_type IN ('ingredient', 'menu')),
+          target_id INTEGER NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          unit TEXT NOT NULL DEFAULT '',
+          system_qty REAL NOT NULL DEFAULT 0,
+          counted_qty REAL NOT NULL DEFAULT 0,
+          diff_qty REAL NOT NULL DEFAULT 0,
+          unit_cost REAL NOT NULL DEFAULT 0,
+          diff_value REAL NOT NULL DEFAULT 0,
+          FOREIGN KEY (session_id) REFERENCES stock_count_sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_stock_count_lines_session ON stock_count_lines(session_id);
+        CREATE INDEX IF NOT EXISTS idx_stock_count_lines_target ON stock_count_lines(target_type, target_id);
+      `);
+    },
+  );
+
+  runSchemaMigration(
+    "hotel-qr-venues-v1",
+    backupCtx,
+    () => !tableExists("hotel_qr_venues"),
+    () => {
+      sqlExec(`
+        CREATE TABLE IF NOT EXISTS hotel_qr_venues (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          table_number INTEGER NOT NULL UNIQUE,
+          venue_code TEXT NOT NULL DEFAULT '',
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+      `);
+      sqlRun("CREATE INDEX IF NOT EXISTS idx_hotel_qr_venues_code ON hotel_qr_venues(venue_code)");
+    },
+  );
+  runSchemaMigration(
+    "room-charges-terminal-source-v1",
+    backupCtx,
+    () => {
+      const cols = sqlAll("PRAGMA table_info(room_charges)");
+      return !cols.some((c) => c.name === "source_device_id");
+    },
+    () => {
+      sqlRun("ALTER TABLE room_charges ADD COLUMN source_device_id TEXT");
+      sqlRun("ALTER TABLE room_charges ADD COLUMN source_ref INTEGER");
+      sqlRun(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_room_charges_terminal_source ON room_charges(source_device_id, source_ref) WHERE source_device_id IS NOT NULL AND source_ref IS NOT NULL",
+      );
     },
   );
   try {

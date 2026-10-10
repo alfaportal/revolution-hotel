@@ -106,6 +106,65 @@
       outline: 2px solid #fff;
       outline-offset: 2px;
     }
+    .login-zone-pick {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+    }
+    .login-zone-pick-label {
+      margin: 0 0 0.45rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+    }
+    .login-zone-active {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.55rem 0.65rem;
+      border-radius: 10px;
+      background: linear-gradient(145deg, #1e3a8a 0%, #2563eb 100%);
+      color: #fff;
+      box-shadow: 0 3px 10px rgba(37, 99, 235, 0.28);
+    }
+    .login-zone-active.login-zone-active--recepsion {
+      background: linear-gradient(145deg, #9a3412 0%, #ea580c 100%);
+      box-shadow: 0 3px 10px rgba(234, 88, 12, 0.28);
+    }
+    .login-zone-name {
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .login-zone-switch {
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.35rem 0.55rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      cursor: pointer;
+    }
+    .login-zone-switch:hover { background: rgba(255, 255, 255, 0.28); }
+    .login-zone-foot {
+      margin: 0.45rem 0 0;
+      font-size: 0.72rem;
+      color: #64748b;
+      line-height: 1.35;
+    }
+    .login-staff-zone-title {
+      margin: 0 0 0.65rem;
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
   </style>
 </head>
 <body class="staff-login-screen">
@@ -135,7 +194,7 @@
       <div id="panel-kryesor" class="staff-panel">
         <div class="staff-main-head">
           <h1>Hyrje në sistem</h1>
-          <p>Pronari (majtas) · Restorant ose Recepsion (djathtas) — zgjidhni zonën, pastaj PIN / RFID.</p>
+          <p>Pronari dhe zona e stafit (majtas) · PIN / RFID për zonën aktive (djathtas).</p>
         </div>
 
         <div class="login-split">
@@ -163,6 +222,14 @@
               <span class="login-feature-label">Kod emergjence</span>
               <span class="login-feature-hint">Harruat fjalëkalimin?</span>
             </button>
+            <div class="login-zone-pick" id="login-zone-pick" aria-live="polite">
+              <p class="login-zone-pick-label">Zona e hyrjes (staf)</p>
+              <div class="login-zone-active" id="login-zone-active">
+                <span class="login-zone-name" id="login-zone-name">Restoranti</span>
+                <button type="button" class="login-zone-switch" id="login-zone-switch">Ndërro</button>
+              </div>
+              <p class="login-zone-foot" id="login-zone-foot">PIN-i djathtas hyn në këtë zonë.</p>
+            </div>
           </div>
 
           <div class="login-col-divider" aria-hidden="true"></div>
@@ -175,18 +242,9 @@
               <ul class="login-online-preview" id="online-orders-preview" hidden></ul>
               <span class="login-feature-badge" id="online-orders-badge" hidden>0</span>
             </div>
-            <div class="login-staff-role-pick" id="login-staff-role-pick" role="group" aria-label="Zgjidhni zonën e punës">
-              <button type="button" class="login-role-btn login-role-btn--restaurant active" id="btn-login-role-restaurant" data-login-role="kamarier">
-                <span class="login-role-label">Restoranti</span>
-                <span class="login-role-hint">PIN hyrje → tavolina (kamarier)</span>
-              </button>
-              <button type="button" class="login-role-btn login-role-btn--recepsion" id="btn-login-role-recepsion" data-login-role="recepsion">
-                <span class="login-role-label">Recepsioni</span>
-                <span class="login-role-hint">PIN hyrje → dhomat &amp; hoteli</span>
-              </button>
-            </div>
+            <h2 class="login-col-title login-staff-zone-title" id="login-staff-zone-title">Restoranti</h2>
             <div class="pin-panel-wrap pin-panel-inline" id="pin-panel">
-              <p class="pin-hint" id="pin-hint-login">Shkruani PIN-in (6 shifra) ose skanoni kartelën RFID</p>
+              <p class="pin-hint" id="pin-hint-login">Shkruani PIN-in (4 shifra) ose skanoni kartelën RFID</p>
               <div class="pin-display" id="pin-display" aria-hidden="true">
                 <span class="pin-dot"></span>
                 <span class="pin-dot"></span>
@@ -301,9 +359,13 @@
           firmName.textContent = String(s.app_brand || lic.firm_name || "REVOLUTION HOTEL").toUpperCase();
         }
         const typeLabel = (s.business_subtype_label || s.business_type_label || "").trim();
-        const venueLabel = (
+        const displayName = (
           lic.client_name
-          || (typeLabel && name ? `${typeLabel} ${name}` : name)
+          || s.business_display_name
+          || name
+        ).trim();
+        const venueLabel = (
+          (typeLabel && displayName ? `${typeLabel} ${displayName}` : displayName)
           || s.app_brand
           || "Revolution HOTEL"
         ).trim();
@@ -748,38 +810,69 @@
         : (urlParams.get("mode") === "recepsion" ? "recepsion" : null));
     const isStaffOnlyLoginMode = staffLoginMode === "kamarier" || staffLoginMode === "recepsion";
     const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+    const PIN_ZONE_STORAGE_KEY = "hotel_pc_login_pin_zone";
     let selectedPinLoginMode = staffLoginMode || "kamarier";
     let personalWebToken = String(urlParams.get("w") || "").trim();
     let personalStaffId = staffInjected.staff_id ? Number(staffInjected.staff_id) : null;
     let personalStaffName = String(staffInjected.waiter_hint || "").trim();
+    let loginZoneLocked = false;
 
-    function syncLoginRoleButtons() {
-      document.querySelectorAll("[data-login-role]").forEach((btn) => {
-        const on = btn.getAttribute("data-login-role") === selectedPinLoginMode;
-        btn.classList.toggle("active", on);
-        btn.setAttribute("aria-pressed", on ? "true" : "false");
-      });
+    if (!isStaffOnlyLoginMode && !staffLoginMode) {
+      try {
+        const saved = localStorage.getItem(PIN_ZONE_STORAGE_KEY);
+        if (saved === "recepsion" || saved === "kamarier") selectedPinLoginMode = saved;
+      } catch { /* ignore */ }
     }
 
-    function handleLoginRolePick(e) {
-      const btn = e.target.closest("[data-login-role]");
-      if (!btn) return;
-      if (isStaffOnlyLoginMode && staffLoginMode) return;
-      selectedPinLoginMode = btn.getAttribute("data-login-role") === "recepsion" ? "recepsion" : "kamarier";
-      syncLoginRoleButtons();
+    function persistLoginZone() {
+      if (isStaffOnlyLoginMode || loginZoneLocked) return;
+      try {
+        localStorage.setItem(PIN_ZONE_STORAGE_KEY, selectedPinLoginMode);
+      } catch { /* ignore */ }
+    }
+
+    function pinDigitsHint() {
+      return selectedPinLoginMode === "recepsion" ? 6 : 4;
+    }
+
+    function pinSubmitLengths() {
+      return selectedPinLoginMode === "recepsion" ? [6] : [4, 6];
+    }
+
+    function shouldTryPinLogin() {
+      return pinSubmitLengths().includes(pinValue.length);
+    }
+
+    function syncLoginZoneUi() {
+      const isRecep = selectedPinLoginMode === "recepsion";
+      const zoneLabel = isRecep ? "Recepsioni" : "Restoranti";
+      const zoneName = document.getElementById("login-zone-name");
+      const zoneActive = document.getElementById("login-zone-active");
+      const zoneTitle = document.getElementById("login-staff-zone-title");
+      const zoneSwitch = document.getElementById("login-zone-switch");
+      if (zoneName) zoneName.textContent = zoneLabel;
+      if (zoneTitle) zoneTitle.textContent = zoneLabel;
+      zoneActive?.classList.toggle("login-zone-active--recepsion", isRecep);
+      if (zoneSwitch) zoneSwitch.hidden = loginZoneLocked || isStaffOnlyLoginMode;
+      const hint = document.getElementById("pin-hint-login");
+      if (hint && !isStaffOnlyLoginMode) {
+        hint.textContent = isRecep
+          ? "Shkruani PIN-in e recepsionit (6 shifra) ose skanoni kartelën RFID"
+          : "Shkruani PIN-in e restorantit (4 shifra) ose skanoni kartelën RFID";
+      }
+      persistLoginZone();
+    }
+
+    function toggleLoginZone() {
+      if (loginZoneLocked || isStaffOnlyLoginMode) return;
+      selectedPinLoginMode = selectedPinLoginMode === "recepsion" ? "kamarier" : "recepsion";
+      syncLoginZoneUi();
+      resetPin();
       shfaqGabim(gabimEl, "");
     }
-    const rolePick = document.getElementById("login-staff-role-pick");
-    rolePick?.addEventListener("click", handleLoginRolePick);
-    if (rolePick && coarsePointer) {
-      rolePick.addEventListener("touchend", (e) => {
-        if (!e.target.closest("[data-login-role]")) return;
-        e.preventDefault();
-        handleLoginRolePick(e);
-      }, { passive: false });
-    }
 
-    syncLoginRoleButtons();
+    document.getElementById("login-zone-switch")?.addEventListener("click", toggleLoginZone);
+    syncLoginZoneUi();
 
     (async function applyTerminalRoleFromPairing() {
       if (isStaffOnlyLoginMode) return;
@@ -792,9 +885,10 @@
         if (!lockRole) return;
         if (bound !== "recepsion" && bound !== "kamarier") return;
         selectedPinLoginMode = bound;
-        syncLoginRoleButtons();
-        const pick = document.getElementById("login-staff-role-pick");
-        if (pick) pick.hidden = true;
+        loginZoneLocked = true;
+        syncLoginZoneUi();
+        const zonePick = document.getElementById("login-zone-pick");
+        if (zonePick) zonePick.hidden = true;
         const head = document.querySelector(".staff-main-head h1");
         const sub = document.querySelector(".staff-main-head p");
         if (head) {
@@ -804,7 +898,7 @@
           sub.textContent =
             bound === "recepsion"
               ? "Terminal recepsioni — shkruani PIN-in (6 shifra)."
-              : "Terminal restorant — shkruani PIN-in (6 shifra).";
+              : "Terminal restorant — shkruani PIN-in (4 shifra).";
         }
       } catch {
         /* ignore */
@@ -813,7 +907,9 @@
 
     if (isStaffOnlyLoginMode) {
       selectedPinLoginMode = staffLoginMode;
-      syncLoginRoleButtons();
+      syncLoginZoneUi();
+      const zonePick = document.getElementById("login-zone-pick");
+      if (zonePick) zonePick.hidden = true;
     }
 
     function isStaffMobileLoginUi() {
@@ -833,11 +929,12 @@
       document.title = mode === "recepsion" ? "Recepsion — Revolution HOTEL" : "Restorant — Revolution HOTEL";
       const hint = document.getElementById("pin-hint-login");
       if (hint) {
+        const digits = mode === "recepsion" ? 6 : 4;
         hint.textContent = personalStaffName
-          ? `Shkruani PIN-in tuaj (6 shifra) — ${personalStaffName}`
+          ? `Shkruani PIN-in tuaj (${digits} shifra) — ${personalStaffName}`
           : (mode === "recepsion"
             ? "Shkruani PIN-in e recepsionit (6 shifra)"
-            : "Shkruani PIN-in tuaj (6 shifra)");
+            : "Shkruani PIN-in tuaj (4 shifra)");
       }
       const venueMark = document.getElementById("brand-venue-mark");
       if (venueMark) venueMark.hidden = false;
@@ -1038,7 +1135,7 @@
     }
 
     async function provoPinLogin() {
-      if (pinBusy || pinValue.length !== 6) return;
+      if (pinBusy || !shouldTryPinLogin()) return;
       pinBusy = true;
       shfaqGabim(gabimEl, "");
       const pinToSend = pinValue;
@@ -1098,8 +1195,8 @@
         }
         if (data.roli !== selectedPinLoginMode) {
           throw new Error(selectedPinLoginMode === "recepsion"
-            ? "Ky punonjës nuk është recepsion."
-            : "Ky punonjës nuk është kamarier (restorant).");
+            ? "Ky PIN është për Restorantin — kliko Ndërro."
+            : "Ky PIN është për Recepsionin — kliko Ndërro.");
         }
         await hyrSiKamarier(data);
       } catch (err) {
@@ -1114,7 +1211,7 @@
       if (pinBusy || pinValue.length >= 6) return;
       pinValue += d;
       perditesoPinDisplay();
-      if (pinValue.length === 6) provoPinLogin();
+      if (shouldTryPinLogin()) provoPinLogin();
     }
 
     function bindPinActionBtn(id, handler) {
@@ -1130,8 +1227,13 @@
     }
     bindPinActionBtn("pin-pastro", resetPin);
     bindPinActionBtn("pin-hyr", () => {
-      if (pinValue.length === 6) provoPinLogin();
-      else shfaqGabim(gabimEl, "Shkruani 6 shifra PIN (ose përdorni tastierën).");
+      if (shouldTryPinLogin()) provoPinLogin();
+      else {
+        const d = pinDigitsHint();
+        shfaqGabim(gabimEl, selectedPinLoginMode === "recepsion"
+          ? "Shkruani 6 shifra PIN (ose përdorni tastierën)."
+          : `Shkruani 4 shifra PIN (ose 6 për PIN të vjetër).`);
+      }
     });
 
     // Kamarieri fut PIN-in nga tastiera fizike ose skanon kartelën RFID (lexuesit RFID
@@ -1193,7 +1295,7 @@
           }
           clearTimeout(kbdIdleTimer);
           kbdIdleTimer = setTimeout(() => {
-            if (kbdBuffer.length === 6 && pinValue.length === 6) {
+            if (shouldTryPinLogin()) {
               pastroKbdBuffer();
               provoPinLogin();
             }
@@ -1211,7 +1313,7 @@
           kbdBuffer = "";
           if (buf.length > 6) {
             provoKarteLogin(buf);
-          } else if (pinValue.length === 6) {
+          } else if (shouldTryPinLogin()) {
             provoPinLogin();
           }
         }

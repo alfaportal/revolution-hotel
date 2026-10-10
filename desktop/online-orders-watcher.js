@@ -5,9 +5,17 @@
  */
 const cloudSync = require("./cloud-sync");
 
-const POLL_MS = 2000;
-/** Porosi që askush nuk prek — zhduken nga popup pas 60s (jo grace REFUZO 2 min). */
-const UNTOUCHED_PENDING_EXPIRE_MS = 60 * 1000;
+function isCloudWaiterDisabled(db) {
+  try {
+    return String(db.getSetting("cloud_waiter_disabled", "false")).trim().toLowerCase() === "true";
+  } catch {
+    return false;
+  }
+}
+
+const POLL_MS = 5000;
+/** Porosi pa PRANO — hiqen nga alarmi pas 15 min (sinkron me cloud). Grace REFUZO 2 min mbetet veç. */
+const UNTOUCHED_PENDING_EXPIRE_MS = 15 * 60 * 1000;
 const PRINTED_KEY = "online_orders_printed_ids";
 const LOCAL_ACK_KEY = "online_orders_local_ack_ids";
 const LOCAL_REFUSED_KEY = "online_orders_staff_refused";
@@ -211,10 +219,6 @@ function splitUntouchedExpiredPending(db, orders) {
   const expiredIds = [];
   for (const o of orders || []) {
     if (!o?.id) continue;
-    if (isLocalRecepcionGuestPending(o, db)) {
-      live.push(o);
-      continue;
-    }
     if (isInRefusalGraceOrder(o)) {
       live.push(o);
       continue;
@@ -231,6 +235,15 @@ function splitUntouchedExpiredPending(db, orders) {
 }
 
 function expireUntouchedPendingOrders(db, orderIds) {
+  if (typeof db?.removeRoomChargesForExpiredCloudOrder === "function") {
+    for (const id of orderIds || []) {
+      try {
+        db.removeRoomChargesForExpiredCloudOrder(id);
+      } catch (e) {
+        console.warn("[online-orders] folio undo:", e.message || e);
+      }
+    }
+  }
   purgeCloudResolvedOrders(db, orderIds);
 }
 
@@ -429,6 +442,7 @@ function isLoginNotifyPendingOrder(o, db) {
   if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
     return db.isRestaurantLoginNotifyOrder(o);
   }
+  if (typeof db?.isGuestRoomMenuOrder === "function" && db.isGuestRoomMenuOrder(o)) return true;
   if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) {
     return false;
   }
@@ -490,15 +504,26 @@ async function tick(db, printBarTicket) {
   const suppressIds = resolvedIds;
 
   // Auto-import: porositë me tavolinë nga cloud që nuk janë ende lokalisht
-  // - WEB-WAITER (kamarier nga telefoni) → importo gjithmonë
+  // - WEB-WAITER (kamarier nga telefoni) → importo, përveç kur cloud_waiter_disabled
   // - QR/kiosk të pranuara (nga bari ose gjetkë) → importo pasi nuk shfaqen më në pending
   if (data.ok !== false && data.connected && typeof db.importCloudOrderToLocal === "function") {
     const ordersToAutoImport = allOrders.filter(o => {
       if (!o?.id) return false;
       if ((Number(o.table_number) || 0) <= 0) return false;
-      if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) return false;
       const device = String(o.device_id || "").trim().toUpperCase();
-      if (device === "WEB-WAITER") return false;
+      if (device === "WEB-WAITER") {
+        if (isCloudWaiterDisabled(db)) {
+          console.log("[watcher] SKIP WEB-WAITER import — cloud kamarieri i çaktivizuar");
+          return false;
+        }
+        if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
+          return false;
+        }
+        return true;
+      }
+      if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
+        return false;
+      }
       if (
         typeof db.isQrTableOrderSubjectToAcceptGate === "function"
         && db.isQrTableOrderSubjectToAcceptGate(o)
@@ -512,10 +537,21 @@ async function tick(db, printBarTicket) {
     });
     for (const order of ordersToAutoImport) {
       try {
-        const wName = String(
-          order.accepted_by_waiter_name || order.accepted_by || order.waiter_name || "Kamarier"
+        const isQrTable =
+          typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+          && db.isQrTableOrderSubjectToAcceptGate(order);
+        let wName = String(
+          order.accepted_by_waiter_name || order.accepted_by || order.waiter_name || "",
         ).trim();
+        if (isQrTable) {
+          if (!wName || typeof db.isLocalWaiterStaffName !== "function" || !db.isLocalWaiterStaffName(wName)) {
+            continue;
+          }
+        } else if (!wName) {
+          wName = "Kamarier";
+        }
         const imported = db.importCloudOrderToLocal(order, wName);
+        if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) continue;
         void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
       } catch {
         /* artikujt mund të mos njohen lokalisht — injorohet */

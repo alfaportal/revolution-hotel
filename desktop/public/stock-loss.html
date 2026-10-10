@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thyerje dhe humbje</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; background: #f8fafc; color: #0f172a; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+    label { display: block; font-size: 0.85rem; margin: 0.5rem 0 0.2rem; color: #475569; }
+    select, input, textarea, button { font: inherit; width: 100%; box-sizing: border-box; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #cbd5e1; }
+    textarea { min-height: 3rem; resize: vertical; }
+    button { margin-top: 1rem; background: #4f46e5; color: #fff; border: none; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .msg { margin-top: 0.75rem; font-size: 0.9rem; }
+    .msg.err { color: #b91c1c; }
+    .msg.ok { color: #15803d; }
+    .hint { font-size: 0.8rem; color: #64748b; margin: 0.25rem 0 0; }
+    .back { display: inline-block; margin-bottom: 0.75rem; color: #4f46e5; text-decoration: none; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <a class="back" href="javascript:history.back()">← Kthehu</a>
+  <h1>Thyerje dhe humbje</h1>
+  <p class="hint">Regjistron uljen e stokut dhe humbjen në kontabilitet (jo shitje).</p>
+
+  <label for="src-type">Lloji</label>
+  <select id="src-type">
+    <option value="menu">Mall stoku (menu)</option>
+    <option value="local">Inventar i lokalit</option>
+  </select>
+
+  <label for="src-id">Artikulli</label>
+  <select id="src-id"></select>
+  <p class="hint" id="stock-hint"></p>
+
+  <label for="qty">Sasia</label>
+  <input id="qty" type="number" min="0.01" step="0.01" inputmode="decimal">
+
+  <label for="reason">Arsyeja</label>
+  <select id="reason"></select>
+
+  <label for="note">Shënim (opsional)</label>
+  <textarea id="note" maxlength="500" placeholder="Detaje…"></textarea>
+
+  <button type="button" id="btn-save">Regjistro humbjen</button>
+  <div class="msg" id="msg"></div>
+
+  <script src="/js/app.js?v=6"></script>
+  <script>
+    let catalog = { menu_items: [], local_inventory: [], reasons: [] };
+
+    function setMsg(text, ok) {
+      const el = document.getElementById("msg");
+      el.textContent = text || "";
+      el.className = "msg" + (text ? (ok ? " ok" : " err") : "");
+    }
+
+    function refillItems() {
+      const type = document.getElementById("src-type").value;
+      const sel = document.getElementById("src-id");
+      const list = type === "local" ? catalog.local_inventory : catalog.menu_items;
+      sel.innerHTML = list.map((it) => {
+        const stock = type === "local" ? it.quantity : it.stock_qty;
+        return `<option value="${it.id}">${it.name} (stok: ${stock})</option>`;
+      }).join("") || "<option value=\"\">— Nuk ka artikuj —</option>";
+      updateStockHint();
+    }
+
+    function updateStockHint() {
+      const type = document.getElementById("src-type").value;
+      const id = Number(document.getElementById("src-id").value);
+      const list = type === "local" ? catalog.local_inventory : catalog.menu_items;
+      const it = list.find((x) => Number(x.id) === id);
+      const stock = it ? (type === "local" ? it.quantity : it.stock_qty) : "—";
+      document.getElementById("stock-hint").textContent = it ? `Stoku aktual: ${stock}` : "";
+    }
+
+    async function boot() {
+      if (!lexoSesionin()?.token) {
+        setMsg("Sesioni mungon. Hyni përsëri nga paneli i stafit.", false);
+        return;
+      }
+      try {
+        catalog = await api("/api/stock-breakage/items");
+        document.getElementById("reason").innerHTML = (catalog.reasons || []).map((r) =>
+          `<option value="${r.code}">${r.label}</option>`,
+        ).join("");
+        refillItems();
+      } catch (e) {
+        setMsg(e.message, false);
+      }
+    }
+
+    document.getElementById("src-type").addEventListener("change", refillItems);
+    document.getElementById("src-id").addEventListener("change", updateStockHint);
+
+    document.getElementById("btn-save").addEventListener("click", async () => {
+      const btn = document.getElementById("btn-save");
+      btn.disabled = true;
+      setMsg("Duke ruajtur…", true);
+      try {
+        const r = await api("/api/stock-breakage", {
+          method: "POST",
+          body: JSON.stringify({
+            source_type: document.getElementById("src-type").value,
+            source_id: Number(document.getElementById("src-id").value),
+            quantity: Number(document.getElementById("qty").value),
+            reason: document.getElementById("reason").value,
+            note: document.getElementById("note").value.trim(),
+          }),
+        });
+        setMsg(
+          `U regjistrua: ${r.item_name} × ${r.quantity}. Stoku: ${r.stock_after}. Humbje: ${Number(r.total_cost).toFixed(2)} €`,
+          true,
+        );
+        document.getElementById("qty").value = "";
+        document.getElementById("note").value = "";
+        catalog = await api("/api/stock-breakage/items");
+        refillItems();
+      } catch (e) {
+        setMsg(e.message, false);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    boot();
+  </script>
+</body>
+</html>
