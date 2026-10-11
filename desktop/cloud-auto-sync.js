@@ -1,6 +1,6 @@
 /**
  * Sync automatik me cloud — pa butona manualë.
- * - Health check çdo 10s (cloud-health)
+ * - Health check çdo 20s (cloud-health)
  * - Lidhje cloud (checkConnection) çdo 5 min
  * - Shitje telefon/web-waiter çdo 5 min
  * - Staff / fjalëkalim admin çdo 4 orë
@@ -17,6 +17,16 @@ const license = require("./license");
 function isSecondaryCashRegister() {
   try {
     return license.terminalRegisterNumber() >= 2;
+  } catch {
+    return false;
+  }
+}
+
+function isCloudWaiterDisabled(db) {
+  try {
+    const target = db || boundDb;
+    if (!target?.getSetting) return false;
+    return String(target.getSetting("cloud_waiter_disabled", "false")).trim().toLowerCase() === "true";
   } catch {
     return false;
   }
@@ -198,7 +208,7 @@ async function runLicenseCheck(db) {
 }
 
 async function runClosedWaiterSalesSync(db) {
-  if (!canRunCloudSideJobs(db)) return;
+  if (!canRunCloudSideJobs(db) || isCloudWaiterDisabled(db)) return;
   if (waiterClosedSyncInFlight) return;
   waiterClosedSyncInFlight = true;
   try {
@@ -227,7 +237,7 @@ async function runOwnerAdminPasswordSync(db) {
 }
 
 async function runStaffPushSync(db) {
-  if (!canRunCloudSideJobs(db)) return;
+  if (!canRunCloudSideJobs(db) || isCloudWaiterDisabled(db)) return;
   if (staffPushInFlight) return;
   staffPushInFlight = true;
   try {

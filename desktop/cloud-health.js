@@ -11,13 +11,16 @@ const {
   hotelCloudApiPath,
 } = require("./cloud-server-url");
 
-const HEALTH_CHECK_MS = 10000;
+const HEALTH_CHECK_MS = 20000;
 const REQUEST_TIMEOUT_MS = 8000;
+/** Pairing / join — kohë për të futur kod + email dhe përgjigje cloud (jo 8s). */
+const TERMINAL_PAIR_TIMEOUT_MS = 2 * 60 * 1000;
 const OUTAGE_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
 
 let activeServerUrl = PRIMARY_CLOUD_SERVER;
 let healthTimer = null;
 let healthChecksDone = 0;
+let healthCheckInFlight = false;
 let reconnectCallbacks = [];
 let boundDb = null;
 let lastOutageAlertAt = 0;
@@ -224,6 +227,9 @@ async function runHealthCheck() {
     return;
   }
 
+  if (healthCheckInFlight) return;
+  healthCheckInFlight = true;
+  try {
   healthChecksDone += 1;
   const wasOnline = lastHealth.online;
   const tried = [];
@@ -289,6 +295,9 @@ async function runHealthCheck() {
     console.warn("[cloud] Offline mode — të provuara:", tried.map(t => t.url).join(", "));
     logFailure("cloud_offline", { servers_tried: tried });
     reportOutageToCloud("cloud_offline", lastHealth.message, tried).catch(() => {});
+  }
+  } finally {
+    healthCheckInFlight = false;
   }
 }
 
@@ -356,6 +365,7 @@ async function requestJsonWithFallback(method, path, payload, options = {}) {
 
 module.exports = {
   HEALTH_CHECK_MS,
+  TERMINAL_PAIR_TIMEOUT_MS,
   bindCloudHealthDb,
   getPublicServerUrl,
   getActiveServerUrl,

@@ -14,8 +14,8 @@ function isCloudWaiterDisabled(db) {
 }
 
 const POLL_MS = 5000;
-/** Porosi pa PRANO — hiqen nga alarmi pas 15 min (sinkron me cloud). Grace REFUZO 2 min mbetet veç. */
-const UNTOUCHED_PENDING_EXPIRE_MS = 15 * 60 * 1000;
+/** Porosi që askush nuk prek — zhduken nga popup pas 60s (jo grace REFUZO 2 min). */
+const UNTOUCHED_PENDING_EXPIRE_MS = 60 * 1000;
 const PRINTED_KEY = "online_orders_printed_ids";
 const LOCAL_ACK_KEY = "online_orders_local_ack_ids";
 const LOCAL_REFUSED_KEY = "online_orders_staff_refused";
@@ -107,20 +107,27 @@ function isInRefusalGraceOrder(o, nowMs = Date.now()) {
   return new Date(exp).getTime() > nowMs;
 }
 
-function isExplicitlyAccepted(o) {
+function isExplicitlyAccepted(o, db) {
   if (!o) return false;
-  if (cloudSync.isCloudOrderAccepted?.(o)) return true;
-  if (o.accepted_at) return true;
+  if (typeof cloudSync.isCloudOrderAccepted === "function") {
+    return cloudSync.isCloudOrderAccepted(o, db);
+  }
+  if (
+    typeof db?.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(o)
+  ) {
+    return typeof db.isCloudOrderAcceptedForImport === "function"
+      && db.isCloudOrderAcceptedForImport(o);
+  }
+  if (o.accepted_at != null && String(o.accepted_at).trim() !== "") return true;
   if (String(o.accepted_by_waiter_name || "").trim()) return true;
-  const handler = String(o.accepted_by || "").trim();
-  const customer = String(o.customer_label || "").trim();
-  return !!(handler && handler !== customer);
+  return false;
 }
 
-function buildAcceptedIdSet(allOrders) {
+function buildAcceptedIdSet(allOrders, db) {
   const ids = new Set();
   for (const o of allOrders || []) {
-    if (o?.id && isExplicitlyAccepted(o)) ids.add(String(o.id));
+    if (o?.id && isExplicitlyAccepted(o, db)) ids.add(String(o.id));
   }
   return ids;
 }
@@ -166,7 +173,7 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
   const connected = !!data?.connected && data?.ok !== false;
 
   for (const o of [...(allOrders || []), ...(data?.orders || [])]) {
-    if (o?.id && isExplicitlyAccepted(o)) resolved.add(String(o.id));
+    if (o?.id && isExplicitlyAccepted(o, db)) resolved.add(String(o.id));
   }
 
   if (!connected) return resolved;
@@ -191,10 +198,10 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
   return resolved;
 }
 
-function orderStillPending(o, suppressIds) {
+function orderStillPending(o, suppressIds, db) {
   if (!o?.id) return false;
   if (suppressIds?.has(String(o.id))) return false;
-  if (isExplicitlyAccepted(o)) return false;
+  if (isExplicitlyAccepted(o, db)) return false;
   if (isInRefusalGraceOrder(o) && isOrderExpiredGrace(o)) return false;
   return true;
 }
@@ -338,13 +345,13 @@ function mergePending(db, cloudPending, localRows, suppressIds) {
   const byId = new Map();
   for (const o of cloudPending) {
     if (!o?.id || isLocallyAcked(db, o.id)) continue;
-    if (!orderStillPending(o, suppressIds)) continue;
+    if (!orderStillPending(o, suppressIds, db)) continue;
     byId.set(String(o.id), o);
   }
   for (const raw of localRows) {
     const o = normalizePendingOrder(raw);
     if (!o?.id || byId.has(String(o.id))) continue;
-    if (!orderStillPending(o, suppressIds)) continue;
+    if (!orderStillPending(o, suppressIds, db)) continue;
     if (!isLocallyAcked(db, o.id)) byId.set(String(o.id), o);
   }
   return [...byId.values()].sort((a, b) => orderSortKey(a).localeCompare(orderSortKey(b)));
@@ -439,7 +446,7 @@ function cloudReady(db) {
 }
 
 function isLoginNotifyPendingOrder(o, db) {
-  if (!o?.id || isExplicitlyAccepted(o)) return false;
+  if (!o?.id || isExplicitlyAccepted(o, db)) return false;
   if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
     return db.isRestaurantLoginNotifyOrder(o);
   }
@@ -455,7 +462,7 @@ function isLoginNotifyPendingOrder(o, db) {
 
 /** Radha lokale / snapshot — recepsion + restorant (jo vetëm alarmi i login-it të kamarierit). */
 function isLocalPendingQueueOrder(o, db) {
-  if (!o?.id || isExplicitlyAccepted(o)) return false;
+  if (!o?.id || isExplicitlyAccepted(o, db)) return false;
   if (typeof db?.isAnyStaffAcceptPendingOrder === "function" && db.isAnyStaffAcceptPendingOrder(o)) {
     return true;
   }
@@ -533,7 +540,7 @@ async function tick(db, printBarTicket) {
       ) {
         return false;
       }
-      if (isExplicitlyAccepted(o) && isPosAcceptQueueOrder(o, db)) return true;
+      if (isExplicitlyAccepted(o, db) && isPosAcceptQueueOrder(o, db)) return true;
       return false;
     });
     for (const order of ordersToAutoImport) {
@@ -588,7 +595,7 @@ async function tick(db, printBarTicket) {
   let cloudPending = (data.orders || []).map(normalizePendingOrder).filter(o => o?.id && isLoginNotifyPendingOrder(o, db));
 
   if (!cloudPending.length && allOrders.length) {
-    cloudPending = allOrders.filter(o => o?.id && !isExplicitlyAccepted(o) && isLoginNotifyPendingOrder(o, db));
+    cloudPending = allOrders.filter(o => o?.id && !isExplicitlyAccepted(o, db) && isLoginNotifyPendingOrder(o, db));
   }
 
   if (data.ok !== false && data.connected) {
@@ -607,10 +614,10 @@ async function tick(db, printBarTicket) {
     .filter(o => o?.id && !isLocalPendingQueueOrder(o, db))
     .map(o => o.id);
   safeRemoveLocalPending(db, staleLocalIds);
-  let finalPending = pendingOrders.filter(o => orderStillPending(o, suppressIds));
+  let finalPending = pendingOrders.filter(o => orderStillPending(o, suppressIds, db));
   if (!finalPending.length && !connected && (lastSnapshot.orders || []).length) {
     finalPending = lastSnapshot.orders.filter(
-      o => orderStillPending(o, suppressIds) && !isLocallyAcked(db, o.id),
+      o => orderStillPending(o, suppressIds, db) && !isLocallyAcked(db, o.id),
     );
   }
 
