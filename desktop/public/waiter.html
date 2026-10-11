@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
+  <link rel="stylesheet" href="/css/waiter-modern.css?v=13">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <style>
     #ekrani-tavolina.hidden { display: none !important; }
@@ -1683,16 +1683,13 @@
 
     function luajTingullPorosieWaiter(repeatOnly) {
       const n = waiterOnlineOrders.length;
+      if (!repeatOnly && n <= 0) return;
       if (typeof window.staffOrderAlert === "function") {
         if (repeatOnly) {
           window.staffOrderAlertRepeat?.();
           return;
         }
-        window.staffOrderAlert({
-          title: n === 1 ? "Porosi e re!" : `${n} porosi të reja!`,
-          body: "Hap ekranin e kamarierit dhe pranoje porosinë.",
-          tag: "waiter-online-pending",
-        });
+        window.staffOrderAlert();
         return;
       }
       dridhPorosieWaiter();

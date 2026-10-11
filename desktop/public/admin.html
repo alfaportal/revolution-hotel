@@ -2396,7 +2396,6 @@
 </head>
 <body class="admin-app">
   <div id="master-only-banner" class="master-only-banner" hidden role="status" aria-live="polite"></div>
-  <div id="pc-timezone-banner" class="master-only-banner" hidden role="alert" style="background:#b45309;color:#fff"></div>
   <div class="admin-shell">
     <header class="admin-topbar">
       <div class="admin-topbar-left">
@@ -3464,6 +3463,7 @@
             <select id="staf-roli">
               <option value="kamarier">Kamarier</option>
               <option value="recepsion">Recepsion</option>
+              <option value="pastrim">Pastrim</option>
             </select>
           </div>
           <div>
@@ -5420,11 +5420,23 @@
           <dt>Turi</dt>
           <dd id="staff-modal-shift">—</dd>
         </div>
-        <div class="staff-modal-row">
-          <dt>PIN</dt>
-          <dd><span id="staff-modal-pin" class="pin-mask"></span></dd>
-        </div>
       </dl>
+      <div class="staff-modal-rfid-block staff-modal-pin-block">
+        <label for="staff-modal-pin-input" id="staff-modal-pin-label">PIN</label>
+        <p id="staff-modal-pin-status" class="links-hint" style="margin:0.15rem 0 0.35rem"></p>
+        <input
+          type="password"
+          inputmode="numeric"
+          autocomplete="off"
+          id="staff-modal-pin-input"
+          class="staff-rfid-input"
+          placeholder="1234"
+          maxlength="6"
+        >
+        <div class="staff-rfid-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="staff-modal-pin-save-btn">Ruaj PIN-in</button>
+        </div>
+      </div>
       <div class="staff-modal-kds-block" id="staff-modal-cloud-waiter-block" hidden>
         <label for="staff-modal-cloud-waiter-url" id="staff-modal-cloud-waiter-label">Link për telefon</label>
         <input
@@ -5471,7 +5483,6 @@
         </div>
       </div>
       <div class="staff-modal-actions">
-        <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-pin-btn">Ndrysho PIN</button>
         <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-card-del-btn" hidden>Hiq kartelën</button>
         <button type="button" class="btn btn-danger btn-sm" id="staff-modal-delete-btn">Fshi punonjësin</button>
       </div>
@@ -7923,17 +7934,6 @@
 
     async function ngarkoSettings() {
       const s = await api("/api/settings");
-      const tzBanner = document.getElementById("pc-timezone-banner");
-      if (tzBanner) {
-        const warn = s.pc_timezone && s.pc_timezone.warning;
-        if (warn) {
-          tzBanner.hidden = false;
-          tzBanner.textContent = warn;
-        } else {
-          tzBanner.hidden = true;
-          tzBanner.textContent = "";
-        }
-      }
       if (Array.isArray(s.admin_tab_order) && s.admin_tab_order.length) {
         applyAdminTabOrder(s.admin_tab_order);
       }
@@ -15570,9 +15570,7 @@
         ? `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`
         : `${roleLabel} — PIN, link cloud + WiFi lokal, kartela RFID.`;
       document.getElementById("staff-modal-shift").textContent = s.shift_label || "—";
-      const pinEl = document.getElementById("staff-modal-pin");
-      pinEl.textContent = s.has_pin ? "••••" : "Nuk është vendosur";
-      pinEl.dataset.id = s.id;
+      syncStaffModalPinUi(s);
       const cardInput = document.getElementById("staff-modal-card-input");
       cardInput.value = s.has_card ? (s.card_uid || "") : "";
       document.getElementById("staff-modal-card-del-btn").hidden = !s.has_card;
@@ -15664,9 +15662,59 @@
       }
     });
 
-    document.getElementById("staff-modal-pin-btn").addEventListener("click", () => {
+    function syncStaffModalPinUi(staffRow) {
+      const s = staffRow || stafModalAktual;
+      const role =
+        document.getElementById("staff-modal-role")?.value ||
+        s?.staff_role ||
+        "kamarier";
+      const rules = staffPinRulesForRole(role);
+      const lab = document.getElementById("staff-modal-pin-label");
+      const inp = document.getElementById("staff-modal-pin-input");
+      const status = document.getElementById("staff-modal-pin-status");
+      if (lab) lab.textContent = rules.label;
+      if (inp) {
+        inp.placeholder = rules.placeholder;
+        inp.maxLength = role === "recepsion" ? 6 : 4;
+        inp.value = "";
+      }
+      if (status && s) {
+        status.textContent = s.has_pin
+          ? "PIN i vendosur — shkruani PIN të ri dhe klikoni Ruaj PIN-in."
+          : "Nuk ka PIN — vendoseni këtu.";
+      }
+    }
+
+    document.getElementById("staff-modal-role")?.addEventListener("change", () => {
+      syncStaffModalPinUi();
+    });
+
+    document.getElementById("staff-modal-pin-save-btn")?.addEventListener("click", async () => {
       if (!stafModalAktual) return;
-      filloEditimPin(stafModalAktual.id, document.getElementById("staff-modal-pin"));
+      const btn = document.getElementById("staff-modal-pin-save-btn");
+      const inp = document.getElementById("staff-modal-pin-input");
+      const role = document.getElementById("staff-modal-role")?.value || stafModalAktual.staff_role || "kamarier";
+      const rules = staffPinRulesForRole(role);
+      const pin = String(inp?.value || "").trim();
+      if (!rules.re.test(pin)) {
+        alert(rules.msg);
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await api(`/api/staff/${stafModalAktual.id}/pin`, {
+          method: "PUT",
+          body: JSON.stringify({ pin }),
+        });
+        stafModalAktual.has_pin = true;
+        if (inp) inp.value = "";
+        syncStaffModalPinUi(stafModalAktual);
+        await ngarkoStafin();
+      } catch (err) {
+        alert(err.message || "Gabim");
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     document.getElementById("staff-modal-save-profile")?.addEventListener("click", async () => {
@@ -15761,7 +15809,7 @@
 
     function staffPinRulesForRole(role) {
       const r = String(role || "kamarier").trim().toLowerCase();
-      if (r === "recepsion") {
+      if (r === "recepsion" || r === "pastrim") {
         return {
           re: /^\d{6}$/,
           msg: "PIN duhet të jetë 6 shifra",
@@ -15787,7 +15835,7 @@
       if (lab) lab.textContent = rules.label;
       if (inp) {
         inp.placeholder = rules.placeholder;
-        inp.maxLength = role === "recepsion" ? 6 : 4;
+        inp.maxLength = role === "recepsion" || role === "pastrim" ? 6 : 4;
       }
     }
     document.getElementById("staf-roli")?.addEventListener("change", syncStaffAddPinUi);
@@ -15801,7 +15849,7 @@
       const input = document.createElement("input");
       input.type="text";
       input.inputMode = "numeric";
-      input.maxLength = role === "recepsion" ? 6 : 4;
+      input.maxLength = role === "recepsion" || role === "pastrim" ? 6 : 4;
       input.className = "pin-edit-input";
       input.placeholder = rules.placeholder;
       cell.textContent = "";

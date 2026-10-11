@@ -1188,11 +1188,7 @@
 
     function playKasaRecepOrderBell() {
       if (typeof window.staffOrderAlert === "function") {
-        window.staffOrderAlert({
-          title: "Porosi e re!",
-          body: "Hap Porositë dhe pranoje kërkesën nga QR.",
-          tag: "kasa-recep-pending-order",
-        });
+        window.staffOrderAlert();
         return;
       }
       if (typeof window.playOrderAlarmSound === "function") {

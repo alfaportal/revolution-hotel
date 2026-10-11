@@ -488,18 +488,17 @@
       }
     }
 
-    function luajTingullPorosie(repeatOnly) {
-      const n = Number(lastOnlinePending) || 0;
+    function luajTingullPorosie(repeatOnly, pendingOverride) {
+      const n = pendingOverride != null
+        ? Number(pendingOverride) || 0
+        : Number(lastOnlinePending) || 0;
+      if (!repeatOnly && n <= 0) return;
       if (typeof window.staffOrderAlert === "function") {
         if (repeatOnly) {
           window.staffOrderAlertRepeat?.();
           return;
         }
-        window.staffOrderAlert({
-          title: n === 1 ? "Porosi e re!" : `${n} porosi të reja!`,
-          body: "Hap panelin e kamarierit dhe shtyp PRANO.",
-          tag: "login-online-pending",
-        });
+        window.staffOrderAlert();
         return;
       }
       if (typeof window.playOrderAlarmSound === "function") {
@@ -627,7 +626,7 @@
         if (!compactLogin) {
           btn?.classList.add("login-feature-online--flash-once");
           setTimeout(() => btn?.classList.remove("login-feature-online--flash-once"), 2400);
-          luajTingullPorosie();
+          luajTingullPorosie(false, displayCount);
           shfaqOnlineToast(displayCount);
           filloAlarmOnline();
         }
@@ -1464,11 +1463,7 @@
           if (isNew) {
             const n = displayCount;
             if (typeof window.staffOrderAlert === "function") {
-              window.staffOrderAlert({
-                title: n === 1 ? "Porosi e re!" : `${n} porosi të reja!`,
-                body: "Hap panelin e kamarierit dhe shtyp PRANO.",
-                tag: "staff-login-online-pending",
-              });
+              window.staffOrderAlert();
             }
             if (!staffLoginAlarmTimer) {
               staffLoginAlarmTimer = setInterval(() => {

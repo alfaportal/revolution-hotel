@@ -9161,7 +9161,9 @@ function getStaff() {
 
 function normalizeStaffRole(raw) {
   const r = String(raw || "kamarier").trim().toLowerCase();
-  return r === "recepsion" ? "recepsion" : "kamarier";
+  if (r === "recepsion" || r === "receptionist" || r === "recepsionist") return "recepsion";
+  if (r === "pastrim" || r === "pastrimi" || r === "housekeeping" || r === "sherbimi") return "pastrim";
+  return "kamarier";
 }
 
 function getStaffForAdmin() {

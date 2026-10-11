@@ -1013,16 +1013,13 @@
 
     function luajTingullPorosiRecep(repeatOnly) {
       const n = recepGuestServiceOrders.length;
+      if (!repeatOnly && n <= 0) return;
       if (typeof window.staffOrderAlert === "function") {
         if (repeatOnly) {
           window.staffOrderAlertRepeat?.();
           return;
         }
-        window.staffOrderAlert({
-          title: n === 1 ? "Kërkesë shërbimi!" : `${n} kërkesa shërbimesh!`,
-          body: "Hap recepsionin dhe pranoje kërkesën nga QR.",
-          tag: "recep-guest-service-pending",
-        });
+        window.staffOrderAlert();
         return;
       }
       dridhPorosiRecep();
