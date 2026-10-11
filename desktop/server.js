@@ -5623,9 +5623,47 @@ app.delete("/api/ingredients/:id", auth, adminOnly, (req, res) => {
   }
 });
 
+app.get("/api/menu/recipe-workbench", auth, adminOnly, (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().toLowerCase();
+    const items = (db.getMenuItems(false) || [])
+      .filter((m) => {
+        if (!q) return true;
+        return String(m.name || "").toLowerCase().includes(q)
+          || String(m.category || "").toLowerCase().includes(q);
+      })
+      .map((m) => {
+        const bundle = db.getMenuItemRecipeBundle(Number(m.id));
+        return {
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          price: m.price,
+          description: String(m.description || "").trim(),
+          has_recipe: !!bundle?.has_recipe,
+          portion_cost: bundle?.portion_cost ?? null,
+          profit_per_portion: bundle?.profit_per_portion ?? null,
+          portions_available: bundle?.portions_available ?? null,
+        };
+      });
+    res.json({ ok: true, items });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.get("/api/menu/:id/recipe", auth, adminOnly, (req, res) => {
   try {
-    res.json({ ok: true, recipe: db.getMenuItemRecipeBundle(Number(req.params.id)) });
+    const mid = Number(req.params.id);
+    const menu = typeof db.getMenuItemById === "function" ? db.getMenuItemById(mid) : null;
+    const recipe = db.getMenuItemRecipeBundle(mid);
+    res.json({
+      ok: true,
+      recipe: {
+        ...recipe,
+        description: String(menu?.description || "").trim(),
+      },
+    });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }

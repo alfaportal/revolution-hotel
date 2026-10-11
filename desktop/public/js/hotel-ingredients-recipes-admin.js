@@ -34,7 +34,7 @@
     }
     if (!ingredientsCache.length) {
       body.innerHTML =
-        '<tr><td colspan="6" style="color:var(--ngjyr-muted)">Nuk ka përbërës — shtoni më poshtë.</td></tr>';
+        '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka përbërës — krijoni te tab-i PËRBËRËSIT E RECETAVE.</td></tr>';
       return;
     }
     body.innerHTML = ingredientsCache
@@ -47,46 +47,9 @@
           <td class="n"${cls}>${fmt(ing.stock_qty, 3)}</td>
           <td class="n">${fmt(ing.avg_cost_per_unit, 4)} €</td>
           <td class="n">${fmt(ing.min_stock_qty, 3)}</td>
-          <td><button type="button" class="btn btn-ghost btn-sm" data-ing-del="${ing.id}">Fshi</button></td>
         </tr>`;
       })
       .join("");
-    body.querySelectorAll("[data-ing-del]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        if (!confirm("Fshi përbërësin? (vetëm nëse nuk ka recetë)")) return;
-        try {
-          await global.api(`/api/ingredients/${btn.dataset.ingDel}`, { method: "DELETE" });
-          await renderIngredientsPanel();
-        } catch (e) {
-          alert(e.message || "Fshirja dështoi");
-        }
-      });
-    });
-  }
-
-  function bindIngredientsForm() {
-    const form = document.getElementById("forma-ingredient-shto");
-    if (!form || form.dataset.bound) return;
-    form.dataset.bound = "1";
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const msg = document.getElementById("ingredient-form-msg");
-      try {
-        await global.api("/api/ingredients", {
-          method: "POST",
-          body: JSON.stringify({
-            name: document.getElementById("ing-emri")?.value?.trim(),
-            unit: document.getElementById("ing-unit")?.value || "copë",
-            min_stock_qty: Number(document.getElementById("ing-min")?.value) || 0,
-          }),
-        });
-        form.reset();
-        if (msg) msg.textContent = "U shtua.";
-        await renderIngredientsPanel();
-      } catch (err) {
-        if (msg) msg.textContent = err.message || "Gabim";
-      }
-    });
   }
 
   async function mountMenuRecipeEditor(card, menuItemId) {
@@ -335,7 +298,6 @@
   global.HotelIngredientsRecipes = {
     loadIngredients,
     renderIngredientsPanel,
-    bindIngredientsForm,
     mountMenuRecipeEditor,
     patchPurchaseLineHelpers,
     purchaseDescCellHtml,
@@ -347,7 +309,6 @@
   };
 
   document.addEventListener("DOMContentLoaded", () => {
-    bindIngredientsForm();
     initVarianceDates();
     const stokuPanel = document.getElementById("panel-stoku");
     if (stokuPanel) {

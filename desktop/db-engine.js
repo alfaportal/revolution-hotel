@@ -1161,6 +1161,7 @@ function initSchema() {
         "vat_category",
         "sort_order",
         "barcode",
+        "description",
       ].some((col) => !menuCols.some((c) => c.name === col));
     },
     () => {
@@ -1193,6 +1194,9 @@ function initSchema() {
       }
       if (!menuCols.some((c) => c.name === "barcode")) {
         sqlRun("ALTER TABLE menu_items ADD COLUMN barcode TEXT");
+      }
+      if (!menuCols.some((c) => c.name === "description")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN description TEXT NOT NULL DEFAULT ''");
       }
     },
   );

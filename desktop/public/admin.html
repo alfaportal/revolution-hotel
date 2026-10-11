@@ -2419,6 +2419,7 @@
     <nav class="admin-tabbar" id="tabs">
       <button type="button" class="admin-tab-btn active" data-panel="pasqyra">Pasqyra</button>
       <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
+      <button type="button" class="admin-tab-btn" data-panel="receta-perberesit">PËRBËRËSIT E RECETAVE</button>
       <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
       <button type="button" class="admin-tab-btn" data-panel="tavolinat">Tavolinat</button>
       <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
@@ -2709,6 +2710,50 @@
       </div>
     </section>
 
+    <!-- PËRBËRËSIT E RECETAVE -->
+    <section id="panel-receta-perberesit" class="panel">
+      <div class="card settings-card">
+        <div class="card-title">PËRBËRËSIT E RECETAVE</div>
+        <p class="field-hint" style="margin:0 0 0.75rem">
+          Vetëm receta — stoku i përbërësve shihet te <strong>Stoku</strong>, blerjet te <strong>Blerjet</strong>.
+          Shitja zbret përbërësit sipas recetës (si më parë).
+        </p>
+        <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:0.75rem">
+          <div style="flex:1;min-width:200px">
+            <label for="recipe-wb-search">Kërko produkt</label>
+            <input type="search" id="recipe-wb-search" placeholder="Emri i produktit…" autocomplete="off">
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-reload">Rifresko listën</button>
+        </div>
+        <div id="recipe-wb-list" class="recipe-wb-list" style="max-height:220px;overflow:auto;margin-bottom:1rem;border:1px solid var(--ngjyr-border,#2a3344);border-radius:8px"></div>
+        <div id="recipe-wb-editor" hidden>
+          <h3 id="recipe-wb-editor-title" style="margin:0 0 0.5rem"></h3>
+          <div id="recipe-wb-stats" class="field-hint" style="margin-bottom:0.5rem"></div>
+          <label for="recipe-wb-desc">Përshkrimi / përmbajtja (menu, QR, telefon)</label>
+          <textarea id="recipe-wb-desc" rows="2" maxlength="2000" style="width:100%;margin:0.25rem 0 0.75rem" placeholder="Domate, kastravec, djathë…"></textarea>
+          <div id="recipe-wb-lines"></div>
+          <div class="form-row" style="flex-wrap:wrap;gap:0.35rem;margin:0.5rem 0">
+            <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-add-line">+ Përbërës</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-fill-desc">Plotëso përshkrim nga përbërësit</button>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="recipe-wb-save">Ruaj recetën &amp; përshkrimin</button>
+          <span id="recipe-wb-msg" class="field-hint" style="margin-left:0.5rem"></span>
+        </div>
+        <div class="card settings-card" style="margin-top:1rem">
+          <div class="card-title">Përbërësit (emri — vetëm këtu)</div>
+          <p class="field-hint" style="margin:0 0 0.5rem">Ndrysho emrin ose fshi (vetëm nëse nuk ka recetë, stok, apo blerje).</p>
+          <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:0.5rem">
+            <div style="flex:1;min-width:180px">
+              <label for="recipe-wb-ing-search">Kërko përbërës</label>
+              <input type="search" id="recipe-wb-ing-search" placeholder="p.sh. mish" autocomplete="off">
+            </div>
+          </div>
+          <div id="recipe-wb-ing-list" style="max-height:200px;overflow:auto"></div>
+          <span id="recipe-wb-ing-msg" class="field-hint"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- STOKU -->
     <section id="panel-stoku" class="panel">
       <div class="purchases-panel-header">
@@ -2761,23 +2806,14 @@
           <strong>+ Shto stok</strong> dhe <strong>barcode</strong> krijojnë faturë blerjeje → <strong>Blerjet</strong> dhe <strong>Kontabilisti</strong>.
         </div>
         <div class="card settings-card" style="margin-bottom:1rem">
-          <div class="card-title">Përbërësit (receta / blerje kg·l)</div>
-          <p class="field-hint" style="margin:0 0 0.5rem">Blerjet mund të targetojnë përbërës — recetat lidhen te Menuja → Ndrysho artikullin.</p>
+          <div class="card-title">Përbërësit (stoku — vetëm lexim)</div>
+          <p class="field-hint" style="margin:0 0 0.5rem">Recetat: tab-i <strong>PËRBËRËSIT E RECETAVE</strong>. Blerjet e përbërësve: <strong>Blerjet</strong>.</p>
           <div style="overflow-x:auto;margin-bottom:0.75rem">
             <table class="purchases-table">
-              <thead><tr><th>Emri</th><th>Njësia</th><th>Stoku</th><th>Kosto/njësi</th><th>Min</th><th></th></tr></thead>
-              <tbody id="ingredients-table-body"><tr><td colspan="6">Hapni tab-in Stoku…</td></tr></tbody>
+              <thead><tr><th>Emri</th><th>Njësia</th><th>Stoku</th><th>Kosto/njësi</th><th>Min</th></tr></thead>
+              <tbody id="ingredients-table-body"><tr><td colspan="5">Hapni tab-in Stoku…</td></tr></tbody>
             </table>
           </div>
-          <form id="forma-ingredient-shto" class="form-row" style="flex-wrap:wrap;align-items:flex-end">
-            <div><label for="ing-emri">Emri</label><input type="text" id="ing-emri" required placeholder="p.sh. Mish"></div>
-            <div><label for="ing-unit">Njësia</label>
-              <select id="ing-unit"><option value="kg">kg</option><option value="l">l</option><option value="copë">copë</option></select>
-            </div>
-            <div><label for="ing-min">Stok minimal</label><input type="number" id="ing-min" min="0" step="any" value="0"></div>
-            <div style="flex:0"><label>&nbsp;</label><button type="submit" class="btn btn-primary btn-sm">Shto përbërës</button></div>
-          </form>
-          <span id="ingredient-form-msg" class="field-hint"></span>
         </div>
         <div class="card settings-card" style="margin-bottom:1rem">
           <div class="card-title">Numërim stoku &amp; humbje (përbërës + copë)</div>
@@ -6228,7 +6264,8 @@
   <script src="/js/i18n-client.js"></script>
   <script src="/js/cloud-status.js"></script>
   <script src="/js/hotel-inv-lines-shared.js?v=1"></script>
-  <script src="/js/hotel-ingredients-recipes-admin.js?v=1"></script>
+  <script src="/js/hotel-ingredients-recipes-admin.js?v=2"></script>
+  <script src="/js/hotel-recipe-workbench-admin.js?v=2"></script>
   <script src="/js/sales-invoice-html.js?v=2"></script>
   <script src="/js/sales-invoices-ui.js?v=2"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
@@ -8451,7 +8488,7 @@
                 <p class="menu-vat-hint" hidden></p>
                 <label class="menu-in-desc-label">Përmbajtja / Përshkrimi</label>
                 <textarea class="menu-in-desc" rows="3" maxlength="2000" placeholder="p.sh. Salcë domate, mozzarella, speca, proshutë…">${escMenuAttr(it.description || "")}</textarea>
-                <div class="menu-recipe-editor" style="margin-top:0.65rem"></div>
+                <p class="field-hint" style="margin:0.35rem 0 0">Receta: tab-i <strong>PËRBËRËSIT E RECETAVE</strong>.</p>
               </div>
               <div class="product-card-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-save="${it.id}">Ruaje</button>
@@ -8490,9 +8527,6 @@
         grid.appendChild(card);
         if (editing) {
           bindProductVatSmartMapping(card);
-          if (window.HotelIngredientsRecipes) {
-            HotelIngredientsRecipes.mountMenuRecipeEditor(card, it.id);
-          }
         }
       }
       if (canReorder) bindProductDragReorder(grid);

@@ -126,7 +126,31 @@ function createIngredientsRecipesApi(db) {
     const used = sqlite
       .prepare("SELECT 1 FROM menu_recipe_lines WHERE ingredient_id = ? LIMIT 1")
       .get(pid);
-    if (used) throw new Error("Përbërësi përdoret në receta — hiq recetën së pari");
+    if (used) {
+      throw new Error(
+        "Nuk mund ta fshish «" + row.name + "»: përdoret në receta. Hiqe nga recetat së pari.",
+      );
+    }
+    let hasPurchase = false;
+    try {
+      hasPurchase = !!sqlite
+        .prepare("SELECT 1 FROM purchase_invoice_items WHERE ingredient_id = ? LIMIT 1")
+        .get(pid);
+    } catch {
+      /* kolona mund të mungojë në DB shumë të vjetër */
+    }
+    if (hasPurchase) {
+      throw new Error(
+        "Nuk mund ta fshish «" + row.name + "»: ka blerje të regjistruara (Blerjet).",
+      );
+    }
+    const stock = Number(row.stock_qty) || 0;
+    if (Math.abs(stock) > 0.000001) {
+      throw new Error(
+        "Nuk mund ta fshish «" + row.name + "»: stoku nuk është zero ("
+          + roundQty(stock) + " " + row.unit + ").",
+      );
+    }
     sqlite.prepare("DELETE FROM ingredients WHERE id = ?").run(pid);
     return { id: pid, name: row.name };
   }

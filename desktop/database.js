@@ -2444,7 +2444,7 @@ function getMenuItems(activeOnly = true, opts = {}) {
   const photoCol = includePhoto
     ? "photo"
     : "CASE WHEN photo IS NOT NULL AND length(trim(COALESCE(photo,''))) > 0 THEN 1 ELSE 0 END AS has_photo";
-  const cols = `id, name, category, price, active, ${photoCol}, COALESCE(stock_qty, 0) AS stock_qty, COALESCE(low_stock_threshold, 0) AS low_stock_threshold, COALESCE(vat_category, '18') AS vat_category, COALESCE(sort_order, 0) AS sort_order, COALESCE(barcode, '') AS barcode`;
+  const cols = `id, name, category, price, active, ${photoCol}, COALESCE(stock_qty, 0) AS stock_qty, COALESCE(low_stock_threshold, 0) AS low_stock_threshold, COALESCE(vat_category, '18') AS vat_category, COALESCE(sort_order, 0) AS sort_order, COALESCE(barcode, '') AS barcode, COALESCE(description, '') AS description`;
   const sql = activeOnly
     ? `SELECT ${cols} FROM menu_items
        WHERE active = 1
@@ -2476,7 +2476,8 @@ function getMenuItemById(id) {
       COALESCE(low_stock_threshold, 0) AS low_stock_threshold,
       COALESCE(vat_category, '18') AS vat_category,
       COALESCE(sort_order, 0) AS sort_order,
-      COALESCE(barcode, '') AS barcode
+      COALESCE(barcode, '') AS barcode,
+      COALESCE(description, '') AS description
     FROM menu_items WHERE id = ?
   `).get(Number(id));
   if (!row) return null;
@@ -2621,7 +2622,7 @@ function updateMenuPrice(id, price) {
 }
 
 function updateMenuItem(id, {
-  name, category, price, low_stock_threshold, vat_category, stock_qty, barcode, operator_name,
+  name, category, price, low_stock_threshold, vat_category, stock_qty, barcode, description, operator_name,
 } = {}) {
   if (category && !categoryExists(category)) throw new Error("Kategoria nuk ekziston");
   const fields = [];
@@ -2650,6 +2651,10 @@ function updateMenuItem(id, {
     const bc = barcode == null ? "" : String(barcode).trim();
     fields.push("barcode = ?");
     vals.push(bc || null);
+  }
+  if (description !== undefined) {
+    fields.push("description = ?");
+    vals.push(String(description || "").trim().slice(0, 2000));
   }
   if (!fields.length && stockTarget == null) return;
   if (fields.length) {
