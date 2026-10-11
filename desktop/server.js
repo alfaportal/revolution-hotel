@@ -5,10 +5,12 @@ const {
   joinContent,
   listPublicStaticRoots,
   resolvePublicFile,
+  clearPublicOverlayOnAppUpgrade,
   pruneStalePublicOverlay,
   refreshStalePinLoginOverlay,
 } = require("./app-paths");
 try {
+  clearPublicOverlayOnAppUpgrade();
   pruneStalePublicOverlay();
   refreshStalePinLoginOverlay();
 } catch (e) {
@@ -5231,12 +5233,6 @@ app.get("/api/settings", auth, adminOnly, async (_req, res) => {
   } catch {
     /* mbaj VERSION.packageTier */
   }
-  payload.pc_timezone = {
-    business_tz: bizDate.BUSINESS_TZ,
-    system_tz: bizDate.systemTimezoneId(),
-    aligned: bizDate.isSystemTimezoneBusinessAligned(),
-    warning: bizDate.pcTimezoneMismatchWarning(),
-  };
   res.json(payload);
 });
 

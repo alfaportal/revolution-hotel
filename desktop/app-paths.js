@@ -44,6 +44,46 @@ function isPublicOverlayAllowed(rel) {
   return PUBLIC_OVERLAY_ALLOW.has(normalizePublicRel(rel));
 }
 
+const OVERLAY_VERSION_FILE = ".overlay-app-version";
+
+/** Pas Setup të ri: fshi skedarët e vjetër të public-overlay që e fshehin UI-në e paketës. */
+function clearPublicOverlayOnAppUpgrade() {
+  const overlay = publicOverlayRoot();
+  if (!overlay) return;
+  let current = "";
+  try {
+    current = String(require("./package.json").version || "").trim();
+  } catch {
+    return;
+  }
+  if (!current) return;
+  const marker = path.join(overlay, OVERLAY_VERSION_FILE);
+  let prev = "";
+  try {
+    prev = String(fs.readFileSync(marker, "utf8") || "").trim();
+  } catch {
+    /* first run */
+  }
+  if (prev && prev === current) return;
+
+  for (const rel of PUBLIC_OVERLAY_ALLOW) {
+    const abs = path.join(overlay, rel);
+    if (!fs.existsSync(abs)) continue;
+    try {
+      fs.unlinkSync(abs);
+      console.warn("[public-overlay] hequr pas përditësimit Setup:", rel);
+    } catch (e) {
+      console.warn("[public-overlay] clear on upgrade:", rel, e.message || e);
+    }
+  }
+  try {
+    fs.mkdirSync(overlay, { recursive: true });
+    fs.writeFileSync(marker, `${current}\n`, "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Heq admin.html / JS të vjetër nga overlay — ndryshe mbivendos Setup-in edhe pas reinstall. */
 function pruneStalePublicOverlay() {
   const overlay = publicOverlayRoot();
@@ -74,14 +114,7 @@ function pruneStalePublicOverlay() {
   walk(overlay, "");
 }
 
-/** login.html në overlay me PIN 4-shifror → zëvendëso nga paketa/burimi 6-shifror. */
-function refreshStalePinLoginOverlay() {
-  const overlay = publicOverlayRoot();
-  if (!overlay) return;
-  const rel = "login.html";
-  const overlayFile = path.join(overlay, rel);
-  if (!fs.existsSync(overlayFile)) return;
-
+function readBundledLoginHtml(rel = "login.html") {
   const candidates = [
     path.join(getAppContentRoot(), "public", rel),
     path.join(__dirname, "public", rel),
@@ -95,32 +128,68 @@ function refreshStalePinLoginOverlay() {
   } catch {
     /* ignore */
   }
-
-  let bundledFile = null;
   for (const c of candidates) {
     if (!c || !fs.existsSync(c)) continue;
     try {
       const text = fs.readFileSync(c, "utf8");
-      if (/pinValue\.length !== 6/.test(text)) {
-        bundledFile = c;
-        break;
-      }
+      const isNewZoneLayout =
+        /id="login-zone-pick"/.test(text) && !/btn-login-role-restaurant/.test(text);
+      if (isNewZoneLayout) return { path: c, text };
     } catch {
       /* provo kandidatin tjetër */
     }
   }
-  if (!bundledFile) return;
+  for (const c of candidates) {
+    if (!c || !fs.existsSync(c)) continue;
+    try {
+      return { path: c, text: fs.readFileSync(c, "utf8") };
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+function overlayLoginNeedsRefresh(overlayText, bundledText) {
+  if (!overlayText || !bundledText) return false;
+  const overlayUses4 =
+    /pinValue\.length !== 4/.test(overlayText) ||
+    /Shkruani PIN-in \(4 shifra\)/.test(overlayText);
+  const overlayOldZoneUi =
+    /btn-login-role-restaurant|id="login-role-btns"|class="login-role-btns"/.test(overlayText);
+  const bundledNewZoneUi =
+    /id="login-zone-pick"/.test(bundledText) &&
+    !/btn-login-role-restaurant/.test(bundledText);
+  return overlayUses4 || (overlayOldZoneUi && bundledNewZoneUi);
+}
+
+/** login.html në overlay — zëvendëso nga Setup kur PIN/zona UI është e vjetër. */
+function refreshStalePinLoginOverlay() {
+  const overlay = publicOverlayRoot();
+  if (!overlay) return;
+  const rel = "login.html";
+  const overlayFile = path.join(overlay, rel);
+  if (!fs.existsSync(overlayFile)) return;
+
+  const bundled = readBundledLoginHtml(rel);
+  if (!bundled) return;
 
   try {
     const overlayText = fs.readFileSync(overlayFile, "utf8");
-    const overlayUses4 =
-      /pinValue\.length !== 4/.test(overlayText) ||
-      /Shkruani PIN-in \(4 shifra\)/.test(overlayText);
-    if (!overlayUses4) return;
-    fs.copyFileSync(bundledFile, overlayFile);
-    console.warn("[public-overlay] login.html u përditësua (PIN 6 shifra).");
+    if (!overlayLoginNeedsRefresh(overlayText, bundled.text)) return;
+    fs.copyFileSync(bundled.path, overlayFile);
+    console.warn("[public-overlay] login.html u përditësua nga paketa (PIN/zona hyrje).");
   } catch (e) {
     console.warn("[public-overlay] refresh login.html:", e.message || e);
+    try {
+      const overlayText = fs.readFileSync(overlayFile, "utf8");
+      if (/btn-login-role-restaurant/.test(overlayText)) {
+        fs.unlinkSync(overlayFile);
+        console.warn("[public-overlay] login.html i vjetër u fshi — përdoret Setup.");
+      }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -134,7 +203,22 @@ function resolvePackagedPublicFile(segments) {
     const overlay = publicOverlayRoot();
     if (overlay && isPublicOverlayAllowed(rel)) {
       const overlayFile = path.join(overlay, rel);
-      if (fs.existsSync(overlayFile)) return overlayFile;
+      if (fs.existsSync(overlayFile)) {
+        if (rel === "login.html") {
+          try {
+            const ot = fs.readFileSync(overlayFile, "utf8");
+            if (/btn-login-role-restaurant|class="login-role-btns"/.test(ot)) {
+              /* overlay i vjetër — mos e prefero mbi Setup (refresh duhet ta zëvendësojë) */
+            } else {
+              return overlayFile;
+            }
+          } catch {
+            return overlayFile;
+          }
+        } else {
+          return overlayFile;
+        }
+      }
     }
     const resourcesPath = process.resourcesPath;
     if (resourcesPath) {
@@ -193,6 +277,7 @@ module.exports = {
   joinContent,
   listPublicStaticRoots,
   resolvePublicFile,
+  clearPublicOverlayOnAppUpgrade,
   pruneStalePublicOverlay,
   refreshStalePinLoginOverlay,
   isPublicOverlayAllowed,

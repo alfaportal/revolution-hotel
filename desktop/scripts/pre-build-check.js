@@ -12,6 +12,8 @@ const { spawnSync } = require("child_process");
 const hotelDir = path.join(__dirname, "..");
 const testFile = path.join(hotelDir, "tests", "protected-functions.test.js");
 
+require("./validate-build-manifest.js").runBuildManifestValidation();
+
 console.log("[pre-build] Duke testuar funksionet e mbrojtura (PROTECTED-FUNCTIONS.md)...");
 
 const result = spawnSync(process.execPath, [testFile], {

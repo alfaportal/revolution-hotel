@@ -12,6 +12,7 @@ const path = require("path");
 
 const ROOT = __dirname;
 const PROTECTED_DIR = path.join(ROOT, ".protected-build");
+const BUILD_SOURCE_BACKUP = path.join(ROOT, ".build-source-backup");
 const DIST_DIR = path.join(ROOT, "dist");
 const OBFUSCATE_SCRIPT = path.join(ROOT, "scripts", "obfuscate-build.mjs");
 const {
@@ -125,6 +126,46 @@ function regionForBuild() {
 function rimraf(dir) {
   if (!fs.existsSync(dir)) return;
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+function assertBuildSafeToStart() {
+  if (fs.existsSync(BUILD_SOURCE_BACKUP)) {
+    console.error(
+      "\n[build] NDALOHET: ekziston .build-source-backup/ — build i mëparshëm u ndal në mes.\n" +
+        "Rikthe package.json nga backup ose fshi folderin (me leje të Naserit), pastaj provo përsëri.\n",
+    );
+    process.exit(1);
+  }
+  const { runBuildManifestValidation } = require(path.join(
+    ROOT,
+    "scripts",
+    "validate-build-manifest.js",
+  ));
+  try {
+    runBuildManifestValidation({ skipBackupCheck: true });
+  } catch (e) {
+    console.error("[build] Kontrolli i manifestit dështoi:", e.message || e);
+    process.exit(1);
+  }
+}
+
+function backupPackageJsonForBuild() {
+  const pkgPath = path.join(ROOT, "package.json");
+  fs.mkdirSync(BUILD_SOURCE_BACKUP, { recursive: true });
+  fs.copyFileSync(pkgPath, path.join(BUILD_SOURCE_BACKUP, "package.json"));
+}
+
+function clearBuildSourceBackup() {
+  rimraf(BUILD_SOURCE_BACKUP);
+}
+
+function restorePackageJsonFromBuildBackup() {
+  const bak = path.join(BUILD_SOURCE_BACKUP, "package.json");
+  const pkgPath = path.join(ROOT, "package.json");
+  if (fs.existsSync(bak)) {
+    fs.copyFileSync(bak, pkgPath);
+    console.warn("[build] package.json u rikthye nga .build-source-backup (build i ndërprerë).");
+  }
 }
 
 function prepareObfuscatedBuild() {
@@ -363,7 +404,7 @@ function buildOne(pkg) {
   }
 }
 
-function cleanup() {
+function cleanup(buildSucceeded) {
   rimraf(PROTECTED_DIR);
   try {
     const leftover = path.join(ROOT, "electron-builder.tier.json");
@@ -373,6 +414,10 @@ function cleanup() {
   }
   writeTierFile(ROOT, DEFAULT_TIER);
   writeRegionFile(ROOT, DEFAULT_REGION);
+  if (!buildSucceeded) {
+    restorePackageJsonFromBuildBackup();
+  }
+  clearBuildSourceBackup();
 }
 
 function main() {
@@ -393,7 +438,10 @@ function main() {
     process.exit(1);
   }
 
+  let buildSucceeded = false;
   try {
+    assertBuildSafeToStart();
+    backupPackageJsonForBuild();
     const pkgPath = path.join(ROOT, "package.json");
     const pkgRoot = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
     const prevVer = String(pkgRoot.version || "").trim();
@@ -437,8 +485,9 @@ function main() {
       projectPrefix: "Revolution HOTEL",
       desktopPrimary: "Revolution HOTEL Setup.exe",
     });
+    buildSucceeded = true;
   } finally {
-    cleanup();
+    cleanup(buildSucceeded);
   }
 }
 

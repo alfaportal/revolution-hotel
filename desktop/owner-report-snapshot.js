@@ -4,6 +4,7 @@
  */
 const crypto = require("crypto");
 const { buildOwnerReportAnalytics } = require("./owner-report-analytics");
+const { buildOwnerPanelSnapshot, departmentLabel } = require("./owner-panel-snapshot");
 const { businessYmd } = require("./lib/hotel-business-date");
 
 function fixRound(n) {
@@ -119,7 +120,7 @@ function listClosedShiftsForDay(db, date) {
   const sqlite = db.db;
   if (!sqlite) return [];
   const rows = sqlite.prepare(`
-    SELECT ws.id, ws.waiter_name, ws.opened_at, ws.closed_at,
+    SELECT ws.id, ws.waiter_name, ws.staff_id, ws.opened_at, ws.closed_at,
       ws.opening_cash, ws.closing_cash_actual, ws.expected_closing_cash,
       ws.cash_sales_total, ws.card_sales_total, ws.total_sales, ws.cash_difference,
       s.staff_role
@@ -129,20 +130,41 @@ function listClosedShiftsForDay(db, date) {
       AND date(ws.closed_at) = date(?)
     ORDER BY ws.closed_at ASC
   `).all(date);
-  return rows.map((r) => ({
-    shift_id: r.id,
-    waiter_name: r.waiter_name,
-    staff_role: r.staff_role || "",
-    opened_at: r.opened_at,
-    closed_at: r.closed_at,
-    opening_cash: fixRound(r.opening_cash),
-    closing_cash_actual: fixRound(r.closing_cash_actual),
-    expected_closing_cash: fixRound(r.expected_closing_cash),
-    cash_sales_total: fixRound(r.cash_sales_total),
-    card_sales_total: fixRound(r.card_sales_total),
-    total_sales: fixRound(r.total_sales),
-    cash_difference: fixRound(r.cash_difference),
-  }));
+  return rows.map((r) => {
+    const staffRole = r.staff_role || "";
+    const dept = departmentLabel(staffRole);
+    const sessionRole =
+      String(staffRole || "").toLowerCase() === "recepsion" ? "recepsion" : "kamarier";
+    let pay = {
+      cash_total: fixRound(r.cash_sales_total),
+      card_total: fixRound(r.card_sales_total),
+      room_total: 0,
+    };
+    if (typeof db.computeShiftTotals === "function") {
+      const t = db.computeShiftTotals(r.id, r.staff_id, r.waiter_name, sessionRole);
+      pay = {
+        cash_total: fixRound(t.cash_total),
+        card_total: fixRound(t.card_total),
+        room_total: fixRound(t.room_total),
+      };
+    }
+    return {
+      shift_id: r.id,
+      waiter_name: r.waiter_name,
+      staff_role: staffRole,
+      department: dept,
+      opened_at: r.opened_at,
+      closed_at: r.closed_at,
+      opening_cash: fixRound(r.opening_cash),
+      closing_cash_actual: fixRound(r.closing_cash_actual),
+      expected_closing_cash: fixRound(r.expected_closing_cash),
+      cash_sales_total: pay.cash_total,
+      card_sales_total: pay.card_total,
+      room_total: pay.room_total,
+      total_sales: fixRound(r.total_sales),
+      cash_difference: fixRound(r.cash_difference),
+    };
+  });
 }
 
 function snapshotFingerprint(body) {
@@ -201,6 +223,7 @@ function buildOwnerDailySnapshot(db, reportDate) {
     reception_collected: rep.reception_collected || null,
     by_source: rep.by_source || null,
     pc_analytics: buildOwnerReportAnalytics(db, date),
+    owner_panel: buildOwnerPanelSnapshot(db),
   };
 
   const computed_at = new Date().toISOString();
