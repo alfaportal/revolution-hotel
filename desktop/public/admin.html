@@ -2725,6 +2725,9 @@
           </div>
           <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-reload">Rifresko listën</button>
         </div>
+        <p class="field-hint" style="margin:0 0 0.5rem">
+          Kliko një produkt për t'i shtuar ose ndryshuar recetën (përbërësit dhe sasitë për 1 porcion).
+        </p>
         <div id="recipe-wb-list" class="recipe-wb-list" style="max-height:220px;overflow:auto;margin-bottom:1rem;border:1px solid var(--ngjyr-border,#2a3344);border-radius:8px"></div>
         <div id="recipe-wb-editor" hidden>
           <h3 id="recipe-wb-editor-title" style="margin:0 0 0.5rem"></h3>
@@ -2742,6 +2745,23 @@
         <div class="card settings-card" style="margin-top:1rem">
           <div class="card-title">Përbërësit (emri — vetëm këtu)</div>
           <p class="field-hint" style="margin:0 0 0.5rem">Ndrysho emrin ose fshi (vetëm nëse nuk ka recetë, stok, apo blerje).</p>
+          <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;gap:0.35rem;margin-bottom:0.5rem">
+            <div style="min-width:160px;flex:1">
+              <label for="recipe-wb-ing-new-name">Emri i përbërësit</label>
+              <input type="text" id="recipe-wb-ing-new-name" autocomplete="off" placeholder="p.sh. Domate">
+            </div>
+            <div style="min-width:100px">
+              <label for="recipe-wb-ing-new-unit">Njësia</label>
+              <select id="recipe-wb-ing-new-unit">
+                <option value="kg">kg</option>
+                <option value="l">l</option>
+                <option value="copë">copë</option>
+              </select>
+            </div>
+            <div style="align-self:flex-end">
+              <button type="button" class="btn btn-primary btn-sm" id="recipe-wb-ing-add">+ Shto përbërës</button>
+            </div>
+          </div>
           <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:0.5rem">
             <div style="flex:1;min-width:180px">
               <label for="recipe-wb-ing-search">Kërko përbërës</label>

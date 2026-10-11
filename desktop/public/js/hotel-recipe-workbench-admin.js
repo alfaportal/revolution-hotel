@@ -235,6 +235,54 @@
     });
   }
 
+  function clearWorkbenchTabMessages() {
+    const ingMsg = document.getElementById("recipe-wb-ing-msg");
+    const wbMsg = document.getElementById("recipe-wb-msg");
+    if (ingMsg) ingMsg.textContent = "";
+    if (wbMsg) wbMsg.textContent = "";
+  }
+
+  function ingredientNameExists(name) {
+    const nm = String(name || "").trim().toLowerCase();
+    if (!nm) return false;
+    return (global.__recipeWbIngredients || []).some(
+      (ing) => String(ing.name || "").trim().toLowerCase() === nm,
+    );
+  }
+
+  async function addIngredientFromForm() {
+    const msg = document.getElementById("recipe-wb-ing-msg");
+    const nameInp = document.getElementById("recipe-wb-ing-new-name");
+    const unitSel = document.getElementById("recipe-wb-ing-new-unit");
+    const nm = String(nameInp?.value || "").trim();
+    if (!nm) {
+      if (msg) msg.textContent = "Shkruani emrin e përbërësit.";
+      return;
+    }
+    await ensureIngredients();
+    if (ingredientNameExists(nm)) {
+      if (msg) msg.textContent = "Ky përbërës ekziston.";
+      return;
+    }
+    const unit = String(unitSel?.value || "kg").trim();
+    try {
+      await global.api("/api/ingredients", {
+        method: "POST",
+        body: JSON.stringify({ name: nm, unit, min_stock_qty: 0 }),
+      });
+      if (msg) msg.textContent = `U shtua: ${nm}`;
+      if (nameInp) nameInp.value = "";
+      await ensureIngredients();
+      renderLines();
+      await renderIngredientsManage();
+      if (global.HotelIngredientsRecipes?.renderIngredientsPanel) {
+        HotelIngredientsRecipes.renderIngredientsPanel().catch(() => {});
+      }
+    } catch (e) {
+      if (msg) msg.textContent = e.message || "Gabim";
+    }
+  }
+
   async function renderIngredientsManage() {
     const host = document.getElementById("recipe-wb-ing-list");
     const msg = document.getElementById("recipe-wb-ing-msg");
@@ -327,11 +375,22 @@
       return;
     }
     list.innerHTML = `<table class="purchases-table" style="width:100%">
-      <thead><tr><th></th><th>Produkti</th><th>Kategoria</th><th>Çmimi</th><th>Kosto</th><th>Porcione</th></tr></thead>
+      <thead><tr>
+        <th>Receta</th>
+        <th>Produkti</th>
+        <th>Kategoria</th>
+        <th>Çmimi</th>
+        <th>Kosto/porcion</th>
+        <th>Porcione nga stoku</th>
+      </tr></thead>
       <tbody>${state.items
         .map(
           (it) => `<tr data-pick="${it.id}" style="cursor:pointer${state.selectedId === it.id ? ";background:rgba(255,140,0,0.12)" : ""}">
-            <td>${it.has_recipe ? "✓" : "✗"}</td>
+            <td>${
+              it.has_recipe
+                ? '<span style="color:#4ade80;font-weight:600">Ka recetë</span>'
+                : '<span style="color:#9ca3af">Pa recetë</span>'
+            }</td>
             <td>${it.name}</td>
             <td>${it.category || ""}</td>
             <td class="n">${fmt(it.price, 2)} €</td>
@@ -462,10 +521,20 @@
     document.getElementById("recipe-wb-ing-search")?.addEventListener("input", () => {
       renderIngredientsManage().catch(() => {});
     });
+    document.getElementById("recipe-wb-ing-add")?.addEventListener("click", () => {
+      addIngredientFromForm().catch(() => {});
+    });
+    document.getElementById("recipe-wb-ing-new-name")?.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        addIngredientFromForm().catch(() => {});
+      }
+    });
     const panel = document.getElementById("panel-receta-perberesit");
     if (panel) {
       const obs = new MutationObserver(() => {
         if (panel.classList.contains("active")) {
+          clearWorkbenchTabMessages();
           loadList().catch(() => {});
           ensureIngredients().then(() => renderIngredientsManage()).catch(() => {});
         }
