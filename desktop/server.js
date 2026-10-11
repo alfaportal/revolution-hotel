@@ -3260,6 +3260,66 @@ app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrReceps
   }
 });
 
+app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
+    const booking = (pending.requests || []).find((r) => String(r.id) === String(req.params.id));
+    if (!booking) {
+      return res.status(404).json({ ok: false, gabim: "Kërkesa nuk u gjet ose është përpunuar." });
+    }
+    const rooms = db.listAvailableRoomsForDates(
+      booking.check_in_date,
+      booking.check_out_date,
+    ).filter((room) => {
+      const want = String(booking.room_type || "").trim().toLowerCase();
+      const got = String(room.room_type || "").trim().toLowerCase();
+      if (!want) return true;
+      if (!got) return true;
+      return want === got || got.includes(want) || want.includes(got);
+    });
+    res.json({ ok: true, rooms, booking });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
+    const booking = (pending.requests || []).find((r) => String(r.id) === String(req.params.id));
+    if (!booking) {
+      return res.status(404).json({ ok: false, gabim: "Kërkesa nuk u gjet ose është përpunuar." });
+    }
+    const roomId = Number(req.body?.room_id);
+    if (!roomId) {
+      return res.status(400).json({ ok: false, gabim: "Zgjidhni dhomën." });
+    }
+    const reservation = db.createRoomReservation({
+      room_id: roomId,
+      guest_name: booking.guest_name,
+      phone: booking.phone,
+      email: booking.email,
+      check_in_date: booking.check_in_date,
+      check_out_date: booking.check_out_date,
+      persons: booking.persons,
+      notes: booking.notes ? `${booking.notes} (web)` : "Rezervim nga faqja publike",
+      status: "confirmed",
+    });
+    auditReq(req, "Rezervim web pranuar", `${reservation.room_number} — ${reservation.guest_name}`);
+    const cloud = await hotelCloudSync.acceptPublicBookingRequest(db, req.params.id, {
+      room_id: roomId,
+      local_reservation_id: reservation.id,
+      staff_name: req.body?.staff_name || req.session?.emri || "Recepsion",
+    });
+    pushHotelReservationsToCloudAsync("public-booking-accept");
+    res.json({ ok: true, reservation, ...cloud });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/online-orders/cancel", auth, waiterOnly, async (req, res) => {
   try {
     const orderIds = Array.isArray(req.body?.order_ids)

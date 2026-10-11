@@ -479,6 +479,10 @@
           <h2>Rezervimet</h2>
           <button type="button" class="btn btn-primary" id="btn-rc-rez-new">+ Rezervim i ri</button>
         </div>
+        <div id="recep-web-booking-wrap" class="recep-web-booking-wrap" hidden>
+          <h3 style="margin:0 0 .5rem;font-size:1rem">Kërkesa nga faqja publike</h3>
+          <div id="recep-web-booking-list"></div>
+        </div>
         <div id="recep-rez-msg"></div>
         <div class="rez-day-cards">
           <div class="rez-day-card arrivals">
@@ -1567,6 +1571,87 @@
       });
     }
 
+    async function ngarkoWebBookingRequestsRecep() {
+      const wrap = document.getElementById("recep-web-booking-wrap");
+      const listEl = document.getElementById("recep-web-booking-list");
+      if (!wrap || !listEl) return;
+      try {
+        const data = await api("/api/waiter/public-booking-requests/pending");
+        const rows = data.requests || [];
+        if (!rows.length) {
+          wrap.hidden = true;
+          listEl.innerHTML = "";
+          return;
+        }
+        wrap.hidden = false;
+        listEl.innerHTML = rows
+          .map(
+            (r) =>
+              `<article class="recep-web-booking-card" data-id="${escHtml(r.id)}">
+                <p><strong>${escHtml(r.guest_name)}</strong> · ${escHtml(r.room_type)}</p>
+                <p>${escHtml(r.check_in_date)} → ${escHtml(r.check_out_date)} · ${Number(r.persons) || 1} persona</p>
+                <p>${escHtml(r.phone || "")} ${r.email ? " · " + escHtml(r.email) : ""}</p>
+                <div class="recep-web-booking-actions">
+                  <button type="button" class="btn btn-primary btn-sm rc-web-accept" data-id="${escHtml(r.id)}">Prano</button>
+                  <button type="button" class="btn btn-ghost btn-sm rc-web-decline" data-id="${escHtml(r.id)}">Jemi të zënë</button>
+                </div>
+              </article>`,
+          )
+          .join("");
+        listEl.querySelectorAll(".rc-web-decline").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            if (!confirm("Refuzo kërkesën dhe dërgo email te mysafiri?")) return;
+            try {
+              await api(`/api/waiter/public-booking-requests/${encodeURIComponent(id)}/respond`, {
+                method: "POST",
+                body: JSON.stringify({ reply_kind: "busy" }),
+              });
+              await ngarkoWebBookingRequestsRecep();
+              showMsg("recep-rez-msg", "Kërkesa u refuzua.", true);
+            } catch (e) {
+              showMsg("recep-rez-msg", e.message || "Gabim", false);
+            }
+          });
+        });
+        listEl.querySelectorAll(".rc-web-accept").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-id");
+            try {
+              const avail = await api(
+                `/api/waiter/public-booking-requests/${encodeURIComponent(id)}/available-rooms`,
+              );
+              const rooms = avail.rooms || [];
+              if (!rooms.length) {
+                showMsg("recep-rez-msg", "Nuk ka dhoma të lira për këto data.", false);
+                return;
+              }
+              const labels = rooms.map((rm) => `${rm.room_number} (${rm.room_type || ""})`).join("\n");
+              const pick = prompt(`Zgjidhni numrin e dhomës (nga lista):\n${labels}`);
+              if (!pick) return;
+              const room = rooms.find((rm) => String(rm.room_number) === String(pick).trim());
+              if (!room) {
+                showMsg("recep-rez-msg", "Dhoma nuk u gjet në listën e lira.", false);
+                return;
+              }
+              await api(`/api/waiter/public-booking-requests/${encodeURIComponent(id)}/accept`, {
+                method: "POST",
+                body: JSON.stringify({ room_id: room.id }),
+              });
+              await ngarkoWebBookingRequestsRecep();
+              await ngarkoRezervimetRecep();
+              await ngarkoDhomat();
+              showMsg("recep-rez-msg", "Rezervimi u krijua.", true);
+            } catch (e) {
+              showMsg("recep-rez-msg", e.message || "Gabim", false);
+            }
+          });
+        });
+      } catch {
+        if (wrap) wrap.hidden = true;
+      }
+    }
+
     async function ngarkoRezervimetRecep() {
       const [listRes, statsRes] = await Promise.all([
         api("/api/waiter/room-reservations?status=active&limit=300"),
@@ -1574,6 +1659,7 @@
       ]);
       renderRezDayStatsRecep(statsRes || {});
       renderRezervimetTableRecep(listRes.reservations || []);
+      await ngarkoWebBookingRequestsRecep();
     }
 
     function mbyllRezervimFormRecep() {

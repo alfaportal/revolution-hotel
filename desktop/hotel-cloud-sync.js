@@ -572,6 +572,17 @@ async function respondPublicBookingRequest(db, id, payload = {}) {
   return parseJsonResponse(r);
 }
 
+async function acceptPublicBookingRequest(db, id, payload = {}) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
+  const r = await requestJson(
+    "POST",
+    `/api/v1/hotel/public-booking-requests/${encodeURIComponent(id)}/accept`,
+    { celesi: cfg.celesi, ...payload },
+  );
+  return parseJsonResponse(r);
+}
+
 async function deletePublicBookingRequest(db, id) {
   const cfg = getCfg(db);
   if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
@@ -588,6 +599,7 @@ module.exports = {
   LAST_SYNC_KEY,
   listPublicBookingRequestsPending,
   respondPublicBookingRequest,
+  acceptPublicBookingRequest,
   deletePublicBookingRequest,
   pushRoomsToCloud,
   pushGuestsToCloud,
