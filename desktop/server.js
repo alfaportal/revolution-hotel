@@ -27,6 +27,9 @@ try {
   console.warn("[hotel] fiscal-boot:", e.message);
 }
 const db = require("./database");
+const {
+  attachWaiterWebSocket,
+} = require("./waiter-ws-hub");
 const bizDate = require("./lib/hotel-business-date");
 const businessTodayYmd = () => bizDate.businessYmd();
 const staffPinPolicy = require("./lib/staffPinPolicy");
@@ -10773,6 +10776,12 @@ const MAX_PORT = START_PORT + 10;
 
 function onServerListening(server, port) {
   process.env.ACTUAL_PORT = String(port);
+  global.__hotelHttpServer = server;
+  try {
+    attachWaiterWebSocket(server, { getSession });
+  } catch (e) {
+    console.warn("[waiter-ws] attach:", e.message);
+  }
   alignTerminalRegisterOnBoot();
   try {
     db.setSetting("local_print_only", "1");

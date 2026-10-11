@@ -26,6 +26,7 @@ let lastKnownOrders = [];
 let lastSnapshot = { pending: 0, orderIds: [], orders: [], connected: false, ok: true };
 let timer = null;
 let tickInFlight = null;
+let printBarTicketRef = null;
 
 function removeOrdersFromSnapshot(orderIds) {
   const drop = new Set((orderIds || []).map(id => String(id || "")).filter(Boolean));
@@ -649,6 +650,7 @@ async function tick(db, printBarTicket) {
 
 function startOnlineOrdersWatcher(db, printBarTicket) {
   if (timer) return;
+  printBarTicketRef = printBarTicket;
   loadPrintedIds(db);
 
   const run = () => {
@@ -679,6 +681,29 @@ function stopOnlineOrdersWatcher() {
     clearInterval(timer);
     timer = null;
   }
+  printBarTicketRef = null;
+}
+
+/** SSE status=ordered — refresh menjëherë, mos prit polling 2s. */
+function refreshOnKitchenSseOrdered(db, payload) {
+  const status = String(payload?.status || "").trim().toLowerCase();
+  if (status !== "ordered") return;
+  try {
+    const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
+    broadcastWaiterRealtime("online_orders", { reason: "kds_sse_ordered" });
+    broadcastWaiterRealtime("cloud_tables", { reason: "kds_sse_ordered" });
+    broadcastWaiterRealtime("tables", { reason: "kds_sse_ordered" });
+  } catch {
+    /* ignore */
+  }
+  if (!printBarTicketRef) return;
+  void refreshOnlineOrders(db, printBarTicketRef).catch(err => {
+    console.warn("[online-orders] SSE ordered refresh:", err.message);
+  });
+}
+
+function refreshOnlineOrders(db, printBarTicket) {
+  return tick(db, printBarTicket);
 }
 
 function purgeRemoteHandledOrderIds(db, orderIds) {
@@ -705,7 +730,8 @@ module.exports = {
   getOnlineOrdersSnapshot: getSnapshot,
   getSnapshot,
   getLastKnownOrders,
-  refreshOnlineOrders: (db, printBarTicket) => tick(db, printBarTicket),
+  refreshOnlineOrders,
+  refreshOnKitchenSseOrdered,
   removeOrdersFromSnapshot,
   purgeRemoteHandledOrderIds,
   purgeCloudResolvedOrders,
