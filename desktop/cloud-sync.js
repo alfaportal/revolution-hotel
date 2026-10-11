@@ -663,6 +663,8 @@ function pushSale(db, order, opts = {}) {
         console.warn("Cloud sync:", r.status, r.data?.slice?.(0, 120));
       } else {
         console.log("Cloud sync OK:", built.payload.local_order_id);
+        // Si KAFENE: ruaj ID-në e cloud-it te porosia lokale (s'krijohen dy rreshta për të njëjtën porosi).
+        attachCloudIdFromSyncResponse(db, order, r);
       }
     })
     .catch(err => {
@@ -821,6 +823,74 @@ async function pushQrWaiterAcceptToCloudKitchen(
     return { ok: true };
   } catch (err) {
     console.warn("[cloud] QR kuzhinë push dështoi:", err.message);
+    return { ok: false, message: err.message || String(err) };
+  }
+}
+
+/** Pas PRANO takeaway në POS — cloud (telefoni) sheh Online 1…6 me pranim + artikuj. */
+async function pushOnlinePickupAcceptToCloud(
+  db,
+  localOrder,
+  cloudOrder,
+  { waiterName = "", waiterId = "" } = {},
+) {
+  const cloudId = String(cloudOrder?.id || localOrder?.cloud_order_id || "").trim();
+  if (!cloudId) return { ok: false, message: "Mungon ID cloud." };
+
+  const built = buildSalePayload(db, localOrder, {
+    table_number: 0,
+    status: "ordered",
+    ordered_at: cloudOrder?.ordered_at || cloudOrder?.created_at || localOrder?.created_at,
+  });
+  if (!built) return { ok: false, message: "Pa konfigurim cloud." };
+
+  const device = String(cloudOrder?.device_id || "WEB-PUBLIC").trim().toUpperCase();
+  const cloudLocalId = String(cloudOrder?.local_order_id || "").trim();
+  built.payload.device_id = device;
+  if (cloudLocalId) built.payload.local_order_id = cloudLocalId;
+  built.payload.pos_keep_acceptance = true;
+
+  const accName = String(waiterName || localOrder?.waiter_name || "").trim();
+  if (accName) {
+    built.payload.waiter_name = accName;
+    built.payload.accepted_by_waiter_name = accName;
+    built.payload.pos_waiter_accepted = true;
+    built.payload.accepted_at = new Date().toISOString();
+  }
+  const wId = String(waiterId || "").trim();
+  if (wId) {
+    built.payload.waiter_id = wId;
+    built.payload.accepted_by_waiter_id = wId;
+  }
+
+  try {
+    const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
+    const key = map[cloudId];
+    if (key?.local_order_id && key?.device_id) {
+      built.payload.device_id = String(key.device_id).trim().toUpperCase();
+      built.payload.local_order_id = String(key.local_order_id).trim();
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const r = await requestJson(
+      "POST",
+      built.cfg.serverUrl,
+      "/api/v1/sales/update",
+      built.payload,
+      { timeoutMs: 12000 },
+    );
+    if (r.status >= 400) {
+      console.warn("[cloud] takeaway pranim push:", r.status, r.data?.slice?.(0, 120));
+      return { ok: false, message: `HTTP ${r.status}` };
+    }
+    console.log("[cloud] takeaway pranim → cloud OK:", cloudId.slice(0, 8));
+    attachCloudIdFromSyncResponse(db, localOrder, r);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] takeaway pranim push dështoi:", err.message);
     return { ok: false, message: err.message || String(err) };
   }
 }
@@ -2137,7 +2207,8 @@ async function refuseOnlineOrder(db, orderId, pin = "", reason = "", ackMeta = {
       pin: pinTrim,
       reason: String(reason || "").trim(),
     };
-    if (!pinTrim && waiterName) {
+    // Punonjësi është verifikuar në PC — dërgo gjithmonë emrin (edhe me PIN).
+    if (waiterName) {
       body.pos_authenticated = true;
       body.waiter_name = waiterName;
       const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
@@ -2271,7 +2342,9 @@ function buildPosWaiterAckBody(cfg, ids, pinTrim, ackMeta = {}) {
   };
   const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
   const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
-  if (!pinTrim && waiterName) {
+  // Punonjësi është verifikuar në PC — dërgo gjithmonë emrin (edhe me PIN), që cloud
+  // të mos dështojë kur PIN-i lokal ≠ PIN-i në cloud ose punonjësi s'është kamarier cloud.
+  if (waiterName) {
     body.pos_authenticated = true;
     body.waiter_name = waiterName;
     if (waiterId) body.waiter_id = waiterId;
@@ -2978,6 +3051,16 @@ async function ensureCloudTableImported(db, tableNumber, waiterName) {
     }
   }
 
+  // Si KAFENE: QR ende pa PRANO në PC s'hapet automatikisht në tavolinë.
+  if (
+    typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(order)
+    && typeof db.isCloudOrderAcceptedForImport === "function"
+    && !db.isCloudOrderAcceptedForImport(order)
+  ) {
+    return null;
+  }
+
   const cloudId = String(order.id || "").trim();
   const activeExisting = db.getActiveOrderByCloudId(cloudId);
   if (activeExisting) {
@@ -2993,7 +3076,10 @@ async function ensureCloudTableImported(db, tableNumber, waiterName) {
   }
 
   try {
-    db.importCloudOrderToLocal(order, waiterName);
+    const importResult = db.importCloudOrderToLocal(order, waiterName);
+    if (importResult?.needs_accept || (importResult && importResult.ok === false && !importResult.already)) {
+      return null;
+    }
   } catch (err) {
     console.warn("[cloud] ensureCloudTableImported:", err.message);
     const recovered = db.getActiveOrderByCloudId(cloudId);
@@ -3517,6 +3603,7 @@ module.exports = {
   pushWaiterOrderToCloudBackground,
   CLOUD_WAITER_PUSH_TIMEOUT_MS,
   pushQrWaiterAcceptToCloudKitchen,
+  pushOnlinePickupAcceptToCloud,
   pushAllActiveTables,
   reconcileAllTablesWithCloud,
   pushTableFree,

@@ -29,6 +29,7 @@ try {
 const db = require("./database");
 const {
   attachWaiterWebSocket,
+  broadcastWaiterRealtime,
 } = require("./waiter-ws-hub");
 const bizDate = require("./lib/hotel-business-date");
 const businessTodayYmd = () => bizDate.businessYmd();
@@ -487,9 +488,10 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
 function staffCloudAckMeta(staff) {
   if (!staff) return { waiterId: "", waiterName: "" };
   const name = String(staff.name || "").trim();
-  const cloudId = String(staff.cloud_waiter_id || "").trim();
+  const row = staff?.id != null ? db.findStaffById(staff.id) : staff;
+  const cloudId = String(row?.cloud_waiter_id || staff?.cloud_waiter_id || "").trim();
   return {
-    waiterId: cloudId || (staff.id != null ? String(staff.id) : ""),
+    waiterId: cloudId,
     waiterName: name,
   };
 }
@@ -635,8 +637,9 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   db.ensureTablesForPendingCloudOrders(ordersBefore);
 
-  const pinForAck = pinTrim || String(staff?.pin || "").trim();
-  const ackPin = cloudAckPinFromInput(pinForAck);
+  // Si KAFENE: PIN-i dërgohet në cloud vetëm kur punonjësi e ka shtypur tani;
+  // përndryshe identifikimi bëhet me emrin e verifikuar në PC (pos_authenticated).
+  const ackPin = cloudAckPinFromInput(pinTrim);
   const ackMeta = staffCloudAckMeta(staff);
 
   let cloudResult = { ok: false, message: "", accepted_by: "", acknowledged: 0 };
@@ -735,6 +738,19 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       { status: 400 },
     );
   }
+  const countsAsPosAccept = success.some((r) => {
+    if (r.room_menu || r.guest_service) return true;
+    if (r.closed || r.cancelled) return false;
+    return !!(r.table_id && (r.order_id || r.already === false || r.merged));
+  });
+  if (!countsAsPosAccept) {
+    throw Object.assign(
+      new Error(
+        "Porosia nuk u hap në POS (e mbyllur më parë ose pa tavolinë) — nuk u shënua si e pranuar.",
+      ),
+      { status: 400, cloud_ok: false },
+    );
+  }
 
   if (tableImports.length) {
     await finalizeImportedCloudOrders(tableImports, waiterName);
@@ -766,6 +782,26 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       } catch (pushErr) {
         console.warn("[accept] push QR → kuzhinë:", pushErr);
       }
+    }
+  }
+
+  for (let i = 0; i < ordersBefore.length; i++) {
+    const r = imported[i];
+    const cloudOrder = ordersBefore[i];
+    if (!r?.ok || !r.table_id || !cloudOrder?.id) continue;
+    const isPickup = typeof db.isCloudOnlinePickupOrder === "function"
+      && db.isCloudOnlinePickupOrder(cloudOrder);
+    if (!isPickup) continue;
+    const order = db.getActiveOrderByCloudId(cloudOrder.id)
+      || db.getActiveOrderForTable(r.table_id);
+    if (!order) continue;
+    try {
+      await cloudSync.pushOnlinePickupAcceptToCloud(db, order, cloudOrder, {
+        waiterName,
+        waiterId: ackMeta.waiterId,
+      });
+    } catch (pushErr) {
+      console.warn("[accept] push takeaway → cloud:", pushErr);
     }
   }
 
@@ -891,8 +927,9 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
   );
 
   let cloudResult = { ok: false, message: "", refused: 0, order_id: orderId };
-  const pinForAck = pinTrim || String(staff?.pin || "").trim();
-  const ackPin = cloudAckPinFromInput(pinForAck);
+  // Si KAFENE: PIN-i dërgohet në cloud vetëm kur punonjësi e ka shtypur tani;
+  // përndryshe identifikimi bëhet me emrin e verifikuar në PC (pos_authenticated).
+  const ackPin = cloudAckPinFromInput(pinTrim);
   const ackMeta = staffCloudAckMeta(staff);
   try {
     cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta);
@@ -2468,6 +2505,50 @@ app.post("/api/login", (req, res) => {
   res.status(400).json({ gabim: "Zgjidhni rolin: Admin ose Kamarier" });
 });
 
+/** Vetëm dev / PC lokal: rivendos fjalëkalimin e pronarit kur cloud+backup e kanë desinkronizuar. */
+app.post("/api/login/local-recovery", (req, res) => {
+  const rawIp = String(
+    req.headers["x-forwarded-for"] || req.ip || req.socket?.remoteAddress || "",
+  ).split(",")[0].trim().replace(/^::ffff:/, "");
+  const local = rawIp === "127.0.0.1" || rawIp === "::1" || rawIp === "";
+  let packaged = true;
+  try {
+    packaged = !!electronApp()?.isPackaged;
+  } catch {
+    packaged = true;
+  }
+  const allow =
+    local
+    && (!packaged || /^1|true|yes|on$/i.test(String(process.env.HOTEL_LOCAL_RECOVERY || "").trim()));
+  if (!allow) {
+    return res.status(403).json({ ok: false, gabim: "Rikthimi lokal nuk lejohet nga kjo adresë." });
+  }
+  const temp = String(req.body?.password || "1234").trim();
+  if (temp.length < 4 || temp.length > 64) {
+    return res.status(400).json({ ok: false, gabim: "Fjalëkalimi 4–64 karaktere." });
+  }
+  try {
+    db.updateSettings({ admin_password: temp });
+    const waiters = (db.getStaffForLogin?.() || []).map((w) => {
+      const row = db.getStaff().find((s) => Number(s.id) === Number(w.id));
+      return {
+        id: w.id,
+        name: w.name,
+        staff_role: row?.staff_role || "",
+        pin_len: row?.pin ? String(row.pin).length : 0,
+      };
+    });
+    return res.json({
+      ok: true,
+      message: "Fjalëkalimi i pronarit u rivendos lokalisht.",
+      owner_password: temp,
+      waiters,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, gabim: e.message || "Gabim." });
+  }
+});
+
 app.get("/api/login/waiters", (_req, res) => {
   if (!db.isSetupDone()) {
     return res.json({ waiters: [] });
@@ -2955,6 +3036,48 @@ app.post("/api/waiter/import-cloud-table-order", auth, waiterOnly, async (req, r
   }
 });
 
+/** Njoftim WS te kamarierët (polling mbetet fallback) — si KAFENE. */
+function notifyWaitersRealtime(type, extra) {
+  try {
+    broadcastWaiterRealtime(type, extra);
+  } catch {
+    /* ignore */
+  }
+}
+
+let waiterReadyBroadcastKey = "";
+let waiterReadyPollTimer = null;
+
+function broadcastWaiterReadyIfChanged(orders) {
+  const list = Array.isArray(orders) ? orders : [];
+  const key = list
+    .map((o) => String(o?.id ?? o?.order_id ?? "").trim())
+    .filter(Boolean)
+    .sort()
+    .join("\0");
+  if (!key || key === waiterReadyBroadcastKey) return;
+  waiterReadyBroadcastKey = key;
+  notifyWaitersRealtime("ready", { count: list.length });
+}
+
+/** «Gati» nga kuzhina → njofto kamarierët çdo 8s (si KAFENE pollWaiterReadyOrdersBroadcast). */
+async function pollWaiterReadyOrdersBroadcast() {
+  if (!cloudSync.isCloudConfigured(db)) return;
+  try {
+    const orders = await cloudSync.fetchReadyTableOrders(db);
+    broadcastWaiterReadyIfChanged(orders);
+  } catch {
+    /* ignore */
+  }
+}
+
+function ensureWaiterReadyPoller() {
+  if (waiterReadyPollTimer) return;
+  waiterReadyPollTimer = setInterval(() => {
+    pollWaiterReadyOrdersBroadcast().catch(() => {});
+  }, 8000);
+}
+
 // Porosi të gatshme nga banaku — alarm te kamarieri
 const _seenReadyOrderIds = new Set();
 
@@ -3177,6 +3300,38 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     const biz = /nuk u gjet|mungon|pavlefsh|porosia|restoranti|recepsioni|dhom/i.test(msg);
     const status = e.status || (biz ? 400 : 500);
     res.status(status).json({ ok: false, gabim: msg });
+  }
+});
+
+/** Rikthen në cloud porositë takeaway aktive (PC → telefon / revolution-pos.com). */
+app.post("/api/waiter/online-orders/resync-cloud", auth, waiterOnly, async (req, res) => {
+  try {
+    const staff = db.findStaffByName(req.session.emri)
+      || db.findStaffByNameInsensitive(req.session.emri);
+    const ackMeta = staffCloudAckMeta(staff);
+    const who = { waiterName: String(req.session.emri || "").trim(), waiterId: ackMeta.waiterId };
+    let pushed = 0;
+    const failed = [];
+    for (const meta of db.listActiveOnlineOrders()) {
+      const cloudId = String(meta.cloud_order_id || "").trim();
+      if (!cloudId) continue;
+      const order = db.getActiveOrderByCloudId(cloudId)
+        || db.db.prepare("SELECT * FROM orders WHERE id = ?").get(meta.order_id);
+      if (!order) continue;
+      let cloudOrder = { id: cloudId, device_id: "WEB-PUBLIC" };
+      try {
+        const resolved = await cloudSync.resolveCloudOrderById(db, cloudId);
+        if (resolved?.id) cloudOrder = resolved;
+      } catch {
+        /* minimal payload */
+      }
+      const r = await cloudSync.pushOnlinePickupAcceptToCloud(db, order, cloudOrder, who);
+      if (r.ok) pushed += 1;
+      else failed.push({ cloud_id: cloudId, error: r.message || "push dështoi" });
+    }
+    res.json({ ok: true, pushed, failed, total: db.listActiveOnlineOrders().length });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message || "Gabim." });
   }
 });
 
@@ -3421,7 +3576,7 @@ function resolveStaffCloudWaiterIdentity(session) {
   if (!name) return { waiterId: "", waiterName: "" };
   const staff = db.findStaffByName(name) || db.findStaffByNameInsensitive(name);
   return {
-    waiterId: String(staff?.cloud_waiter_id || staff?.id || "").trim(),
+    waiterId: String(staff?.cloud_waiter_id || "").trim(),
     waiterName: name,
   };
 }
@@ -10949,6 +11104,12 @@ function onServerListening(server, port) {
         ensureOnlineOrdersWatcher();
       } catch (e) {
         console.warn("[cloud] online-orders-watcher:", e.message);
+      }
+      try {
+        ensureWaiterReadyPoller();
+        pollWaiterReadyOrdersBroadcast().catch(() => {});
+      } catch (e) {
+        console.warn("[cloud] waiter-ready-poller:", e.message);
       }
     }, 1500);
     setTimeout(() => {

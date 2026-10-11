@@ -1788,8 +1788,24 @@
       try {
         const data = await pranoNjëPorosiOnline();
         if (!data) return;
-        lastImp = (data.imported || []).find(r => r.ok);
-        if (data.cloud_ok && !lastImp && msg) {
+        if (data.ok === false || data.cloud_ok === false) {
+          if (msg) {
+            msg.textContent = data.gabim || data.cloud_message || "Nuk u pranua në cloud.";
+            msg.hidden = false;
+          }
+          return;
+        }
+        lastImp = (data.imported || []).find(
+          (r) => r.ok && !r.closed && !r.cancelled && (r.table_id || r.room_menu || r.guest_service),
+        );
+        if (!lastImp) {
+          if (msg) {
+            msg.textContent = data.gabim || "Porosia nuk u hap në POS — provoni përsëri.";
+            msg.hidden = false;
+          }
+          return;
+        }
+        if (data.cloud_ok && !lastImp?.table_id && msg) {
           msg.textContent = "U pranua — rifreskoni tavolinën nëse duhet.";
           msg.hidden = false;
         } else if (data.cloud_message && !data.cloud_ok && msg) {
@@ -1977,8 +1993,6 @@
           mbyllWaiterOnlinePop();
         } else if (waiterOnlinePopOpen) {
           renderWaiterOnlinePreview(waiterOnlineOrders);
-        } else if (prevPending != null && pending < prevPending) {
-          mbyllWaiterOnlinePop();
         }
         const isFirstPoll = prevPending === null;
         const isNew = pending > 0 && (

@@ -201,6 +201,8 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
 function orderStillPending(o, suppressIds, db) {
   if (!o?.id) return false;
   if (suppressIds?.has(String(o.id))) return false;
+  // Si KAFENE: porosia e pranuar në këtë PC s'del më si PRANO (edhe kur cloud vonon).
+  if (isLocallyAcked(db, o.id)) return false;
   if (isExplicitlyAccepted(o, db)) return false;
   if (isInRefusalGraceOrder(o) && isOrderExpiredGrace(o)) return false;
   return true;
@@ -327,6 +329,9 @@ function safeRemoveLocalPending(db, ids) {
 function dropLocallyHandled(db, orders) {
   return (orders || []).filter(o => {
     if (!o?.id) return false;
+    if (typeof db.isCloudOrderLocallyDismissed === "function" && db.isCloudOrderLocallyDismissed(o.id)) {
+      return false;
+    }
     if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
       return false;
     }
@@ -581,6 +586,8 @@ async function tick(db, printBarTicket) {
         if (!localStaff) continue;
         try {
           const imported = db.importCloudOrderToLocal({ ...slot.order, online_slot: slot.slot }, acceptName);
+          // Si KAFENE: s'printohet biletë kur porosia s'u hap në PC.
+          if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) continue;
           void printOrderSlipAfterImport(db, printBarTicket, slot.order, imported, acceptName);
         } catch {
           /* injoro */
@@ -629,6 +636,8 @@ async function tick(db, printBarTicket) {
 
   syncAlarmIds(finalPending);
 
+  const prevOrderKey = (lastSnapshot.orderIds || []).map(String).join("\0");
+
   lastSnapshot = {
     ok: connected || finalPending.length > 0,
     pending: finalPending.length,
@@ -646,6 +655,18 @@ async function tick(db, printBarTicket) {
 
   for (const o of finalPending) {
     alarmIds.add(String(o.id));
+  }
+
+  // Si KAFENE: njofto menjëherë ekranet e kamarierëve (LAN) kur ndryshon radha PRANO.
+  const newOrderKey = (lastSnapshot.orderIds || []).map(String).join("\0");
+  if (newOrderKey !== prevOrderKey || lastSnapshot.has_new) {
+    try {
+      const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
+      broadcastWaiterRealtime("online_orders", { pending: lastSnapshot.pending });
+      if (lastSnapshot.has_new) broadcastWaiterRealtime("tables", { reason: "online_pending" });
+    } catch {
+      /* ignore */
+    }
   }
 
   return lastSnapshot;

@@ -7762,19 +7762,23 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
 
   const prior = getOrderByCloudId(cloudId);
   if (prior && String(prior.status) !== "active") {
-    const priorTable = getTableById(prior.table_id);
     const priorStatus = String(prior.status || "").toLowerCase();
-    return {
-      ok: true,
-      already: true,
-      closed: priorStatus === "completed",
-      cancelled: priorStatus === "cancelled",
-      order_id: prior.id,
-      table_id: prior.table_id,
-      table_number: priorTable?.number || 0,
-      table_label: priorTable ? tableLabel(priorTable) : "",
-      waiter_name: prior.waiter_name || name,
-    };
+    // Porosi e PAGUAR (completed) s'rihapet kurrë — as nga PRANO — që të mos paguhet dy herë.
+    if (!fromAcceptFlow || priorStatus === "completed") {
+      const priorTable = getTableById(prior.table_id);
+      return {
+        ok: true,
+        already: true,
+        closed: priorStatus === "completed",
+        cancelled: priorStatus === "cancelled",
+        order_id: prior.id,
+        table_id: prior.table_id,
+        table_number: priorTable?.number || 0,
+        table_label: priorTable ? tableLabel(priorTable) : "",
+        waiter_name: prior.waiter_name || name,
+      };
+    }
+    /* PRANO në POS: cloud e ka përsëri në pritje — hap porosi të re aktive, mos “ghost accept”. */
   }
 
   let table = resolveTableForCloudOrder(cloudOrder, name);

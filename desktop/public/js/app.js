@@ -23,10 +23,17 @@ async function api(cale, opts = {}) {
   if (u?.token) headers["X-Session-Token"] = u.token;
 
   const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
-  const res = await fetch(API + cale, {
-    headers,
-    ...opts,
-  });
+  let res;
+  try {
+    res = await fetch(API + cale, {
+      headers,
+      ...opts,
+    });
+  } catch (netErr) {
+    const hint =
+      "Serveri lokal nuk përgjigjet — mbyll programin plotësisht dhe hape përsëri (jo F5).";
+    throw new Error(hint);
+  }
   const data = await res.json().catch(() => ({}));
   const ms = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
   if (ms >= 100) {

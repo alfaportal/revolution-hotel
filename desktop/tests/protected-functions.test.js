@@ -278,6 +278,29 @@ test("importCloudOrderToLocal does not reactivate a completed cloud order", () =
   );
 });
 
+test("fromAcceptFlow does NOT reopen a takeaway that was already paid (completed)", () => {
+  const waiter = openShiftForNewWaiter("TakeawayAccept");
+  const cloudId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+  const cloudOrder = {
+    id: cloudId,
+    device_id: "WEB-PUBLIC",
+    items: [{ name: "Latte e ftohtë", price: 2.5, quantity: 1 }],
+    total: 2.5,
+    source_label: "Takeaway",
+  };
+
+  const first = db.importCloudOrderToLocal(cloudOrder, waiter.name);
+  assert.ok(first?.table_id, "expected first import");
+  db.closeTable(first.table_id, waiter.name, false, "cash");
+  assert.strictEqual(db.isCloudOrderHandledLocally(cloudId), true);
+
+  const acceptImport = db.importCloudOrderToLocal(cloudOrder, waiter.name, { fromAcceptFlow: true });
+  assert.strictEqual(acceptImport.ok, true);
+  assert.strictEqual(acceptImport.already, true);
+  assert.strictEqual(acceptImport.closed, true);
+  assert.ok(!db.getActiveOrderByCloudId(cloudId), "must not create a new active order (no double charge)");
+});
+
 test("rebuildDailyLogFromCloudSales does not double-decrement stock", () => {
   const waiter = openShiftForNewWaiter("RebuildStock");
   const staff = db.findStaffByName(waiter.name);
