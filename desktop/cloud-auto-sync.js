@@ -39,7 +39,7 @@ const STAFF_PUSH_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const REGISTER_MODE_MS = 12 * 60 * 60 * 1000;
 const CATALOG_AUTO_MS = 180000;
 const CATALOG_DEBOUNCE_MS = 5000;
-const HOTEL_PMS_SYNC_MS = 2 * 60 * 1000;
+const HOTEL_PMS_SYNC_MS = 60 * 1000;
 const OWNER_REPORT_SYNC_MS = ownerReportSync.OWNER_REPORT_SYNC_MS;
 const STARTUP_BURST_MS = 4000;
 
@@ -273,6 +273,7 @@ async function runHotelPmsSync(db) {
     if (r?.ok && !r.skipped) {
       const p = r.push || {};
       const a = r.pull?.applied || {};
+      const pb = r.public_bookings || {};
       console.log(
         "[cloud/hotel-pms] sync OK — push rooms/guests/charges/hk/res:",
         p.rooms?.upserted ?? 0,
@@ -280,6 +281,10 @@ async function runHotelPmsSync(db) {
         p.charges?.upserted ?? 0,
         p.housekeeping?.upserted ?? 0,
         p.reservations?.upserted ?? 0,
+        "| web booking PC apply:",
+        pb.applied ?? 0,
+        "failed:",
+        pb.failed ?? 0,
         "| pull applied:",
         a.rooms ?? 0,
         a.guests ?? 0,

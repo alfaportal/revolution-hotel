@@ -506,6 +506,65 @@ async function pushGuestStaySnapshotToCloud(db) {
   return { ok: true, rooms, guests, housekeeping };
 }
 
+async function applyPublicBookingsPendingFromCloud(db) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) return { ok: true, skipped: true, applied: 0, failed: 0 };
+  const q = `celesi=${encodeURIComponent(cfg.celesi)}`;
+  const listRes = await requestJson(
+    "GET",
+    `/api/v1/hotel/public-booking-requests/pending-pc-apply?${q}`,
+    null,
+  );
+  const parsed = parseJsonResponse(listRes);
+  const requests = Array.isArray(parsed.requests) ? parsed.requests : [];
+  let applied = 0;
+  let failed = 0;
+  for (const b of requests) {
+    const id = String(b.id || "").trim();
+    const roomId = Number(b.booked_room_id);
+    if (!id || !roomId) continue;
+    try {
+      const reservation = db.createRoomReservation({
+        room_id: roomId,
+        guest_name: b.guest_name,
+        phone: b.phone,
+        email: b.email,
+        check_in_date: b.check_in_date,
+        check_out_date: b.check_out_date,
+        persons: b.persons,
+        notes: b.notes ? `${b.notes} (web)` : "Rezervim nga faqja publike",
+        status: "confirmed",
+      });
+      const ack = await requestJson(
+        "POST",
+        `/api/v1/hotel/public-booking-requests/${encodeURIComponent(id)}/pc-applied`,
+        {
+          celesi: cfg.celesi,
+          local_reservation_id: reservation.id,
+          room_id: roomId,
+        },
+      );
+      parseJsonResponse(ack);
+      applied += 1;
+    } catch (err) {
+      failed += 1;
+      try {
+        await requestJson(
+          "POST",
+          `/api/v1/hotel/public-booking-requests/${encodeURIComponent(id)}/pc-apply-failed`,
+          { celesi: cfg.celesi, reason: err.message || "Dhoma e zënë." },
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  if (applied > 0) {
+    await pushReservationsToCloud(db);
+  }
+  return { ok: true, applied, failed, pending: requests.length };
+}
+
 async function fullHotelSync(db) {
   if (!db) return { ok: false, message: "DB mungon." };
   if (!cloudSync.isCloudConfigured(db)) {
@@ -536,6 +595,7 @@ async function fullHotelSync(db) {
     qr_venues: await pushHotelQrVenuesToCloud(db),
   };
 
+  const public_bookings = await applyPublicBookingsPendingFromCloud(db);
   const pull = await pullHotelDataFromCloud(db);
   db.setSetting(LAST_SYNC_KEY, syncStartedAt);
 
@@ -548,6 +608,7 @@ async function fullHotelSync(db) {
   return {
     ok: true,
     push,
+    public_bookings,
     pull,
     last_hotel_sync: syncStartedAt,
   };
@@ -600,6 +661,7 @@ module.exports = {
   listPublicBookingRequestsPending,
   respondPublicBookingRequest,
   acceptPublicBookingRequest,
+  applyPublicBookingsPendingFromCloud,
   deletePublicBookingRequest,
   pushRoomsToCloud,
   pushGuestsToCloud,
