@@ -639,6 +639,29 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   const ackPin = cloudAckPinFromInput(pinForAck);
   const ackMeta = staffCloudAckMeta(staff);
 
+  let cloudResult = { ok: false, message: "", accepted_by: "", acknowledged: 0 };
+  if (!ackPin && !ackMeta.waiterName) {
+    throw Object.assign(
+      new Error("Mungon identifikimi i kamarierit për cloud."),
+      { status: 400 },
+    );
+  }
+  try {
+    cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
+  } catch (e) {
+    cloudResult = { ok: false, message: e.message || "", accepted_by: "", acknowledged: 0 };
+  }
+  const ackCount = Number(cloudResult.acknowledged) || 0;
+  if (!cloudResult.ok || ackCount < 1) {
+    throw Object.assign(
+      new Error(
+        cloudResult.message
+        || "Porosia nuk u shënua në cloud — provoni përsëri ose kontrolloni internetin.",
+      ),
+      { status: 400, cloud_ok: false },
+    );
+  }
+
   let slotLayout = [];
   try {
     slotLayout = await cloudSync.fetchOnlineSlotLayout(db, { unfiltered: true });
@@ -717,44 +740,10 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     await finalizeImportedCloudOrders(tableImports, waiterName);
   }
 
-  if (tableImports.length) {
-    onlineOrdersWatcher.persistAcknowledged(db, ids);
-    db.removePendingCloudOrders(ids);
-  }
-
-  if (localRecepImports.length) {
-    const localIds = [
-      ...new Set(
-        localRecepImports
-          .map((r) => String(r.cloud_id || "").trim())
-          .filter(Boolean),
-      ),
-    ];
-    if (localIds.length) {
-      onlineOrdersWatcher.persistAcknowledged(db, localIds);
-      db.removePendingCloudOrders(localIds);
-      onlineOrdersWatcher.removeOrdersFromSnapshot(localIds);
-    }
-  }
-
+  onlineOrdersWatcher.persistAcknowledged(db, ids);
+  db.removePendingCloudOrders(ids);
+  onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
   onlineOrdersWatcher.markOrdersPrinted(db, ids);
-  if (!localRecepImports.length) {
-    onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
-  }
-
-  let cloudResult = { ok: false, message: "", accepted_by: "" };
-  if (ackPin || ackMeta.waiterName) {
-    try {
-      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
-    } catch (e) {
-      cloudResult = { ok: false, message: e.message || "", accepted_by: "" };
-    }
-    if (cloudResult.ok && !tableImports.length) {
-      onlineOrdersWatcher.persistAcknowledged(db, ids);
-      db.removePendingCloudOrders(ids);
-      onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
-    }
-  }
 
   if (tableImports.length) {
     for (let i = 0; i < ordersBefore.length; i++) {

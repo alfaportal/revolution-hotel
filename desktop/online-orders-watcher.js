@@ -15,7 +15,7 @@ function isCloudWaiterDisabled(db) {
 
 const POLL_MS = 5000;
 /** Porosi që askush nuk prek — zhduken nga popup pas 60s (jo grace REFUZO 2 min). */
-const UNTOUCHED_PENDING_EXPIRE_MS = 60 * 1000;
+const UNTOUCHED_PENDING_EXPIRE_MS = 15 * 60 * 1000;
 const PRINTED_KEY = "online_orders_printed_ids";
 const LOCAL_ACK_KEY = "online_orders_local_ack_ids";
 const LOCAL_REFUSED_KEY = "online_orders_staff_refused";
