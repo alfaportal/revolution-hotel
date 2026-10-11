@@ -18429,8 +18429,18 @@
         || src.local_waiter_slug
         || "";
       const key = String(src.kitchen_key || "").trim();
-      if (!slug || !key) return src;
       const sl = stripLegacyKitchenSlugSuffix(slug);
+      if (!sl) return src;
+      if (!key) {
+        return {
+          ...src,
+          kitchen_slug: sl,
+          client_tipi: "hotel",
+          public_page_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}`,
+          takeaway_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/takeaway`,
+          public_order_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/takeaway`,
+        };
+      }
       return {
         ...src,
         kitchen_slug: sl,
