@@ -8482,8 +8482,8 @@ function adminClearTable(tableId) {
 /** Të gjitha porositë lokale aktive me info tavoline — për sync me cloud */
 function listLocalActiveOrders() {
   return sqlite.prepare(`
-    SELECT o.id, o.waiter_name, o.cloud_order_id, o.created_at, o.updated_at,
-           t.id as table_id, t.number as table_number
+    SELECT o.id, o.waiter_name, o.cloud_order_id, o.created_at, o.source_label,
+           o.payment_method, t.id as table_id, t.number as table_number
     FROM orders o
     JOIN tables t ON t.id = o.table_id
     WHERE o.status = 'active'
