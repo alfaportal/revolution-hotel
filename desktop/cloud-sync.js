@@ -2063,7 +2063,7 @@ async function pushOwnerAdminPasswordAsync(db, plainPassword) {
   }
 }
 
-async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "") {
+async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "", ackMeta = {}) {
   const cfg = getConfig(db);
   const { slug, key } = getKitchenAccess(db);
   const ids = [...new Set((orderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
@@ -2071,16 +2071,26 @@ async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "") {
     return { ok: false, acknowledged: 0, order_ids: [], message: "Mungon kitchen slug/key." };
   }
 
+  const pinTrim = /^\d{4,6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
+  const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
+  const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
+
   const acked = [];
   let lastAcceptedBy = "";
   for (const orderId of ids) {
     try {
       const q = `?key=${encodeURIComponent(key)}`;
+      const body = { pin: pinTrim };
+      if (!pinTrim && waiterName) {
+        body.pos_authenticated = true;
+        body.waiter_name = waiterName;
+        if (waiterId) body.waiter_id = waiterId;
+      }
       const res = await requestJson(
         "POST",
         cfg.serverUrl,
         `/api/kds/${encodeURIComponent(slug)}/orders/${encodeURIComponent(orderId)}/accept${q}`,
-        { pin: String(pin || "").trim() },
+        body,
       );
       const parsed = parseCloudJson(res.data);
       if (res.status < 400 && parsed.ok) {
@@ -2113,7 +2123,7 @@ async function refuseOnlineOrder(db, orderId, pin = "", reason = "", ackMeta = {
     return { ok: false, connected: true, refused: 0, message: "Mungon porosia." };
   }
 
-  const pinTrim = /^\d{6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
+  const pinTrim = /^\d{4,6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
   const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
   if (!pinTrim && !waiterName) {
     return { ok: false, connected: true, refused: 0, message: "Mungon identifikimi i kamarierit." };
@@ -2280,7 +2290,7 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
     return { ok: true, connected: true, acknowledged: 0, order_ids: [] };
   }
 
-  const pinTrim = /^\d{6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
+  const pinTrim = /^\d{4,6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
 
   try {
     const res = await requestJson(
@@ -2300,7 +2310,7 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
       };
     }
 
-    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim);
+    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim, ackMeta);
     if (viaKds.ok) return viaKds;
 
     return {
@@ -2310,7 +2320,7 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
       message: parsed.gabim || parsed.message || viaKds.message || "Nuk u shënuan porositë.",
     };
   } catch (err) {
-    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim);
+    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim, ackMeta);
     if (viaKds.ok) return viaKds;
     return {
       ok: false,

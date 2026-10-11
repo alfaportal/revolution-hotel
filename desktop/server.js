@@ -496,12 +496,12 @@ function staffCloudAckMeta(staff) {
 
 function cloudAckPinFromInput(pinRaw) {
   const pinTrim = String(pinRaw || "").trim();
-  return /^\d{6}$/.test(pinTrim) ? pinTrim : "";
+  return /^\d{4,6}$/.test(pinTrim) ? pinTrim : "";
 }
 
 function resolveTrustedStaffFromWaiterSession(session, pinRaw = "") {
   const pin = String(pinRaw || "").trim();
-  if (/^\d{6}$/.test(pin)) {
+  if (/^\d{4,6}$/.test(pin)) {
     const pinStaff = db.findStaffByPin(pin);
     if (!pinStaff) {
       throw Object.assign(new Error("PIN i gabuar!"), { status: 401 });
@@ -534,8 +534,8 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     if (!pinTrim) {
       throw Object.assign(new Error("Vendosni PIN-in e kamarierit që e pranon porosinë."), { status: 400 });
     }
-    if (!/^\d{6}$/.test(pinTrim)) {
-      throw Object.assign(new Error("PIN duhet të jetë 6 shifra."), { status: 400 });
+    if (!/^\d{4,6}$/.test(pinTrim)) {
+      throw Object.assign(new Error("PIN duhet të jetë 4 ose 6 shifra."), { status: 400 });
     }
     staff = db.findStaffByPin(pinTrim);
     if (!staff) {
@@ -635,7 +635,8 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   db.ensureTablesForPendingCloudOrders(ordersBefore);
 
-  const ackPin = cloudAckPinFromInput(pinTrim);
+  const pinForAck = pinTrim || String(staff?.pin || "").trim();
+  const ackPin = cloudAckPinFromInput(pinForAck);
   const ackMeta = staffCloudAckMeta(staff);
 
   let slotLayout = [];
@@ -864,8 +865,8 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     if (!pinTrim) {
       throw Object.assign(new Error("Vendosni PIN-in e kamarierit që e refuzon porosinë."), { status: 400 });
     }
-    if (!/^\d{6}$/.test(pinTrim)) {
-      throw Object.assign(new Error("PIN duhet të jetë 6 shifra."), { status: 400 });
+    if (!/^\d{4,6}$/.test(pinTrim)) {
+      throw Object.assign(new Error("PIN duhet të jetë 4 ose 6 shifra."), { status: 400 });
     }
     staff = db.findStaffByPin(pinTrim);
     if (!staff) {
@@ -901,7 +902,8 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
   );
 
   let cloudResult = { ok: false, message: "", refused: 0, order_id: orderId };
-  const ackPin = cloudAckPinFromInput(pinTrim);
+  const pinForAck = pinTrim || String(staff?.pin || "").trim();
+  const ackPin = cloudAckPinFromInput(pinForAck);
   const ackMeta = staffCloudAckMeta(staff);
   try {
     cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta);
@@ -1022,6 +1024,19 @@ async function closeCloudLinkedSale(tableId, cloudOrderIds, opts = {}) {
     }
   }
   return { closed };
+}
+
+async function ensureCloudTableImportedForCheckout(dbRef, tableNumber, waiterName) {
+  const t = Number(tableNumber);
+  if (!t) return null;
+  try {
+    return await Promise.race([
+      cloudSync.ensureCloudTableImported(dbRef, t, waiterName),
+      new Promise(resolve => setTimeout(() => resolve(null), 3500)),
+    ]);
+  } catch {
+    return null;
+  }
 }
 
 /** Cloud pas mbylljes lokale — mos blloko pagesën; mos table-free kur kuzhina mbetet active. */
@@ -4611,7 +4626,7 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     if (!db.getActiveOrderForTable(tableId) && tableRow?.number) {
-      await cloudSync.ensureCloudTableImported(db, tableRow.number, waiterName);
+      await ensureCloudTableImportedForCheckout(db, tableRow.number, waiterName);
     }
     if (items?.length) {
       const existing = db.getActiveOrderForTable(tableId);
@@ -4825,6 +4840,9 @@ app.post("/api/orders/close", auth, async (req, res) => {
   try {
     const tableId = Number(table_id);
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
+    if (!db.getActiveOrderForTable(tableId) && tableRow?.number) {
+      await ensureCloudTableImportedForCheckout(db, tableRow.number, name);
+    }
     const orderBefore = db.getActiveOrderForTable(tableId);
     const closeItems = db.parseOrderItems(orderBefore?.items_json);
     const pricing = promotionService.resolvePromotionDiscount(
@@ -4923,7 +4941,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     if (!db.getActiveOrderForTable(tableId) && tableRow?.number) {
-      await cloudSync.ensureCloudTableImported(db, tableRow.number, waiterName);
+      await ensureCloudTableImportedForCheckout(db, tableRow.number, waiterName);
     }
     if (items?.length) {
       const existing = db.getActiveOrderForTable(tableId);
@@ -5060,6 +5078,10 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
     : (requestedCoupon ? { coupon_type: requestedCoupon } : {});
 
   try {
+    const tableRowSplit = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
+    if (!db.getActiveOrderForTable(tableId) && tableRowSplit?.number) {
+      await ensureCloudTableImportedForCheckout(db, tableRowSplit.number, waiterName);
+    }
     if (req.body?.pending_items?.length) {
       const existing = db.getActiveOrderForTable(tableId);
       const prev = db.parseOrderItems(existing?.items_json);
