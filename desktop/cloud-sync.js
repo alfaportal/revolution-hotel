@@ -775,8 +775,31 @@ function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered
 async function pushQrWaiterAcceptToCloudKitchen(
   db,
   order,
-  { cloudOrderId = "", waiterName = "", waiterId = "", table_number = 0 } = {},
+  { cloudOrderId = "", waiterName = "", waiterId = "", table_number = 0, cloudOrder = null } = {},
 ) {
+  // Si KAFENE (një rresht për porosi): pranimi përditëson VETË rreshtin cloud të porosisë
+  // (QR → WEB-KIOSK me artikujt e vet). Më parë krijohej rresht i dytë «POS» me gjithë tavolinën,
+  // që dyfishonte artikujt në telefon, në faturë dhe në kuzhinë.
+  const qrCloudUuid = String(cloudOrderId || cloudOrder?.id || order?.cloud_order_id || "").trim();
+  let qrTarget = cloudOrder && typeof cloudOrder === "object" ? cloudOrder : null;
+  if ((!qrTarget?.device_id || !qrTarget?.local_order_id) && qrCloudUuid) {
+    try {
+      qrTarget = (await resolveCloudOrderById(db, qrCloudUuid)) || qrTarget;
+    } catch {
+      /* offline */
+    }
+  }
+  const qrTargetDevice = String(qrTarget?.device_id || "").trim().toUpperCase();
+  const qrTargetLocalId = String(qrTarget?.local_order_id || "").trim();
+  if (qrTargetDevice.startsWith("WEB-GUEST")) {
+    // Dhomë / shërbim hoteli: pranimi u shënua me acknowledge; mos prek items_json (meta e dhomës).
+    return { ok: true, skipped: true, reason: "guest_row_accepted_by_ack" };
+  }
+  if (!(qrTargetDevice.startsWith("WEB-") && qrTargetLocalId)) {
+    console.warn("[cloud] QR pranim: rreshti cloud s'u gjet — s'krijohet rresht i dytë", qrCloudUuid.slice(0, 8));
+    return { ok: false, skipped: true, reason: "cloud_row_not_found" };
+  }
+
   const built = buildSalePayload(db, order, {
     table_number,
     status: "ordered",
@@ -798,19 +821,16 @@ async function pushQrWaiterAcceptToCloudKitchen(
     built.payload.waiter_id = wId;
     built.payload.accepted_by_waiter_id = wId;
   }
-  const cloudUuid = String(cloudOrderId || order?.cloud_order_id || "").trim();
-  if (cloudUuid) {
-    try {
-      const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
-      const key = map[cloudUuid];
-      if (key?.local_order_id && key?.device_id) {
-        built.payload.device_id = String(key.device_id).trim().toUpperCase();
-        built.payload.local_order_id = String(key.local_order_id).trim();
-      }
-    } catch {
-      /* ignore */
-    }
+  built.payload.device_id = qrTargetDevice;
+  built.payload.local_order_id = qrTargetLocalId;
+  const qrOwnItems = normalizeItems(qrTarget.items || qrTarget.items_json || []);
+  if (qrOwnItems.length) {
+    built.payload.items = qrOwnItems;
+    built.payload.total = Math.round(qrOwnItems.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
   }
+  const qrTargetTable = Number(qrTarget.table_number) || 0;
+  if (qrTargetTable > 0) built.payload.table_number = qrTargetTable;
+  if (qrTarget.ordered_at) built.payload.ordered_at = qrTarget.ordered_at;
 
   try {
     const r = await requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload);

@@ -405,7 +405,10 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     order: { ...closed, total: closeTotal > 0 ? closeTotal : closed.total },
     receipt,
     tableNumber: printTableNum,
-    couponType: fiscalSkip ? "thermal" : "fiscal",
+    // Si KAFENE: kuponi i mbylljes del gjithmonë në printerin e zakonshëm (termik).
+    // Kuponi fiskal (kur SEF është aktiv) printohet më lart nga processFiscalReceipt.
+    // «fiscal» këtu printonte HTML te printeri fiskal → pa printer fiskal s'dilte asnjë kupon.
+    couponType: "thermal",
     closedBy: closingName,
   });
   console.log("[close-print] cloud close " + tag, {

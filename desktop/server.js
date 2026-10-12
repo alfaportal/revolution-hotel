@@ -775,6 +775,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       try {
         await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
           cloudOrderId: cloudOrder.id,
+          cloudOrder,
           waiterName,
           waiterId: ackMeta.waiterId,
           table_number: tblNum,
@@ -848,6 +849,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     try {
       await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
         cloudOrderId: cloudOrder.id,
+        cloudOrder,
         waiterName,
         waiterId: ackMeta.waiterId,
         table_number: 0,

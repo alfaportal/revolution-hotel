@@ -6905,6 +6905,34 @@ function linkCloudOrderId(localOrderId, cloudOrderId) {
   setSetting("cloud_order_id_links", JSON.stringify(Object.fromEntries(entries)));
 }
 
+const CLOUD_STAFF_PUSH_KEYS = "cloud_staff_sale_push_keys";
+
+/**
+ * Si KAFENE: ruaj local_order_id + device_id të rreshtit cloud (kamarier nga telefoni, takeaway),
+ * që çdo përditësim/mbyllje nga PC të shkojë te I NJËJTI rresht — jo rresht i dytë «POS»
+ * (ai rresht i dytë dyfishonte artikujt në telefon dhe në faturë).
+ */
+function rememberStaffWaiterCloudPushKey(cloudOrder) {
+  if (!isCloudStaffWaiterOrder(cloudOrder) && !isCloudOnlinePickupOrder(cloudOrder)) return;
+  const cloudId = String(cloudOrder?.id || "").trim();
+  // Vetëm me çelësin e vërtetë të rreshtit cloud — pa hamendësim (përndryshe krijohet rresht i ri).
+  const localOrderId = String(cloudOrder?.local_order_id || "").trim();
+  if (!cloudId || !localOrderId || !String(cloudOrder?.device_id || "").trim()) return;
+  let map = {};
+  try {
+    map = JSON.parse(getSetting(CLOUD_STAFF_PUSH_KEYS, "{}"));
+  } catch {
+    map = {};
+  }
+  const defaultDev = isCloudStaffWaiterOrder(cloudOrder) ? "WEB-WAITER" : "WEB-PUBLIC";
+  map[cloudId] = {
+    local_order_id: localOrderId,
+    device_id: String(cloudOrder.device_id || defaultDev).trim().toUpperCase(),
+  };
+  const entries = Object.entries(map).slice(-500);
+  setSetting(CLOUD_STAFF_PUSH_KEYS, JSON.stringify(Object.fromEntries(entries)));
+}
+
 /** Radha lokale e porosive QR/online — mbetet deri sa kamarieri pranon me PIN */
 function loadDismissedCloudOrderIds() {
   try {
@@ -7722,6 +7750,7 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   }
 
   if (activeExisting) {
+    rememberStaffWaiterCloudPushKey(cloudOrder);
     const table = getTableById(activeExisting.table_id);
     const keepWaiter = String(activeExisting.waiter_name || name).trim();
     linkCloudOrderId(activeExisting.id, cloudId);
@@ -7837,6 +7866,7 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
     `).run(cloudId, JSON.stringify(merged), mergedTotal, label, activeOnTable.id);
     console.log("[sync] T" + table.number + " cloud_order_id u përditësua: " + cloudId);
     linkCloudOrderId(activeOnTable.id, cloudId);
+    rememberStaffWaiterCloudPushKey(cloudOrder);
     sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
     return {
       ok: true,
@@ -7862,6 +7892,7 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
     VALUES (?, ?, ?, ?, 'active', ?, ?)
   `).run(table.id, insertWaiter, itemsJson, total, cloudId, sourceLabel);
 
+  rememberStaffWaiterCloudPushKey(cloudOrder);
   linkCloudOrderId(r.lastInsertRowid, cloudId);
   sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
 
