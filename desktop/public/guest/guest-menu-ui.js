@@ -42,6 +42,80 @@
     return "";
   }
 
+  function escModal(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function closeGuestMenuItemDetailModal() {
+    document.getElementById("menu-item-detail-modal")?.remove();
+  }
+
+  function itemDescriptionText(item) {
+    return String(item?.description || "").trim();
+  }
+
+  /** Vetëm lexim — përbërësit / përshkrimi (pa shtim në shportë). */
+  function openGuestMenuIngredientsInfoModal(item) {
+    const desc = itemDescriptionText(item);
+    if (!desc) return;
+    closeGuestMenuItemDetailModal();
+    const root = document.createElement("div");
+    root.id = "menu-item-detail-modal";
+    root.className = "menu-item-detail-modal is-dark menu-item-info-only";
+    root.innerHTML = `
+      <div class="menu-item-detail-backdrop" data-close="1"></div>
+      <div class="menu-item-detail-card" role="dialog" aria-modal="true">
+        <button type="button" class="menu-item-detail-close" data-close="1" aria-label="Mbyll">×</button>
+        <h3 class="menu-item-detail-name">${escModal(item.name)}</h3>
+        <p class="menu-item-detail-desc">${escModal(desc)}</p>
+      </div>`;
+    document.body.appendChild(root);
+    const close = () => closeGuestMenuItemDetailModal();
+    root.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", close));
+  }
+
+  function appendGuestIngredientsInfoButton(cell, item) {
+    if (!itemDescriptionText(item)) return;
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "menu-item-ingredients-info";
+    info.setAttribute("aria-label", "Shiko përbërësit");
+    info.title = "Përbërësit";
+    info.textContent = "ℹ";
+    info.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openGuestMenuIngredientsInfoModal(item);
+    });
+    cell.appendChild(info);
+  }
+
+  function createGuestMenuItemCell(it, fmt, onSelect) {
+    const cell = document.createElement("div");
+    cell.className = "menu-item-cell";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "menu-item-btn has-photo";
+    const photo = guestPhotoUrl(it);
+    btn.innerHTML =
+      `<div class="menu-item-card has-photo">` +
+      photoImgHtml(photo, it.name) +
+      `<div class="menu-item-meta">` +
+      `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
+      `<span class="cmimi cmimi-badge">${fmt(it.price)}</span>` +
+      `</div></div>`;
+    btn.addEventListener("click", () => {
+      onSelect?.(it, btn);
+      global.MenuPosUI?.flashButton?.(btn);
+    });
+    cell.appendChild(btn);
+    appendGuestIngredientsInfoButton(cell, it);
+    return cell;
+  }
+
   function photoImgHtml(url, alt, className) {
     const u = String(url || "").trim();
     if (!u) {
@@ -140,22 +214,7 @@
       const grid = document.createElement("div");
       grid.className = "menu-photo-grid-inner menu-text-grid-inner";
       for (const it of filtered) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "menu-item-btn has-photo";
-        const photo = guestPhotoUrl(it);
-        btn.innerHTML =
-          `<div class="menu-item-card has-photo">` +
-          photoImgHtml(photo, it.name) +
-          `<div class="menu-item-meta">` +
-          `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
-          `<span class="cmimi cmimi-badge">${fmt(it.price)}</span>` +
-          `</div></div>`;
-        btn.addEventListener("click", () => {
-          onSelect?.(it, btn);
-          global.MenuPosUI?.flashButton?.(btn);
-        });
-        grid.appendChild(btn);
+        grid.appendChild(createGuestMenuItemCell(it, fmt, onSelect));
       }
       gridEl.appendChild(grid);
     }
@@ -336,22 +395,7 @@
       const grid = document.createElement("div");
       grid.className = "menu-photo-grid-inner menu-text-grid-inner";
       for (const it of filtered) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "menu-item-btn has-photo";
-        const photo = guestPhotoUrl(it);
-        btn.innerHTML =
-          `<div class="menu-item-card has-photo">` +
-          photoImgHtml(photo, it.name) +
-          `<div class="menu-item-meta">` +
-          `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
-          `<span class="cmimi cmimi-badge">${fmt(it.price)}</span>` +
-          `</div></div>`;
-        btn.addEventListener("click", () => {
-          onMenuSelect?.(it, btn);
-          global.MenuPosUI?.flashButton?.(btn);
-        });
-        grid.appendChild(btn);
+        grid.appendChild(createGuestMenuItemCell(it, fmt, onMenuSelect));
       }
       gridEl.appendChild(grid);
     }

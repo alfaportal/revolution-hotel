@@ -161,7 +161,26 @@
         });
       });
     }
-    return btn;
+
+    const cell = document.createElement("div");
+    cell.className = "menu-item-cell";
+    cell.appendChild(btn);
+    const descText = String(item?.description || "").trim();
+    if (descText) {
+      const infoBtn = document.createElement("button");
+      infoBtn.type = "button";
+      infoBtn.className = "menu-item-ingredients-info";
+      infoBtn.setAttribute("aria-label", "Shiko përbërësit");
+      infoBtn.title = "Përbërësit";
+      infoBtn.textContent = "ℹ";
+      infoBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openItemIngredientsInfoModal(item, { theme: "dark" });
+      });
+      cell.appendChild(infoBtn);
+    }
+    return cell;
   }
 
   function escModal(s) {
@@ -173,6 +192,25 @@
 
   function closeItemDetailModal() {
     document.getElementById("menu-item-detail-modal")?.remove();
+  }
+
+  function openItemIngredientsInfoModal(item, { theme } = {}) {
+    const desc = String(item?.description || "").trim();
+    if (!desc) return;
+    closeItemDetailModal();
+    const root = document.createElement("div");
+    root.id = "menu-item-detail-modal";
+    root.className = "menu-item-detail-modal menu-item-info-only" + (theme === "light" ? "" : " is-dark");
+    root.innerHTML = `
+      <div class="menu-item-detail-backdrop" data-close="1"></div>
+      <div class="menu-item-detail-card" role="dialog" aria-modal="true">
+        <button type="button" class="menu-item-detail-close" data-close="1" aria-label="Mbyll">×</button>
+        <h3 class="menu-item-detail-name">${escModal(item.name)}</h3>
+        <p class="menu-item-detail-desc">${escModal(desc)}</p>
+      </div>`;
+    document.body.appendChild(root);
+    const close = () => closeItemDetailModal();
+    root.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", close));
   }
 
   function openItemDetailModal(item, { formatEuro, getPhotoUrl, onAdd, theme } = {}) {
@@ -208,19 +246,16 @@
   }
 
   function handleItemSelect(item, btn, opts = {}) {
-    if (!opts.alwaysModal) {
-      const desc = String(item?.description || "").trim();
-      if (!desc) {
-        opts.onSelect?.(item, btn);
-        return;
-      }
+    if (opts.alwaysModal) {
+      openItemDetailModal(item, {
+        formatEuro: opts.formatEuro,
+        getPhotoUrl: opts.getPhotoUrl,
+        theme: opts.theme || "dark",
+        onAdd: () => opts.onSelect?.(item, btn),
+      });
+      return;
     }
-    openItemDetailModal(item, {
-      formatEuro: opts.formatEuro,
-      getPhotoUrl: opts.getPhotoUrl,
-      theme: opts.theme || "dark",
-      onAdd: () => opts.onSelect?.(item, btn),
-    });
+    opts.onSelect?.(item, btn);
   }
 
   function renderMenuGrid({
@@ -360,6 +395,7 @@
     buildCategoryTabs,
     bindGroupBar,
     openItemDetailModal,
+    openItemIngredientsInfoModal,
     handleItemSelect,
     closeItemDetailModal,
     flashButton(btn) {

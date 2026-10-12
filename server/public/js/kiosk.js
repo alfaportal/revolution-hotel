@@ -168,7 +168,6 @@
       groupFilter: menuGroupFilter,
       formatEuro,
       getPhotoUrl: kitchenPhotoUrl,
-      alwaysModal: true,
       onSelectItem: (item, btn) => addToCart({
         name: item.name,
         price: Number(item.price),

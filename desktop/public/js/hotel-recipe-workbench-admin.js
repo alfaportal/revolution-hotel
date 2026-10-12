@@ -64,12 +64,41 @@
   }
 
   function suggestedDescription(lines) {
-    const names = [];
+    const parts = [];
     for (const ln of lines) {
-      const ing = ingById(ln.ingredient_id);
-      if (ing?.name) names.push(ing.name);
+      const iid = Number(ln.ingredient_id);
+      if (!iid) continue;
+      const ing = ingById(iid);
+      const name = String(ing?.name || ln.new_name || "").trim();
+      if (!name) continue;
+      const ingUnit = ing?.unit || ln.new_unit || "copë";
+
+      let displayQty = null;
+      if (Number(ln.quantity_used) > 0) {
+        displayQty = displayQtyFromInternal(ln.quantity_used, ingUnit);
+      } else if (ln.mode === "yield") {
+        const portions = Number(ln.yield_portions);
+        if (portions > 0) displayQty = displayQtyFromInternal(1 / portions, ingUnit);
+      } else if (Number(ln.display_qty) > 0) {
+        displayQty = Number(ln.display_qty);
+      }
+
+      let qtyLabel = "";
+      const q = Number(displayQty);
+      if (Number.isFinite(q) && q > 0) {
+        const abbr = displayUnitFor(ingUnit);
+        if (abbr === "g" || abbr === "ml") {
+          const n = Math.abs(q - Math.round(q)) < 1e-6 ? String(Math.round(q)) : fmt(q, 1);
+          qtyLabel = `${n}${abbr}`;
+        } else {
+          const n = Math.abs(q - Math.round(q)) < 1e-6 ? String(Math.round(q)) : fmt(q, 2);
+          qtyLabel = `${n} copë`;
+        }
+      }
+
+      parts.push(qtyLabel ? `${name} ${qtyLabel}` : name);
     }
-    return names.join(", ");
+    return parts.join(", ");
   }
 
   function defaultLine() {

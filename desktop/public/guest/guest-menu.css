@@ -269,3 +269,146 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Detaj produkti (i njëjti koncept si menu-pos.js / cloud QR) */
+.menu-item-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+.menu-item-detail-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+}
+.menu-item-detail-card {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  max-height: min(88vh, 640px);
+  overflow: auto;
+  background: #fff;
+  color: #111827;
+  border-radius: 16px;
+  padding: 1.15rem 1.15rem 1.25rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-card {
+  background: #1e293b;
+  color: #f1f5f9;
+}
+.menu-item-detail-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: #111827;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-close {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+.menu-item-detail-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+  background: #f3f4f6;
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-photo {
+  background: #0f172a;
+}
+.menu-item-detail-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.menu-item-detail-name {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.25;
+  padding-right: 2rem;
+}
+.menu-item-detail-price {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--guest-acc, #ff6b35);
+  margin-bottom: 0.75rem;
+}
+.menu-item-detail-desc {
+  margin: 0 0 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #4b5563;
+  white-space: pre-wrap;
+}
+.menu-item-detail-modal.is-dark .menu-item-detail-desc {
+  color: #cbd5e1;
+}
+.menu-item-detail-add {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: var(--guest-acc, #ff6b35);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.menu-item-detail-add:hover {
+  background: #e85a28;
+}
+
+.menu-item-cell {
+  position: relative;
+  min-width: 0;
+}
+
+.menu-item-cell > .menu-item-btn {
+  width: 100%;
+}
+
+.menu-item-ingredients-info {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.menu-item-ingredients-info:hover {
+  background: rgba(255, 107, 53, 0.95);
+}
+
+.menu-item-info-only .menu-item-detail-desc {
+  margin-bottom: 0;
+}
