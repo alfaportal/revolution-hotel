@@ -34,7 +34,7 @@
     }
     if (!ingredientsCache.length) {
       body.innerHTML =
-        '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka përbërës — krijoni te tab-i PËRBËRËSIT E RECETAVE.</td></tr>';
+        '<tr><td colspan="5" style="color:var(--ngjyr-muted)">Nuk ka përbërës — krijoni te tab-i Receptat.</td></tr>';
       return;
     }
     body.innerHTML = ingredientsCache

@@ -359,6 +359,27 @@ function createIngredientsRecipesApi(db) {
     sqlite.prepare("DELETE FROM menu_recipe_lines WHERE menu_item_id = ?").run(Number(menuItemId));
   }
 
+  /** Heq rreshtat e recetës për artikujt në kategori pije (idempotent). */
+  function purgeDrinkMenuItemRecipeLines() {
+    const { isDrinkCategory } = require("./menu-groups");
+    const rows = sqlite.prepare("SELECT id, category FROM menu_items").all();
+    let menuItemsCleaned = 0;
+    let linesRemoved = 0;
+    for (const r of rows) {
+      if (!isDrinkCategory(r.category)) continue;
+      const cnt =
+        sqlite
+          .prepare("SELECT COUNT(*) AS c FROM menu_recipe_lines WHERE menu_item_id = ?")
+          .get(r.id)?.c || 0;
+      if (cnt > 0) {
+        deleteMenuItemRecipeLines(r.id);
+        menuItemsCleaned += 1;
+        linesRemoved += cnt;
+      }
+    }
+    return { menuItemsCleaned, linesRemoved };
+  }
+
   return {
     INGREDIENT_UNITS,
     normalizeUnit,
@@ -378,6 +399,7 @@ function createIngredientsRecipesApi(db) {
     applySaleStockMovement,
     listLowStockIngredients,
     deleteMenuItemRecipeLines,
+    purgeDrinkMenuItemRecipeLines,
   };
 }
 

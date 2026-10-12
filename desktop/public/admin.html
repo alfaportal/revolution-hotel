@@ -2209,6 +2209,59 @@
       font-size: 0.92rem;
       color: #ff6b35;
     }
+    body.admin-app #panel-kontabilisti .kont-bilanc-purch-split {
+      max-width: 520px;
+      margin: -0.15rem 0 0.85rem;
+      padding-left: 0.35rem;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-purch-sub {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.75rem;
+      padding: 0.15rem 0 0.15rem 1rem;
+      font-size: 0.76rem;
+      color: #9090a8;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-purch-sub span:last-child {
+      font-weight: 600;
+      color: #c8c8d8;
+      white-space: nowrap;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock {
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #2e2e45;
+      max-width: 520px;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      padding: 0.35rem 0;
+      font-size: 0.88rem;
+      color: #e8e8ef;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock-label {
+      color: #a0a0b8;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock-val {
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock-row.kont-bilanc-stock-total {
+      margin-top: 0.35rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed #3a3a55;
+      font-weight: 800;
+    }
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock-row.kont-bilanc-stock-total .kont-bilanc-stock-label,
+    body.admin-app #panel-kontabilisti .kont-bilanc-stock-row.kont-bilanc-stock-total .kont-bilanc-stock-val {
+      color: #fff;
+      font-weight: 800;
+    }
     body.admin-app #panel-kontabilisti .kont-decl-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
@@ -2419,11 +2472,11 @@
     <nav class="admin-tabbar" id="tabs">
       <button type="button" class="admin-tab-btn active" data-panel="pasqyra">Pasqyra</button>
       <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
-      <button type="button" class="admin-tab-btn" data-panel="receta-perberesit">PËRBËRËSIT E RECETAVE</button>
       <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
       <button type="button" class="admin-tab-btn" data-panel="tavolinat">Tavolinat</button>
       <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
       <button type="button" class="admin-tab-btn" data-panel="stoku">Stoku</button>
+      <button type="button" class="admin-tab-btn" data-panel="receta-perberesit">Receptat</button>
       <button type="button" class="admin-tab-btn" data-panel="stafi">Punonjësit</button>
       <button type="button" class="admin-tab-btn" data-panel="dhomat">Dhomat</button>
       <button type="button" class="admin-tab-btn" data-panel="sherbimet">Shërbimet</button>
@@ -2710,26 +2763,24 @@
       </div>
     </section>
 
-    <!-- PËRBËRËSIT E RECETAVE -->
+    <!-- Receptat -->
     <section id="panel-receta-perberesit" class="panel">
+      <div class="purchases-panel-header">
+        <div>
+          <h2 class="purchases-panel-title">Receptat</h2>
+          <p class="purchases-panel-sub">Përbërësit dhe recetat për ushqime (1 porcion) · përshkrimi shfaqet në menu/QR · pijet nuk listohen · blerjet e lëndës te Blerjet · stoku i përbërësve te Stoku (lexim)</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-reload">Rifresko listën</button>
+      </div>
       <div class="card settings-card">
-        <div class="card-title">PËRBËRËSIT E RECETAVE</div>
-        <p class="field-hint" style="margin:0 0 0.75rem;line-height:1.5">
-          <strong>Hapi 1:</strong> Shto lëndët e para poshtë (Domate, Djathë, Mish…).
-          <strong>Hapi 2:</strong> Kliko produktin sipër dhe shto sa harxhon për 1 porcion.
-          <strong>Hapi 3:</strong> Bëj blerje te <strong>Blerjet</strong> për të rritur stokun.
-          Sistemi llogarit vetë sa porcione dalin dhe sa lëndë mbeten. Stoku shihet te <strong>Stoku</strong>.
-        </p>
         <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:0.75rem">
           <div style="flex:1;min-width:200px">
-            <label for="recipe-wb-search">Kërko produkt</label>
+            <label for="recipe-wb-search">Kërko produkt ushqimi</label>
             <input type="search" id="recipe-wb-search" placeholder="Emri i produktit…" autocomplete="off">
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-reload">Rifresko listën</button>
         </div>
-        <p class="field-hint" style="margin:0 0 0.5rem">
-          Kliko një produkt për t'i shtuar ose ndryshuar recetën (përbërësit dhe sasitë për 1 porcion).
-          Për ta hequr nga menuja, përdor <strong>Fshi</strong> në fund të rreshtit (konfirmo me <strong>FSHIJ</strong>).
+        <p class="field-hint" style="margin:0 0 0.5rem;line-height:1.45">
+          Kliko produktin për recetën; heqja nga menuja: Fshi në rresht (konfirmo FSHIJ).
         </p>
         <div id="recipe-wb-list" class="recipe-wb-list" style="max-height:220px;overflow:auto;margin-bottom:1rem;border:1px solid var(--ngjyr-border,#2a3344);border-radius:8px"></div>
         <div id="recipe-wb-editor" hidden>
@@ -2741,7 +2792,14 @@
           <div id="recipe-wb-stats" class="field-hint" style="margin-bottom:0.5rem"></div>
           <label for="recipe-wb-desc">Përshkrimi / përmbajtja (menu, QR, telefon)</label>
           <textarea id="recipe-wb-desc" rows="2" maxlength="2000" style="width:100%;margin:0.25rem 0 0.75rem" placeholder="Domate, kastravec, djathë…"></textarea>
-          <p class="field-hint" style="margin:0 0 0.35rem;font-weight:700;color:var(--ngjyr-text,#e5e7eb)">Përbërësit për 1 porcion:</p>
+          <label style="display:block;margin:0 0 0.35rem">Përbërësit për 1 porcion</label>
+          <div class="form-row" style="margin:0 0 0.5rem;max-width:320px">
+            <div style="flex:1">
+              <label for="recipe-wb-line-ing-filter">Kërko përbërësin</label>
+              <input type="search" id="recipe-wb-line-ing-filter" placeholder="Domate, mish…" autocomplete="off">
+            </div>
+          </div>
+          <p class="field-hint" style="margin:0 0 0.35rem">Zgjidh nga lista — lëndë e re vetëm te «Lista e përbërësve» poshtë (+ Shto përbërës).</p>
           <div id="recipe-wb-lines"></div>
           <div class="form-row" style="flex-wrap:wrap;gap:0.35rem;margin:0.5rem 0">
             <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-add-line">+ Përbërës</button>
@@ -2838,7 +2896,7 @@
         </div>
         <div class="card settings-card" style="margin-bottom:1rem">
           <div class="card-title">Përbërësit (stoku — vetëm lexim)</div>
-          <p class="field-hint" style="margin:0 0 0.5rem">Recetat: tab-i <strong>PËRBËRËSIT E RECETAVE</strong>. Blerjet e përbërësve: <strong>Blerjet</strong>.</p>
+          <p class="field-hint" style="margin:0 0 0.5rem">Recetat: tab-i Receptat. Blerjet e përbërësve: Blerjet.</p>
           <div style="overflow-x:auto;margin-bottom:0.75rem">
             <table class="purchases-table">
               <thead><tr><th>Emri</th><th>Njësia</th><th>Stoku</th><th>Kosto/njësi</th><th>Min</th></tr></thead>
@@ -3765,6 +3823,31 @@
             <div class="dashboard-kpi"><div class="dashboard-kpi-label">BLERJET (PA TVSH)</div><div class="dashboard-kpi-val" id="kont-bilanc-blerje">0.00 €</div></div>
             <div class="dashboard-kpi"><div class="dashboard-kpi-label">SHPENZIMET</div><div class="dashboard-kpi-val" id="kont-bilanc-shpenzim">0.00 €</div></div>
             <div class="dashboard-kpi"><div class="dashboard-kpi-label">FITIMI NETO</div><div class="dashboard-kpi-val" id="kont-bilanc-fitim">0.00 €</div></div>
+          </div>
+          <div class="kont-bilanc-purch-split" aria-label="Ndarja e blerjeve">
+            <div class="kont-bilanc-purch-sub">
+              <span>— Lëndë e parë</span>
+              <span id="kont-bilanc-blerje-ing">0.00 €</span>
+            </div>
+            <div class="kont-bilanc-purch-sub">
+              <span>— Produkte menu</span>
+              <span id="kont-bilanc-blerje-menu">0.00 €</span>
+            </div>
+          </div>
+          <div class="kont-subsec-title">Stoku aktual</div>
+          <div class="kont-bilanc-stock" id="kont-bilanc-stock">
+            <div class="kont-bilanc-stock-row">
+              <span class="kont-bilanc-stock-label">Vlera e stokut (produkte menu)</span>
+              <span class="kont-bilanc-stock-val" id="kont-bilanc-stok-menu">0.00 €</span>
+            </div>
+            <div class="kont-bilanc-stock-row">
+              <span class="kont-bilanc-stock-label">Vlera e stokut (lëndë e parë)</span>
+              <span class="kont-bilanc-stock-val" id="kont-bilanc-stok-ing">0.00 €</span>
+            </div>
+            <div class="kont-bilanc-stock-row kont-bilanc-stock-total">
+              <span class="kont-bilanc-stock-label">Vlera totale e stokut</span>
+              <span class="kont-bilanc-stock-val" id="kont-bilanc-stok-total">0.00 €</span>
+            </div>
           </div>
           <input type="hidden" id="kont-bilanc-nga"><input type="hidden" id="kont-bilanc-deri">
         </div>
@@ -6297,7 +6380,7 @@
   <script src="/js/cloud-status.js"></script>
   <script src="/js/hotel-inv-lines-shared.js?v=1"></script>
   <script src="/js/hotel-ingredients-recipes-admin.js?v=2"></script>
-  <script src="/js/hotel-recipe-workbench-admin.js?v=4"></script>
+  <script src="/js/hotel-recipe-workbench-admin.js?v=6"></script>
   <script src="/js/sales-invoice-html.js?v=2"></script>
   <script src="/js/sales-invoices-ui.js?v=2"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
@@ -8529,7 +8612,7 @@
                 <p class="menu-vat-hint" hidden></p>
                 <label class="menu-in-desc-label">Përmbajtja / Përshkrimi</label>
                 <textarea class="menu-in-desc" rows="3" maxlength="2000" placeholder="p.sh. Salcë domate, mozzarella, speca, proshutë…">${escMenuAttr(it.description || "")}</textarea>
-                <p class="field-hint" style="margin:0.35rem 0 0">Receta: tab-i <strong>PËRBËRËSIT E RECETAVE</strong>.</p>
+                <p class="field-hint" style="margin:0.35rem 0 0">Receta: tab-i Receptat.</p>
               </div>
               <div class="product-card-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-save="${it.id}">Ruaje</button>
@@ -9736,8 +9819,13 @@
       };
       set("kont-bilanc-shitje", data.sales_total);
       set("kont-bilanc-blerje", data.purchases_total);
+      set("kont-bilanc-blerje-ing", data.purchases_ingredients_total ?? 0);
+      set("kont-bilanc-blerje-menu", data.purchases_menu_total ?? 0);
       set("kont-bilanc-shpenzim", data.expenses_total);
       set("kont-bilanc-fitim", data.profit);
+      set("kont-bilanc-stok-menu", data.menu_stock_value ?? 0);
+      set("kont-bilanc-stok-ing", data.ingredients_stock_value ?? 0);
+      set("kont-bilanc-stok-total", data.total_stock_value ?? 0);
       const splitEl = document.getElementById("kont-bilanc-shitje-split");
       if (splitEl) {
         const b2c = Number(data.sales_b2c ?? data.sales_total) || 0;

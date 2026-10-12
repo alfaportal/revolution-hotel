@@ -27,6 +27,12 @@ try {
   console.warn("[hotel] fiscal-boot:", e.message);
 }
 const db = require("./database");
+const { isDrinkCategory } = require("./menu-groups");
+
+function menuItemEligibleForRecipe(menuItem) {
+  if (!menuItem) return false;
+  return !isDrinkCategory(menuItem.category);
+}
 const {
   attachWaiterWebSocket,
   broadcastWaiterRealtime,
@@ -5822,8 +5828,12 @@ app.delete("/api/ingredients/:id", auth, adminOnly, (req, res) => {
 
 app.get("/api/menu/recipe-workbench", auth, adminOnly, (req, res) => {
   try {
+    if (typeof db.purgeDrinkMenuItemRecipeLines === "function") {
+      db.purgeDrinkMenuItemRecipeLines();
+    }
     const q = String(req.query.q || "").trim().toLowerCase();
     const items = (db.getMenuItems(false) || [])
+      .filter((m) => menuItemEligibleForRecipe(m))
       .filter((m) => {
         if (!q) return true;
         return String(m.name || "").toLowerCase().includes(q)
@@ -5853,6 +5863,12 @@ app.get("/api/menu/:id/recipe", auth, adminOnly, (req, res) => {
   try {
     const mid = Number(req.params.id);
     const menu = typeof db.getMenuItemById === "function" ? db.getMenuItemById(mid) : null;
+    if (!menuItemEligibleForRecipe(menu)) {
+      return res.status(400).json({
+        ok: false,
+        gabim: "Recetat lejohen vetëm për produkte ushqimi, jo për pije.",
+      });
+    }
     const recipe = db.getMenuItemRecipeBundle(mid);
     res.json({
       ok: true,
@@ -5868,8 +5884,16 @@ app.get("/api/menu/:id/recipe", auth, adminOnly, (req, res) => {
 
 app.put("/api/menu/:id/recipe", auth, adminOnly, (req, res) => {
   try {
+    const mid = Number(req.params.id);
+    const menu = typeof db.getMenuItemById === "function" ? db.getMenuItemById(mid) : null;
+    if (!menuItemEligibleForRecipe(menu)) {
+      return res.status(400).json({
+        ok: false,
+        gabim: "Recetat lejohen vetëm për produkte ushqimi, jo për pije.",
+      });
+    }
     const lines = Array.isArray(req.body?.lines) ? req.body.lines : req.body?.items;
-    const recipe = db.setMenuItemRecipe(Number(req.params.id), lines);
+    const recipe = db.setMenuItemRecipe(mid, lines);
     auditReq(req, "Recetë menu", `Artikull #${req.params.id}`);
     res.json({ ok: true, recipe });
   } catch (e) {

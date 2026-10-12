@@ -138,6 +138,19 @@ whenReady = async () => {
   } catch (e) {
     console.warn("[migrim-pin] startup:", e.message);
   }
+  try {
+    if (!_irApi) {
+      const { createIngredientsRecipesApi } = require("./ingredients-recipes");
+      _irApi = createIngredientsRecipesApi(module.exports);
+    }
+    const { ensureKosovoDefaultRestaurantIngredients } = require("./ingredients-kosovo-default-seed");
+    const seedRes = ensureKosovoDefaultRestaurantIngredients(_irApi, getSetting, setSetting);
+    if (seedRes?.added > 0) {
+      console.log(`[ingredients-seed] u shtuan ${seedRes.added} përbërës (ekzistuan ${seedRes.existed})`);
+    }
+  } catch (e) {
+    console.warn("[ingredients-seed] startup:", e.message);
+  }
   setTimeout(() => {
     try { ensureHotelServiceStockPhotos(); } catch { /* ignore */ }
     try { ensureHotelServiceCategoryPhotos(); } catch { /* ignore */ }
@@ -1791,6 +1804,7 @@ const DEFAULT_ADMIN_TAB_ORDER = [
   "promocione",
   "rezervime",
   "stoku",
+  "receta-perberesit",
   "stafi",
   "tavolinat",
   "dhomat",
@@ -1826,6 +1840,14 @@ function parseAdminTabOrder(raw) {
   }
   for (const id of DEFAULT_ADMIN_TAB_ORDER) {
     if (!arr.includes(id)) arr.push(id);
+  }
+  const recetaId = "receta-perberesit";
+  const stokuIdx = arr.indexOf("stoku");
+  const recetaIdx = arr.indexOf(recetaId);
+  if (stokuIdx >= 0 && recetaIdx >= 0 && recetaIdx !== stokuIdx + 1) {
+    arr.splice(recetaIdx, 1);
+    const st = arr.indexOf("stoku");
+    arr.splice(st + 1, 0, recetaId);
   }
   return arr;
 }
@@ -11379,6 +11401,20 @@ function getMenuStockValueAtCost() {
   return roundReportMoney(total);
 }
 
+/** Vlera e stokut të përbërësve (lëndë e parë) — stock_qty × avg_cost_per_unit. */
+function getIngredientStockValue() {
+  try {
+    const row = sqlite.prepare(`
+      SELECT COALESCE(SUM(COALESCE(stock_qty, 0) * COALESCE(avg_cost_per_unit, 0)), 0) AS v
+      FROM ingredients
+      WHERE COALESCE(stock_qty, 0) > 0
+    `).get();
+    return roundReportMoney(Number(row?.v) || 0);
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Reconciliacion stoku:
  * fillestar + blerjet (goods) + ndryshime manuale (±) − shitjet (daily_log + room service) vs stock_qty.
@@ -12846,6 +12882,36 @@ function exportPurchasesLedgerCsv({ from, to } = {}) {
   return lines.join("\n");
 }
 
+/** Neto pa TVSH për një rresht fature blerjeje (i njëjti split si ATK). */
+function purchaseInvoiceLineNetAmount(line) {
+  const gross = Number(line?.line_total) || 0;
+  if (!(gross > 0)) return 0;
+  const rate = Number(line?.vat_rate) >= 0 ? Number(line.vat_rate) : 18;
+  return atk.splitGross(gross, rate).net;
+}
+
+/** Ndan blerjet neto: përbërës (ingredient_id) vs produkte menu. */
+function sumPurchaseNetIngredientsVsMenu(invoices) {
+  let ingredients = 0;
+  let menu = 0;
+  for (const inv of invoices || []) {
+    const items = Array.isArray(inv.items) ? inv.items : [];
+    if (items.length) {
+      for (const it of items) {
+        const net = purchaseInvoiceLineNetAmount(it);
+        if (Number(it.ingredient_id) > 0) ingredients += net;
+        else menu += net;
+      }
+    } else {
+      menu += atk.purchaseInvoiceNetTotal(inv);
+    }
+  }
+  return {
+    purchases_ingredients_total: Number(atk.money(ingredients).toFixed(2)),
+    purchases_menu_total: Number(atk.money(menu).toFixed(2)),
+  };
+}
+
 /**
  * Bilanci i kontabilistit (fitim neto):
  * (Shitje pa TVSH) − (Blerje pa TVSH) − Shpenzime = Fitimi neto.
@@ -12869,11 +12935,15 @@ function getKontabilistiBilanc({ from, to } = {}) {
     (s, inv) => s + atk.purchaseInvoiceNetTotal(inv),
     0,
   );
+  const purchaseSplit = sumPurchaseNetIngredientsVsMenu(purchaseInvoices);
   const expenses_total = expenseRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const cogsData = computeCogsForPeriod({ from: fromDate, to: toDate });
   const cogs_total = cogsData.total;
   const gross_profit = roundReportMoney(sales_total - cogs_total);
   const profit = sales_total - purchases_total - expenses_total;
+  const menu_stock_value = getMenuStockValueAtCost();
+  const ingredients_stock_value = getIngredientStockValue();
+  const total_stock_value = roundReportMoney(menu_stock_value + ingredients_stock_value);
   return {
     from: fromDate,
     to: toDate,
@@ -12883,8 +12953,13 @@ function getKontabilistiBilanc({ from, to } = {}) {
     cogs_total,
     gross_profit,
     purchases_total: Number(purchases_total.toFixed(2)),
+    purchases_ingredients_total: purchaseSplit.purchases_ingredients_total,
+    purchases_menu_total: purchaseSplit.purchases_menu_total,
     expenses_total: Number(expenses_total.toFixed(2)),
     profit: Number(profit.toFixed(2)),
+    menu_stock_value,
+    ingredients_stock_value,
+    total_stock_value,
     sales_count: salesRows.length,
     sales_b2c_count: salesRows.filter((r) => r.source !== "b2b-sales").length,
     sales_b2b_count: salesRows.filter((r) => r.source === "b2b-sales").length,
@@ -12932,7 +13007,7 @@ function listPurchaseInvoicesForAtk({ from, to } = {}) {
   const ids = invoices.map((i) => i.id);
   const placeholders = ids.map(() => "?").join(",");
   const itemRows = sqlite.prepare(`
-    SELECT invoice_id, line_total, COALESCE(vat_rate, 18) AS vat_rate
+    SELECT invoice_id, ingredient_id, line_total, COALESCE(vat_rate, 18) AS vat_rate
     FROM purchase_invoice_items
     WHERE invoice_id IN (${placeholders})
     ORDER BY id ASC
@@ -12940,7 +13015,9 @@ function listPurchaseInvoicesForAtk({ from, to } = {}) {
   const itemsByInvoice = new Map();
   for (const it of itemRows) {
     if (!itemsByInvoice.has(it.invoice_id)) itemsByInvoice.set(it.invoice_id, []);
+    const iid = it.ingredient_id != null ? Number(it.ingredient_id) : null;
     itemsByInvoice.get(it.invoice_id).push({
+      ingredient_id: iid > 0 ? iid : null,
       line_total: Number(it.line_total) || 0,
       vat_rate: normalizePurchaseVatRate(it.vat_rate),
     });
@@ -14774,6 +14851,7 @@ function getVersionInfo() {
     getMenuItemCostForCogs,
     computeCogsForPeriod,
     getMenuStockValueAtCost,
+    getIngredientStockValue,
     addExpense,
     listExpenses,
     deleteExpense,
@@ -14889,6 +14967,7 @@ Object.assign(module.exports, {
   updateIngredient: _irApi.updateIngredient.bind(_irApi),
   deleteIngredient: _irApi.deleteIngredient.bind(_irApi),
   setMenuItemRecipe: _irApi.setMenuItemRecipe.bind(_irApi),
+  purgeDrinkMenuItemRecipeLines: _irApi.purgeDrinkMenuItemRecipeLines.bind(_irApi),
   getMenuItemRecipeBundle: _irApi.getMenuItemRecipeBundle.bind(_irApi),
   listRecipeLinesForMenuItem: _irApi.listRecipeLinesForMenuItem.bind(_irApi),
   listLowStockIngredients: _irApi.listLowStockIngredients.bind(_irApi),

@@ -1,5 +1,56 @@
-/** Admin — tab PËRBËRËSIT E RECETAVE (HOTEL desktop). */
+/** Admin — tab Receptat (HOTEL desktop). */
 (function (global) {
+  /** Përputhet me menu-groups.js — vetëm ushqim në këtë tab. */
+  function normCat(name) {
+    return String(name || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function foldAscii(name) {
+    return normCat(name).replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  const FOOD_RE =
+    /\b(pizza|pica|pasta|mish|supa|supe|salat\w*|sallat\w*|sandwi\w*|hamburger|burger|fast\s*food|mengjes|embelsira|embel|desert|dessert|peshk|fruta\s*deti|tradicionale|shoqerime|femij|nugget|qofte|wrap|rizotto|risotto|steak|fileto|skara|grill|zgar|qebap|kebab|byrek|burek|lakror|omlet\w*|veze|patate|fries|sushi|taco|lasagn\w*|makaron|spaghetti|corba|pule|chicken|suxhuk|toast|schnitzel|cordon|pjate|pjata|kapreze|caprese)\b/;
+
+  const DRINK_CAT_RE =
+    /\b(pije|pijet|alkool|birra|birre|vera|vere|wine|kafe|coffee|espresso|cappuccino|latte|cocktail|koktej|beer|drink|beverage|energji|energy|caj|tea|uje|water|sok|juice|bar|ftoht|ngroht|qumesht|milk|smoothie|shake|softdrink)\b/;
+
+  function isDrinkCategory(category) {
+    const n = normCat(category);
+    if (!n) return false;
+    const f = foldAscii(category);
+    if (FOOD_RE.test(f) && !DRINK_CAT_RE.test(f) && !f.includes("kafe") && !f.includes("pije")) {
+      return false;
+    }
+    return (
+      DRINK_CAT_RE.test(f) ||
+      n.startsWith("pije") ||
+      n.includes("pije") ||
+      n.includes("alkool") ||
+      n.includes("birra") ||
+      n.includes("kafe") ||
+      n.includes("coffee") ||
+      n.includes("espresso") ||
+      n.includes("drink") ||
+      n.includes("beverage") ||
+      n === "bar" ||
+      n.includes("te ftoht") ||
+      n.includes("te ngroht") ||
+      n.includes("ftohta") ||
+      n.includes("ngrohta") ||
+      f.includes("espress") ||
+      f.includes("kafe")
+    );
+  }
+
+  function isRecipeFoodItem(item) {
+    return item && !isDrinkCategory(item.category);
+  }
+
   const state = {
     items: [],
     selectedId: null,
@@ -7,6 +58,7 @@
     loadedDesc: "",
     descTouched: false,
     sellPrice: 0,
+    lineIngFilter: "",
   };
 
   function fmt(n, dec) {
@@ -57,10 +109,24 @@
     return global.__recipeWbIngredients;
   }
 
-  function ingredientOptions(selectedId) {
-    return typeof HotelIngredientsRecipes?.ingredientOptionsHtml === "function"
-      ? HotelIngredientsRecipes.ingredientOptionsHtml(selectedId)
-      : '<option value="">—</option>';
+  function ingredientOptionsHtml(selectedId, filterText) {
+    const q = String(filterText ?? state.lineIngFilter ?? "")
+      .trim()
+      .toLowerCase();
+    let html = '<option value="">— Zgjidh përbërësin —</option>';
+    const list = global.__recipeWbIngredients || [];
+    for (const ing of list) {
+      const name = String(ing.name || "").trim();
+      if (!name) continue;
+      const isSelected = String(ing.id) === String(selectedId);
+      if (q && !name.toLowerCase().includes(q) && !isSelected) continue;
+      const sel = isSelected ? " selected" : "";
+      html += `<option value="${ing.id}"${sel}>${escapeHtml(name)} (${escapeHtml(ing.unit || "copë")})</option>`;
+    }
+    if (q && !list.some((ing) => String(ing.name || "").toLowerCase().includes(q))) {
+      html += `<option value="" disabled>Nuk u gjet — shtoje poshtë te Lista e përbërësve</option>`;
+    }
+    return html;
   }
 
   function suggestedDescription(lines) {
@@ -69,9 +135,9 @@
       const iid = Number(ln.ingredient_id);
       if (!iid) continue;
       const ing = ingById(iid);
-      const name = String(ing?.name || ln.new_name || "").trim();
+      const name = String(ing?.name || "").trim();
       if (!name) continue;
-      const ingUnit = ing?.unit || ln.new_unit || "copë";
+      const ingUnit = ing?.unit || "copë";
 
       let displayQty = null;
       if (Number(ln.quantity_used) > 0) {
@@ -107,18 +173,13 @@
       ingredient_id: "",
       display_qty: 100,
       yield_portions: 4,
-      new_name: "",
-      new_unit: "kg",
     };
   }
 
   function linesToApiPayload(lines) {
     const out = [];
     for (const ln of lines) {
-      let iid = Number(ln.ingredient_id);
-      if (!iid && ln.new_name?.trim()) {
-        throw new Error(`Përbërësi «${ln.new_name}» duhet krijuar — ruani rreshtin së pari ose zgjidhni përbërës.`);
-      }
+      const iid = Number(ln.ingredient_id);
       if (!iid) continue;
       const ing = ingById(iid);
       const unit = ing?.unit || "copë";
@@ -134,23 +195,6 @@
       if (internal > 0) out.push({ ingredient_id: iid, quantity_used: internal });
     }
     return out;
-  }
-
-  async function ensureLineIngredient(ln) {
-    if (Number(ln.ingredient_id)) return ln;
-    const nm = String(ln.new_name || "").trim();
-    if (!nm) return ln;
-    const created = await global.api("/api/ingredients", {
-      method: "POST",
-      body: JSON.stringify({
-        name: nm,
-        unit: ln.new_unit || "kg",
-        min_stock_qty: 0,
-      }),
-    });
-    ln.ingredient_id = created.ingredient?.id;
-    await ensureIngredients();
-    return ln;
   }
 
   function renderStats(recipe) {
@@ -172,8 +216,7 @@
     host.innerHTML = state.lines
       .map((ln, i) => {
         const ing = ln.ingredient_id ? ingById(ln.ingredient_id) : null;
-        const dispUnit = displayUnitFor(ing?.unit || ln.new_unit);
-        const showNew = !ln.ingredient_id;
+        const dispUnit = displayUnitFor(ing?.unit || "kg");
         return `<div class="recipe-wb-line card" data-i="${i}" style="padding:0.5rem;margin:0.35rem 0">
           <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;gap:0.35rem">
             <div style="min-width:140px">
@@ -183,18 +226,9 @@
                 <option value="yield"${ln.mode === "yield" ? " selected" : ""}>Nga 1 kg/l → porcione</option>
               </select>
             </div>
-            <div style="min-width:160px">
-              <label class="field-hint">Emri i përbërësit</label>
-              <select class="recipe-wb-ing" data-i="${i}" ${showNew ? "hidden" : ""}>${ingredientOptions(ln.ingredient_id)}</select>
-              <input type="text" class="recipe-wb-new-name" data-i="${i}" placeholder="Emër i ri" value="${ln.new_name || ""}" ${showNew ? "" : "hidden"}>
-            </div>
-            <div style="min-width:90px" class="recipe-wb-new-unit-wrap" data-i="${i}" ${showNew ? "" : "hidden"}>
-              <label class="field-hint">Njësia (g, ml, copë)</label>
-              <select class="recipe-wb-new-unit" data-i="${i}">
-                <option value="kg"${(ln.new_unit || "kg") === "kg" ? " selected" : ""}>kg</option>
-                <option value="l"${ln.new_unit === "l" ? " selected" : ""}>l</option>
-                <option value="copë"${ln.new_unit === "copë" ? " selected" : ""}>copë</option>
-              </select>
+            <div style="min-width:220px;flex:1">
+              <label class="field-hint">Përbërësi (nga lista)</label>
+              <select class="recipe-wb-ing" data-i="${i}">${ingredientOptionsHtml(ln.ingredient_id)}</select>
             </div>
             <div class="recipe-wb-amt-wrap" data-i="${i}" ${ln.mode === "yield" ? "hidden" : ""}>
               <label class="field-hint">Sasia · ${dispUnit} (për 1 porcion)</label>
@@ -206,7 +240,6 @@
             </div>
             <button type="button" class="btn btn-ghost btn-sm recipe-wb-rm" data-i="${i}">×</button>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm recipe-wb-create-ing" data-i="${i}" ${showNew ? "" : "hidden"}>Krijo përbërësin</button>
         </div>`;
       })
       .join("");
@@ -221,18 +254,9 @@
     host.querySelectorAll(".recipe-wb-ing").forEach((sel) => {
       sel.addEventListener("change", () => {
         const i = Number(sel.dataset.i);
-        state.lines[i].ingredient_id = sel.value;
+        const v = Number(sel.value);
+        state.lines[i].ingredient_id = v > 0 ? v : "";
         renderLines();
-      });
-    });
-    host.querySelectorAll(".recipe-wb-new-name").forEach((inp) => {
-      inp.addEventListener("input", () => {
-        state.lines[Number(inp.dataset.i)].new_name = inp.value;
-      });
-    });
-    host.querySelectorAll(".recipe-wb-new-unit").forEach((sel) => {
-      sel.addEventListener("change", () => {
-        state.lines[Number(sel.dataset.i)].new_unit = sel.value;
       });
     });
     host.querySelectorAll(".recipe-wb-qty").forEach((inp) => {
@@ -249,17 +273,6 @@
       btn.addEventListener("click", () => {
         state.lines.splice(Number(btn.dataset.i), 1);
         renderLines();
-      });
-    });
-    host.querySelectorAll(".recipe-wb-create-ing").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const i = Number(btn.dataset.i);
-        try {
-          await ensureLineIngredient(state.lines[i]);
-          renderLines();
-        } catch (e) {
-          alert(e.message || "Gabim");
-        }
       });
     });
   }
@@ -432,11 +445,12 @@
     const q = document.getElementById("recipe-wb-search")?.value?.trim() || "";
     const qs = q ? `?q=${encodeURIComponent(q)}` : "";
     const data = await global.api(`/api/menu/recipe-workbench${qs}`);
-    state.items = data.items || [];
+    state.items = (data.items || []).filter(isRecipeFoodItem);
     const list = document.getElementById("recipe-wb-list");
     if (!list) return;
     if (!state.items.length) {
-      list.innerHTML = '<p class="field-hint" style="padding:0.5rem">Nuk u gjet produkt.</p>';
+      list.innerHTML =
+        '<p class="field-hint" style="padding:0.5rem">Nuk u gjet produkt ushqimi për recetë (pijet nuk shfaqen këtu).</p>';
       return;
     }
     list.innerHTML = `<table class="purchases-table" style="width:100%">
@@ -490,6 +504,11 @@
   }
 
   async function selectProduct(id) {
+    const picked = state.items.find((x) => x.id === id);
+    if (!isRecipeFoodItem(picked)) {
+      alert("Recetat lejohen vetëm për produkte ushqimi, jo për pije.");
+      return;
+    }
     state.selectedId = id;
     state.descTouched = false;
     await ensureIngredients();
@@ -513,8 +532,6 @@
       ingredient_id: ln.ingredient_id,
       display_qty: displayQtyFromInternal(ln.quantity_used, ln.ingredient_unit),
       yield_portions: 4,
-      new_name: "",
-      new_unit: ln.ingredient_unit || "kg",
     }));
     if (!state.lines.length) state.lines = [defaultLine()];
     renderLines();
@@ -526,13 +543,21 @@
     const msg = document.getElementById("recipe-wb-msg");
     const id = state.selectedId;
     if (!id) return;
+    const current = state.items.find((x) => x.id === id);
+    if (!isRecipeFoodItem(current)) {
+      if (msg) msg.textContent = "Recetat lejohen vetëm për ushqime, jo për pije.";
+      return;
+    }
     try {
-      for (let i = 0; i < state.lines.length; i += 1) {
-        if (!state.lines[i].ingredient_id && state.lines[i].new_name?.trim()) {
-          await ensureLineIngredient(state.lines[i]);
-        }
-      }
+      await ensureIngredients();
       const apiLines = linesToApiPayload(state.lines);
+      if (!apiLines.length) {
+        if (msg) {
+          msg.textContent =
+            "Zgjidh përbërës ekzistues nga lista (lëndë e re: + Shto përbërës poshtë).";
+        }
+        return;
+      }
       const suggested = suggestedDescription(
         apiLines.map((l) => ({ ingredient_id: l.ingredient_id })),
       );
@@ -582,15 +607,17 @@
     document.getElementById("recipe-wb-search")?.addEventListener("input", () => {
       loadList().catch(() => {});
     });
+    document.getElementById("recipe-wb-line-ing-filter")?.addEventListener("input", (ev) => {
+      state.lineIngFilter = String(ev.target?.value || "");
+      renderLines();
+    });
     document.getElementById("recipe-wb-add-line")?.addEventListener("click", () => {
       state.lines.push(defaultLine());
       renderLines();
     });
     document.getElementById("recipe-wb-fill-desc")?.addEventListener("click", async () => {
       try {
-        for (const ln of state.lines) {
-          if (!ln.ingredient_id && ln.new_name?.trim()) await ensureLineIngredient(ln);
-        }
+        await ensureIngredients();
         const apiLines = linesToApiPayload(state.lines);
         const suggested = suggestedDescription(apiLines);
         const descEl = document.getElementById("recipe-wb-desc");
