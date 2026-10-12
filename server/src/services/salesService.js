@@ -62,7 +62,9 @@ function mergeOrderItems(existingItems, newItems) {
   return merged;
 }
 
-/** Parandalon double-submit: porosi e njëjtë brenda 60s (table + device + waiter). */
+/** Parandalon double-submit: porosi e njëjtë brenda 60s (table + device + waiter).
+ *  Porosi QR (WEB-KIOSK) që ka accepted_at NUK bëhet dedup — klienti ka porositur sërish
+ *  pas pranimit dhe duhet rresht i ri (porosi e dytë reale, jo double-click). */
 async function findRecentActiveOrderForDedup(db, {
   clientId,
   tableNumber,
@@ -87,25 +89,37 @@ async function findRecentActiveOrderForDedup(db, {
   if (wid) q = q.eq("waiter_id", wid);
   const { data, error } = await q.maybeSingle();
   if (error) return null;
-  return data || null;
+  if (!data) return null;
+  const { WEB_KIOSK } = require("../lib/orderSource");
+  if (String(deviceId).toUpperCase() === WEB_KIOSK && data.accepted_at) {
+    return null;
+  }
+  return data;
 }
 
 /** Një porosi aktive për tavolinë — mbyll rreshtat e vjetër (WEB-WAITER vs POS etj.) */
 async function cancelOtherActiveOrdersForTable(clientId, tableNumber, except = null) {
   const num = Number(tableNumber);
   if (!num || num < 1) return 0;
-  const { isRemoteActiveTableOrder } = require("../lib/orderSource");
+  const { isRemoteActiveTableOrder, isPosDesktopDevice } = require("../lib/orderSource");
   const db = getSupabase();
   const { data: rows, error } = await db
     .from("sales_orders")
-    .select("id, local_order_id, device_id")
+    .select("id, local_order_id, device_id, ordered_at, created_at, status, ready_at, accepted_at, accepted_by_waiter_name")
     .eq("client_id", clientId)
     .eq("table_number", num)
     .in("status", ["ordered", "ready"]);
   if (error) throw error;
 
   const now = new Date().toISOString();
+  const nowMs = Date.now();
+  const FRESH_ORDER_MS = 3 * 60 * 1000;
+  /** Kuzhina duhet kohë për PRANO — mos anulo porosi të papranuara. */
+  const KITCHEN_PENDING_MS = 30 * 60 * 1000;
+  const { isOrderAccepted } = require("../lib/salesOrderSelect");
+  const { isKitchenLifecycleActive } = require("../lib/kitchenOrderHold");
   let cancelled = 0;
+  const keepDevice = String(except?.device_id || "").trim().toUpperCase();
   for (const row of rows || []) {
     if (
       except &&
@@ -114,7 +128,17 @@ async function cancelOtherActiveOrdersForTable(clientId, tableNumber, except = n
     ) {
       continue;
     }
+    if (isKitchenLifecycleActive(row)) continue;
+    if (isOrderAccepted(row)) continue;
     if (isRemoteActiveTableOrder(row.device_id)) continue;
+    const rowDevice = String(row.device_id || "").trim().toUpperCase();
+    if (keepDevice && isPosDesktopDevice(keepDevice) && rowDevice !== keepDevice) continue;
+    const touch = row.ordered_at ? new Date(row.ordered_at).getTime() : 0;
+    const ageMs = touch ? nowMs - touch : 0;
+    if (!isOrderAccepted(row) && (!touch || ageMs < KITCHEN_PENDING_MS)) continue;
+    if (rowDevice === keepDevice && touch && ageMs < FRESH_ORDER_MS) {
+      continue;
+    }
     const { error: updErr } = await db
       .from("sales_orders")
       .update({ status: "cancelled", closed_at: now, total: 0, ready_at: null })
@@ -125,7 +149,7 @@ async function cancelOtherActiveOrdersForTable(clientId, tableNumber, except = n
   return cancelled;
 }
 
-const STALE_POS_SYNC_MS = 2 * 60 * 1000;
+const STALE_POS_SYNC_MS = 24 * 60 * 60 * 1000;
 const EXPIRE_STARTUP_GRACE_MS = 90 * 1000;
 const _salesServiceStartedAt = Date.now();
 
@@ -142,7 +166,7 @@ async function expireStalePosSyncOrders(clientId) {
   try {
     const { data, error } = await db
       .from("sales_orders")
-      .select("id, table_number, device_id, ordered_at, pos_synced_at")
+      .select("id, table_number, device_id, ordered_at, created_at, ready_at, status, pos_synced_at")
       .eq("client_id", clientId)
       .in("status", ["ordered", "ready"])
       .gte("table_number", 1);
@@ -166,9 +190,11 @@ async function expireStalePosSyncOrders(clientId) {
     rows = (data || []).map(r => ({ ...r, pos_synced_at: r.closed_at }));
   }
 
+  const { isKitchenLifecycleActive } = require("../lib/kitchenOrderHold");
   const freedTables = new Set();
   for (const row of rows) {
     if (!isPosDesktopDevice(row.device_id)) continue;
+    if (isKitchenLifecycleActive(row)) continue;
     const touch = row.pos_synced_at || row.ordered_at;
     if (!touch || new Date(touch).getTime() > cutoffMs) continue;
 
@@ -200,20 +226,40 @@ async function freeTableFromPos(body) {
   const tableNum = Number(body.table_number);
   if (!tableNum || tableNum < 1) throw new Error("Mungon numri i tavolinës.");
 
-  const { isRemoteActiveTableOrder } = require("../lib/orderSource");
+  const { isRemoteActiveTableOrder, isPosDesktopDevice } = require("../lib/orderSource");
   const db = getSupabase();
+  const { isOrderAccepted } = require("../lib/salesOrderSelect");
+  const { isKitchenLifecycleActive } = require("../lib/kitchenOrderHold");
   const { data: rows, error } = await db
     .from("sales_orders")
-    .select("id, device_id")
+    .select("id, device_id, status, accepted_at, accepted_by_waiter_name, ready_at, payment_status, ordered_at, created_at")
     .eq("client_id", license.client_id)
     .eq("table_number", tableNum)
     .in("status", ["ordered", "ready"]);
   if (error) throw error;
 
+  if ((rows || []).some(r => isKitchenLifecycleActive(r))) {
+    return { ok: true, cancelled: 0, kitchen_hold: true };
+  }
+
   const now = new Date().toISOString();
+  const nowMs = Date.now();
+  const KITCHEN_PENDING_MS = 30 * 60 * 1000;
   let cancelled = 0;
+  const keepDevice = String(body.device_id || "").trim().toUpperCase();
   for (const row of rows || []) {
+    if (isKitchenLifecycleActive(row)) continue;
     if (isRemoteActiveTableOrder(row.device_id)) continue;
+    const rowDevice = String(row.device_id || "").trim().toUpperCase();
+    if (keepDevice && isPosDesktopDevice(keepDevice) && rowDevice !== keepDevice) continue;
+    const st = String(row.status || "").toLowerCase();
+    if (st === "ready") continue;
+    if (isOrderAccepted(row) && !row.ready_at) continue;
+    const ps = String(row.payment_status || "").toLowerCase();
+    if (ps === "paid" && st === "ordered" && !row.ready_at) continue;
+    const touch = row.ordered_at ? new Date(row.ordered_at).getTime() : 0;
+    const ageMs = touch ? nowMs - touch : 0;
+    if (st === "ordered" && !isOrderAccepted(row) && (!touch || ageMs < KITCHEN_PENDING_MS)) continue;
     const { error: updErr } = await db
       .from("sales_orders")
       .update({ status: "cancelled", closed_at: now, total: 0, ready_at: null })
@@ -256,7 +302,7 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
 
   let { data: existing } = await db
     .from("sales_orders")
-    .select("status, closed_at, ordered_at, items_json, accepted_at, accepted_by_waiter_name, accepted_by_waiter_id, local_order_id, device_id, id, total, waiter_name, waiter_id")
+    .select("status, closed_at, ordered_at, created_at, ready_at, items_json, accepted_at, accepted_by_waiter_name, accepted_by_waiter_id, local_order_id, device_id, id, total, waiter_name, waiter_id, payment_status, table_number")
     .eq("client_id", license.client_id)
     .eq("local_order_id", localOrderId)
     .eq("device_id", deviceId)
@@ -292,13 +338,40 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
     finalStatus = prevItems === nextItems ? "ready" : "ordered";
   }
 
+  const { isPosDesktopDevice } = require("../lib/orderSource");
+  const { isOrderAccepted } = require("../lib/salesOrderSelect");
+  /** Pagesë POS por kuzhina ende nuk ka shtypur «Gati» — mbaj ordered në cloud. */
+  let deferPosCloseForKitchen = false;
+  if (
+    status === "closed"
+    && isPosDesktopDevice(deviceId)
+    && existing
+    && String(existing.status || "") === "ordered"
+    && !existing.ready_at
+  ) {
+    finalStatus = "ordered";
+    deferPosCloseForKitchen = true;
+  }
+
   const itemsChanged = !!existing
     && finalStatus === "ordered"
     && JSON.stringify(normalizeItems(existing.items_json)) !== JSON.stringify(items);
 
+  const posWaiterAccepted =
+    body.pos_waiter_accepted === true
+    || body.pos_waiter_accepted === 1
+    || body.pos_waiter_accepted === "1"
+    || body.pos_waiter_accepted === "true";
+
   const keepKey = { local_order_id: localOrderId, device_id: deviceId };
-  const skipSiblingCancel = deviceId === WEB_KIOSK || deviceId === WEB_PUBLIC;
-  if (tableNum >= 1 && ["ordered", "ready", "closed", "cancelled"].includes(finalStatus) && !skipSiblingCancel) {
+  // Takeaway/delivery (PUBLIC, table 0) — mos prek kanalet e tjera. QR në T fizike = si kamarier (pastron POS stale).
+  const skipSiblingCancel = deviceId === WEB_PUBLIC || tableNum < 1;
+  // Mos anulo tavolinën e kuzhinës kur vjen pagesë/mbyllje (closed) — vetëm ordered/ready pastrojnë «ghost» WEB.
+  if (
+    tableNum >= 1
+    && (finalStatus === "ordered" || finalStatus === "ready")
+    && !skipSiblingCancel
+  ) {
     await cancelOtherActiveOrdersForTable(license.client_id, tableNum, keepKey);
   }
 
@@ -321,7 +394,6 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
   const pmRaw = String(body.payment_method || "cash").trim().toLowerCase();
   row.payment_method = ["karte", "kartë", "card", "kart"].includes(pmRaw) ? "karte" : "cash";
 
-  const { isPosDesktopDevice } = require("../lib/orderSource");
   if (isPosDesktopDevice(deviceId) && ["ordered", "ready"].includes(finalStatus)) {
     row.pos_synced_at = now;
   }
@@ -332,12 +404,52 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
       : normalizePosOrderedAt(body.ordered_at || existing?.ordered_at, now);
     row.closed_at = row.ordered_at;
     row.ready_at = null;
-    if (itemsChanged) {
-      row.accepted_at = null;
-      row.accepted_by_waiter_name = null;
-      row.accepted_by_waiter_id = null;
+    if (deferPosCloseForKitchen && existing) {
+      row.payment_status = "paid";
+      row.paid_at = now;
+      row.accepted_at = existing.accepted_at;
+      row.accepted_by_waiter_name = existing.accepted_by_waiter_name;
+      row.accepted_by_waiter_id = existing.accepted_by_waiter_id;
+    } else if (itemsChanged && !posWaiterAccepted) {
+      const keepAcceptance =
+        body.pos_keep_acceptance === true
+        || body.pos_keep_acceptance === 1
+        || body.pos_keep_acceptance === "1"
+        || body.pos_keep_acceptance === "true";
+      const hadAccept = isOrderAccepted(existing);
+      if (keepAcceptance && hadAccept) {
+        row.accepted_at = existing.accepted_at;
+        row.accepted_by_waiter_name = existing.accepted_by_waiter_name;
+        row.accepted_by_waiter_id = existing.accepted_by_waiter_id;
+      } else {
+        row.accepted_at = null;
+        row.accepted_by_waiter_name = null;
+        row.accepted_by_waiter_id = null;
+      }
+    }
+    if (posWaiterAccepted) {
+      const accName = String(
+        body.accepted_by_waiter_name || body.waiter_name || existing?.accepted_by_waiter_name || "",
+      ).trim();
+      const accId = String(
+        body.accepted_by_waiter_id || body.waiter_id || existing?.accepted_by_waiter_id || "",
+      ).trim();
+      if (accName) {
+        row.accepted_by_waiter_name = accName;
+        row.accepted_at = body.accepted_at || now;
+        if (accId) row.accepted_by_waiter_id = accId;
+      }
     }
   } else if (finalStatus === "cancelled") {
+    const { isKitchenLifecycleActive, isForceKitchenCancel } = require("../lib/kitchenOrderHold");
+    if (existing && isKitchenLifecycleActive(existing) && !isForceKitchenCancel(body)) {
+      console.warn("[sales] blocked cancel — kitchen hold", {
+        id: existing.id,
+        local_order_id: existing.local_order_id,
+        table_number: existing.table_number,
+      });
+      return existing;
+    }
     row.ordered_at = normalizePosOrderedAt(body.ordered_at || existing?.ordered_at, now);
     row.closed_at = now;
     row.ready_at = null;
@@ -403,8 +515,22 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
 
   if (finalStatus === "ordered" || finalStatus === "cancelled" || finalStatus === "ready" || finalStatus === "closed") {
     const { isCustomerChannelDevice } = require("../lib/orderSource");
-    const skipKdsPing = isCustomerChannelDevice(deviceId) && finalStatus === "ordered";
-    if (!skipKdsPing) {
+    const skipKdsPing =
+      isCustomerChannelDevice(deviceId)
+      && finalStatus === "ordered"
+      && !posWaiterAccepted
+      && !row.accepted_at
+      && !String(row.accepted_by_waiter_name || "").trim()
+      && !(
+        body.pos_keep_acceptance === true
+        || body.pos_keep_acceptance === 1
+        || body.pos_keep_acceptance === "1"
+        || body.pos_keep_acceptance === "true"
+      );
+    const { isPosDesktopDevice } = require("../lib/orderSource");
+    const skipPosClosedKdsPing =
+      finalStatus === "closed" && isPosDesktopDevice(deviceId);
+    if (!skipKdsPing && !skipPosClosedKdsPing) {
       try {
         const kds = require("./kdsEvents");
         const tableNum = Number(data?.table_number ?? body.table_number) || 0;
@@ -479,13 +605,40 @@ async function updateActiveSaleFromPos(body) {
   return upsertSaleFromPos({ ...body, status }, { defaultStatus: "ordered" });
 }
 
+/** license_id|device_id → terminal_role (arka1, arka2…) nga license_terminals; gabim → Map bosh. */
+async function resolveTerminalRolesForOrders(orders) {
+  const roles = new Map();
+  const licenseIds = [...new Set((orders || []).map(o => o?.license_id).filter(Boolean))];
+  if (!licenseIds.length) return roles;
+  try {
+    const { data, error } = await getSupabase()
+      .from("license_terminals")
+      .select("license_id, device_id, terminal_role")
+      .in("license_id", licenseIds);
+    if (error) throw error;
+    for (const t of data || []) {
+      const role = String(t.terminal_role || "").trim().toLowerCase();
+      if (!role) continue;
+      roles.set(`${t.license_id}|${String(t.device_id || "").trim().toUpperCase()}`, role);
+    }
+  } catch (err) {
+    console.warn("[sales] terminal roles:", err.message);
+  }
+  return roles;
+}
+
+function terminalRoleForOrder(roles, order) {
+  if (!order?.license_id) return null;
+  return roles.get(`${order.license_id}|${String(order.device_id || "").trim().toUpperCase()}`) || null;
+}
+
 async function fetchOwnerActiveOrders(clientId) {
   const db = getSupabase();
   const { selectWithAcceptanceFallback } = require("../lib/salesOrderSelect");
   const base =
-    "id, table_number, waiter_name, waiter_id, items_json, total, ordered_at, local_order_id, status, device_id";
+    "id, license_id, table_number, waiter_name, waiter_id, items_json, total, ordered_at, local_order_id, status, device_id";
 
-  return selectWithAcceptanceFallback(withAcceptance => {
+  const rows = await selectWithAcceptanceFallback(withAcceptance => {
     const select = withAcceptance
       ? `${base}, accepted_by_waiter_id, accepted_by_waiter_name, accepted_at`
       : base;
@@ -496,6 +649,8 @@ async function fetchOwnerActiveOrders(clientId) {
       .in("status", ["ordered", "ready"])
       .order("ordered_at", { ascending: false });
   });
+  const roles = await resolveTerminalRolesForOrders(rows);
+  return rows.map(o => ({ ...o, terminal_role: terminalRoleForOrder(roles, o) }));
 }
 
 async function getLiveTablesForOwner(clientId) {
@@ -520,12 +675,15 @@ async function getLiveTablesForOwner(clientId) {
     console.warn("[getLiveTablesForOwner] areas:", err.message);
   }
 
-  const { orderSourceLabel } = require("../lib/orderSource");
+  const { orderSourceLabel, WEB_KIOSK } = require("../lib/orderSource");
+  const { isOrderAccepted } = require("../lib/salesOrderSelect");
   const metaByTable = new Map();
   const activeByTable = new Map();
   for (const o of activeOrders || []) {
     const num = Number(o.table_number) || 0;
     if (num < 1 || metaByTable.has(num)) continue;
+    const device = String(o.device_id || "").trim().toUpperCase();
+    if (device === WEB_KIOSK && !isOrderAccepted(o)) continue;
     const src = orderSourceLabel(o);
     metaByTable.set(num, {
       id: o.id || null,
@@ -748,7 +906,7 @@ async function listOwnerOrders(clientId, opts = {}) {
   const maps = await loadWaiterStaffMaps(clientId);
   const { selectWithAcceptanceFallback } = require("../lib/salesOrderSelect");
   const base =
-    "id, table_number, waiter_name, waiter_id, items_json, total, receipt_number, closed_at, status, device_id";
+    "id, license_id, table_number, waiter_name, waiter_id, items_json, total, receipt_number, closed_at, status, device_id";
 
   const rows = await selectWithAcceptanceFallback(withAcceptance => {
     const select = withAcceptance
@@ -770,14 +928,17 @@ async function listOwnerOrders(clientId, opts = {}) {
   });
 
   const { orderSourceLabel } = require("../lib/orderSource");
+  const roles = await resolveTerminalRolesForOrders(rows);
   return rows.map(o => {
     const attr = resolveWaiterAttribution(o, maps);
+    const terminal_role = terminalRoleForOrder(roles, o);
     return {
       ...o,
+      terminal_role,
       waiter_name: attr.name || o.waiter_name || "",
       waiter_id: attr.id || o.waiter_id || null,
       items_json: normalizeItems(o.items_json),
-      source: orderSourceLabel(o),
+      source: orderSourceLabel({ ...o, terminal_role }),
       accepted_by: String(o.accepted_by_waiter_name || "").trim(),
     };
   });

@@ -15,7 +15,7 @@ function isCloudWaiterDisabled(db) {
 
 const POLL_MS = 5000;
 /** Porosi që askush nuk prek — zhduken nga popup pas 60s (jo grace REFUZO 2 min). */
-const UNTOUCHED_PENDING_EXPIRE_MS = 15 * 60 * 1000;
+const UNTOUCHED_PENDING_EXPIRE_MS = 60 * 1000;
 const PRINTED_KEY = "online_orders_printed_ids";
 const LOCAL_ACK_KEY = "online_orders_local_ack_ids";
 const LOCAL_REFUSED_KEY = "online_orders_staff_refused";
@@ -155,18 +155,6 @@ function findCachedOrderById(orderId, db, allOrders) {
   return null;
 }
 
-/** QR dhomë / shërbime hoteli — ruhen lokalisht, cloud nuk i liston. */
-function isLocalRecepcionGuestPending(o, db) {
-  if (!o?.id) return false;
-  if (o.local_only === true) return true;
-  const device = String(o.device_id || "").trim().toUpperCase();
-  if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return true;
-  if (typeof db?.isRecepcionAcceptPendingOrder === "function" && db.isRecepcionAcceptPendingOrder(o)) {
-    return true;
-  }
-  return false;
-}
-
 /** ID që cloud i ka pranuar, mbyllur, ose nuk i kthen më — hiqen nga cache lokale. */
 function buildCloudResolvedIdSet(data, allOrders, db) {
   const resolved = new Set();
@@ -191,7 +179,6 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
     if (resolved.has(id) || cloudLive.has(id)) continue;
     const cached = findCachedOrderById(id, db, allOrders);
     if (cached && isInRefusalGraceOrder(cached)) continue;
-    if (cached && isLocalRecepcionGuestPending(cached, db)) continue;
     resolved.add(id);
   }
 
@@ -201,8 +188,15 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
 function orderStillPending(o, suppressIds, db) {
   if (!o?.id) return false;
   if (suppressIds?.has(String(o.id))) return false;
-  // Si KAFENE: porosia e pranuar në këtë PC s'del më si PRANO (edhe kur cloud vonon).
   if (isLocallyAcked(db, o.id)) return false;
+  if (
+    typeof db?.isCloudQrTableOrder === "function"
+    && db.isCloudQrTableOrder(o)
+    && typeof db.isQrCloudOrderResolvedForPos === "function"
+    && db.isQrCloudOrderResolvedForPos(o)
+  ) {
+    return false;
+  }
   if (isExplicitlyAccepted(o, db)) return false;
   if (isInRefusalGraceOrder(o) && isOrderExpiredGrace(o)) return false;
   return true;
@@ -245,15 +239,6 @@ function splitUntouchedExpiredPending(db, orders) {
 }
 
 function expireUntouchedPendingOrders(db, orderIds) {
-  if (typeof db?.removeRoomChargesForExpiredCloudOrder === "function") {
-    for (const id of orderIds || []) {
-      try {
-        db.removeRoomChargesForExpiredCloudOrder(id);
-      } catch (e) {
-        console.warn("[online-orders] folio undo:", e.message || e);
-      }
-    }
-  }
   purgeCloudResolvedOrders(db, orderIds);
 }
 
@@ -267,27 +252,12 @@ function purgeCloudResolvedOrders(db, orderIds) {
 function normalizePendingOrder(o) {
   if (!o?.id) return null;
   let items = o.items;
-  let payload = null;
   if (!items?.length && o.items_json) {
     try {
-      payload = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+      items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
     } catch {
-      payload = [];
+      items = [];
     }
-    items = payload;
-  }
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    items = Array.isArray(payload.items) ? payload.items : (payload.service_lines || []);
-    return {
-      ...o,
-      items: items || [],
-      order_kind: payload.order_kind || o.order_kind || "",
-      room_number: payload.room_number || o.room_number || "",
-      folio_pre_applied: payload.folio_pre_applied ?? o.folio_pre_applied,
-      service_lines: payload.service_lines || o.service_lines || [],
-      source_label: payload.source_label || o.source_label,
-      customer_label: payload.customer_label || o.customer_label,
-    };
   }
   return { ...o, items: items || [] };
 }
@@ -452,26 +422,18 @@ function cloudReady(db) {
 
 function isLoginNotifyPendingOrder(o, db) {
   if (!o?.id || isExplicitlyAccepted(o, db)) return false;
-  if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
-    return db.isRestaurantLoginNotifyOrder(o);
-  }
-  if (typeof db?.isGuestRoomMenuOrder === "function" && db.isGuestRoomMenuOrder(o)) return true;
-  if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) {
+  if (
+    typeof db?.isCloudQrTableOrder === "function"
+    && db.isCloudQrTableOrder(o)
+    && typeof db.isQrCloudOrderResolvedForPos === "function"
+    && db.isQrCloudOrderResolvedForPos(o)
+  ) {
     return false;
   }
   if (typeof db?.isCloudPosAcceptQueueOrder === "function" && db.isCloudPosAcceptQueueOrder(o)) return true;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;
   const device = String(o?.device_id || "").trim().toUpperCase();
   return device === "WEB-PUBLIC";
-}
-
-/** Radha lokale / snapshot — recepsion + restorant (jo vetëm alarmi i login-it të kamarierit). */
-function isLocalPendingQueueOrder(o, db) {
-  if (!o?.id || isExplicitlyAccepted(o, db)) return false;
-  if (typeof db?.isAnyStaffAcceptPendingOrder === "function" && db.isAnyStaffAcceptPendingOrder(o)) {
-    return true;
-  }
-  return isLoginNotifyPendingOrder(o, db);
 }
 
 function isPosAcceptQueueOrder(o, db) {
@@ -488,20 +450,15 @@ async function tick(db, printBarTicket) {
   if (tickInFlight) return tickInFlight;
   tickInFlight = (async () => {
   if (!cloudReady(db)) {
-    const localOnly = dropLocallyHandled(
-      db,
-      mergePending(db, [], safeListLocalPending(db), new Set()),
-    ).filter((o) => isLocalPendingQueueOrder(o, db));
-    syncAlarmIds(localOnly);
     lastSnapshot = {
-      ok: true,
-      pending: localOnly.length,
-      orderIds: localOnly.map((o) => o.id),
-      orders: localOnly,
+      ok: false,
+      pending: 0,
+      orderIds: [],
+      orders: [],
       connected: false,
-      has_pending: localOnly.length > 0,
-      has_new: localOnly.some((o) => !alarmIds.has(String(o.id))),
-      message: localOnly.length ? "Porosi lokale (QR / shërbime dhoma)" : "",
+      has_pending: false,
+      has_new: false,
+      message: "Vendosni çelësin e licencës te Admin → Cloud, pastaj «Testo lidhjen».",
     };
     return lastSnapshot;
   }
@@ -518,6 +475,7 @@ async function tick(db, printBarTicket) {
 
   // Auto-import: porositë me tavolinë nga cloud që nuk janë ende lokalisht
   // - WEB-WAITER (kamarier nga telefoni) → importo, përveç kur cloud_waiter_disabled
+  // - QR/kiosk (WEB-KIOSK) → importo VETËM pasi pranohet (accepted_at ≠ null)
   // - QR/kiosk të pranuara (nga bari ose gjetkë) → importo pasi nuk shfaqen më në pending
   if (data.ok !== false && data.connected && typeof db.importCloudOrderToLocal === "function") {
     const ordersToAutoImport = allOrders.filter(o => {
@@ -529,14 +487,10 @@ async function tick(db, printBarTicket) {
           console.log("[watcher] SKIP WEB-WAITER import — cloud kamarieri i çaktivizuar");
           return false;
         }
-        if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
-          return false;
-        }
         return true;
       }
-      if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
-        return false;
-      }
+      if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) return false;
+      // Porosi QR/kiosk të pranuara (pranuar nga kamarieri/bari → importo në arkë)
       if (
         typeof db.isQrTableOrderSubjectToAcceptGate === "function"
         && db.isQrTableOrderSubjectToAcceptGate(o)
@@ -586,7 +540,6 @@ async function tick(db, printBarTicket) {
         if (!localStaff) continue;
         try {
           const imported = db.importCloudOrderToLocal({ ...slot.order, online_slot: slot.slot }, acceptName);
-          // Si KAFENE: s'printohet biletë kur porosia s'u hap në PC.
           if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) continue;
           void printOrderSlipAfterImport(db, printBarTicket, slot.order, imported, acceptName);
         } catch {
@@ -618,7 +571,7 @@ async function tick(db, printBarTicket) {
     mergePending(db, cloudPending, safeListLocalPending(db), suppressIds),
   );
   const staleLocalIds = safeListLocalPending(db)
-    .filter(o => o?.id && !isLocalPendingQueueOrder(o, db))
+    .filter(o => o?.id && !isLoginNotifyPendingOrder(o, db))
     .map(o => o.id);
   safeRemoveLocalPending(db, staleLocalIds);
   let finalPending = pendingOrders.filter(o => orderStillPending(o, suppressIds, db));
@@ -657,7 +610,6 @@ async function tick(db, printBarTicket) {
     alarmIds.add(String(o.id));
   }
 
-  // Si KAFENE: njofto menjëherë ekranet e kamarierëve (LAN) kur ndryshon radha PRANO.
   const newOrderKey = (lastSnapshot.orderIds || []).map(String).join("\0");
   if (newOrderKey !== prevOrderKey || lastSnapshot.has_new) {
     try {

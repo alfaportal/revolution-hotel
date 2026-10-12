@@ -163,50 +163,8 @@ async function probeServer(baseUrl) {
   return result;
 }
 
-async function reportOutageToCloud(event, message, serversTried) {
-  if (!boundDb) return;
-  const now = Date.now();
-  if (now - lastOutageAlertAt < OUTAGE_ALERT_COOLDOWN_MS) return;
-  lastOutageAlertAt = now;
-
-  try {
-    const cloudSync = require("./cloud-sync");
-    const cfg = cloudSync.getConfig(boundDb);
-    if (!cfg.celesi) return;
-
-    await requestJsonOnce(
-      "POST",
-      PRIMARY_CLOUD_SERVER,
-      hotelCloudApiPath("/api/v1/system/outage-alert"),
-      {
-        celesi: cfg.celesi,
-        device_id: cfg.deviceId,
-        event,
-        message,
-        servers_tried: serversTried,
-        active_server: activeServerUrl,
-      },
-      REQUEST_TIMEOUT_MS,
-    ).catch(() => {
-      for (const url of BACKUP_CLOUD_SERVERS) {
-        return requestJsonOnce(
-          "POST",
-          url,
-          hotelCloudApiPath("/api/v1/system/outage-alert"),
-          {
-            celesi: cfg.celesi,
-            device_id: cfg.deviceId,
-            event,
-            message,
-            servers_tried: serversTried,
-          },
-          REQUEST_TIMEOUT_MS,
-        );
-      }
-    });
-  } catch {
-    /* ignore — offline */
-  }
+async function reportOutageToCloud(_event, _message, _serversTried) {
+  /* SYNC RESET — outage alert cloud çaktivizuar */
 }
 
 async function runHealthCheck() {

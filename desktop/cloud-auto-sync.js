@@ -10,27 +10,6 @@
 const cloudSync = require("./cloud-sync");
 const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
-const hotelCloudSync = require("./hotel-cloud-sync");
-const ownerReportSync = require("./owner-report-sync");
-const license = require("./license");
-
-function isSecondaryCashRegister() {
-  try {
-    return license.terminalRegisterNumber() >= 2;
-  } catch {
-    return false;
-  }
-}
-
-function isCloudWaiterDisabled(db) {
-  try {
-    const target = db || boundDb;
-    if (!target?.getSetting) return false;
-    return String(target.getSetting("cloud_waiter_disabled", "false")).trim().toLowerCase() === "true";
-  } catch {
-    return false;
-  }
-}
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
 const CLOSED_WAITER_SALES_MS = 5 * 60 * 1000;
@@ -39,8 +18,7 @@ const STAFF_PUSH_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const REGISTER_MODE_MS = 12 * 60 * 60 * 1000;
 const CATALOG_AUTO_MS = 180000;
 const CATALOG_DEBOUNCE_MS = 5000;
-const HOTEL_PMS_SYNC_MS = 60 * 1000;
-const OWNER_REPORT_SYNC_MS = ownerReportSync.OWNER_REPORT_SYNC_MS;
+const VENUE_LOGO_SYNC_MS = 86400000;
 const STARTUP_BURST_MS = 4000;
 
 let lastStatus = {
@@ -69,11 +47,28 @@ let waiterClosedSyncInFlight = false;
 let registerModeFetchInFlight = false;
 let ownerPasswordSyncInFlight = false;
 let staffPushInFlight = false;
-let hotelPmsSyncInFlight = false;
-let hotelPmsSyncTimer = null;
-let ownerReportSyncTimer = null;
 let started = false;
 let boundDb = null;
+let venueLogoStartupSyncScheduled = false;
+let venueLogoTimer = null;
+
+function scheduleVenueLogoSyncOnce(db) {
+  if (!db || venueLogoStartupSyncScheduled) return;
+  venueLogoStartupSyncScheduled = true;
+  setImmediate(() => {
+    cloudSync.syncVenueLogoFromCloud(db).catch(() => {});
+  });
+}
+
+function isCloudWaiterDisabled(db) {
+  try {
+    const target = db || boundDb;
+    if (!target?.getSetting) return false;
+    return String(target.getSetting("cloud_waiter_disabled", "false")).trim().toLowerCase() === "true";
+  } catch {
+    return false;
+  }
+}
 
 function hasCachedKitchenAccess(db) {
   try {
@@ -203,6 +198,7 @@ async function runConnectionCheck(db) {
   }
 }
 
+/** Alias publik — vetëm kontroll lidhjeje, jo sync anësore. */
 async function runLicenseCheck(db) {
   return runConnectionCheck(db);
 }
@@ -263,60 +259,11 @@ async function runRegisterModeSync(db) {
   }
 }
 
-async function runHotelPmsSync(db) {
-  if (isSecondaryCashRegister()) return;
-  if (!canRunCloudSideJobs(db)) return;
-  if (hotelPmsSyncInFlight) return;
-  hotelPmsSyncInFlight = true;
-  try {
-    const r = await hotelCloudSync.fullHotelSync(db);
-    if (r?.ok && !r.skipped) {
-      const p = r.push || {};
-      const a = r.pull?.applied || {};
-      const pb = r.public_bookings || {};
-      console.log(
-        "[cloud/hotel-pms] sync OK — push rooms/guests/charges/hk/res:",
-        p.rooms?.upserted ?? 0,
-        p.guests?.upserted ?? 0,
-        p.charges?.upserted ?? 0,
-        p.housekeeping?.upserted ?? 0,
-        p.reservations?.upserted ?? 0,
-        "| web booking PC apply:",
-        pb.applied ?? 0,
-        "failed:",
-        pb.failed ?? 0,
-        "| pull applied:",
-        a.rooms ?? 0,
-        a.guests ?? 0,
-        a.charges ?? 0,
-        a.housekeeping ?? 0,
-        a.reservations ?? 0,
-      );
-    }
-  } catch (err) {
-    console.warn("[cloud/hotel-pms] sync error:", err.message);
-  } finally {
-    hotelPmsSyncInFlight = false;
-  }
-}
-
-async function runOwnerReportSyncJob(db) {
-  if (isSecondaryCashRegister()) return;
-  if (!canRunCloudSideJobs(db)) return;
-  try {
-    await ownerReportSync.runOwnerReportSync(db);
-  } catch (err) {
-    console.warn("[owner-report-sync]", err.message || err);
-  }
-}
-
 function runAllSideSyncJobs(db) {
   runClosedWaiterSalesSync(db).catch(() => {});
   runOwnerAdminPasswordSync(db).catch(() => {});
   runStaffPushSync(db).catch(() => {});
   runRegisterModeSync(db).catch(() => {});
-  runHotelPmsSync(db).catch(() => {});
-  runOwnerReportSyncJob(db).catch(() => {});
 }
 
 function startPeriodicJob(db, fn, intervalMs) {
@@ -327,13 +274,6 @@ function startPeriodicJob(db, fn, intervalMs) {
 
 async function runCatalogPush(db, { force = false } = {}) {
   if (!db || catalogPushInFlight) return { ok: false };
-  if (isSecondaryCashRegister()) {
-    return {
-      ok: true,
-      skipped: true,
-      message: "Arka 2+ — menu/stok nga LAN (Kryesorja), jo cloud catalog pull.",
-    };
-  }
   if (!lastStatus.connected) return { ok: false, message: "Licenca nuk është e lidhur." };
 
   const now = Date.now();
@@ -364,7 +304,7 @@ async function runCatalogPush(db, { force = false } = {}) {
   }
 }
 
-/** Sync i plotë — butoni «Sinkronizo gjithçka». */
+/** Sync i plotë — vetëm butoni manual «Sinkronizo gjithçka». */
 async function runFullSync(db) {
   if (!db) return { ok: false, message: "DB mungon." };
   const status = await runConnectionCheck(db);
@@ -380,6 +320,9 @@ async function runFullSync(db) {
     kitchen_slug: full.kitchen_slug || "",
   });
   if (full.catalog_ok) lastCatalogAt = Date.now();
+  if (full.connected) {
+    cloudSync.syncVenueLogoFromCloud(db).catch(() => {});
+  }
   return full;
 }
 
@@ -407,7 +350,10 @@ function armCloudPeriodicJobs(db) {
 function runStartupBurst(db) {
   runConnectionCheck(db)
     .then(status => {
-      if (status?.connected) runAllSideSyncJobs(db);
+      if (status?.connected) {
+        scheduleVenueLogoSyncOnce(db);
+        runAllSideSyncJobs(db);
+      }
       return runCatalogPush(db, { force: true });
     })
     .catch(() => {});
@@ -424,6 +370,15 @@ function runReconnectBurst(db) {
 
 function startCloudAutoSync(db) {
   if (!db || started) return;
+  try {
+    const pf = require("./package-features").getRuntimeFeatures();
+    if (!pf.cloudSync) {
+      console.log("[cloud-auto-sync] çaktivizuar —", pf.label || "pako pa cloud");
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
   started = true;
   boundDb = db;
 
@@ -449,17 +404,13 @@ function startCloudAutoSync(db) {
     armCloudPeriodicJobs(db);
   }, STARTUP_BURST_MS);
 
+  venueLogoTimer = setInterval(() => {
+    cloudSync.syncVenueLogoFromCloud(db).catch(() => {});
+  }, VENUE_LOGO_SYNC_MS);
+
   catalogTimer = setInterval(() => {
     runCatalogPush(db).catch(() => {});
   }, CATALOG_AUTO_MS);
-
-  hotelPmsSyncTimer = setInterval(() => {
-    runHotelPmsSync(db).catch(() => {});
-  }, HOTEL_PMS_SYNC_MS);
-
-  ownerReportSyncTimer = setInterval(() => {
-    runOwnerReportSyncJob(db).catch(() => {});
-  }, OWNER_REPORT_SYNC_MS);
 }
 
 module.exports = {
@@ -470,8 +421,6 @@ module.exports = {
   REGISTER_MODE_MS,
   CATALOG_AUTO_MS,
   CATALOG_DEBOUNCE_MS,
-  HOTEL_PMS_SYNC_MS,
-  OWNER_REPORT_SYNC_MS,
   getStatus,
   runFullSync,
   runLicenseCheck,

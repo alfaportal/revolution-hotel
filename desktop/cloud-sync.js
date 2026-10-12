@@ -1,5 +1,5 @@
 /**
- * Dërgon shitjet te Revolution HOTEL Server (online).
+ * Dërgon shitjet te Revolution POS Server (online).
  * Fire-and-forget — nuk bllokon POS-in nëse serveri është offline.
  */
 const http = require("http");
@@ -10,8 +10,6 @@ const {
   getPublicCloudServerUrl,
   hotelCloudApiPath,
 } = require("./cloud-server-url");
-const { isStaffPinSyncable } = require("./lib/staffPinPolicy");
-const { businessYmd } = require("./lib/hotel-business-date");
 
 const SERVER_URL = PUBLIC_CLOUD_SERVER;
 
@@ -29,12 +27,6 @@ const KITCHEN_PENDING_PROTECT_MS = 30 * 60 * 1000;
 const lastAutoClearStuckByTable = new Map();
 let cancelledSyncInFlight = false;
 
-/** POS Electron (jo WEB-*) — porosi ushqimi në pritje të kuzhinës. */
-function isPosLikeCloudDevice(deviceId) {
-  const d = String(deviceId || "").trim().toUpperCase();
-  return !!d && !d.startsWith("WEB-");
-}
-
 function scheduleAutoClearStuckCloudTable(db, tableNumber) {
   const num = Number(tableNumber);
   if (!num) return;
@@ -49,6 +41,12 @@ function scheduleAutoClearStuckCloudTable(db, tableNumber) {
 
 function normalizeKey(k) {
   return String(k || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+/** POS Electron (jo WEB-*) — porosi ushqimi në pritje të kuzhinës. */
+function isPosLikeCloudDevice(deviceId) {
+  const d = String(deviceId || "").trim().toUpperCase();
+  return !!d && !d.startsWith("WEB-");
 }
 
 function electronApp() {
@@ -79,6 +77,7 @@ function ensureAutoCloudConfig(db) {
   const settingsKey = normalizeKey(db.getSetting("cloud_license_key", ""));
   const fileKey = normalizeKey(eapp ? license.readStoredLicense(eapp) : "");
 
+  // Çelësi i aktivizuar (.lic) është burimi i vërtetë — mos mbaj çelës të vjetër/gabim te Cloud.
   if (fileKey && fileKey !== settingsKey) {
     db.updateCloudSettings({ cloud_license_key: fileKey });
   } else if (!settingsKey && fileKey) {
@@ -102,17 +101,12 @@ function getConfig(db) {
     publicServerUrl: getPublicCloudServerUrl(),
     celesi,
     deviceId: license.getMachineId(),
-    appType: VERSION.appType || "hotel",
+    appType: VERSION.appType || "restorant",
   };
 }
 
 function requestJson(method, _baseUrl, path, payload, options = {}) {
-  return cloudHealth.requestJsonWithFallback(
-    method,
-    hotelCloudApiPath(path),
-    payload,
-    options,
-  );
+  return cloudHealth.requestJsonWithFallback(method, path, payload, options);
 }
 
 function normalizeItems(raw) {
@@ -179,6 +173,59 @@ function enrichSaleItemsFromMenu(db, items) {
   });
 }
 
+/** Pas sync/update — lidh UUID cloud te porosia lokale (nevojitet për mbyllje nga telefoni). */
+function attachCloudIdFromSyncResponse(db, order, response) {
+  if (!db?.db || !order?.id || !response || response.status >= 400) return;
+  const parsed = parseCloudJson(response.data);
+  const cloudId = String(parsed?.sale?.id || "").trim();
+  if (!cloudId) return;
+  try {
+    db.db.prepare(`
+      UPDATE orders SET cloud_order_id = COALESCE(NULLIF(cloud_order_id, ''), ?)
+      WHERE id = ?
+    `).run(cloudId, order.id);
+    if (typeof db.linkCloudOrderId === "function") db.linkCloudOrderId(order.id, cloudId);
+    console.log(`[cloud/sync] linked local order#${order.id} -> cloud ${cloudId}`);
+
+    // Stampo edhe daily_log — ndryshe sync i closed sales e fut shitjen DY herë.
+    const tableNum = resolveTableNumber(db, order, 0);
+    if (tableNum >= 1) {
+      const itemsSum = normalizeItems(order.items_json).reduce((s, i) => s + i.price * i.quantity, 0);
+      const total = Number(order.total) > 0 ? Number(order.total) : itemsSum;
+      let orphan = null;
+      if (total > 0) {
+        orphan = db.db.prepare(`
+          SELECT id FROM daily_log
+          WHERE status = 'completed'
+            AND table_number = ?
+            AND ABS(total - ?) < 0.01
+            AND (cloud_sale_id IS NULL OR TRIM(cloud_sale_id) = '')
+            AND source_device_id IS NULL
+          ORDER BY id DESC
+          LIMIT 1
+        `).get(tableNum, total);
+      }
+      if (!orphan) {
+        orphan = db.db.prepare(`
+          SELECT id FROM daily_log
+          WHERE status = 'completed'
+            AND table_number = ?
+            AND (cloud_sale_id IS NULL OR TRIM(cloud_sale_id) = '')
+            AND source_device_id IS NULL
+          ORDER BY id DESC
+          LIMIT 1
+        `).get(tableNum);
+      }
+      if (orphan?.id) {
+        db.db.prepare("UPDATE daily_log SET cloud_sale_id = ? WHERE id = ?").run(cloudId, orphan.id);
+        console.log(`[cloud/sync] daily_log#${orphan.id} <- cloud_sale_id ${cloudId}`);
+      }
+    }
+  } catch (e) {
+    console.warn("[cloud/sync] link cloud_order_id:", e.message);
+  }
+}
+
 function resolveTableNumber(db, order, table_number) {
   if (table_number != null && table_number !== "") return Number(table_number) || 0;
   if (order?.table_number != null) return Number(order.table_number) || 0;
@@ -208,13 +255,11 @@ function parseCloudJson(data) {
   }
 }
 
-function requestBinaryOnce(baseUrl, pathPart, timeoutMs = 15000) {
+function requestBinaryOnce(baseUrl, path, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     let url;
     try {
-      const base = String(baseUrl || PUBLIC_CLOUD_SERVER).trim().replace(/\/+$/, "");
-      const p = String(pathPart || "").startsWith("/") ? pathPart : `/${pathPart}`;
-      url = new URL(p, `${base}/`);
+      url = new URL(path, String(baseUrl).replace(/\/$/, "") + "/");
     } catch (e) {
       reject(e);
       return;
@@ -248,6 +293,10 @@ function requestBinaryOnce(baseUrl, pathPart, timeoutMs = 15000) {
 
 let venueLogoSyncInFlight = false;
 
+/**
+ * Merr logon e faqes publike nga cloud (pos_settings.public_logo) → venue_logo_data_url lokale.
+ * Mos thirret shpesh — vetëm nisje + fullCloudSync.
+ */
 async function syncVenueLogoFromCloud(db) {
   if (!db?.getSetting || !db?.setSetting) return { ok: false, skipped: true };
   if (venueLogoSyncInFlight) return { ok: false, skipped: true, reason: "in_flight" };
@@ -331,71 +380,20 @@ async function syncVenueLogoFromCloud(db) {
   }
 }
 
-/** Pas sync/update — lidh UUID cloud te porosia lokale (mbyllje nga telefoni WEB-WAITER). */
-function attachCloudIdFromSyncResponse(db, order, response) {
-  if (!db?.db || !order?.id || !response || response.status >= 400) return;
-  const parsed = parseCloudJson(response.data);
-  const cloudId = String(parsed?.sale?.id || "").trim();
-  if (!cloudId) return;
-  try {
-    db.db.prepare(`
-      UPDATE orders SET cloud_order_id = COALESCE(NULLIF(cloud_order_id, ''), ?)
-      WHERE id = ?
-    `).run(cloudId, order.id);
-    if (typeof db.linkCloudOrderId === "function") db.linkCloudOrderId(order.id, cloudId);
-    console.log(`[cloud/sync] linked local order#${order.id} -> cloud ${cloudId}`);
-
-    const tableNum = resolveTableNumber(db, order, 0);
-    if (tableNum >= 1) {
-      const itemsSum = normalizeItems(order.items_json).reduce((s, i) => s + i.price * i.quantity, 0);
-      const total = Number(order.total) > 0 ? Number(order.total) : itemsSum;
-      let orphan = null;
-      if (total > 0) {
-        orphan = db.db.prepare(`
-          SELECT id FROM daily_log
-          WHERE status = 'completed'
-            AND table_number = ?
-            AND ABS(total - ?) < 0.01
-            AND (cloud_sale_id IS NULL OR TRIM(cloud_sale_id) = '')
-            AND source_device_id IS NULL
-          ORDER BY id DESC
-          LIMIT 1
-        `).get(tableNum, total);
-      }
-      if (!orphan) {
-        orphan = db.db.prepare(`
-          SELECT id FROM daily_log
-          WHERE status = 'completed'
-            AND table_number = ?
-            AND (cloud_sale_id IS NULL OR TRIM(cloud_sale_id) = '')
-            AND source_device_id IS NULL
-          ORDER BY id DESC
-          LIMIT 1
-        `).get(tableNum);
-      }
-      if (orphan?.id) {
-        db.db.prepare("UPDATE daily_log SET cloud_sale_id = ? WHERE id = ?").run(cloudId, orphan.id);
-        console.log(`[cloud/sync] daily_log#${orphan.id} <- cloud_sale_id ${cloudId}`);
-      }
-    }
-  } catch (e) {
-    console.warn("[cloud/sync] link cloud_order_id:", e.message);
-  }
-}
-
 function extractCloudCredentials(parsed) {
   return {
     client_id: parsed.client_id || "",
     client_name: parsed.client_name || "",
+    client_tipi: parsed.client_tipi || parsed.tipi || "",
     kitchen_slug: parsed.kitchen_slug || "",
     kitchen_key: parsed.kitchen_key || "",
     waiter_url: parsed.waiter_url || "",
     kitchen_url: parsed.kitchen_url || "",
     bar_url: parsed.bar_url || "",
     kiosk_url: parsed.kiosk_url || "",
+    takeaway_url: parsed.takeaway_url || parsed.public_order_url || "",
+    public_order_url: parsed.public_order_url || parsed.takeaway_url || "",
     public_page_url: parsed.public_page_url || "",
-    owner_url: parsed.owner_url || parsed.owner_panel_url || "",
-    owner_panel_url: parsed.owner_panel_url || parsed.owner_url || "",
     package_tier: parsed.package_tier || "",
   };
 }
@@ -493,17 +491,9 @@ async function checkConnection(db) {
     }
 
     if (response.status < 400 && parsed.valid) {
-      const { applyHotelLicenseLinks } = require("./cloud-server-url");
-      const creds = applyHotelLicenseLinks(extractCloudCredentials(parsed));
+      const creds = extractCloudCredentials(parsed);
       if (creds.client_id || (creds.kitchen_slug && creds.kitchen_key)) {
         db.updateKitchenAccess(creds);
-      }
-      const { PUBLIC_HOTEL_ORIGIN } = require("./cloud-server-url");
-      if (typeof db.setSetting === "function") {
-        const cur = String(db.getSetting("hotel_qr_base_url", "") || "").trim();
-        if (!cur || require("./cloud-server-url").isLocalOrPrivateServerUrl(cur)) {
-          db.setSetting("hotel_qr_base_url", PUBLIC_HOTEL_ORIGIN.replace(/\/+$/, ""));
-        }
       }
       ensureKdsEventsListener(db);
       return {
@@ -511,7 +501,7 @@ async function checkConnection(db) {
         connected: true,
         operational: true,
         links_stale: false,
-        message: parsed.message || "I lidhur me Revolution HOTEL cloud.",
+        message: parsed.message || "I lidhur me serverin online.",
         ...creds,
       };
     }
@@ -538,28 +528,13 @@ async function checkConnection(db) {
       ensureKdsEventsListener(db);
       return stale;
     }
-    return {
-      ok: false,
-      connected: false,
-      message: err.message || "Nuk u lidh me serverin.",
-    };
+    return { ok: false, connected: false, message: err.message || "Nuk u lidh me serverin." };
   }
 }
 
 /** Porosi e importuar nga cloud (telefon/QR) — mos krijo rresht të ri me device_id të POS-it. */
 function orderMirrorsRemoteCloud(order) {
   return !!(order?.cloud_order_id && String(order.cloud_order_id).trim());
-}
-
-function applyFiscalCloseFields(payload, opts = {}) {
-  if (opts.fiscal_skip === true || opts.fiscalSkip === true) {
-    payload.fiscal_skip = true;
-  }
-  const raw = opts.coupon_type ?? opts.couponType;
-  if (raw != null && String(raw).trim() !== "") {
-    payload.coupon_type = String(raw).trim().toLowerCase();
-  }
-  return payload;
 }
 
 /** SQLite created_at (pa TZ) → ISO UTC për cloud. */
@@ -600,6 +575,9 @@ function buildSalePayload(db, order, opts = {}) {
   const items = enrichSaleItemsFromMenu(db, normalizeItems(rawItems));
   const itemsSum = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const orderTotal = Number(order.total);
+  const total = Number.isFinite(orderTotal) && orderTotal > 0
+    ? orderTotal
+    : Math.round(itemsSum * 100) / 100;
   const tbl = resolveTableNumber(db, order, table_number);
   const saleStatus = status || "closed";
   const now = new Date().toISOString();
@@ -619,16 +597,13 @@ function buildSalePayload(db, order, opts = {}) {
     table_number: tbl,
     waiter_name: String(order.waiter_name || "").trim(),
     items,
-    total: Number.isFinite(orderTotal) && orderTotal > 0
-      ? orderTotal
-      : Math.round(itemsSum * 100) / 100,
+    total,
     receipt_number: receipt_number || "",
     status: saleStatus,
     payment_method: db.normalizePaymentMethod(order.payment_method || payment_method),
   };
   if (orderedAt) payload.ordered_at = orderedAt;
   if (closedAt) payload.closed_at = closedAt;
-  if (saleStatus === "closed") applyFiscalCloseFields(payload, opts);
 
   const cloudUuid = String(order.cloud_order_id || "").trim();
   if (cloudUuid) {
@@ -650,9 +625,6 @@ function buildSalePayload(db, order, opts = {}) {
   return { cfg, payload };
 }
 
-const CLOUD_CLOSE_PUSH_TIMEOUT_MS = 5000;
-const CLOUD_WAITER_PUSH_TIMEOUT_MS = 4500;
-
 function pushSale(db, order, opts = {}) {
   const built = buildSalePayload(db, order, opts);
   if (!built) return;
@@ -663,7 +635,6 @@ function pushSale(db, order, opts = {}) {
         console.warn("Cloud sync:", r.status, r.data?.slice?.(0, 120));
       } else {
         console.log("Cloud sync OK:", built.payload.local_order_id);
-        // Si KAFENE: ruaj ID-në e cloud-it te porosia lokale (s'krijohen dy rreshta për të njëjtën porosi).
         attachCloudIdFromSyncResponse(db, order, r);
       }
     })
@@ -672,7 +643,10 @@ function pushSale(db, order, opts = {}) {
     });
 }
 
-/** Si pushSale — por pret përgjigjen (mbyllje → mos table-free kur kuzhina mbetet ordered/ready). */
+/** Si pushSale — por pret përgjigjen (panel mbyll → telefon sheh tavolinë të lirë). */
+const CLOUD_WAITER_PUSH_TIMEOUT_MS = 4500;
+const CLOUD_CLOSE_PUSH_TIMEOUT_MS = 5000;
+
 async function pushSaleSync(db, order, opts = {}) {
   const built = buildSalePayload(db, order, opts);
   if (!built) return { ok: false, reason: "no_payload" };
@@ -701,105 +675,12 @@ async function pushSaleSync(db, order, opts = {}) {
 }
 
 /** Porosi aktive — update menjëherë për tavolinat live të pronarit */
-function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } = {}) {
-  const built = buildSalePayload(db, order, {
-    table_number,
-    status: "ordered",
-    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
-  });
-  if (!built) return;
-
-  requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload)
-    .then(r => {
-      if (r.status >= 400) {
-        console.warn("Cloud update:", r.status, r.data?.slice?.(0, 120));
-      } else {
-        console.log("Cloud update OK: T", built.payload.table_number);
-        attachCloudIdFromSyncResponse(db, order, r);
-      }
-    })
-    .catch(err => {
-      console.warn("Cloud update dështoi:", err.message);
-    });
-}
-
-/** Si pushActiveOrderUpdate — pret përgjigjen (telefon/cloud sheh tavolinë të zënë). */
-async function pushActiveOrderUpdateSync(
-  db,
-  order,
-  { table_number = 0, ordered_at = "", timeoutMs = 12000 } = {},
-) {
-  const built = buildSalePayload(db, order, {
-    table_number,
-    status: "ordered",
-    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
-  });
-  if (!built) return { ok: false, reason: "no_payload" };
-  const waitMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
-  try {
-    const r = await requestJson(
-      "POST",
-      built.cfg.serverUrl,
-      "/api/v1/sales/update",
-      built.payload,
-      { timeoutMs: waitMs },
-    );
-    if (r.status >= 400) {
-      console.warn("Cloud update:", r.status, r.data?.slice?.(0, 120));
-      return { ok: false, status: r.status };
-    }
-    console.log("Cloud update OK: T", built.payload.table_number);
-    attachCloudIdFromSyncResponse(db, order, r);
-    return { ok: true };
-  } catch (err) {
-    console.warn("Cloud update dështoi:", err.message);
-    return { ok: false, error: err.message };
-  }
-}
-
-/** POS/kamarier — mos blloko UI; cloud merr tavolinat live (si KAFENE). */
-function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered_at = "" } = {}) {
-  if (!order) return;
-  const opts = {
-    table_number,
-    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
-  };
-  pushActiveOrderUpdate(db, order, opts);
-  void pushActiveOrderUpdateSync(db, order, { ...opts, timeoutMs: CLOUD_WAITER_PUSH_TIMEOUT_MS })
-    .then(r => {
-      if (!r?.ok) pushActiveOrderUpdate(db, order, opts);
-    });
-}
-
-/** Pas PRANO në POS për QR — cloud duhet accepted_by + artikujt që kuzhina t’i shfaqë. */
+/** Pas PRANO në POS për QR — cloud duhet accepted_by + artikujt që kuzhina t’i shfaqë (listKitchenOrders). */
 async function pushQrWaiterAcceptToCloudKitchen(
   db,
   order,
-  { cloudOrderId = "", waiterName = "", waiterId = "", table_number = 0, cloudOrder = null } = {},
+  { cloudOrderId = "", waiterName = "", waiterId = "", table_number = 0 } = {},
 ) {
-  // Si KAFENE (një rresht për porosi): pranimi përditëson VETË rreshtin cloud të porosisë
-  // (QR → WEB-KIOSK me artikujt e vet). Më parë krijohej rresht i dytë «POS» me gjithë tavolinën,
-  // që dyfishonte artikujt në telefon, në faturë dhe në kuzhinë.
-  const qrCloudUuid = String(cloudOrderId || cloudOrder?.id || order?.cloud_order_id || "").trim();
-  let qrTarget = cloudOrder && typeof cloudOrder === "object" ? cloudOrder : null;
-  if ((!qrTarget?.device_id || !qrTarget?.local_order_id) && qrCloudUuid) {
-    try {
-      qrTarget = (await resolveCloudOrderById(db, qrCloudUuid)) || qrTarget;
-    } catch {
-      /* offline */
-    }
-  }
-  const qrTargetDevice = String(qrTarget?.device_id || "").trim().toUpperCase();
-  const qrTargetLocalId = String(qrTarget?.local_order_id || "").trim();
-  if (qrTargetDevice.startsWith("WEB-GUEST")) {
-    // Dhomë / shërbim hoteli: pranimi u shënua me acknowledge; mos prek items_json (meta e dhomës).
-    return { ok: true, skipped: true, reason: "guest_row_accepted_by_ack" };
-  }
-  if (!(qrTargetDevice.startsWith("WEB-") && qrTargetLocalId)) {
-    console.warn("[cloud] QR pranim: rreshti cloud s'u gjet — s'krijohet rresht i dytë", qrCloudUuid.slice(0, 8));
-    return { ok: false, skipped: true, reason: "cloud_row_not_found" };
-  }
-
   const built = buildSalePayload(db, order, {
     table_number,
     status: "ordered",
@@ -821,16 +702,19 @@ async function pushQrWaiterAcceptToCloudKitchen(
     built.payload.waiter_id = wId;
     built.payload.accepted_by_waiter_id = wId;
   }
-  built.payload.device_id = qrTargetDevice;
-  built.payload.local_order_id = qrTargetLocalId;
-  const qrOwnItems = normalizeItems(qrTarget.items || qrTarget.items_json || []);
-  if (qrOwnItems.length) {
-    built.payload.items = qrOwnItems;
-    built.payload.total = Math.round(qrOwnItems.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
+  const cloudUuid = String(cloudOrderId || order?.cloud_order_id || "").trim();
+  if (cloudUuid) {
+    try {
+      const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
+      const key = map[cloudUuid];
+      if (key?.local_order_id && key?.device_id) {
+        built.payload.device_id = String(key.device_id).trim().toUpperCase();
+        built.payload.local_order_id = String(key.local_order_id).trim();
+      }
+    } catch {
+      /* ignore */
+    }
   }
-  const qrTargetTable = Number(qrTarget.table_number) || 0;
-  if (qrTargetTable > 0) built.payload.table_number = qrTargetTable;
-  if (qrTarget.ordered_at) built.payload.ordered_at = qrTarget.ordered_at;
 
   try {
     const r = await requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload);
@@ -847,7 +731,6 @@ async function pushQrWaiterAcceptToCloudKitchen(
   }
 }
 
-/** Pas PRANO takeaway në POS — cloud (telefoni) sheh Online 1…6 me pranim + artikuj. */
 async function pushOnlinePickupAcceptToCloud(
   db,
   localOrder,
@@ -912,6 +795,77 @@ async function pushOnlinePickupAcceptToCloud(
   } catch (err) {
     console.warn("[cloud] takeaway pranim push dështoi:", err.message);
     return { ok: false, message: err.message || String(err) };
+  }
+}
+
+/** POS/kamarier — mos blloko UI; kuzhina merr përditësimin sa më shpejt (sync + retry). */
+function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered_at = "" } = {}) {
+  if (!order) return;
+  const opts = {
+    table_number,
+    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
+  };
+  // Dërgo menjëherë (KDS/SSE) — mos prit timeout-in e sync.
+  pushActiveOrderUpdate(db, order, opts);
+  void pushActiveOrderUpdateSync(db, order, { ...opts, timeoutMs: CLOUD_WAITER_PUSH_TIMEOUT_MS })
+    .then(r => {
+      if (!r?.ok) pushActiveOrderUpdate(db, order, opts);
+    });
+}
+
+function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } = {}) {
+  const built = buildSalePayload(db, order, {
+    table_number,
+    status: "ordered",
+    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
+  });
+  if (!built) return;
+
+  requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload)
+    .then(r => {
+      if (r.status >= 400) {
+        console.warn("Cloud update:", r.status, r.data?.slice?.(0, 120));
+      } else {
+        console.log("Cloud update OK: T", built.payload.table_number);
+        attachCloudIdFromSyncResponse(db, order, r);
+      }
+    })
+    .catch(err => {
+      console.warn("Cloud update dështoi:", err.message);
+    });
+}
+
+/** Si pushActiveOrderUpdate — pret përgjigjen (Dërgo porosinë → kuzhina KDS). */
+async function pushActiveOrderUpdateSync(
+  db,
+  order,
+  { table_number = 0, ordered_at = "", timeoutMs = 12000 } = {},
+) {
+  const built = buildSalePayload(db, order, {
+    table_number,
+    status: "ordered",
+    ordered_at: ordered_at || order.created_at || new Date().toISOString(),
+  });
+  if (!built) return { ok: false, reason: "no_payload" };
+  const waitMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
+  try {
+    const r = await requestJson(
+      "POST",
+      built.cfg.serverUrl,
+      "/api/v1/sales/update",
+      built.payload,
+      { timeoutMs: waitMs },
+    );
+    if (r.status >= 400) {
+      console.warn("Cloud update:", r.status, r.data?.slice?.(0, 120));
+      return { ok: false, status: r.status };
+    }
+    console.log("Cloud update OK: T", built.payload.table_number);
+    attachCloudIdFromSyncResponse(db, order, r);
+    return { ok: true };
+  } catch (err) {
+    console.warn("Cloud update dështoi:", err.message);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -1028,12 +982,12 @@ async function forceCancelCloudSalesOrder(db, cloudOrder) {
   const num = Number(cloudOrder?.table_number) || 0;
   const cloudUuid = String(cloudOrder?.id || "").trim();
   const accepted = isCloudOrderAccepted(cloudOrder, db);
-  const orderedRawGuard = cloudOrder?.ordered_at || cloudOrder?.created_at || "";
-  const orderedTsGuard = orderedRawGuard ? new Date(orderedRawGuard).getTime() : 0;
-  const ageMsGuard = Number.isFinite(orderedTsGuard) ? Date.now() - orderedTsGuard : 0;
+  const orderedRaw = cloudOrder?.ordered_at || cloudOrder?.created_at || "";
+  const orderedTs = orderedRaw ? new Date(orderedRaw).getTime() : 0;
+  const ageMs = Number.isFinite(orderedTs) ? Date.now() - orderedTs : 0;
   if (
     !accepted
-    && (!orderedRawGuard || !Number.isFinite(orderedTsGuard) || ageMsGuard < KITCHEN_PENDING_PROTECT_MS)
+    && (!orderedRaw || !Number.isFinite(orderedTs) || ageMs < KITCHEN_PENDING_PROTECT_MS)
   ) {
     return { ok: false, cloud_id: cloudUuid, reason: "kitchen_pending" };
   }
@@ -1057,11 +1011,6 @@ async function forceCancelCloudSalesOrder(db, cloudOrder) {
       /* ignore */
     }
   }
-  if (!deviceId || !localOrderId) {
-    if (cloudUuid) {
-      localOrderId = localOrderId || cloudUuid;
-    }
-  }
 
   if (!deviceId || !localOrderId) {
     return { ok: false, cloud_id: cloudUuid, reason: "missing_keys" };
@@ -1072,7 +1021,6 @@ async function forceCancelCloudSalesOrder(db, cloudOrder) {
     return { ok: false, cloud_id: cloudUuid, reason: "no_cloud" };
   }
 
-  const orderedRaw = cloudOrder?.ordered_at || cloudOrder?.created_at || "";
   try {
     const res = await requestJson(
       "POST",
@@ -1239,7 +1187,7 @@ function getBarScreenUrl(db) {
   const slug = cached.kitchen_slug || cached.cloud_client_id || "";
   const key = cached.kitchen_key || "";
   const { buildAccessLink } = require("./cloud-server-url");
-  return buildAccessLink(getPublicCloudServerUrl(), slug, key, "bar");
+  return buildAccessLink(getPublicCloudServerUrl(), slug, key, "bar", "", cached.client_tipi || "");
 }
 
 function buildCatalogPayload(db) {
@@ -1267,27 +1215,11 @@ function buildCatalogPayload(db) {
       stock_alert_threshold: threshold,
     };
   });
-  const staff = db.getStaff().map(s => {
-    const raw = String(s.staff_role || "kamarier").trim().toLowerCase();
-    let cloudRole = "waiter";
-    if (raw === "recepsion" || raw === "receptionist" || raw === "recepsionist") {
-      cloudRole = "receptionist";
-    } else if (
-      raw === "pastrim" ||
-      raw === "pastrimi" ||
-      raw === "housekeeping" ||
-      raw === "sherbimi"
-    ) {
-      cloudRole = "housekeeping";
-    }
-    return {
-      name: s.name,
-      active: !!s.active,
-      pin: String(s.pin || "").trim(),
-      staff_role: cloudRole,
-      role: cloudRole,
-    };
-  });
+  const staff = db.getStaff().map(s => ({
+    name: s.name,
+    active: !!s.active,
+    pin: String(s.pin || "").trim(),
+  }));
 
   let staff_local_links = null;
   try {
@@ -1302,7 +1234,7 @@ function buildCatalogPayload(db) {
     payload: {
       celesi: cfg.celesi,
       device_id: cfg.deviceId,
-      restaurant_name: settings.restaurant_name || "",
+      restaurant_name: settings.business_name || settings.restaurant_name || "",
       // Vetëm tavolina fizike — sllotet «Porosi online» nuk duhet të fryjnë numrin në telefon.
       table_count:
         typeof db.getPhysicalTableCount === "function"
@@ -1317,12 +1249,12 @@ function buildCatalogPayload(db) {
 }
 
 /**
- * Sjell në SQLite lokale kategoritë/artikujt që ekzistojnë në cloud (pos_categories/
- * pos_menu_items) por jo lokalisht — p.sh. u shtuan direkt në cloud, jo nga paneli lokal.
- * Përputhja bëhet me emër (jo local_id, sepse rreshtat e shtuar direkt në cloud nuk kanë
+ * Sjell në SQLite lokale kategoritë/artikujt që ekzistojnë në Supabase (pos_categories/
+ * pos_menu_items) por jo lokalisht — p.sh. u shtuan direkt në cloud, jo nga paneli i KAFENE.
+ * Përputhja bëhet me emër (jo local_id, sepse rreshtat e shtuar direkt në Supabase nuk kanë
  * local_id real). Duhet të vrapojë PARA pushCatalogAsync, sepse push-i bën DELETE+INSERT të
  * plotë të pos_categories/pos_menu_items në cloud — pa këtë hap, artikujt e shtuar direkt në
- * cloud do të fshiheshin nga push-i i radhës.
+ * Supabase do të fshiheshin nga push-i i radhës.
  */
 async function pullNewCatalogItemsFromCloud(db) {
   try {
@@ -1380,14 +1312,11 @@ async function pullNewCatalogItemsFromCloud(db) {
       if (!name || localCategoryNames.has(name.toLowerCase())) continue;
       // KS/AL: mos shto kategori frënge nga cloud
       if (sqLocale && (frNameSet.has(name.toLowerCase()) || looksFrenchMenuName(name))) continue;
-      const cloudRoute =
-        c.route === "kitchen" ? "kitchen" : c.route === "bar" ? "bar" : undefined;
       db.addCategory(
         name,
-        cloudRoute ??
-          (typeof db.inferCategoryRouteFromName === "function"
-            ? db.inferCategoryRouteFromName(name)
-            : undefined),
+        typeof db.inferCategoryRouteFromName === "function"
+          ? db.inferCategoryRouteFromName(name)
+          : undefined,
       );
       localCategoryNames.add(name.toLowerCase());
       categoriesAdded++;
@@ -1462,10 +1391,6 @@ async function pullNewCatalogItemsFromCloud(db) {
   }
 }
 
-/**
- * Dërgon vetëm staff_local_links (Wi‑Fi LAN) te cloud — pa katalog të plotë.
- * Përdoret kur ndryshon IP-ja; mos thirr çdo interval pa ndryshim fingerprint.
- */
 async function pushStaffLocalLinksAsync(db, options = {}) {
   if (!isCloudConfigured(db)) {
     return { ok: false, skipped: true, message: "Cloud nuk është konfiguruar." };
@@ -1575,19 +1500,10 @@ async function pushCatalogAsync(db) {
     const menuItems = Number(parsed.menu_items) || localCount;
     const categories = Number(parsed.categories) || (payload.categories?.length || 0);
     const staffSynced = Number(parsed.staff) || 0;
-    const localStaffWithPin = (payload.staff || []).filter(s => isStaffPinSyncable(s.pin)).length;
+    const localStaffWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
     console.log(`Catalog sync OK — ${menuItems} artikuj, ${categories} kategori, ${staffSynced} kamarierë cloud`);
     if (localStaffWithPin && !staffSynced) {
       console.warn("[cloud] Kujdes: kamarierët me PIN nuk u sinkronizuan te cloud — pranimi i porosive QR dështon.");
-    }
-    try {
-      const { buildStaffLocalLinksSyncPayload, staffLocalLinksFingerprint, storeStaffLocalLinksFingerprint } =
-        require("./local-staff-links");
-      const localPayload = buildStaffLocalLinksSyncPayload(db);
-      const fp = staffLocalLinksFingerprint(localPayload);
-      if (fp) storeStaffLocalLinksFingerprint(db, fp);
-    } catch {
-      /* ignore */
     }
     return {
       ok: true,
@@ -1676,7 +1592,7 @@ async function fullCloudSync(db) {
   };
 
   if (!isCloudConfigured(db)) {
-    result.message = "Vendosni çelësin e licencës (Admin → Cloud / Licenca).";
+    result.message = "Vendosni çelësin e licencës dhe URL e serverit (Cilësimet → Cloud).";
     return result;
   }
 
@@ -1715,33 +1631,41 @@ async function fullCloudSync(db) {
       result.reservations = { synced: 0, conflicts: 0, errors: [err.message] };
     }
 
+    // Sync shitjet e mbyllura nga cloud + rebuild nëse daily_log bosh
     try {
-      const waiterSync = await syncClosedWebWaiterSales(db);
-      result.waiter_sales_synced = waiterSync.imported || 0;
+      if (typeof db.countDailyLogEntries === "function" && db.countDailyLogEntries() === 0) {
+        const rebuild = await rebuildRegisterFromCloud(db);
+        result.register_rebuilt = true;
+        result.register = rebuild;
+      } else {
+        const waiterSync = await syncClosedWebWaiterSales(db);
+        result.waiter_sales_synced = waiterSync.imported || 0;
+      }
     } catch (err) {
-      console.warn("[cloud/sync] fullSync waiter closed:", err.message);
+      console.warn("[cloud/sync] fullSync register:", err.message);
     }
 
     if (result.connected) {
-      try {
-        const hotelCloudSync = require("./hotel-cloud-sync");
-        result.hotel_pms = await hotelCloudSync.fullHotelSync(db);
-      } catch (err) {
-        console.warn("[cloud/sync] fullSync hotel PMS:", err.message);
-        result.hotel_pms = { ok: false, message: err.message };
-      }
       syncVenueLogoFromCloud(db).catch(() => {});
     }
 
     if (result.connected && result.catalog_ok) {
-      const hotelOk = result.hotel_pms?.ok !== false;
-      result.message = hotelOk
-        ? `Sinkronizimi OK — ${result.menu_items} artikuj, ${result.categories} kategori në cloud (QR/telefon); dhoma/mysafirë cloud u përditësuan.`
-        : `Menuja u dërgua (${result.menu_items} artikuj). Hotel PMS: ${result.hotel_pms?.message || "sinkronizimi dështoi — shiko licencën."}`;
+      result.message =
+        `Sinkronizimi OK — ${result.menu_items} artikuj, ${result.categories} kategori në cloud (QR/telefon).`;
+      try {
+        const i18n = require("./i18n");
+        if (i18n.isFrench()) {
+          result.message =
+            `${i18n.t("Sinkronizimi OK —")} ${result.menu_items} ${i18n.t("artikuj")}, ${result.categories} ${i18n.t("kategori")} ${i18n.t("në cloud (QR/telefon).")}`;
+        }
+      } catch { /* ignore */ }
+    } else if (result.connected && !result.catalog_ok) {
+      result.message = result.message || "Menuja nuk u dërgua te cloud — provoni përsëri.";
     }
+
     return result;
   } catch (err) {
-    result.message = err.message || "Sync dështoi.";
+    result.message = err.message || "Sinkronizimi dështoi.";
     return result;
   }
 }
@@ -1749,7 +1673,7 @@ async function fullCloudSync(db) {
 /** Vendos emrin e biznesit nga licenca (Super Admin) vetëm nëse lokalisht është bosh. */
 async function syncRestaurantIdentityFromCloud(db) {
   try {
-    if ((db.getSettings().restaurant_name || "").trim()) {
+    if ((db.getBusinessName() || "").trim()) {
       return { applied: false };
     }
     const status = await checkConnection(db);
@@ -1786,12 +1710,6 @@ function isCloudOrderAccepted(o, db) {
 function isLoginPendingCloudOrder(db, o) {
   if (!o?.id) return false;
   if (isCloudOrderAccepted(o, db)) return false;
-  if (typeof db?.isRestaurantLoginNotifyOrder === "function") {
-    return db.isRestaurantLoginNotifyOrder(o);
-  }
-  if (typeof db?.isRecepcionCloudPendingOrder === "function" && db.isRecepcionCloudPendingOrder(o)) {
-    return false;
-  }
   if (typeof db?.isCloudStaffWaiterOrder === "function" && db.isCloudStaffWaiterOrder(o)) return false;
   if (typeof db?.isCloudPosAcceptQueueOrder === "function" && db.isCloudPosAcceptQueueOrder(o)) return true;
   if (typeof db?.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o)) return true;
@@ -1823,10 +1741,11 @@ function isBarOnlyNotifyOrder(db, o) {
 
 function filterLoginNotifyOrders(db, payload) {
   if (!payload) return payload;
-  const rawPending = Array.isArray(payload.orders) && payload.orders.length
+  const rawPending = (Array.isArray(payload.orders) && payload.orders.length
     ? payload.orders
-    : (payload.all_orders || []).filter(o => !isCloudOrderAccepted(o, db));
-  const orders = rawPending.filter(o => isLoginPendingCloudOrder(db, o));
+    : (payload.all_orders || []).filter(o => !isCloudOrderAccepted(o, db)))
+    .filter(o => isPosWaiterNotifyOrder(db, o) || isBarOnlyNotifyOrder(db, o));
+  const orders = rawPending.filter(o => isPosWaiterNotifyOrder(db, o));
   const barOrders = rawPending.filter(o => isBarOnlyNotifyOrder(db, o));
   const total = orders.length + barOrders.length;
   return {
@@ -1842,7 +1761,7 @@ function filterLoginNotifyOrders(db, payload) {
 
 function buildLoginNotifyFromOrders(db, orders, snapMeta = {}) {
   const pool = (orders || []).filter(o => !isCloudOrderAccepted(o, db));
-  const filtered = pool.filter(o => isLoginPendingCloudOrder(db, o));
+  const filtered = pool.filter(o => isPosWaiterNotifyOrder(db, o));
   const barOrders = pool.filter(o => isBarOnlyNotifyOrder(db, o));
   const totalPending = filtered.length + barOrders.length;
   return {
@@ -1879,7 +1798,7 @@ async function fetchOnlineOrdersViaKitchen(db) {
   if (!cfg.serverUrl || !slug || !key) return null;
 
   try {
-    const q = `?key=${encodeURIComponent(key)}&portal=waiter`;
+    const q = `?key=${encodeURIComponent(key)}`;
     const res = await requestJson(
       "GET",
       cfg.serverUrl,
@@ -1915,14 +1834,7 @@ async function fetchOnlineOrders(db) {
   if (!cfg.celesi) {
     const viaKitchen = await fetchOnlineOrdersViaKitchen(db);
     if (viaKitchen) return viaKitchen;
-    return {
-      ok: true,
-      connected: false,
-      pending: 0,
-      has_pending: false,
-      orders: [],
-      message: "Mungon çelësi i licencës.",
-    };
+    return { ok: true, connected: false, pending: 0, has_pending: false, orders: [], message: "Mungon çelësi i licencës." };
   }
 
   try {
@@ -1994,13 +1906,9 @@ async function pushStaffAsync(db) {
     };
   }
   const { cfg, payload } = buildCatalogPayload(db);
-  const localWithPin = (payload.staff || []).filter(s => isStaffPinSyncable(s.pin)).length;
+  const localWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
   if (!localWithPin) {
-    return {
-      ok: false,
-      skipped: true,
-      message: "Nuk ka staf (kamarier/recepsion) me PIN 4 ose 6 shifra lokalisht.",
-    };
+    return { ok: false, skipped: true, message: "Nuk ka kamarierë me PIN lokalisht." };
   }
   try {
     const r = await requestJson(
@@ -2153,7 +2061,7 @@ async function pushOwnerAdminPasswordAsync(db, plainPassword) {
   }
 }
 
-async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "", ackMeta = {}) {
+async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "") {
   const cfg = getConfig(db);
   const { slug, key } = getKitchenAccess(db);
   const ids = [...new Set((orderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
@@ -2161,26 +2069,16 @@ async function acknowledgeOnlineOrdersViaKds(db, orderIds, pin = "", ackMeta = {
     return { ok: false, acknowledged: 0, order_ids: [], message: "Mungon kitchen slug/key." };
   }
 
-  const pinTrim = /^\d{4,6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
-  const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
-  const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
-
   const acked = [];
   let lastAcceptedBy = "";
   for (const orderId of ids) {
     try {
       const q = `?key=${encodeURIComponent(key)}`;
-      const body = { pin: pinTrim };
-      if (!pinTrim && waiterName) {
-        body.pos_authenticated = true;
-        body.waiter_name = waiterName;
-        if (waiterId) body.waiter_id = waiterId;
-      }
       const res = await requestJson(
         "POST",
         cfg.serverUrl,
         `/api/kds/${encodeURIComponent(slug)}/orders/${encodeURIComponent(orderId)}/accept${q}`,
-        body,
+        { pin: String(pin || "").trim() },
       );
       const parsed = parseCloudJson(res.data);
       if (res.status < 400 && parsed.ok) {
@@ -2213,7 +2111,7 @@ async function refuseOnlineOrder(db, orderId, pin = "", reason = "", ackMeta = {
     return { ok: false, connected: true, refused: 0, message: "Mungon porosia." };
   }
 
-  const pinTrim = /^\d{4,6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
+  const pinTrim = /^\d{4}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
   const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
   if (!pinTrim && !waiterName) {
     return { ok: false, connected: true, refused: 0, message: "Mungon identifikimi i kamarierit." };
@@ -2227,8 +2125,7 @@ async function refuseOnlineOrder(db, orderId, pin = "", reason = "", ackMeta = {
       pin: pinTrim,
       reason: String(reason || "").trim(),
     };
-    // Punonjësi është verifikuar në PC — dërgo gjithmonë emrin (edhe me PIN).
-    if (waiterName) {
+    if (!pinTrim && waiterName) {
       body.pos_authenticated = true;
       body.waiter_name = waiterName;
       const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
@@ -2362,9 +2259,7 @@ function buildPosWaiterAckBody(cfg, ids, pinTrim, ackMeta = {}) {
   };
   const waiterName = String(ackMeta.waiterName || ackMeta.waiter_name || "").trim();
   const waiterId = String(ackMeta.waiterId || ackMeta.waiter_id || "").trim();
-  // Punonjësi është verifikuar në PC — dërgo gjithmonë emrin (edhe me PIN), që cloud
-  // të mos dështojë kur PIN-i lokal ≠ PIN-i në cloud ose punonjësi s'është kamarier cloud.
-  if (waiterName) {
+  if (!pinTrim && waiterName) {
     body.pos_authenticated = true;
     body.waiter_name = waiterName;
     if (waiterId) body.waiter_id = waiterId;
@@ -2383,7 +2278,7 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
     return { ok: true, connected: true, acknowledged: 0, order_ids: [] };
   }
 
-  const pinTrim = /^\d{4,6}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
+  const pinTrim = /^\d{4}$/.test(String(pin || "").trim()) ? String(pin).trim() : "";
 
   try {
     const res = await requestJson(
@@ -2403,7 +2298,7 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
       };
     }
 
-    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim, ackMeta);
+    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim);
     if (viaKds.ok) return viaKds;
 
     return {
@@ -2413,7 +2308,7 @@ async function acknowledgeOnlineOrders(db, orderIds, pin = "", ackMeta = {}) {
       message: parsed.gabim || parsed.message || viaKds.message || "Nuk u shënuan porositë.",
     };
   } catch (err) {
-    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim, ackMeta);
+    const viaKds = await acknowledgeOnlineOrdersViaKds(db, ids, pinTrim);
     if (viaKds.ok) return viaKds;
     return {
       ok: false,
@@ -2472,7 +2367,7 @@ async function licenseCloudPost(db, path, body = {}) {
   return parsed;
 }
 
-/** Rindërton daily_log nga të gjitha porositë closed në cloud (fshirje + import i plotë). */
+/** Rindërton daily_log nga të gjitha porositë closed në Supabase (fshirje + import i plotë). */
 async function rebuildRegisterFromCloud(db) {
   if (!isCloudConfigured(db)) {
     throw new Error("Cloud nuk është konfiguruar — aktivizoni licencën.");
@@ -2509,7 +2404,7 @@ async function syncClosedWebWaiterSales(db) {
     : "";
   // Nëse s'ka cursor, mos merr shitje të vjetra — fillo nga sot
   if (!since) {
-    since = businessYmd() + "T00:00:00";
+    since = new Date().toISOString().slice(0, 10) + "T00:00:00";
   }
   console.log("[cloud/sync] GET /api/v1/license/waiter-closed-sales since=" + since);
 
@@ -2524,6 +2419,7 @@ async function syncClosedWebWaiterSales(db) {
     let deferred = false;
     let maxClosedAt = since;
     for (const sale of sales) {
+      // Mbrojtje lokale: mbylljet e panelit POS nuk duhen ri-importuar (dyfishim fature).
       const device = String(sale.device_id || "").trim().toUpperCase();
       if (device && !device.startsWith("WEB-")) {
         skipped += 1;
@@ -2539,6 +2435,8 @@ async function syncClosedWebWaiterSales(db) {
           ? db.isCloudWaiterSaleImported(cloudId)
           : false;
 
+      // SSE po printon faturën e mbylljes — mos finalizo/importo tani (përndryshe
+      // porosia kompletohet pa print → already_in_daily_log / no_active).
       if (tableNum >= 1 && !already && pendingClosePrintTables.has(tableNum)) {
         deferred = true;
         console.log(`[cloud/sync] T${tableNum} import DELAY — fatura e mbylljes ende në print`);
@@ -2552,6 +2450,8 @@ async function syncClosedWebWaiterSales(db) {
         continue;
       }
 
+      // Fallback kryesor: printo PARA importit. Sync poll shpesh merr shitjen
+      // para SSE closed — pa këtë, finalizeLocal e mbyll tavolinën pa faturë.
       if (!already && cloudId && (tableNum >= 1 || tableNum === 0)) {
         if (tableNum >= 1) pendingClosePrintTables.add(tableNum);
         else pendingClosePrintCloudIds.add(cloudId);
@@ -2588,6 +2488,7 @@ async function syncClosedWebWaiterSales(db) {
       const ca = String(sale.closed_at || "").trim();
       if (ca && ca > maxClosedAt) maxClosedAt = ca;
     }
+    // Nëse ndonjë shitje u vonua për print SSE, mos e lëviz cursor — përndryshe humbet.
     if (!deferred && maxClosedAt && typeof db.setCloudWaiterClosedSyncSince === "function") {
       db.setCloudWaiterClosedSyncSince(maxClosedAt);
     }
@@ -2827,6 +2728,7 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
+      // Sync/print më lart mund ta ketë mbyllur tashmë — mos anulo stub të vjetër.
       try {
         const cur = db.db?.prepare?.(
           "SELECT id, status FROM orders WHERE id = ?",
@@ -2834,6 +2736,7 @@ async function syncLocalCancelledFromCloud(db) {
         if (!cur || (cur.status !== "active" && cur.status !== "ordered")) continue;
       } catch { /* ignore */ }
 
+      // Mos anulo gjatë printit të faturës së mbylljes (telefon → SSE/sync).
       if (pendingClosePrintTables.has(tableNum)) {
         console.log(
           `[sync] T${tableNum} cancel SKIP — fatura e mbylljes ende në print`,
@@ -2847,6 +2750,8 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
+      // Porosia cloud u mbyll — provo faturën e mbylljes para anulimit.
+      // (SSE mund të ketë humbur; syncClosed më lart zakonisht e bën këtë.)
       try {
         pendingClosePrintTables.add(tableNum);
         const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
@@ -2873,6 +2778,8 @@ async function syncLocalCancelledFromCloud(db) {
         pendingClosePrintTables.delete(tableNum);
       }
 
+      // Porosia cloud u anulua (jo mbyllje me pagesë) — anulo lokalisht.
+      // MBROJTJE: Asnjë porosi aktive nuk anulohet automatikisht nga cloud sync
       console.log(`[sync] SKIP auto-cancel — porosi aktive e mbrojtur, table_id=${order.table_id}, source_label=${srcLabel || '(POS)'}`);
       continue;
       try {
@@ -3071,7 +2978,6 @@ async function ensureCloudTableImported(db, tableNumber, waiterName) {
     }
   }
 
-  // Si KAFENE: QR ende pa PRANO në PC s'hapet automatikisht në tavolinë.
   if (
     typeof db.isQrTableOrderSubjectToAcceptGate === "function"
     && db.isQrTableOrderSubjectToAcceptGate(order)
@@ -3212,7 +3118,6 @@ async function closeCloudTableOrdersForPayment(db, tableNumber, opts = {}) {
     closed_at: now,
     ordered_at: primary.ordered_at || primary.created_at || now,
   };
-  applyFiscalCloseFields(payload, opts);
 
   let closed = 0;
   try {
@@ -3259,7 +3164,6 @@ async function closeCloudOnlineOrderById(db, opts = {}) {
     items,
   };
   if (opts.waiter_id) payload.waiter_id = opts.waiter_id;
-  applyFiscalCloseFields(payload, opts);
 
   const res = await requestJson(
     "POST",
@@ -3365,7 +3269,7 @@ function freeLocalTableFromCloudEvent(db, tableNumber) {
   if (!table?.id) return;
 
   const activeOrders = db.db.prepare(
-    "SELECT id, cloud_order_id, waiter_name, total, table_id, source_label FROM orders WHERE table_id = ? AND status IN ('active', 'ordered')",
+    "SELECT id, cloud_order_id, waiter_name, total, source_label FROM orders WHERE table_id = ? AND status IN ('active', 'ordered')",
   ).all(table.id);
   const localOnly = activeOrders.filter(o => !String(o.cloud_order_id || "").trim());
   const cloudLinked = activeOrders.filter(o => String(o.cloud_order_id || "").trim());
@@ -3450,12 +3354,13 @@ function handleKdsKitchenSsePayload(db, payload) {
   }
 
   if (status === "closed" && num >= 1) {
+    // Mbyllje nga telefon: printo faturën PARA se freeLocal ta anulojë porosinë.
+    // SSE shpesh dërgon «closed» + «free» menjëherë — «free» NUK duhet të anulojë
+    // porosinë aktive para se të mbarojë printClosing (përndryshe no_active → pa faturë).
     pendingClosePrintTables.add(num);
     const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
     void Promise.resolve(printClosingReceiptIfActiveCloudOrder(db, num, {
       paymentMethod: payload.payment_method,
-      fiscal_skip: payload.fiscal_skip,
-      coupon_type: payload.coupon_type,
       order_id: payload.order_id || (remoteIds[0] || ""),
       local_order_id: payload.local_order_id || "",
       device_id: payload.device_id || "",
@@ -3533,7 +3438,9 @@ function connectKdsEventsListener(db) {
   kdsEventsDbRef = db;
   kdsEventsBuffer = "";
 
-  const path = `/api/kds/${encodeURIComponent(slug)}/events?key=${encodeURIComponent(key)}`;
+  const path = hotelCloudApiPath(
+    `/api/kds/${encodeURIComponent(slug)}/events?key=${encodeURIComponent(key)}`,
+  );
   let url;
   try {
     url = new URL(path, String(cfg.serverUrl).replace(/\/$/, "") + "/");
@@ -3614,19 +3521,19 @@ module.exports = {
   cancelOnlineOrders,
   orderMirrorsRemoteCloud,
   resolveCloudOrderById,
-  clearStuckCloudTableOrder,
   pushSale,
   pushSaleSync,
-  CLOUD_CLOSE_PUSH_TIMEOUT_MS,
   pushActiveOrderUpdate,
   pushActiveOrderUpdateSync,
   pushWaiterOrderToCloudBackground,
   CLOUD_WAITER_PUSH_TIMEOUT_MS,
+  CLOUD_CLOSE_PUSH_TIMEOUT_MS,
   pushQrWaiterAcceptToCloudKitchen,
   pushOnlinePickupAcceptToCloud,
   pushAllActiveTables,
   reconcileAllTablesWithCloud,
   pushTableFree,
+  clearStuckCloudTableOrder,
   pushTableCancelled,
   pushCatalog,
   pushCatalogAsync,
@@ -3634,10 +3541,10 @@ module.exports = {
   pushStaffAsync,
   syncCatalogToCloud,
   fullCloudSync,
+  syncVenueLogoFromCloud,
   pullMenuPhotosFromCloud,
   pullNewCatalogItemsFromCloud,
   syncRestaurantIdentityFromCloud,
-  syncVenueLogoFromCloud,
   listCloudReservations,
   createCloudReservation,
   updateCloudReservationStatus,

@@ -1,7 +1,6 @@
 const receiptPrint = require("./receipt-print");
 const { buildReceiptHtml } = require("./receipt-html");
 const printer = require("./printer");
-const { receiptStaffFields } = require("./receipt-staff-meta");
 
 function normalizeCouponType(raw) {
   const v = String(raw || "thermal").trim().toLowerCase();
@@ -41,14 +40,8 @@ async function printClosedTableReceipt(db, {
   receipt,
   tableNumber = 0,
   couponType = "thermal",
-  closedBy = "",
 }) {
   const fiscal = db.getFiscalSettings();
-  const settings = typeof db.getSettings === "function" ? db.getSettings() : {};
-  const bizDisplayName =
-    String(fiscal.biz_name || "").trim()
-    || String(settings.restaurant_name || settings.business_name || "").trim()
-    || "Hotel";
   const totals = db.calcFiscalTotals(
     order.total,
     fiscal.tvsh_enabled,
@@ -60,20 +53,16 @@ async function printClosedTableReceipt(db, {
   const discountTotal = Number(order.discount_total) || 0;
   const promotionName = order.promotion_name || "";
   const subtotalBeforeDiscount = order.subtotal != null ? order.subtotal : null;
-  const staff = receiptStaffFields(order, closedBy || order.closed_by || order.waiter_name);
 
   if (kind === "fiscal") {
     const html = buildReceiptHtml({
       tableNumber,
-      waiterName: staff.waiterName,
-      acceptedBy: staff.acceptedBy,
-      paymentBy: staff.paymentBy,
-      guestContext: staff.guestContext,
+      waiterName: order.waiter_name,
       items: parsedItems,
       fiscal,
       receiptNumber: receipt.receipt_number,
       totals,
-      restaurantName: bizDisplayName,
+      restaurantName: fiscal.biz_name,
       paymentMethod: order.payment_method,
       closedAt,
       discountTotal,
@@ -104,11 +93,7 @@ async function printClosedTableReceipt(db, {
   }
 
   const printResult = await receiptPrint.printOrderReceipt(db, {
-    order: {
-      ...order,
-      waiter_name: staff.waiterName,
-      source_label: staff.guestContext || order.source_label,
-    },
+    order,
     tableNumber,
     receiptNumber: receipt.receipt_number,
     fiscal,
@@ -118,8 +103,6 @@ async function printClosedTableReceipt(db, {
     paymentMethod: order.payment_method,
     slipKind: "final",
     station: "bar",
-    acceptedBy: staff.paymentBy || staff.acceptedBy,
-    paymentBy: staff.paymentBy,
     discountTotal,
     promotionName,
     subtotalBeforeDiscount,
@@ -158,6 +141,7 @@ function closePrintLogTag(tableNumber, cloudId) {
  * Mbyllje nga telefon (cloud SSE status=closed): kompleto lokalisht + printo.
  * Lidh edhe porositë POS lokale që u sinkronizuan në cloud me local_order_id=order.id
  * por pa kolonën cloud_order_id (arsyeja kryesore pse paneli mbetej i hapur).
+ * table_number=0 → Takeaway/Delivery (sllot Online); fatura shfaq source_label, jo T0.
  */
 async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {}) {
   const num = Number(tableNumber) || 0;
@@ -184,6 +168,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
       ? db.getActiveOrderForTable(table.id)
       : null;
 
+  // Fallback: gjej sipas cloud UUID (WEB-WAITER / Takeaway) ose local_order_id = id lokale POS
   if (!order?.id && cloudId && typeof db.getActiveOrderByCloudId === "function") {
     order = db.getActiveOrderByCloudId(cloudId);
   }
@@ -195,6 +180,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     } catch { /* ignore */ }
   }
 
+  // Fallback: sync e kompletoi porosinë pa print → gjej completed + printo nëse s'ka receipt.
   if (!order?.id && cloudId && db?.db) {
     try {
       const completed = db.db.prepare(
@@ -246,6 +232,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
   const linked = String(order.cloud_order_id || "").trim();
   const matchesLocalId = !!(localOrderId && String(order.id) === localOrderId);
 
+  // Porosi cloud-linked, POS me local_order_id, ose SSE me order_id cloud
   if (!linked && !matchesLocalId && !cloudId) {
     console.warn("[close-print] " + tag + " — not_cloud (order#" + order.id +
       " cloud_order_id bosh, local_order_id SSE=" + (localOrderId || "null") + ")");
@@ -262,6 +249,8 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     return { printed: false, skipped: true, reason: "table_missing" };
   }
 
+  // Echo nga paneli: daily_log ekziston. Por sync-u telefonit shpesh e fut në daily_log
+  // PARA printit — atëherë duhet ende të dalë fatura termike (pa closeTable dy herë).
   if (cloudId && typeof db.isCloudWaiterSaleImported === "function" && db.isCloudWaiterSaleImported(cloudId)) {
     const stillActive = order.status === "active" || order.status === "ordered";
     let hasReceipt = false;
@@ -325,8 +314,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
   }
 
   const pay = String(opts.paymentMethod || order.payment_method || "cash").trim() || "cash";
-  const closingName = String(opts.waiter_name || opts.closedBy || order.waiter_name || "Kamarier").trim();
-  const closed = db.closeTable(closeTableId, closingName, false, pay, null, {
+  const closed = db.closeTable(closeTableId, order.waiter_name || "Kamarier", false, pay, null, {
     allowAnyWaiter: true,
   });
   if (!closed) return { printed: false, skipped: true, reason: "close_failed" };
@@ -337,15 +325,13 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     closed.total = closeTotal;
   }
 
+  /* SEF ON → processFiscalReceipt (rrit FIS · N + printon kuponin fiskal) */
   let fiscalResult = null;
   let fiscalError = "";
-  const rawCoupon = opts.coupon_type ?? opts.couponType;
-  const requestedCoupon = rawCoupon ? String(rawCoupon).trim().toLowerCase() : null;
-  const fiscalSkip = opts.fiscal_skip === true || opts.fiscalSkip === true || requestedCoupon === "thermal";
   try {
     const fiscalConfig = require("./fiscal/fiscal-config");
     const fiscalMain = require("./fiscal/fiscal-main");
-    if (fiscalConfig.isFiscalEnabled() && !fiscalSkip) {
+    if (fiscalConfig.isFiscalEnabled()) {
       if (closeTotal <= 0) {
         fiscalError = "total_amount=0 — nuk mund të fiskalizohet (kontrollo çmimet e artikujve)";
         console.warn("[close-print] cloud close " + tag + " fiscal SKIP:", fiscalError);
@@ -380,6 +366,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     shouldPrintNormal = true;
   }
 
+  // SEF replace: vetëm fiskal — por nëse fiskali dështon, bëj fallback thermal.
   if (!shouldPrintNormal && fiscalResult?.printed) {
     console.log("[close-print] SEF replace — skip kupon normal (cloud close " + tag + ")", {
       fiscal_printed: true,
@@ -405,11 +392,7 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     order: { ...closed, total: closeTotal > 0 ? closeTotal : closed.total },
     receipt,
     tableNumber: printTableNum,
-    // Si KAFENE: kuponi i mbylljes del gjithmonë në printerin e zakonshëm (termik).
-    // Kuponi fiskal (kur SEF është aktiv) printohet më lart nga processFiscalReceipt.
-    // «fiscal» këtu printonte HTML te printeri fiskal → pa printer fiskal s'dilte asnjë kupon.
     couponType: "thermal",
-    closedBy: closingName,
   });
   console.log("[close-print] cloud close " + tag, {
     printed: !!printResult?.printed,
