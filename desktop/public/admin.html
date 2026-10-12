@@ -2714,9 +2714,11 @@
     <section id="panel-receta-perberesit" class="panel">
       <div class="card settings-card">
         <div class="card-title">PËRBËRËSIT E RECETAVE</div>
-        <p class="field-hint" style="margin:0 0 0.75rem">
-          Vetëm receta — stoku i përbërësve shihet te <strong>Stoku</strong>, blerjet te <strong>Blerjet</strong>.
-          Shitja zbret përbërësit sipas recetës (si më parë).
+        <p class="field-hint" style="margin:0 0 0.75rem;line-height:1.5">
+          <strong>Hapi 1:</strong> Shto lëndët e para poshtë (Domate, Djathë, Mish…).
+          <strong>Hapi 2:</strong> Kliko produktin sipër dhe shto sa harxhon për 1 porcion.
+          <strong>Hapi 3:</strong> Bëj blerje te <strong>Blerjet</strong> për të rritur stokun.
+          Sistemi llogarit vetë sa porcione dalin dhe sa lëndë mbeten. Stoku shihet te <strong>Stoku</strong>.
         </p>
         <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:0.75rem">
           <div style="flex:1;min-width:200px">
@@ -2727,13 +2729,19 @@
         </div>
         <p class="field-hint" style="margin:0 0 0.5rem">
           Kliko një produkt për t'i shtuar ose ndryshuar recetën (përbërësit dhe sasitë për 1 porcion).
+          Për ta hequr nga menuja, përdor <strong>Fshi</strong> në fund të rreshtit (konfirmo me <strong>FSHIJ</strong>).
         </p>
         <div id="recipe-wb-list" class="recipe-wb-list" style="max-height:220px;overflow:auto;margin-bottom:1rem;border:1px solid var(--ngjyr-border,#2a3344);border-radius:8px"></div>
         <div id="recipe-wb-editor" hidden>
           <h3 id="recipe-wb-editor-title" style="margin:0 0 0.5rem"></h3>
+          <p id="recipe-wb-editor-guide" class="field-hint" style="margin:0 0 0.65rem;line-height:1.45">
+            Shto përbërësit që harxhohen për <strong>1 porcion</strong> të këtij produkti.
+            Shembull: Sallatë Greke → Domate 250g, Djathë Feta 100g, Ulliri 50g.
+          </p>
           <div id="recipe-wb-stats" class="field-hint" style="margin-bottom:0.5rem"></div>
           <label for="recipe-wb-desc">Përshkrimi / përmbajtja (menu, QR, telefon)</label>
           <textarea id="recipe-wb-desc" rows="2" maxlength="2000" style="width:100%;margin:0.25rem 0 0.75rem" placeholder="Domate, kastravec, djathë…"></textarea>
+          <p class="field-hint" style="margin:0 0 0.35rem;font-weight:700;color:var(--ngjyr-text,#e5e7eb)">Përbërësit për 1 porcion:</p>
           <div id="recipe-wb-lines"></div>
           <div class="form-row" style="flex-wrap:wrap;gap:0.35rem;margin:0.5rem 0">
             <button type="button" class="btn btn-ghost btn-sm" id="recipe-wb-add-line">+ Përbërës</button>
@@ -2743,8 +2751,11 @@
           <span id="recipe-wb-msg" class="field-hint" style="margin-left:0.5rem"></span>
         </div>
         <div class="card settings-card" style="margin-top:1rem">
-          <div class="card-title">Përbërësit (emri — vetëm këtu)</div>
-          <p class="field-hint" style="margin:0 0 0.5rem">Ndrysho emrin ose fshi (vetëm nëse nuk ka recetë, stok, apo blerje).</p>
+          <div class="card-title">Lista e përbërësve (lëndët e para)</div>
+          <p class="field-hint" style="margin:0 0 0.5rem;line-height:1.45">
+            Shto këtu lëndët e para që blen dhe përdor në receta. Shembull: Domate, Djathë Feta, Mish Viçi, Vodka 1L.
+            Stoku i tyre rritet te <strong>Blerjet</strong>. Ndrysho emrin ose fshi vetëm nëse nuk ka recetë, stok, apo blerje.
+          </p>
           <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;gap:0.35rem;margin-bottom:0.5rem">
             <div style="min-width:160px;flex:1">
               <label for="recipe-wb-ing-new-name">Emri i përbërësit</label>
@@ -5467,6 +5478,7 @@
           <select id="staff-modal-role" class="staff-rfid-input" style="width:100%;box-sizing:border-box;margin-top:0.25rem">
             <option value="kamarier">Kamarier</option>
             <option value="recepsion">Recepsion</option>
+            <option value="pastrim">Pastrim</option>
           </select>
         </div>
         <button type="button" class="btn btn-primary btn-sm" id="staff-modal-save-profile" style="justify-self:start">Ruaj emrin / rolin</button>
@@ -6285,7 +6297,7 @@
   <script src="/js/cloud-status.js"></script>
   <script src="/js/hotel-inv-lines-shared.js?v=1"></script>
   <script src="/js/hotel-ingredients-recipes-admin.js?v=2"></script>
-  <script src="/js/hotel-recipe-workbench-admin.js?v=2"></script>
+  <script src="/js/hotel-recipe-workbench-admin.js?v=4"></script>
   <script src="/js/sales-invoice-html.js?v=2"></script>
   <script src="/js/sales-invoices-ui.js?v=2"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
@@ -7405,9 +7417,18 @@
       return `para ${Math.round(sec / 86400)} ditë`;
     }
 
-    function staffRoleLabel(role) {
+    function staffRoleSelectValue(role) {
       const r = String(role || "kamarier").trim().toLowerCase();
-      return r === "recepsion" ? "Recepsion" : "Kamarier";
+      if (r === "recepsion" || r === "receptionist") return "recepsion";
+      if (r === "pastrim" || r === "pastrimi" || r === "housekeeping" || r === "sherbimi") return "pastrim";
+      return "kamarier";
+    }
+
+    function staffRoleLabel(role) {
+      const v = staffRoleSelectValue(role);
+      if (v === "recepsion") return "Recepsion";
+      if (v === "pastrim") return "Pastrim";
+      return "Kamarier";
     }
 
     function remotePullStatusHtml(st) {
@@ -15462,7 +15483,7 @@
           : '<span class="staff-badge staff-badge-off">Joaktiv</span>';
         const pinText = s.has_pin ? "••••" : "Nuk është vendosur";
         const rfidText = s.has_card ? escMenuAttr(s.card_uid) : "Nuk është vendosur";
-        const roleBadgeLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
+        const roleBadgeLabel = staffRoleLabel(s.staff_role);
 
         card.innerHTML = `
           <div class="staff-card-head">
@@ -15617,9 +15638,8 @@
       stafModalAktual = s;
       document.getElementById("staff-modal-title").textContent = s.name;
       document.getElementById("staff-modal-name").value = s.name || "";
-      document.getElementById("staff-modal-role").value =
-        s.staff_role === "recepsion" ? "recepsion" : "kamarier";
-      const roleLabel = s.staff_role === "recepsion" ? "Recepsion" : "Kamarier";
+      document.getElementById("staff-modal-role").value = staffRoleSelectValue(s.staff_role);
+      const roleLabel = staffRoleLabel(s.staff_role);
       document.getElementById("staff-modal-sub").textContent = cloudWaiterDisabled
         ? `${roleLabel} — PIN, link WiFi lokal dhe kartela RFID.`
         : `${roleLabel} — PIN, link cloud + WiFi lokal, kartela RFID.`;

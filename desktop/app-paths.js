@@ -33,7 +33,9 @@ const PUBLIC_OVERLAY_ALLOW = new Set([
   "kasa-recepcion.html",
   "recepcion.html",
   "login.html",
+  "admin.html",
   "css/recepcion-truffle.css",
+  "js/hotel-recipe-workbench-admin.js",
 ]);
 
 function normalizePublicRel(rel) {
@@ -234,6 +236,10 @@ function resolvePackagedPublicFile(segments) {
 function joinContent(...segments) {
   const packagedPublic = resolvePackagedPublicFile(segments);
   if (packagedPublic) return packagedPublic;
+  if (segments.length >= 2 && segments[0] === "public") {
+    const devPublic = path.join(__dirname, "public", ...segments.slice(1));
+    if (fs.existsSync(devPublic)) return devPublic;
+  }
   return path.join(getAppContentRoot(), ...segments);
 }
 
@@ -265,6 +271,11 @@ function listPublicStaticRoots() {
 
 function resolvePublicFile(relativeName) {
   const rel = normalizePublicRel(relativeName);
+  const overlay = publicOverlayRoot();
+  if (overlay && isPublicOverlayAllowed(rel)) {
+    const overlayFile = path.join(overlay, rel);
+    if (fs.existsSync(overlayFile)) return overlayFile;
+  }
   const packaged = resolvePackagedPublicFile(["public", rel]);
   if (packaged && fs.existsSync(packaged)) return packaged;
   const dev = path.join(__dirname, "public", rel);

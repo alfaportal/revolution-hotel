@@ -1655,7 +1655,11 @@ function renderWaiterCodeErrorPage(message) {
 }
 
 const LOGIN_HTML_PATH = joinContent("public", "login.html");
-const ADMIN_HTML_PATH = joinContent("public", "admin.html");
+function adminHtmlPathForRequest() {
+  const fp = resolvePublicFile("admin.html");
+  if (fp && fs.existsSync(fp)) return fp;
+  return joinContent("public", "admin.html");
+}
 
 function serveStaffLoginPage(res, mode, entry = {}) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -2338,13 +2342,15 @@ app.get("/hotel/:a/:b", (req, res) => {
   return res.status(404).send("Not found");
 });
 
-if (fs.existsSync(ADMIN_HTML_PATH)) {
-  app.get("/admin.html", (_req, res) => {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.sendFile(ADMIN_HTML_PATH);
-  });
-}
+app.get("/admin.html", (_req, res) => {
+  const fp = adminHtmlPathForRequest();
+  if (!fp || !fs.existsSync(fp)) {
+    return res.status(404).send("admin.html mungon");
+  }
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.sendFile(fp);
+});
 
 const publicStaticOpts = {
   setHeaders(res, filePath) {

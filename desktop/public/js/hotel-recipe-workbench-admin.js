@@ -155,12 +155,12 @@
               </select>
             </div>
             <div style="min-width:160px">
-              <label class="field-hint">Përbërës</label>
+              <label class="field-hint">Emri i përbërësit</label>
               <select class="recipe-wb-ing" data-i="${i}" ${showNew ? "hidden" : ""}>${ingredientOptions(ln.ingredient_id)}</select>
               <input type="text" class="recipe-wb-new-name" data-i="${i}" placeholder="Emër i ri" value="${ln.new_name || ""}" ${showNew ? "" : "hidden"}>
             </div>
             <div style="min-width:90px" class="recipe-wb-new-unit-wrap" data-i="${i}" ${showNew ? "" : "hidden"}>
-              <label class="field-hint">Njësia</label>
+              <label class="field-hint">Njësia (g, ml, copë)</label>
               <select class="recipe-wb-new-unit" data-i="${i}">
                 <option value="kg"${(ln.new_unit || "kg") === "kg" ? " selected" : ""}>kg</option>
                 <option value="l"${ln.new_unit === "l" ? " selected" : ""}>l</option>
@@ -168,8 +168,8 @@
               </select>
             </div>
             <div class="recipe-wb-amt-wrap" data-i="${i}" ${ln.mode === "yield" ? "hidden" : ""}>
-              <label class="field-hint">Sasia (${dispUnit}/porcion)</label>
-              <input type="number" class="recipe-wb-qty" data-i="${i}" min="0.001" step="any" value="${ln.display_qty ?? ""}">
+              <label class="field-hint">Sasia · ${dispUnit} (për 1 porcion)</label>
+              <input type="number" class="recipe-wb-qty" data-i="${i}" min="0.001" step="any" placeholder="p.sh. 250" value="${ln.display_qty ?? ""}">
             </div>
             <div class="recipe-wb-yield-wrap" data-i="${i}" ${ln.mode === "yield" ? "" : "hidden"}>
               <label class="field-hint">Porcione nga 1 ${ing?.unit === "l" ? "l" : ing?.unit === "copë" ? "copë" : "kg"}</label>
@@ -294,7 +294,8 @@
     let list = global.__recipeWbIngredients || [];
     if (q) list = list.filter((ing) => String(ing.name || "").toLowerCase().includes(q));
     if (!list.length) {
-      host.innerHTML = '<p class="field-hint">Nuk ka përbërës.</p>';
+      host.innerHTML =
+        '<p class="field-hint">Ende nuk ke shtuar asnjë lëndë të parë — fillo me butonin + Shto përbërës.</p>';
       return;
     }
     host.innerHTML = `<table class="purchases-table" style="width:100%">
@@ -363,6 +364,41 @@
     });
   }
 
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function purgeProductFromList(id, name) {
+    const label = String(name || `#${id}`).trim();
+    const typed = global.prompt(
+      `Do të fshihet produkti «${label}» nga menuja (pa kthim).\nShkruani FSHIJ për të konfirmuar:`,
+      "",
+    );
+    if (typed == null || String(typed).trim() !== "FSHIJ") return;
+    try {
+      await global.api(`/api/menu/${id}/purge`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirm: "FSHIJ" }),
+      });
+      if (state.selectedId === id) {
+        state.selectedId = null;
+        document.getElementById("recipe-wb-editor")?.setAttribute("hidden", "");
+      }
+      const msg = document.getElementById("recipe-wb-msg");
+      if (msg) msg.textContent = "Produkti u fshi.";
+      await loadList();
+      if (typeof global.ngarkoMenu === "function") {
+        await global.ngarkoMenu();
+      }
+    } catch (e) {
+      alert(e.message || "Produkti nuk u fshi.");
+    }
+  }
+
   async function loadList() {
     const q = document.getElementById("recipe-wb-search")?.value?.trim() || "";
     const qs = q ? `?q=${encodeURIComponent(q)}` : "";
@@ -382,6 +418,7 @@
         <th>Çmimi</th>
         <th>Kosto/porcion</th>
         <th>Porcione nga stoku</th>
+        <th></th>
       </tr></thead>
       <tbody>${state.items
         .map(
@@ -389,18 +426,37 @@
             <td>${
               it.has_recipe
                 ? '<span style="color:#4ade80;font-weight:600">Ka recetë</span>'
-                : '<span style="color:#9ca3af">Pa recetë</span>'
+                : '<span style="color:#9ca3af">Pa recetë — kliko për të shtuar</span>'
             }</td>
-            <td>${it.name}</td>
-            <td>${it.category || ""}</td>
-            <td class="n">${fmt(it.price, 2)} €</td>
+            <td>${escapeHtml(it.name)}</td>
+            <td>${escapeHtml(it.category || "")}</td>
+            <td class="n">${
+              Number(it.price) > 0
+                ? `${fmt(it.price, 2)} €`
+                : `0 €<br><span class="field-hint" style="font-size:0.72rem;font-weight:400">Çmimi vendoset te Menuja</span>`
+            }</td>
             <td class="n">${it.portion_cost != null ? `${fmt(it.portion_cost, 2)} €` : "—"}</td>
             <td class="n">${it.portions_available ?? "—"}</td>
+            <td style="white-space:nowrap;text-align:right">
+              <button type="button" class="btn btn-danger btn-sm" data-prod-del="${it.id}" title="Fshi produktin nga menuja">Fshi</button>
+            </td>
           </tr>`,
         )
         .join("")}</tbody></table>`;
     list.querySelectorAll("[data-pick]").forEach((row) => {
-      row.addEventListener("click", () => selectProduct(Number(row.dataset.pick)));
+      row.addEventListener("click", (ev) => {
+        if (ev.target.closest("[data-prod-del]")) return;
+        selectProduct(Number(row.dataset.pick));
+      });
+    });
+    list.querySelectorAll("[data-prod-del]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = Number(btn.dataset.prodDel);
+        const item = state.items.find((x) => x.id === id);
+        purgeProductFromList(id, item?.name).catch(() => {});
+      });
     });
   }
 
