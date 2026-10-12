@@ -1750,8 +1750,22 @@ function getBusinessName() {
   return biz || rest;
 }
 
-/** Emri zyrtar për UI — licenca/cloud (client_name), jo kopje lokale të gabuara. */
+/** p.sh. te-naseri-2-aed709 → "Te Naseri 2" (slug publik, jo emër i gabuar cloud). */
+function displayNameFromKitchenSlug(slugRaw) {
+  const slug = String(slugRaw || "").trim().toLowerCase();
+  if (!slug) return "";
+  const base = slug.replace(/-[a-f0-9]{6,12}$/i, "");
+  const parts = base.split("-").filter(Boolean);
+  if (!parts.length) return "";
+  return parts
+    .map((p) => (/^\d+$/.test(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(" ");
+}
+
+/** Emri zyrtar për UI — slug (te-naseri-2) para cloud_client_name të licencës së gabuar. */
 function getBusinessDisplayName() {
+  const fromSlug = displayNameFromKitchenSlug(getSetting("kitchen_slug", ""));
+  if (fromSlug) return fromSlug;
   const fromCloud = String(getSetting("cloud_client_name", "") || "").trim();
   if (fromCloud) return fromCloud;
   return getBusinessName();

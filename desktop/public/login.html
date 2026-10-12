@@ -348,7 +348,7 @@
     let bizPhone = "";
 
     (async () => {
-      function applyLoginBrand(s) {
+      function applyLoginBrand(s, opts) {
         if (!s) return;
         const name = (s.business_name || s.restaurant_name || "").trim();
         const lic = s.license || {};
@@ -360,9 +360,9 @@
         }
         const typeLabel = (s.business_subtype_label || s.business_type_label || "").trim();
         const displayName = (
-          lic.client_name
-          || s.business_display_name
+          s.business_display_name
           || name
+          || lic.client_name
         ).trim();
         const venueLabel = (
           (typeLabel && displayName ? `${typeLabel} ${displayName}` : displayName)
@@ -375,12 +375,14 @@
           venueSub.textContent = venueLabel;
           venueSub.hidden = false;
         }
-        if (typeof applyAppVersionBadge === "function") applyAppVersionBadge(s, "brand-app-version");
+        if (!opts?.skipVersion && typeof applyAppVersionBadge === "function") {
+          applyAppVersionBadge(s, "brand-app-version");
+        }
         bizPhone = s.biz_phone || "";
       }
       try {
         const cached = JSON.parse(localStorage.getItem("hotel_cache_setup") || "null");
-        if (cached) applyLoginBrand(cached);
+        if (cached) applyLoginBrand(cached, { skipVersion: true });
       } catch { /* ignore */ }
       try {
         const s = await api("/api/setup/status");
@@ -388,6 +390,11 @@
           window.location.href = "/setup.html";
           return;
         }
+        const prevVer = localStorage.getItem("hotel_cache_setup_app_ver");
+        if (prevVer && s.app_version && prevVer !== s.app_version) {
+          try { localStorage.removeItem("hotel_cache_setup"); } catch { /* ignore */ }
+        }
+        try { localStorage.setItem("hotel_cache_setup_app_ver", s.app_version || ""); } catch { /* ignore */ }
         try { localStorage.setItem("hotel_cache_setup", JSON.stringify(s)); } catch { /* ignore */ }
         applyLoginBrand(s);
       } catch {

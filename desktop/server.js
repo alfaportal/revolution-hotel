@@ -2386,12 +2386,14 @@ app.get("/api/setup/status", (_req, res) => {
       payload.license = null;
     }
   }
+  const displayName = String(db.getBusinessDisplayName() || "").trim();
   const licName = String(payload.license?.client_name || "").trim();
-  if (licName) {
-    payload.business_display_name = licName;
+  const venueName = displayName || licName;
+  if (venueName) {
+    payload.business_display_name = venueName;
     payload.window_title = db.getAppWindowTitle({
       business_subtype: payload.business_subtype,
-      restaurant_name: licName,
+      restaurant_name: venueName,
     });
   }
   res.json(payload);
