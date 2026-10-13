@@ -2,7 +2,7 @@
  * Sync automatik me cloud — pa butona manualë.
  * - Health check çdo 20s (cloud-health)
  * - Lidhje cloud (checkConnection) çdo 5 min
- * - Shitje telefon/web-waiter çdo 5 min
+ * - Shitje telefon/web-waiter çdo 30s (fallback kur SSE mungon)
  * - Staff / fjalëkalim admin çdo 4 orë
  * - Modalitet arkë nga cloud çdo 12 orë
  * - Menu e plotë çdo 3 min ose pas ndryshimeve
@@ -12,7 +12,7 @@ const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
-const CLOSED_WAITER_SALES_MS = 5 * 60 * 1000;
+const CLOSED_WAITER_SALES_MS = 30 * 1000;
 const OWNER_ADMIN_PASSWORD_MS = 4 * 60 * 60 * 1000;
 const STAFF_PUSH_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const REGISTER_MODE_MS = 12 * 60 * 60 * 1000;

@@ -13861,7 +13861,8 @@ function normalizeCloudSaleItems(raw) {
   })).filter(it => it.name && it.quantity > 0);
 }
 
-function finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total) {
+function finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total, opts = {}) {
+  const cloudCloseConfirmed = opts.cloudCloseConfirmed === true;
   const localOrder = getOrderByCloudId(cloudId);
   if (localOrder) {
     console.log(`[STATUS-CHANGE][finalizeLocalTableAfterCloudSaleClose] cloudId=${cloudId} match-by-cloud-id order#${localOrder.id} T${tableNum} -> orders.status='completed', tables.status='free'`);
@@ -13884,6 +13885,19 @@ function finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total)
     sqlite.prepare(`
       UPDATE orders SET status = 'completed', payment_method = ?, total = ? WHERE id = ?
     `).run(method, total, active.id);
+    sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(table.id);
+    return;
+  }
+  if (active && cloudCloseConfirmed) {
+    const pay = normalizePaymentMethod(method);
+    const closeTotal = Number(total) > 0 ? Number(total) : Number(active.total) || 0;
+    console.log(
+      `[STATUS-CHANGE][finalizeLocalTableAfterCloudSaleClose] cloudId=${cloudId || "(sse)"} T${tableNum} ` +
+      `cloud-close dine-in order#${active.id} waiter=${active.waiter_name} -> completed, table free`,
+    );
+    sqlite.prepare(`
+      UPDATE orders SET status = 'completed', payment_method = ?, total = ? WHERE id = ?
+    `).run(pay, closeTotal, active.id);
     sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(table.id);
     return;
   }
@@ -13930,7 +13944,9 @@ function importClosedWebWaiterSaleFromCloud(sale, opts = {}) {
     if (cloudId && !String(dupLog.cloud_sale_id || "").trim()) {
       sqlite.prepare("UPDATE daily_log SET cloud_sale_id = ? WHERE id = ?").run(cloudId, dupLog.id);
     }
-    finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total);
+    finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total, {
+      cloudCloseConfirmed: true,
+    });
     console.log("[daily_log/sync] SKIP duplikat daily_log T" + tableNum, total.toFixed(2), cloudId);
     return {
       ok: true,
@@ -13979,7 +13995,9 @@ function importClosedWebWaiterSaleFromCloud(sale, opts = {}) {
       decrementMenuItemStock(items);
     }
 
-    finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total);
+    finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total, {
+      cloudCloseConfirmed: true,
+    });
   })();
 
   const effectiveShiftId = logMeta.shift_id;

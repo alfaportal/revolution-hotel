@@ -2695,6 +2695,13 @@ async function syncLocalCancelledFromCloud(db) {
       /* offline */
     }
 
+    const cloudFreeTableNums = new Set(
+      cloudData.tables
+        .filter(t => String(t.status || "").toLowerCase() !== "occupied")
+        .map(t => Number(t.number))
+        .filter(n => n >= 1),
+    );
+
     let pendingCloudCloseImport = false;
     for (const order of activeOrders) {
       const tableNum = Number(order.table_number);
@@ -2715,20 +2722,29 @@ async function syncLocalCancelledFromCloud(db) {
       const tableNum = Number(order.table_number);
       if (!tableNum) continue;
       const ageMs = now - new Date(order.created_at || 0).getTime();
-      if (ageMs < GRACE_MS) continue; // tepër e re — lëre të vendoset
+      if (ageMs < GRACE_MS) continue;
 
-      if (!order.cloud_order_id) continue; // nuk ka ID cloud → nuk mund krahasojmë
-
-      const cId = String(order.cloud_order_id).trim();
-      if (cloudOrderedIds.has(cId)) continue; // ekziston ende në cloud → OK
-
-      const srcLabel = String(order.source_label ?? "").trim();
-      if (!srcLabel) {
-        console.log(`[sync] T${tableNum} SKIP cancel — porosi dine-in POS (source_label bosh)`);
+      if (!order.cloud_order_id) {
+        if (!cloudFreeTableNums.has(tableNum)) continue;
+        if (pendingClosePrintTables.has(tableNum)) continue;
+        console.log(
+          `[sync] T${tableNum} cloud tavolinë e lirë — kompleto porosi lokale pa cloud_order_id order#${order.id}`,
+        );
+        if (typeof db.finalizeLocalTableAfterCloudSaleClose === "function") {
+          db.finalizeLocalTableAfterCloudSaleClose(
+            "",
+            tableNum,
+            order.payment_method || "cash",
+            Number(order.total) || 0,
+            { cloudCloseConfirmed: true },
+          );
+        }
         continue;
       }
 
-      // Sync/print më lart mund ta ketë mbyllur tashmë — mos anulo stub të vjetër.
+      const cId = String(order.cloud_order_id).trim();
+      if (cloudOrderedIds.has(cId)) continue;
+
       try {
         const cur = db.db?.prepare?.(
           "SELECT id, status FROM orders WHERE id = ?",
@@ -2736,7 +2752,6 @@ async function syncLocalCancelledFromCloud(db) {
         if (!cur || (cur.status !== "active" && cur.status !== "ordered")) continue;
       } catch { /* ignore */ }
 
-      // Mos anulo gjatë printit të faturës së mbylljes (telefon → SSE/sync).
       if (pendingClosePrintTables.has(tableNum)) {
         console.log(
           `[sync] T${tableNum} cancel SKIP — fatura e mbylljes ende në print`,
@@ -2750,8 +2765,6 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
-      // Porosia cloud u mbyll — provo faturën e mbylljes para anulimit.
-      // (SSE mund të ketë humbur; syncClosed më lart zakonisht e bën këtë.)
       try {
         pendingClosePrintTables.add(tableNum);
         const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
@@ -2763,12 +2776,10 @@ async function syncLocalCancelledFromCloud(db) {
         if (
           pr?.printed ||
           pr?.reason === "already_in_daily_log" ||
-          pr?.reason === "printed_after_daily_log" ||
-          pr?.reason === "no_active"
+          pr?.reason === "printed_after_daily_log"
         ) {
           console.log(
-            `[sync] T${tableNum} close-print pas cloud-missing:`,
-            pr?.reason || "printed",
+            `[sync] T${tableNum} cloud mbyllur — u trajtua nga close-print (${pr?.reason || "printed"})`,
           );
           continue;
         }
@@ -2778,21 +2789,17 @@ async function syncLocalCancelledFromCloud(db) {
         pendingClosePrintTables.delete(tableNum);
       }
 
-      // Porosia cloud u anulua (jo mbyllje me pagesë) — anulo lokalisht.
-      // MBROJTJE: Asnjë porosi aktive nuk anulohet automatikisht nga cloud sync
-      console.log(`[sync] SKIP auto-cancel — porosi aktive e mbrojtur, table_id=${order.table_id}, source_label=${srcLabel || '(POS)'}`);
-      continue;
-      try {
-        console.log(
-          `[STATUS-CHANGE][cloud-sync.syncLocalCancelledFromCloud] T${tableNum} order.id=${order.id} ` +
-          `cloud_order_id=${cId} ageMs=${ageMs} nuk ekziston më në cloud -> cancelActiveOrder()`,
+      console.log(
+        `[sync] T${tableNum} cloud porosi mbyllur — kompleto lokalisht order#${order.id} cloudId=${cId}`,
+      );
+      if (typeof db.finalizeLocalTableAfterCloudSaleClose === "function") {
+        db.finalizeLocalTableAfterCloudSaleClose(
+          cId,
+          tableNum,
+          order.payment_method || "cash",
+          Number(order.total) || 0,
+          { cloudCloseConfirmed: true },
         );
-        db.cancelActiveOrder(order.table_id);
-        console.log(
-          `[sync] T${tableNum} u anulua lokalisht — cloud_order_id ${cId} nuk ekziston`,
-        );
-      } catch {
-        // ignore
       }
     }
   } catch (err) {
@@ -3262,9 +3269,23 @@ function isPosPanelDineInActiveOrder(db, order) {
   return true;
 }
 
-function freeLocalTableFromCloudEvent(db, tableNumber) {
+function freeLocalTableFromCloudEvent(db, tableNumber, opts = {}) {
   const num = Number(tableNumber);
   if (!num || !db?.db) return;
+  const cloudCloseConfirmed = opts.cloudCloseConfirmed === true;
+  const paymentMethod = String(opts.paymentMethod || "cash").trim() || "cash";
+  const cloudOrderId = String(opts.cloudOrderId || "").trim();
+
+  if (cloudCloseConfirmed && typeof db.finalizeLocalTableAfterCloudSaleClose === "function") {
+    console.log(
+      `[cloud/sse] T${num} cloud-close — kompleto porosi lokale (pas mbylljes telefon) cloudId=${cloudOrderId || "—"}`,
+    );
+    db.finalizeLocalTableAfterCloudSaleClose(cloudOrderId, num, paymentMethod, 0, {
+      cloudCloseConfirmed: true,
+    });
+    return;
+  }
+
   const table = db.db.prepare("SELECT id FROM tables WHERE number = ?").get(num);
   if (!table?.id) return;
 
@@ -3276,8 +3297,8 @@ function freeLocalTableFromCloudEvent(db, tableNumber) {
 
   if (localOnly.length) {
     console.log(
-      `[STATUS-CHANGE][cloud-sync.freeLocalTableFromCloudEvent] T${num} SKIP — ` +
-      `${localOnly.length} porosi LOKALE (jo-cloud) aktive, NUK preket:`,
+      `[STATUS-CHANGE][cloud-sync.freeLocalTableFromCloudEvent] T${num} SKIP (free pa closed) — ` +
+      `${localOnly.length} porosi LOKALE aktive, NUK preket:`,
       JSON.stringify(localOnly),
     );
     return;
@@ -3287,11 +3308,12 @@ function freeLocalTableFromCloudEvent(db, tableNumber) {
     const toCancel = [];
     for (const o of cloudLinked) {
       if (isPosPanelDineInActiveOrder(db, o)) {
-        console.log(`[cloud/sse] SKIP cancel — porosi POS aktive në T${num}`);
+        console.log(`[cloud/sse] SKIP cancel (free pa closed) — porosi POS aktive në T${num}`);
         continue;
       }
-      // MBROJTJE: SSE free nuk guxon me anulua porosi aktive
-      console.log(`[cloud/sse] SKIP auto-cancel — porosi aktive e mbrojtur, table_id=${o.table_id}, source_label=${o.source_label || '(POS)'}`);
+      console.log(
+        `[cloud/sse] SKIP auto-cancel (free pa closed) — porosi aktive e mbrojtur, order#${o.id}, source_label=${o.source_label || "(POS)"}`,
+      );
       continue;
       toCancel.push(o);
     }
@@ -3367,7 +3389,11 @@ function handleKdsKitchenSsePayload(db, payload) {
     }))
       .catch(err => console.warn("[cloud/sse] closing print:", err.message || err))
       .finally(() => {
-        freeLocalTableFromCloudEvent(db, num);
+        freeLocalTableFromCloudEvent(db, num, {
+          cloudCloseConfirmed: true,
+          paymentMethod: payload.payment_method,
+          cloudOrderId: payload.order_id || remoteIds[0] || "",
+        });
         pendingClosePrintTables.delete(num);
         sseFreedTableNums.add(num);
         scheduleClosedWebWaiterSync(db);
