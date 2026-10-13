@@ -357,6 +357,22 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
     && finalStatus === "ordered"
     && JSON.stringify(normalizeItems(existing.items_json)) !== JSON.stringify(items);
 
+  const {
+    tableOrderLockActor,
+    assertTableOrderChannel,
+    touchTableOrderLock,
+  } = require("../lib/tableOrderLock");
+  const tableLockActor = tableOrderLockActor(deviceId);
+  const willMutateDineInItems =
+    tableNum >= 1
+    && tableLockActor
+    && (finalStatus === "ordered" || finalStatus === "ready")
+    && items.length > 0
+    && (!existing || itemsChanged);
+  if (willMutateDineInItems) {
+    assertTableOrderChannel(license.client_id, tableNum, tableLockActor);
+  }
+
   const posWaiterAccepted =
     body.pos_waiter_accepted === true
     || body.pos_waiter_accepted === 1
@@ -511,6 +527,10 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
       throw new Error("Mungon kolona payment_method te sales_orders. Ekzekutoni supabase/migrations/020_sales_payment_method.sql në Supabase.");
     }
     throw new Error(msg);
+  }
+
+  if (willMutateDineInItems) {
+    touchTableOrderLock(license.client_id, tableNum, tableLockActor);
   }
 
   if (finalStatus === "ordered" || finalStatus === "cancelled" || finalStatus === "ready" || finalStatus === "closed") {
