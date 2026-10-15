@@ -6,6 +6,7 @@
  */
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const BACKUP_DIR = path.join(ROOT, ".build-source-backup");
@@ -197,6 +198,27 @@ function assertRootRequiresInFiles(pkg) {
   );
 }
 
+function ensureBuildIcons() {
+  const iconIco = path.join(ROOT, "build", "icon.ico");
+  const logoSrc = path.join(ROOT, "public", "img", "revolution-logo.png");
+  let need = !fs.existsSync(iconIco);
+  if (!need && fs.existsSync(logoSrc)) {
+    try {
+      need = fs.statSync(logoSrc).mtimeMs > fs.statSync(iconIco).mtimeMs;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!need) return;
+  console.log("[pre-build] Gjenerim ikonave Windows (build/make-icon.js)...");
+  const r = spawnSync(process.execPath, [path.join(ROOT, "build", "make-icon.js")], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
+  if (r.error) fail("make-icon.js: " + r.error.message);
+  if (r.status !== 0) fail("make-icon.js dështoi (exit " + r.status + ")");
+}
+
 function assertExplicitFilesExist(pkg) {
   const files = pkg.build.files || [];
   const missing = [];
@@ -218,6 +240,7 @@ function runBuildManifestValidation(options = {}) {
   if (!skipBackupCheck) assertNoStaleBuildBackup();
   const pkg = readPkg();
   assertPackageJsonComplete(pkg);
+  ensureBuildIcons();
   assertSourceNotObfuscated();
   assertExplicitFilesExist(pkg);
   assertRootRequiresInFiles(pkg);

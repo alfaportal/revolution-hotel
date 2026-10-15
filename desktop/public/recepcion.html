@@ -1879,9 +1879,14 @@
 
     function updateRoomKpis(rooms) {
       const list = Array.isArray(rooms) ? rooms : [];
-      const occ = list.filter((r) => r.status === "occupied").length;
-      const free = list.filter((r) => r.status === "free").length;
-      const dirty = list.filter((r) => r.status === "dirty" || r.status === "maintenance").length;
+      const occ = list.filter((r) => displayStatus(r) === "occupied").length;
+      const free = list.filter((r) => displayStatus(r) === "free").length;
+      const dirty = list.filter(
+        (r) => {
+          const st = displayStatus(r);
+          return st === "dirty" || st === "maintenance";
+        },
+      ).length;
       const elO = document.getElementById("kpi-occupied");
       const elF = document.getElementById("kpi-free");
       const elD = document.getElementById("kpi-dirty");
@@ -2350,9 +2355,15 @@
 
         let guestLine = "";
         let datesLine = "";
+        const res = r.active_reservation || null;
         if (st === "occupied" && guest) {
           guestLine = `<div class="waiter-room-guest-line">${escHtml(guest.guest_name || "Mysafir")}</div>`;
           datesLine = `<div class="waiter-room-dates">${escHtml(guest.check_in_date || "—")} → ${escHtml(guest.check_out_date || "—")}</div>`;
+        } else if (st === "reserved" && res) {
+          const gName =
+            res.guest_name || res.customer_name || "Rezervuar";
+          guestLine = `<div class="waiter-room-guest-line">${escHtml(gName)}</div>`;
+          datesLine = `<div class="waiter-room-dates">${escHtml(res.check_in_date || "—")} → ${escHtml(res.check_out_date || "—")}</div>`;
         }
 
         card.innerHTML =

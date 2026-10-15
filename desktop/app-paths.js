@@ -243,6 +243,24 @@ function joinContent(...segments) {
   return path.join(getAppContentRoot(), ...segments);
 }
 
+/** .ico jashtë asar — taskbar / splash (Windows nuk lexon mirë ikona nga app.asar). */
+function resolveAppIconPath() {
+  const candidates = [];
+  if (process.resourcesPath) {
+    candidates.push(
+      path.join(process.resourcesPath, "app.asar.unpacked", "build", "icon.ico"),
+    );
+  }
+  candidates.push(path.join(__dirname, "build", "icon.ico"));
+  candidates.push(path.join(getAppContentRoot(), "build", "icon.ico"));
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  const logo = resolvePublicFile("img/revolution-logo.png");
+  if (logo && fs.existsSync(logo)) return logo;
+  return undefined;
+}
+
 /** Radhë static: overlay → unpacked → dev public → asar */
 function listPublicStaticRoots() {
   const roots = [];
@@ -286,6 +304,7 @@ function resolvePublicFile(relativeName) {
 module.exports = {
   getAppContentRoot,
   joinContent,
+  resolveAppIconPath,
   listPublicStaticRoots,
   resolvePublicFile,
   clearPublicOverlayOnAppUpgrade,

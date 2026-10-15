@@ -10,7 +10,7 @@ const {
 } = require("./protection/license-boot");
 const path = require("path");
 const fs = require("fs");
-const { joinContent } = require("./app-paths");
+const { joinContent, resolveAppIconPath } = require("./app-paths");
 const pkg = require("./package.json");
 
 if (!/^1|true|yes|on$/i.test(String(process.env.HOTEL_ATK_SEND_ALLOWED || "").trim())) {
@@ -121,7 +121,7 @@ function createSplash() {
       alwaysOnTop: false,
       skipTaskbar: true,
       backgroundColor: "#0b1220",
-      icon: joinContent("build", "icon.ico"),
+      icon: resolveAppIconPath(),
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -445,8 +445,7 @@ async function mountHotelMainWindow(started, userData) {
     mainWindow = null;
   }
 
-  const logoPath = joinContent("public", "img", "revolution-logo.png");
-  const iconIco = joinContent("build", "icon.ico");
+  const appIcon = resolveAppIconPath();
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
   mainWindow = new BrowserWindow({
@@ -460,11 +459,7 @@ async function mountHotelMainWindow(started, userData) {
     title: `${resolveWindowTitle()} v${pkg.version || "?"}`,
     backgroundColor: "#0b1220",
     show: false,
-    icon: fs.existsSync(iconIco)
-      ? iconIco
-      : fs.existsSync(logoPath)
-        ? logoPath
-        : undefined,
+    icon: appIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

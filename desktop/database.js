@@ -3398,20 +3398,12 @@ function listRoomsWithGuests() {
     /* ignore */
   }
   const rooms = listRooms();
-  const todayReservations = listActiveReservationsOnDate();
-  const resByRoom = new Map();
-  for (const rv of todayReservations) {
-    resByRoom.set(Number(rv.room_id), rv);
-  }
+  const overlayReservations = listReservationsForRoomDisplayOverlay();
   return rooms.map((room) => {
     const guest = getActiveGuestForRoom(room.id);
-    const activeReservation = resByRoom.get(Number(room.id)) || null;
+    const activeReservation = pickReservationOverlayForRoom(overlayReservations, room.id);
     let display_status = String(room.status || "free");
-    if (
-      display_status === "free"
-      && activeReservation
-      && (activeReservation.status === "pending" || activeReservation.status === "confirmed")
-    ) {
+    if (display_status === "free" && activeReservation) {
       display_status = "reserved";
     }
     if (!guest) {
@@ -4773,6 +4765,45 @@ const ROOM_RESERVATION_STATUSES = Object.freeze([
 /** Rezervime që mbajnë dhomën / shfaqen te recepsioni (sync cloud pas «Prano» web). */
 const SQL_ACTIVE_ROOM_RESERVATION_STATUSES =
   "('pending', 'confirmed', 'pending_guest_confirmation')";
+
+function isSqlActiveRoomReservationStatus(status) {
+  const s = String(status || "").trim().toLowerCase();
+  return s === "pending" || s === "confirmed" || s === "pending_guest_confirmation";
+}
+
+/**
+ * Rezervim që e ngjyros dhomën «E Rezervuar» (si cloud recepcion / applyConfirmedReservationsToRoomList).
+ * - checkout > sot
+ * - mbulon sotin, ose ardhje e ardhshme confirmed/pending (jo pending_guest_confirmation pa ardhur sot)
+ */
+function reservationBlocksFreeRoomDisplay(rv, todayYmd) {
+  if (!rv) return false;
+  const st = String(rv.status || "").trim().toLowerCase();
+  if (!isSqlActiveRoomReservationStatus(st)) return false;
+  const today = todayYmd ? parseHotelDate(todayYmd) : hotelTodayLocalYmd();
+  const out = parseHotelDate(rv.check_out_date);
+  const cin = parseHotelDate(rv.check_in_date);
+  if (!out || out <= today) return false;
+  if (cin <= today) return true;
+  return st === "confirmed" || st === "pending";
+}
+
+function listReservationsForRoomDisplayOverlay(dateYmd) {
+  const today = dateYmd ? parseHotelDate(dateYmd) : hotelTodayLocalYmd();
+  return listRoomReservations({ status: "active", limit: 500 }).filter((rv) =>
+    reservationBlocksFreeRoomDisplay(rv, today),
+  );
+}
+
+function pickReservationOverlayForRoom(reservations, roomId) {
+  const rid = Number(roomId);
+  const matches = (reservations || []).filter((rv) => Number(rv.room_id) === rid);
+  if (!matches.length) return null;
+  matches.sort((a, b) =>
+    String(a.check_in_date || "").localeCompare(String(b.check_in_date || "")),
+  );
+  return matches[0];
+}
 
 function normalizeReservationStatus(status, { allowCheckedIn = true } = {}) {
   const s = String(status || "confirmed").trim().toLowerCase();
