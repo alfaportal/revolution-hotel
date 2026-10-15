@@ -682,6 +682,24 @@ function refreshOnKitchenSseOrdered(db, payload) {
   });
 }
 
+/** SSE status=accepted — pranim nga telefon/cloud → fshi alarmin në POS (si KAFENE). */
+function refreshOnKitchenSseAccepted(db, payload) {
+  const status = String(payload?.status || "").trim().toLowerCase();
+  if (status !== "accepted") return;
+  try {
+    const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
+    broadcastWaiterRealtime("online_orders", { reason: "kds_sse_accepted" });
+    broadcastWaiterRealtime("cloud_tables", { reason: "kds_sse_accepted" });
+    broadcastWaiterRealtime("tables", { reason: "kds_sse_accepted" });
+  } catch {
+    /* ignore */
+  }
+  if (!printBarTicketRef) return;
+  void refreshOnlineOrders(db, printBarTicketRef).catch(err => {
+    console.warn("[online-orders] SSE accepted refresh:", err.message);
+  });
+}
+
 function refreshOnlineOrders(db, printBarTicket) {
   return tick(db, printBarTicket);
 }
@@ -712,6 +730,7 @@ module.exports = {
   getLastKnownOrders,
   refreshOnlineOrders,
   refreshOnKitchenSseOrdered,
+  refreshOnKitchenSseAccepted,
   removeOrdersFromSnapshot,
   purgeRemoteHandledOrderIds,
   purgeCloudResolvedOrders,

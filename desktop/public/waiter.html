@@ -2128,6 +2128,7 @@
           if (t.status === "occupied") next.set(Number(t.number), t);
         }
         cloudTableMap = next;
+        ndertoRjetenTavolinave._sig = null;
         ndertoRjetenTavolinave();
       } catch { /* cloud offline */ }
     }
@@ -2240,6 +2241,7 @@
         return !!(t.order && t.order.waiter_name === user.emri);
       }
       if (waiterTableKpiFilter === "free") {
+        if (t.order) return false;
         const cloudPending = (t.status === "free" && eshteTavolinFizikeLokale(t))
           ? gjejPorosiOnlinePerTavoline(t.number)
           : null;
@@ -3617,37 +3619,71 @@
       }
     });
 
+    function startWaiterRealtime() {
+      if (typeof startWaiterWebSocket !== "function") return;
+      startWaiterWebSocket({});
+    }
+
     function startWaiterPolling() {
       if (pollStarted) return;
       pollStarted = true;
-      function guarded(fn, ms) {
+      startWaiterRealtime();
+      const pollReschedulers = [];
+      /** fastMs = normal (pa WS); slowMs = backup kur WS është lidhur (~2–3 min). Si KAFENE. */
+      function guardedPoll(fn, fastMs, slowMs) {
         let busy = false;
+        let lastStart = 0;
+        let timer = null;
+        const reschedule = () => {
+          if (timer) clearTimeout(timer);
+          const ms =
+            typeof waiterPollIntervalMs === "function"
+              ? waiterPollIntervalMs(fastMs, slowMs)
+              : fastMs;
+          timer = setTimeout(tick, ms);
+        };
         const tick = async () => {
-          if (busy) return;
+          if (busy) {
+            if (Date.now() - lastStart > 25000) busy = false;
+            else {
+              reschedule();
+              return;
+            }
+          }
           busy = true;
-          try { await fn(); } catch { /* ignore */ } finally { busy = false; }
+          lastStart = Date.now();
+          try {
+            await fn();
+          } catch {
+            /* ignore */
+          } finally {
+            busy = false;
+            reschedule();
+          }
         };
         tick();
-        setInterval(tick, ms);
+        pollReschedulers.push(reschedule);
+        return reschedule;
       }
-      guarded(ngarkoTavolinat, 6000);
-      guarded(() => {
+      guardedPoll(ngarkoTavolinat, 6000, 120000);
+      guardedPoll(() => {
         if (waiterView === "rooms") return ngarkoDhomatWaiter();
         if (waiterView === "reservations") return ngarkoRezervimetWaiter();
         if (waiterView === "services") return ngarkoSherbimetWaiter();
         if (waiterView === "housekeeping") return ngarkoHousekeepingWaiter();
         if (waiterView === "orders") return ngarkoPorositeWaiter();
-      }, 6000);
-      guarded(ngarkoMenu, 30000);
-      guarded(ngarkoPazarin, 8000);
-      guarded(ngarkoPorosiOnlineWaiter, 6000);
-      guarded(ngarkoCloudTavolinat, 8000);
-      guarded(ngarkoPorosiGati, 8000);
-      guarded(refreshRegisterMode, 10000);
-      ngarkoPorosiOnlineWaiter().catch(() => {});
-      ngarkoCloudTavolinat().catch(() => {});
-      ngarkoPorosiGati().catch(() => {});
-      refreshRegisterMode().catch(() => {});
+      }, 6000, 120000);
+      guardedPoll(ngarkoMenu, 30000, 180000);
+      guardedPoll(ngarkoPazarin, 8000, 120000);
+      guardedPoll(ngarkoPorosiOnlineWaiter, 6000, 120000);
+      guardedPoll(ngarkoCloudTavolinat, 8000, 150000);
+      guardedPoll(ngarkoPorosiGati, 8000, 120000);
+      guardedPoll(refreshRegisterMode, 10000, 180000);
+      if (typeof setWaiterPollingRescheduleAll === "function") {
+        setWaiterPollingRescheduleAll(() => {
+          for (const r of pollReschedulers) r();
+        });
+      }
     }
     let shiftOpen = false;
     let shiftReady = false;
@@ -4002,7 +4038,7 @@
       if (waiterView !== "tables") return;
       setKpiLabelsForView("tables");
       const mine = tables.filter(t => t.order && t.order.waiter_name === user.emri).length;
-      const free = tables.filter(t => t.status === "free" && !t.reserved).length;
+      const free = tables.filter(t => !t.order && t.status === "free" && !t.reserved).length;
       document.getElementById("kpi-hapur").textContent = String(mine);
       document.getElementById("kpi-lire").textContent = String(free);
       document.getElementById("kpi-arke").textContent = formatEuro(
@@ -4015,15 +4051,16 @@
       const card = document.createElement("button");
       card.type = "button";
 
-      const cloudPending = (t.status === "free" && eshteTavolinFizikeLokale(t))
+      const hasLocalOrder = Boolean(t.order);
+      const cloudPending = (!hasLocalOrder && t.status === "free" && eshteTavolinFizikeLokale(t))
         ? gjejPorosiOnlinePerTavoline(t.number)
         : null;
 
-      const cloudLive = (t.status === "free" && !cloudPending && eshteTavolinFizikeLokale(t))
+      const cloudLive = (!hasLocalOrder && t.status === "free" && !cloudPending && eshteTavolinFizikeLokale(t))
         ? (cloudTableMap.get(Number(t.number)) || null)
         : null;
 
-      const isFree = t.status === "free" && !cloudPending && !cloudLive;
+      const isFree = !hasLocalOrder && t.status === "free" && !cloudPending && !cloudLive;
       const isMine = t.order && t.order.waiter_name === user.emri;
       const isForeign = t.order && t.order.waiter_name !== user.emri;
 
@@ -4148,6 +4185,11 @@
       return (waiterOnlineOrders || []).filter(eshtePorosiOnlineTakeaway);
     }
 
+    /** Takeaway + QR tavolinë — të gjitha në pritje (jo në arkë deri PRANO). Si KAFENE. */
+    function porosiOnlineNePritje() {
+      return (waiterOnlineOrders || []).filter(o => o?.id);
+    }
+
     function ndertoKartelenPorosiTakeaway(o) {
       const card = document.createElement("button");
       card.type = "button";
@@ -4243,16 +4285,28 @@
     function ndertoRjetenTavolinave() {
       const wrap = document.getElementById("waiter-zones-wrap");
       if (!wrap) return;
-      const sig = JSON.stringify([
-        waiterTableKpiFilter,
-        (lastTableZones || []).map(zone => [
+      const pendingIds = porosiOnlineNePritje().map(o => o.id || o.cloud_order_id || o.order_id);
+      const slotSig = (lastCloudOnlineSlots || []).map(s => [s.slot, s.status, s.order && s.order.id]);
+      const cloudSig = [...cloudTableMap.keys()].sort((a, b) => a - b).map(n => {
+        const t = cloudTableMap.get(n);
+        return [n, t?.status, t?.order?.id, t?.order?.total];
+      });
+      const sig = JSON.stringify({
+        kpi: waiterTableKpiFilter,
+        z: (lastTableZones || []).map(zone => [
           zone.id,
           (zone.tables || []).map(t => [
-            t.id, t.status, t.order && t.order.id, t.order && t.order.waiter_name,
+            t.id,
+            t.status,
+            t.order && t.order.id,
+            t.order && t.order.waiter_name,
             (t.items || []).length,
           ]),
         ]),
-      ]);
+        pendingIds,
+        slotSig,
+        cloudSig,
+      });
       if (sig === ndertoRjetenTavolinave._sig && wrap.childElementCount) return;
       ndertoRjetenTavolinave._sig = sig;
       wrap.innerHTML = "";
@@ -4723,6 +4777,23 @@
           b.classList.toggle("active", b.dataset.coupon === couponType);
         });
       }
+    }
+
+    if (typeof registerWaiterRealtimeHandlers === "function") {
+      registerWaiterRealtimeHandlers({
+        tables: () => ngarkoTavolinat(true).catch(() => {}),
+        online_orders: () => ngarkoPorosiOnlineWaiter(true).catch(() => {}),
+        cloud_tables: () => ngarkoCloudTavolinat().catch(() => {}),
+        ready: () => ngarkoPorosiGati().catch(() => {}),
+        shift: () => ngarkoPazarin().catch(() => {}),
+        menu: () => ngarkoMenu().catch(() => {}),
+        staff: () => ngarkoPeersHandover().catch(() => {}),
+        register_mode: () => refreshRegisterMode().catch(() => {}),
+        promotions: () => {
+          ngarkoPromocionetAktive().catch(() => {});
+          ngarkoMenu().catch(() => {});
+        },
+      });
     }
 
     async function refreshRegisterMode() {

@@ -13722,6 +13722,45 @@ function createReceipt(orderId) {
   };
 }
 
+/** Të gjitha UUID cloud të lidhura me një porosi lokale (merge QR / shumë PRANO). Si KAFENE. */
+function collectLinkedCloudIdsForPaymentDedup({ cloudSaleId, orderId } = {}) {
+  const ids = new Set();
+  const cid = String(cloudSaleId || "").trim();
+  if (cid) ids.add(cid);
+  let oid = orderId != null ? Number(orderId) : null;
+  if (!oid && cid) {
+    const o = getOrderByCloudId(cid);
+    if (o?.id) oid = Number(o.id);
+  }
+  if (oid) {
+    for (const x of getLinkedCloudOrderIds(oid)) ids.add(x);
+  }
+  return { cloudIds: [...ids].filter(Boolean), orderId: oid || null };
+}
+
+/**
+ * 1 pagesë = 1 rresht daily_log — edhe kur ka disa UUID cloud për të njëjtën porosi.
+ */
+function findExistingDailyLogForPayment({ cloudSaleId, orderId, tableNum, total, date, time } = {}) {
+  const { cloudIds, orderId: oid } = collectLinkedCloudIdsForPaymentDedup({
+    cloudSaleId,
+    orderId,
+  });
+  if (oid) {
+    const byOrder = sqlite.prepare(
+      "SELECT id, cloud_sale_id FROM daily_log WHERE order_id = ? AND status = 'completed' LIMIT 1",
+    ).get(oid);
+    if (byOrder) return byOrder;
+  }
+  for (const id of cloudIds) {
+    const row = sqlite.prepare(
+      "SELECT id, cloud_sale_id FROM daily_log WHERE cloud_sale_id = ? AND status = 'completed' LIMIT 1",
+    ).get(id);
+    if (row) return row;
+  }
+  return findExistingDailyLogForCloudImport({ cloudId: cloudSaleId, tableNum, total, date, time });
+}
+
 function addDailyLogEntry({
   table_number,
   waiter_name,
@@ -13744,6 +13783,31 @@ function addDailyLogEntry({
   date = null,
   time = null,
 }) {
+  const oid = order_id != null ? Number(order_id) : null;
+  const csid = cloud_sale_id ? String(cloud_sale_id).trim() : null;
+  const dup = findExistingDailyLogForPayment({
+    cloudSaleId: csid,
+    orderId: oid,
+    tableNum: table_number,
+    total,
+    date,
+    time,
+  });
+  if (dup) {
+    if (csid && !String(dup.cloud_sale_id || "").trim()) {
+      sqlite.prepare("UPDATE daily_log SET cloud_sale_id = ? WHERE id = ?").run(csid, dup.id);
+    }
+    if (oid && !sqlite.prepare("SELECT order_id FROM daily_log WHERE id = ? AND order_id IS NOT NULL").get(dup.id)) {
+      sqlite.prepare("UPDATE daily_log SET order_id = ? WHERE id = ?").run(oid, dup.id);
+    }
+    console.log(
+      "[DAILY_LOG] SKIP dedup (1 pagesë) daily_log#" + dup.id,
+      "order_id=" + (oid || "null"),
+      "cloud=" + (csid || "null"),
+    );
+    return dup.id;
+  }
+
   const ts = date && time
     ? { d: date, t: time }
     : sqlite.prepare(`
@@ -13914,6 +13978,7 @@ function findExistingDailyLogForCloudImport({ cloudId, tableNum, total, date, ti
       AND table_number = ?
       AND ABS(total - ?) < 0.01
       AND date = ?
+      AND source_device_id IS NULL
     ORDER BY id ASC
   `).all(num, Number(total) || 0, d);
   if (!rows.length) return null;

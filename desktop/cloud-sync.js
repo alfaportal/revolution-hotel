@@ -2756,6 +2756,19 @@ async function syncLocalCancelledFromCloud(db) {
       /* offline */
     }
 
+    try {
+      const barByTable = await fetchActiveBarOrdersByTable(db);
+      for (const o of barByTable.values()) {
+        const st = String(o?.status || "ordered").toLowerCase();
+        if (st === "ordered" || st === "ready") {
+          const id = String(o?.id || "").trim();
+          if (id) cloudOrderedIds.add(id);
+        }
+      }
+    } catch {
+      /* offline */
+    }
+
     const cloudFreeTableNums = new Set(
       cloudData.tables
         .filter(t => String(t.status || "").toLowerCase() !== "occupied")
@@ -3433,6 +3446,17 @@ function handleKdsKitchenSsePayload(db, payload) {
       }
     } catch (err) {
       console.warn("[cloud/sse] purge pending:", err.message);
+    }
+  }
+
+  if (status === "accepted") {
+    try {
+      const watcher = require("./online-orders-watcher");
+      if (typeof watcher.refreshOnKitchenSseAccepted === "function") {
+        watcher.refreshOnKitchenSseAccepted(db, payload);
+      }
+    } catch (err) {
+      console.warn("[cloud/sse] accepted refresh:", err.message);
     }
   }
 

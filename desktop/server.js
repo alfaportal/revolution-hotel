@@ -3297,6 +3297,8 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     );
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
+    notifyWaitersRealtime("online_orders", { reason: "accept" });
+    notifyWaitersRealtime("tables", { reason: "online_accept" });
     res.json({
       ok: true,
       acknowledged: flow.acknowledged,
@@ -3373,6 +3375,7 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
     const flow = await refusePendingOnlineOrdersFlow(ids, { pin, trustedStaff, reason });
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
+    notifyWaitersRealtime("online_orders", { reason: "refuse" });
     res.json({
       ok: true,
       refused: flow.refused,
@@ -3829,8 +3832,10 @@ app.get("/api/categories", auth, (req, res) => {
 function enrichTableRow(t, session) {
   const waiterName = session?.role === "kamarier" ? session.emri : null;
   const isAdmin = session?.role === "admin";
+  const hasActiveOrder = Boolean(t.order);
   return {
     ...t,
+    status: hasActiveOrder ? "occupied" : t.status,
     can_edit: !t.order || isAdmin || (waiterName && t.order.waiter_name === waiterName),
     occupied_by: t.order?.waiter_name || null,
   };
@@ -5143,11 +5148,41 @@ app.post("/api/orders/cancel", auth, (req, res) => {
   }
 });
 
+const CHECKOUT_TOKEN_TTL_MS = 15 * 60 * 1000;
+const checkoutTokens = new Map();
+
+function beginCheckoutToken(req, res) {
+  const token = String(req.body?.checkout_token || "").trim().slice(0, 80);
+  if (!token) return { blocked: false, markClosed() {} };
+  const now = Date.now();
+  for (const [k, v] of checkoutTokens) {
+    if (now - v.at > CHECKOUT_TOKEN_TTL_MS) checkoutTokens.delete(k);
+  }
+  const prev = checkoutTokens.get(token);
+  if (prev) {
+    if (prev.response) res.json({ ...prev.response, duplicate: true });
+    else if (prev.closed) res.json({ ok: true, duplicate: true, already_closed: true });
+    else res.status(409).json({ gabim: "Pagesa po kryhet — prisni pak.", checkout_pending: true });
+    return { blocked: true, markClosed() {} };
+  }
+  const entry = { at: now, closed: false, response: null };
+  checkoutTokens.set(token, entry);
+  const origJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400 && body && body.ok) entry.response = body;
+    else if (!entry.closed) checkoutTokens.delete(token);
+    return origJson(body);
+  };
+  return { blocked: false, markClosed() { entry.closed = true; } };
+}
+
 app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   const { table_id, items, coupon_type } = req.body;
   const waiterName = req.session.emri;
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
+  const checkout = beginCheckoutToken(req, res);
+  if (checkout.blocked) return;
   const requestedCoupon = coupon_type
     ? String(coupon_type).trim().toLowerCase()
     : null;
@@ -5166,17 +5201,12 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       const existing = db.getActiveOrderForTable(tableId);
       const prev = db.parseOrderItems(existing?.items_json);
       const delta = diffOrderItems(prev, items);
-      db.sendOrder({ table_id: tableId, waiter_name: waiterName, items });
-      const afterSend = db.getActiveOrderForTable(tableId);
-      if (afterSend) {
-        const tbl = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-        cloudSync.pushWaiterOrderToCloudBackground(db, afterSend, {
-          table_number: tbl?.number || 0,
-          ordered_at: afterSend.created_at,
+      if (delta.length > 0) {
+        return res.status(409).json({
+          gabim:
+            "Keni artikuj të padërguar — përdorni «Dërgo porosinë» para pagesës që t'i shohë kuzhina.",
+          must_send_order_first: true,
         });
-      }
-      if (afterSend && delta.length) {
-        db.syncSlipSnapshot(afterSend.id, afterSend.items_json);
       }
     }
     const orderBefore = db.getActiveOrderForTable(tableId);
@@ -5260,6 +5290,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       cloudFiscalOpts,
     });
 
+    checkout.markClosed();
     res.json({
       ok: true,
       receipt,

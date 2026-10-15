@@ -203,3 +203,175 @@ function aktivizoKyçjenTerminaleKamarier() {
 
   rifilloIdle();
 }
+
+const WAITER_WS_PATH = "/api/waiter/ws";
+let waiterWsSocket = null;
+let waiterWsReconnectTimer = null;
+let waiterWsStopped = false;
+let waiterWsBackoffMs = 1000;
+/** WS OPEN → polling ngadalë (backup); jo OPEN → interval normal. */
+let waiterWsConnected = false;
+const _waiterWsStatusListeners = new Set();
+let _waiterPollRescheduleAll = null;
+
+function isWaiterWebSocketOpen() {
+  return !!(waiterWsSocket && waiterWsSocket.readyState === 1);
+}
+
+/** Interval polling: i shpejtë pa WS, i ngadaltë (~2–3 min) kur WS është lidhur. */
+function waiterPollIntervalMs(fastMs, slowMs = 150000) {
+  const fast = Math.max(1000, Number(fastMs) || 6000);
+  const slow = Math.max(fast, Number(slowMs) || 150000);
+  return isWaiterWebSocketOpen() ? slow : fast;
+}
+
+function onWaiterWebSocketStatusChange(listener) {
+  if (typeof listener !== "function") return () => {};
+  _waiterWsStatusListeners.add(listener);
+  return () => _waiterWsStatusListeners.delete(listener);
+}
+
+function setWaiterPollingRescheduleAll(fn) {
+  _waiterPollRescheduleAll = typeof fn === "function" ? fn : null;
+}
+
+function emitWaiterWebSocketStatus(connected) {
+  const next = !!connected;
+  if (waiterWsConnected === next) return;
+  waiterWsConnected = next;
+  for (const listener of _waiterWsStatusListeners) {
+    try {
+      listener(next);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (_waiterPollRescheduleAll) {
+    try {
+      _waiterPollRescheduleAll();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** Regjistrohen nga waiter.html pas ngarkimit të funksioneve lokale. */
+const _waiterRealtimeHandlers = {};
+
+function registerWaiterRealtimeHandlers(handlers) {
+  if (!handlers || typeof handlers !== "object") return;
+  Object.assign(_waiterRealtimeHandlers, handlers);
+}
+
+/**
+ * WS lokal kamarier — tipet: tables, online_orders, cloud_tables, ready, shift, menu, staff, register_mode, promotions.
+ * @param {string} type
+ * @param {object} [_msg]
+ */
+function handleWaiterRealtimeEvent(type, _msg) {
+  const t = String(type || "").trim();
+  if (!t) return;
+  const fn = _waiterRealtimeHandlers[t];
+  if (typeof fn === "function") {
+    try {
+      fn(_msg);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function stopWaiterWebSocket() {
+  waiterWsStopped = true;
+  if (waiterWsReconnectTimer) {
+    clearTimeout(waiterWsReconnectTimer);
+    waiterWsReconnectTimer = null;
+  }
+  if (waiterWsSocket) {
+    try {
+      waiterWsSocket.close();
+    } catch {
+      /* ignore */
+    }
+    waiterWsSocket = null;
+  }
+  emitWaiterWebSocketStatus(false);
+}
+
+/**
+ * WebSocket lokal për kamarier — refresh menjëherë; polling mbetet fallback.
+ * @param {{ onEvent?: (type: string, msg: object) => void }} [opts]
+ */
+function startWaiterWebSocket(opts = {}) {
+  if (typeof WebSocket === "undefined") return;
+  const u = lexoSesionin();
+  if (!u?.token || u.roli !== "kamarier") return;
+
+  waiterWsStopped = false;
+  if (waiterWsReconnectTimer) {
+    clearTimeout(waiterWsReconnectTimer);
+    waiterWsReconnectTimer = null;
+  }
+
+  function scheduleReconnect() {
+    if (waiterWsStopped) return;
+    const delay = Math.min(waiterWsBackoffMs, 30000);
+    waiterWsReconnectTimer = setTimeout(() => {
+      waiterWsReconnectTimer = null;
+      connectOnce();
+    }, delay);
+    waiterWsBackoffMs = Math.min(waiterWsBackoffMs * 1.6, 30000);
+  }
+
+  function connectOnce() {
+    if (waiterWsStopped) return;
+    const session = lexoSesionin();
+    if (!session?.token) return;
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${location.host}${WAITER_WS_PATH}?token=${encodeURIComponent(session.token)}`;
+    let ws;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+    waiterWsSocket = ws;
+    ws.onopen = () => {
+      waiterWsBackoffMs = 1000;
+      emitWaiterWebSocketStatus(true);
+    };
+    ws.onmessage = (ev) => {
+      let msg = {};
+      try {
+        msg = JSON.parse(String(ev.data || "{}"));
+      } catch {
+        return;
+      }
+      const type = String(msg.type || "").trim();
+      if (!type || type === "hello") return;
+      try {
+        if (typeof handleWaiterRealtimeEvent === "function") {
+          handleWaiterRealtimeEvent(type, msg);
+        }
+        opts.onEvent?.(type, msg);
+      } catch {
+        /* ignore */
+      }
+    };
+    ws.onclose = () => {
+      if (waiterWsSocket === ws) waiterWsSocket = null;
+      emitWaiterWebSocketStatus(false);
+      scheduleReconnect();
+    };
+    ws.onerror = () => {
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }
+
+  connectOnce();
+}
