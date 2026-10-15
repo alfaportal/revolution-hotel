@@ -1362,7 +1362,13 @@
     }
 
     function rezStatusLabel(st) {
-      const m = { pending: "Pritur", confirmed: "Konfirmuar", cancelled: "Anuluar", checked_in: "Check-in" };
+      const m = {
+        pending: "Pritur",
+        confirmed: "Konfirmuar",
+        pending_guest_confirmation: "Pret konfirmimin e mysafirit",
+        cancelled: "Anuluar",
+        checked_in: "Check-in",
+      };
       return m[String(st || "").toLowerCase()] || st || "—";
     }
 
@@ -1515,7 +1521,7 @@
       if (empty) empty.hidden = true;
       lastRezListCache.forEach((r, idx) => {
         const st = String(r.status || "confirmed").toLowerCase();
-        const canAct = st === "pending" || st === "confirmed";
+        const canAct = st === "pending" || st === "confirmed" || st === "pending_guest_confirmation";
         const tr = document.createElement("tr");
         tr.innerHTML =
           `<td>${idx + 1}</td>` +

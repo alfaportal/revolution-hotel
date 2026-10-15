@@ -188,6 +188,10 @@ body.waiter-screen {
   padding: 0.75rem 1rem 0.5rem;
 }
 
+.waiter-kpi-row.waiter-kpi-row-tables {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 .waiter-kpi {
   border-radius: 14px;
   padding: 0.55rem 0.65rem;
@@ -1855,12 +1859,39 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   position: relative;
 }
 
-button.waiter-kpi-new {
+button.waiter-kpi-new,
+button.waiter-kpi-open,
+button.waiter-kpi-free,
+button.waiter-kpi-cash,
+button.waiter-kpi-loss {
   border: none;
   cursor: pointer;
   text-align: inherit;
   font: inherit;
   width: 100%;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.waiter-kpi-loss {
+  background: linear-gradient(135deg, #c4b5fd, #a78bfa);
+  color: #4c1d95;
+}
+
+button.waiter-kpi-loss .waiter-kpi-label {
+  font-size: 0.52rem;
+  line-height: 1.15;
+}
+
+.waiter-kpi-loss-icon {
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.waiter-kpi-selected {
+  outline: 2px solid rgba(15, 23, 42, 0.35);
+  outline-offset: 2px;
 }
 
 .waiter-kpi-new.waiter-kpi-pending {

@@ -222,6 +222,49 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
   color: #fff;
 }
 
+#ekrani-tavolina button.waiter-kpi {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+  width: 100%;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#ekrani-tavolina .waiter-kpi-row.waiter-kpi-row-tables {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+#ekrani-tavolina button.waiter-kpi-loss {
+  background: linear-gradient(145deg, #8b5cf6, #6d28d9);
+  color: #fff;
+}
+
+#ekrani-tavolina button.waiter-kpi-loss .waiter-kpi-label {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.58rem;
+}
+
+#ekrani-tavolina button.waiter-kpi-loss .waiter-kpi-loss-icon {
+  color: #fff;
+  font-size: 1.35rem;
+}
+
+#ekrani-tavolina .waiter-kpi-selected {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55), 0 8px 22px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+#ekrani-tavolina .waiter-shift-total.waiter-kpi-cash-flash {
+  animation: waiter-cash-flash 0.55s ease-in-out 3;
+}
+
+@keyframes waiter-cash-flash {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.85); }
+}
+
 #ekrani-tavolina .waiter-kpi-new.waiter-kpi-pending {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35), 0 4px 16px rgba(0, 0, 0, 0.22);
 }

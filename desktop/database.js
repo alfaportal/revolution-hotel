@@ -3168,7 +3168,7 @@ function deleteRoom(id) {
     SET status = 'cancelled',
         updated_at = datetime('now','localtime')
     WHERE room_id = ?
-      AND status IN ('pending', 'confirmed')
+      AND status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
   `).run(rid);
   sqlite.prepare("DELETE FROM housekeeping_tasks WHERE room_id = ?").run(rid);
   const anyGuest = sqlite.prepare("SELECT id FROM guests WHERE room_id = ? LIMIT 1").get(rid);
@@ -3520,9 +3520,10 @@ function checkInGuest({
   };
 }
 
-/** Faturë / check-out — pa gjurmë teknik «· cloud:uuid». */
+/** Faturë / check-out — pa gjurmë teknik «· cloud:uuid» në UI. */
 function sanitizeRoomChargeDescription(description) {
   return String(description || "")
+    .replace(/\(\s*RS\s*·\s*cloud:[0-9a-f-]{8,}\s*\)/gi, "(RS)")
     .replace(/\s*·\s*cloud:[0-9a-f-]{8,}/gi, "")
     .replace(/\(\s*RS\s*·\s*\)/gi, "(RS)")
     .trim();
@@ -4764,9 +4765,14 @@ function listGuestsHistory({ status, from, to, limit } = {}) {
 const ROOM_RESERVATION_STATUSES = Object.freeze([
   "pending",
   "confirmed",
+  "pending_guest_confirmation",
   "cancelled",
   "checked_in",
 ]);
+
+/** Rezervime që mbajnë dhomën / shfaqen te recepsioni (sync cloud pas «Prano» web). */
+const SQL_ACTIVE_ROOM_RESERVATION_STATUSES =
+  "('pending', 'confirmed', 'pending_guest_confirmation')";
 
 function normalizeReservationStatus(status, { allowCheckedIn = true } = {}) {
   const s = String(status || "confirmed").trim().toLowerCase();
@@ -5030,7 +5036,7 @@ function resolveGuestRoomTarget(roomNumber) {
     SELECT id FROM reservations
     WHERE room_id = ?
       AND (reservation_type IS NULL OR reservation_type = 'room')
-      AND status IN ('pending', 'confirmed')
+      AND status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
       AND check_out_date > ?
     ORDER BY check_in_date ASC, id ASC
     LIMIT 1
@@ -5418,7 +5424,7 @@ function assertRoomReservationAvailable(roomId, checkIn, checkOut, excludeId = n
         FROM reservations
         WHERE room_id = ?
           AND (reservation_type IS NULL OR reservation_type = 'room')
-          AND status IN ('pending', 'confirmed')
+          AND status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
           AND id != ?
       `).all(Number(roomId), Number(excludeId))
     : sqlite.prepare(`
@@ -5426,7 +5432,7 @@ function assertRoomReservationAvailable(roomId, checkIn, checkOut, excludeId = n
         FROM reservations
         WHERE room_id = ?
           AND (reservation_type IS NULL OR reservation_type = 'room')
-          AND status IN ('pending', 'confirmed')
+          AND status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
       `).all(Number(roomId));
 
   for (const row of rows) {
@@ -5444,7 +5450,7 @@ function listRoomReservations({ status, from, to, on_date, limit } = {}) {
   const params = [];
   const st = String(status || "").trim().toLowerCase();
   if (st === "active") {
-    clauses.push("rv.status IN ('pending', 'confirmed')");
+    clauses.push(`rv.status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}`);
   } else if (st && ROOM_RESERVATION_STATUSES.includes(st)) {
     clauses.push("rv.status = ?");
     params.push(st);
@@ -5495,7 +5501,7 @@ function listUnifiedReservations({ from, to, types, status, limit } = {}) {
   let statusSql = "";
   const st = String(status || "").trim().toLowerCase();
   if (st === "active") {
-    statusSql = " AND rv.status IN ('pending', 'confirmed')";
+    statusSql = ` AND rv.status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}`;
   } else if (st && st !== "all") {
     statusSql = " AND rv.status = ?";
     params.push(st);
@@ -5566,7 +5572,7 @@ function listTodaysRoomReservations(dateYmd) {
     LEFT JOIN rooms r ON r.id = rv.room_id
     WHERE rv.check_in_date = ?
       AND (rv.reservation_type IS NULL OR rv.reservation_type = 'room')
-      AND rv.status IN ('pending', 'confirmed')
+      AND rv.status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
     ORDER BY rv.id ASC
   `).all(day);
   return enrichReservationsWithServices(rows);
@@ -5593,7 +5599,7 @@ function getReservationDayStats(dateYmd) {
     LEFT JOIN rooms r ON r.id = rv.room_id
     WHERE rv.check_out_date = ?
       AND (rv.reservation_type IS NULL OR rv.reservation_type = 'room')
-      AND rv.status IN ('pending', 'confirmed')
+      AND rv.status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
     ORDER BY rv.id ASC
   `).all(day);
   const guestDepartures = sqlite.prepare(`
@@ -8721,7 +8727,8 @@ function listActiveHotelOrdersForWaiter(opts = {}) {
     source: `Dhoma ${row.room_number}`,
     table_id: null,
     room_id: row.room_id,
-    products: String(row.products || "Room Service").trim() || "Room Service",
+    products: sanitizeRoomChargeDescription(String(row.products || "Room Service").trim())
+      || "Room Service",
     total: Math.round((Number(row.total) || 0) * 100) / 100,
     status: "Në dhomë",
     created_at: row.created_at,

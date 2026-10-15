@@ -849,22 +849,32 @@
       </header>
 
       <div class="waiter-kpi-row">
-        <div class="waiter-kpi waiter-kpi-open">
+        <button type="button" class="waiter-kpi waiter-kpi-open" id="kpi-open-wrap" aria-label="Filtro tavolina të hapura">
           <span class="waiter-kpi-label" id="kpi-label-1">TË ZËNA</span>
           <span class="waiter-kpi-value" id="kpi-hapur">0</span>
-        </div>
-        <div class="waiter-kpi waiter-kpi-free">
+        </button>
+        <button type="button" class="waiter-kpi waiter-kpi-free" id="kpi-free-wrap" aria-label="Filtro tavolina të lira">
           <span class="waiter-kpi-label" id="kpi-label-2">TË LIRA</span>
           <span class="waiter-kpi-value" id="kpi-lire">0</span>
-        </div>
+        </button>
         <button type="button" class="waiter-kpi waiter-kpi-new" id="kpi-re-wrap" aria-label="Porosi QR tavolinë lokale">
           <span class="waiter-kpi-label" id="kpi-label-3">TË PAPASTRA</span>
           <span class="waiter-kpi-value" id="kpi-re">0</span>
         </button>
-        <div class="waiter-kpi waiter-kpi-cash">
+        <button
+          type="button"
+          class="waiter-kpi waiter-kpi-loss"
+          id="kpi-stock-loss-wrap"
+          hidden
+          aria-label="Humbje stoku"
+        >
+          <span class="waiter-kpi-label">HUMBJE STOKU</span>
+          <span class="waiter-kpi-value waiter-kpi-loss-icon" aria-hidden="true">＋</span>
+        </button>
+        <button type="button" class="waiter-kpi waiter-kpi-cash" id="kpi-cash-wrap" aria-label="Monedha në arkë">
           <span class="waiter-kpi-label" id="kpi-label-4">TË REZERVUARA</span>
           <span class="waiter-kpi-value" id="kpi-arke">0</span>
-        </div>
+        </button>
       </div>
 
       <nav class="waiter-main-tabs" role="tablist" aria-label="Pamjet e recepsionit">
@@ -875,10 +885,6 @@
         <button type="button" class="waiter-nav-btn" id="btn-nav-housekeeping" data-view="housekeeping" hidden style="display:none">Pastrimi</button>
         <button type="button" class="waiter-nav-btn" id="btn-nav-porosi" hidden style="display:none">Porositë</button>
       </nav>
-      <p style="margin:0.35rem 0 0.5rem;text-align:center">
-        <a href="/stock-loss.html" style="font-size:0.85rem;font-weight:600;color:#4f46e5">Thyerje / humbje stoku</a>
-      </p>
-
       <div id="waiter-online-backdrop" class="waiter-online-backdrop hidden" aria-hidden="true"></div>
       <div id="waiter-online-pop" class="waiter-online-pop hidden" role="dialog" aria-modal="true" aria-label="Prano porosi online">
         <div class="waiter-online-pop-head">
@@ -1606,6 +1612,7 @@
     let waiterOnlinePopOpen = false;
     const kpiReWrap = document.getElementById("kpi-re-wrap");
     const waiterOnlinePop = document.getElementById("waiter-online-pop");
+    let waiterTableKpiFilter = null;
 
     function mbyllWaiterOnlinePop() {
       waiterOnlinePopOpen = false;
@@ -2177,18 +2184,68 @@
       const l2 = document.getElementById("kpi-label-2");
       const l3 = document.getElementById("kpi-label-3");
       const l4 = document.getElementById("kpi-label-4");
-      if (view === "tables") {
+      const lossWrap = document.getElementById("kpi-stock-loss-wrap");
+      const kpiRow = document.querySelector(".waiter-kpi-row");
+      const tablesMode = view === "tables";
+      if (tablesMode) {
         if (l1) l1.textContent = "E HAPUR";
         if (l2) l2.textContent = "LIRË";
         if (l3) l3.textContent = "QR TAVOLINA";
         if (l4) l4.textContent = "MONEDHA NË ARKË";
+        if (lossWrap) {
+          lossWrap.hidden = false;
+          lossWrap.removeAttribute("hidden");
+        }
+        kpiRow?.classList.add("waiter-kpi-row-tables");
       } else {
         /* Dhomat + tab-et e tjera hotel — KPI dhomash */
         if (l1) l1.textContent = "TË ZËNA";
         if (l2) l2.textContent = "TË LIRA";
         if (l3) l3.textContent = "TË PAPASTRA";
         if (l4) l4.textContent = "TË REZERVUARA";
+        if (lossWrap) {
+          lossWrap.hidden = true;
+          lossWrap.setAttribute("hidden", "");
+        }
+        kpiRow?.classList.remove("waiter-kpi-row-tables");
+        waiterTableKpiFilter = null;
+        syncWaiterTableKpiSelectedUi();
       }
+    }
+
+    function syncWaiterTableKpiSelectedUi() {
+      document.getElementById("kpi-open-wrap")?.classList.toggle(
+        "waiter-kpi-selected",
+        waiterTableKpiFilter === "open",
+      );
+      document.getElementById("kpi-free-wrap")?.classList.toggle(
+        "waiter-kpi-selected",
+        waiterTableKpiFilter === "free",
+      );
+    }
+
+    function setWaiterTableKpiFilter(mode) {
+      if (waiterView !== "tables") return;
+      waiterTableKpiFilter = waiterTableKpiFilter === mode ? null : mode;
+      syncWaiterTableKpiSelectedUi();
+      if (typeof ndertoRjetenTavolinave === "function") {
+        ndertoRjetenTavolinave._sig = null;
+        ndertoRjetenTavolinave();
+      }
+    }
+
+    function tavolinaPerputhetMeKpiFilter(t) {
+      if (!waiterTableKpiFilter || waiterView !== "tables") return true;
+      if (waiterTableKpiFilter === "open") {
+        return !!(t.order && t.order.waiter_name === user.emri);
+      }
+      if (waiterTableKpiFilter === "free") {
+        const cloudPending = (t.status === "free" && eshteTavolinFizikeLokale(t))
+          ? gjejPorosiOnlinePerTavoline(t.number)
+          : null;
+        return t.status === "free" && !t.reserved && !cloudPending;
+      }
+      return true;
     }
 
     function setRoomKpiCounts(rooms, reservations) {
@@ -4186,13 +4243,16 @@
     function ndertoRjetenTavolinave() {
       const wrap = document.getElementById("waiter-zones-wrap");
       if (!wrap) return;
-      const sig = JSON.stringify((lastTableZones || []).map(zone => [
-        zone.id,
-        (zone.tables || []).map(t => [
-          t.id, t.status, t.order && t.order.id, t.order && t.order.waiter_name,
-          (t.items || []).length,
+      const sig = JSON.stringify([
+        waiterTableKpiFilter,
+        (lastTableZones || []).map(zone => [
+          zone.id,
+          (zone.tables || []).map(t => [
+            t.id, t.status, t.order && t.order.id, t.order && t.order.waiter_name,
+            (t.items || []).length,
+          ]),
         ]),
-      ]));
+      ]);
       if (sig === ndertoRjetenTavolinave._sig && wrap.childElementCount) return;
       ndertoRjetenTavolinave._sig = sig;
       wrap.innerHTML = "";
@@ -4227,6 +4287,7 @@
           }
         }
         for (const t of zone.tables || []) {
+          if (!tavolinaPerputhetMeKpiFilter(t)) continue;
           grid.appendChild(ndertoKartelenTavoline(t));
           totalCards += 1;
         }
@@ -4383,6 +4444,21 @@
     document.getElementById("btn-nav-porosi")?.addEventListener("click", () => {
       showWaiterMainScreen();
       setWaiterView("orders");
+    });
+    document.getElementById("kpi-open-wrap")?.addEventListener("click", () => {
+      setWaiterTableKpiFilter("open");
+    });
+    document.getElementById("kpi-free-wrap")?.addEventListener("click", () => {
+      setWaiterTableKpiFilter("free");
+    });
+    document.getElementById("kpi-stock-loss-wrap")?.addEventListener("click", () => {
+      window.location.href = "/stock-loss.html";
+    });
+    document.getElementById("kpi-cash-wrap")?.addEventListener("click", () => {
+      const pazari = document.getElementById("hdr-pazari");
+      document.querySelector(".waiter-table-toolbar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      pazari?.classList.add("waiter-kpi-cash-flash");
+      setTimeout(() => pazari?.classList.remove("waiter-kpi-cash-flash"), 1600);
     });
     kpiReWrap?.addEventListener("click", () => {
       if (waiterOnlineOrders.length) {
