@@ -6,10 +6,13 @@
  * - Staff / fjalëkalim admin çdo 4 orë
  * - Modalitet arkë nga cloud çdo 12 orë
  * - Menu e plotë çdo 3 min ose pas ndryshimeve
+ * - PMS hotel (dhoma, mysafirë, rezervime) çdo 2 min — vetëm Kryesorja
  */
 const cloudSync = require("./cloud-sync");
 const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
+const hotelCloudSync = require("./hotel-cloud-sync");
+const license = require("./license");
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
 const CLOSED_WAITER_SALES_MS = 30 * 1000;
@@ -18,6 +21,7 @@ const STAFF_PUSH_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const REGISTER_MODE_MS = 12 * 60 * 60 * 1000;
 const CATALOG_AUTO_MS = 180000;
 const CATALOG_DEBOUNCE_MS = 5000;
+const HOTEL_PMS_SYNC_MS = 120000;
 const VENUE_LOGO_SYNC_MS = 86400000;
 const STARTUP_BURST_MS = 4000;
 
@@ -51,6 +55,16 @@ let started = false;
 let boundDb = null;
 let venueLogoStartupSyncScheduled = false;
 let venueLogoTimer = null;
+let hotelPmsTimer = null;
+let hotelPmsSyncInFlight = false;
+
+function isHotelPmsMainRegister() {
+  try {
+    return license.terminalRegisterNumber() < 2;
+  } catch {
+    return true;
+  }
+}
 
 function scheduleVenueLogoSyncOnce(db) {
   if (!db || venueLogoStartupSyncScheduled) return;
@@ -326,6 +340,22 @@ async function runFullSync(db) {
   return full;
 }
 
+async function runHotelFullSync(db) {
+  if (!db || hotelPmsSyncInFlight) return;
+  if (!cloudSync.isCloudConfigured(db)) return;
+  if (!isHotelPmsMainRegister()) return;
+
+  hotelPmsSyncInFlight = true;
+  try {
+    await hotelCloudSync.fullHotelSync(db);
+    console.log("[hotel-auto-sync] fullHotelSync completed");
+  } catch (err) {
+    console.warn("[hotel-auto-sync] fullHotelSync failed", err.message || err);
+  } finally {
+    hotelPmsSyncInFlight = false;
+  }
+}
+
 function scheduleCatalogPush(db) {
   if (!db) return;
   if (catalogDebounceTimer) clearTimeout(catalogDebounceTimer);
@@ -411,6 +441,10 @@ function startCloudAutoSync(db) {
   catalogTimer = setInterval(() => {
     runCatalogPush(db).catch(() => {});
   }, CATALOG_AUTO_MS);
+
+  hotelPmsTimer = setInterval(() => {
+    runHotelFullSync(db).catch(() => {});
+  }, HOTEL_PMS_SYNC_MS);
 }
 
 module.exports = {
@@ -421,6 +455,7 @@ module.exports = {
   REGISTER_MODE_MS,
   CATALOG_AUTO_MS,
   CATALOG_DEBOUNCE_MS,
+  HOTEL_PMS_SYNC_MS,
   getStatus,
   runFullSync,
   runLicenseCheck,
@@ -429,4 +464,5 @@ module.exports = {
   scheduleCatalogPush,
   pushCatalogDebounced,
   startCloudAutoSync,
+  runHotelFullSync,
 };

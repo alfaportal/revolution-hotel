@@ -49,10 +49,47 @@ function isHotelPmsCloudMaster() {
   }
 }
 
-/** SYNC RESET — PMS cloud push çaktivizuar (Step 3: KAFENE). */
-function pushHotelGuestStayToCloudAsync(_reason) {}
-function pushHousekeepingToCloudAsync(_reason) {}
-function pushHotelReservationsToCloudAsync(_reason) {}
+/** PMS cloud push — debounced (mos blloko recepsionin; vetëm Kryesorja). */
+const HOTEL_PMS_PUSH_DEBOUNCE_MS = 1200;
+let hotelGuestStayPushTimer = null;
+let hotelHousekeepingPushTimer = null;
+let hotelReservationsPushTimer = null;
+
+function pushHotelGuestStayToCloudAsync(_reason) {
+  if (!isHotelPmsCloudMaster()) return;
+  if (hotelGuestStayPushTimer) clearTimeout(hotelGuestStayPushTimer);
+  hotelGuestStayPushTimer = setTimeout(() => {
+    hotelGuestStayPushTimer = null;
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    void hotelCloudSync.pushGuestStaySnapshotToCloud(db).catch((err) => {
+      console.warn("[hotel-pms-cloud] guest-stay:", err.message || err);
+    });
+  }, HOTEL_PMS_PUSH_DEBOUNCE_MS);
+}
+
+function pushHousekeepingToCloudAsync(_reason) {
+  if (!isHotelPmsCloudMaster()) return;
+  if (hotelHousekeepingPushTimer) clearTimeout(hotelHousekeepingPushTimer);
+  hotelHousekeepingPushTimer = setTimeout(() => {
+    hotelHousekeepingPushTimer = null;
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    void hotelCloudSync.pushHousekeepingToCloud(db).catch((err) => {
+      console.warn("[hotel-pms-cloud] housekeeping:", err.message || err);
+    });
+  }, HOTEL_PMS_PUSH_DEBOUNCE_MS);
+}
+
+function pushHotelReservationsToCloudAsync(_reason) {
+  if (!isHotelPmsCloudMaster()) return;
+  if (hotelReservationsPushTimer) clearTimeout(hotelReservationsPushTimer);
+  hotelReservationsPushTimer = setTimeout(() => {
+    hotelReservationsPushTimer = null;
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    void hotelCloudSync.pushReservationsToCloud(db).catch((err) => {
+      console.warn("[hotel-pms-cloud] reservations:", err.message || err);
+    });
+  }, HOTEL_PMS_PUSH_DEBOUNCE_MS);
+}
 
 const { registerSalesInvoiceRoutes } = require("./sales-invoices-routes");
 const printer = require("./printer");
