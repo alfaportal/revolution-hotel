@@ -12,8 +12,36 @@ const {
 } = require("./cloud-server-url");
 
 const SERVER_URL = PUBLIC_CLOUD_SERVER;
+const staffPinPolicy = require("./lib/staffPinPolicy");
 
 let reconcileInFlight = false;
+
+/** Staf me PIN të vlefshëm për cloud (4 shifra kamarier, 6 recepsion/pastrim). */
+function countStaffWithPinForCloudSync(staffList) {
+  return (staffList || []).filter((s) => {
+    const role = s.staff_role || s.role || "kamarier";
+    return staffPinPolicy.acceptsStaffPin(String(s.pin || "").trim(), role);
+  }).length;
+}
+
+/** Rol i njëjtë si `normalizePosStaffRole` në revolution-hotel-server. */
+function cloudPosRoleFromStaffRole(staffRole) {
+  const r = String(staffRole || "kamarier").trim().toLowerCase();
+  if (r === "recepsion" || r === "receptionist" || r === "recepsionist") return "receptionist";
+  if (r === "pastrim" || r === "pastrimi" || r === "housekeeping" || r === "sherbimi") {
+    return "housekeeping";
+  }
+  return "waiter";
+}
+
+function formatStaffSyncErrors(parsed) {
+  const errs = parsed?.staff_errors;
+  if (!Array.isArray(errs) || !errs.length) return "";
+  return errs
+    .slice(0, 4)
+    .map((e) => `${e.name || "?"} (${e.role || "?"}): ${e.error || "?"}`)
+    .join("; ");
+}
 
 /** Porosi cloud «fantazmë» — vetëm auto-pastim kur lokalisht lirë dhe mbi këtë moshe. */
 const STALE_CLOUD_TABLE_GHOST_MS = 2 * 60 * 60 * 1000;
@@ -1215,11 +1243,16 @@ function buildCatalogPayload(db) {
       stock_alert_threshold: threshold,
     };
   });
-  const staff = db.getStaff().map(s => ({
-    name: s.name,
-    active: !!s.active,
-    pin: String(s.pin || "").trim(),
-  }));
+  const staff = db.getStaff().map((s) => {
+    const staff_role = String(s.staff_role || "kamarier").trim();
+    return {
+      name: s.name,
+      active: !!s.active,
+      pin: String(s.pin || "").trim(),
+      staff_role,
+      role: cloudPosRoleFromStaffRole(staff_role),
+    };
+  });
 
   let staff_local_links = null;
   try {
@@ -1500,20 +1533,28 @@ async function pushCatalogAsync(db) {
     const menuItems = Number(parsed.menu_items) || localCount;
     const categories = Number(parsed.categories) || (payload.categories?.length || 0);
     const staffSynced = Number(parsed.staff) || 0;
-    const localStaffWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
-    console.log(`Catalog sync OK — ${menuItems} artikuj, ${categories} kategori, ${staffSynced} kamarierë cloud`);
+    const localStaffWithPin = countStaffWithPinForCloudSync(payload.staff);
+    const staffErrTxt = formatStaffSyncErrors(parsed);
+    console.log(`Catalog sync OK — ${menuItems} artikuj, ${categories} kategori, ${staffSynced} staf cloud`);
+    if (staffErrTxt) console.warn("[cloud] staff_errors:", staffErrTxt);
     if (localStaffWithPin && !staffSynced) {
-      console.warn("[cloud] Kujdes: kamarierët me PIN nuk u sinkronizuan te cloud — pranimi i porosive QR dështon.");
+      console.warn("[cloud] Kujdes: stafi me PIN nuk u sinkronizua te cloud — kamarier/QR dështon.");
     }
+    let staffPush = null;
+    if (localStaffWithPin && !staffSynced) {
+      staffPush = await pushStaffAsync(db);
+    }
+    const finalStaff = Number(staffPush?.staff) || staffSynced;
     return {
       ok: true,
       menu_items: menuItems,
       categories,
-      staff: staffSynced,
+      staff: finalStaff,
       staff_local_with_pin: localStaffWithPin,
-      message: staffSynced
-        ? `${menuItems} artikuj, ${staffSynced} kamarierë në cloud.`
-        : `${menuItems} artikuj u dërguan te cloud.${localStaffWithPin ? " Sinkronizoni kamarierët (Admin → Cloud)." : ""}`,
+      staff_errors: parsed.staff_errors,
+      message: finalStaff
+        ? `${menuItems} artikuj, ${finalStaff} staf në cloud.`
+        : `${menuItems} artikuj u dërguan te cloud.${localStaffWithPin ? " Stafi nuk u sinkronizua (Admin → Cloud)." : ""}${staffErrTxt ? ` ${staffErrTxt}` : ""}`,
     };
   } catch (err) {
     console.warn("Catalog sync dështoi:", err.message);
@@ -1614,6 +1655,10 @@ async function fullCloudSync(db) {
     result.menu_items = Number(catalog.menu_items) || 0;
     result.categories = Number(catalog.categories) || 0;
     result.staff = Number(catalog.staff) || 0;
+    if (!result.staff && countStaffWithPinForCloudSync(buildCatalogPayload(db).payload.staff)) {
+      const staffOnly = await pushStaffAsync(db);
+      if (staffOnly?.staff) result.staff = staffOnly.staff;
+    }
     if (!catalog.ok && catalog.message) {
       result.message = catalog.message;
     }
@@ -1906,9 +1951,9 @@ async function pushStaffAsync(db) {
     };
   }
   const { cfg, payload } = buildCatalogPayload(db);
-  const localWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
+  const localWithPin = countStaffWithPinForCloudSync(payload.staff);
   if (!localWithPin) {
-    return { ok: false, skipped: true, message: "Nuk ka kamarierë me PIN lokalisht." };
+    return { ok: false, skipped: true, message: "Nuk ka staf me PIN lokalisht (kamarier/recepsion/pastrim)." };
   }
   try {
     const r = await requestJson(
@@ -1928,12 +1973,23 @@ async function pushStaffAsync(db) {
       return { ok: false, message: parsed.gabim || parsed.message || `HTTP ${r.status}` };
     }
     const staffSynced = Number(parsed.staff) || 0;
+    const staffErrTxt = formatStaffSyncErrors(parsed);
+    if (staffErrTxt) console.warn("[cloud] staff_errors:", staffErrTxt);
     if (localWithPin && !staffSynced) {
-      console.warn("[cloud] PIN-et e kamarierëve nuk u dërguan te cloud.");
+      console.warn("[cloud] Stafi me PIN nuk u dërgua te cloud.", staffErrTxt || "");
     } else if (staffSynced) {
-      console.log(`[cloud] ${staffSynced} kamarier(ë) me PIN u sinkronizuan.`);
+      console.log(`[cloud] ${staffSynced} staf me PIN u sinkronizuan.`);
     }
-    return { ok: staffSynced > 0, staff: staffSynced, staff_local_with_pin: localWithPin };
+    const ok = staffSynced > 0 || (!localWithPin && !staffErrTxt);
+    return {
+      ok: staffSynced > 0 ? true : ok,
+      staff: staffSynced,
+      staff_local_with_pin: localWithPin,
+      staff_errors: parsed.staff_errors,
+      message: staffSynced
+        ? `${staffSynced} staf në cloud.`
+        : staffErrTxt || "Stafi nuk u sinkronizua.",
+    };
   } catch (err) {
     return { ok: false, message: err.message || "Staff sync dështoi." };
   }
@@ -2628,7 +2684,12 @@ async function syncLocalCancelledFromCloud(db) {
       // Porosi në radhë kuzhine (POS / takeaway / public) — sync nuk e anulon vetë.
       const cloudSt = String(orderBlob.status || ct.order?.status || "ordered").toLowerCase();
       if (
-        (isPosLikeCloudDevice(cloudDevice) || cloudDevice === "WEB-PUBLIC" || cloudSt === "ordered")
+        (
+          isPosLikeCloudDevice(cloudDevice)
+          || cloudDevice === "WEB-PUBLIC"
+          || cloudSt === "ordered"
+          || cloudSt === "ready"
+        )
         && !accepted
         && cloudSt !== "closed"
         && cloudSt !== "cancelled"
