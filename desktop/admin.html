@@ -6390,21 +6390,22 @@
     const user = kerkonHyrje("admin");
     if (!user) throw new Error("");
 
-    /** pako_1 / pako_2 / pako_3 → tier-rank 1–3 */
+    /** pako_1 / pako_2 / pako_3 → tier-rank 1–3 (nuk ka Pako 4) */
     const PACKAGE_TIER_RANK = { pako_1: 1, pako_2: 2, pako_3: 3 };
     const LEGACY_TIER_TO_RANK = {
       pako_3: 1,
-      pako_4: 2,
+      pako_4: 3,
       pako_2: 3,
       pako_5: 3,
       pako_premium: 3,
     };
     let _lastAppliedPackageTier = "";
     function applyPackageTier(tier, features) {
-      const t = String(tier || "").trim().toLowerCase();
-      let rank = PACKAGE_TIER_RANK[t] || LEGACY_TIER_TO_RANK[t] || 1;
-      if (features && features.accountant === true) rank = Math.max(rank, 3);
-      if (features && features.accountant === false && rank >= 3) rank = 2;
+      const tRaw = String(tier || "").trim().toLowerCase();
+      const t =
+        tRaw === "pako_4" || tRaw === "pako_5" || tRaw === "pako_premium" ? "pako_3" : tRaw;
+      let rank = PACKAGE_TIER_RANK[t] || LEGACY_TIER_TO_RANK[tRaw] || LEGACY_TIER_TO_RANK[t] || 1;
+      if (t === "pako_3" || (features && features.accountant === true)) rank = Math.max(rank, 3);
       document.body.classList.remove("tier-rank-1", "tier-rank-2", "tier-rank-3");
       document.body.classList.add("tier-rank-" + rank);
       const hasAiTier = t === "pako_3" || (features && features.ai === true);

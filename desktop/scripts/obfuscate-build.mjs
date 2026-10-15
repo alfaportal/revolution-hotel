@@ -236,10 +236,19 @@ const OBFUSCATE_OPTIONS = {
   ],
 };
 
+function shouldSkipCopyEntry(name) {
+  if (!name) return true;
+  if (name.startsWith("tmp-")) return true;
+  if (name === ".portable-internal") return true;
+  return false;
+}
+
 function copyRecursive(src, dest, skip = new Set()) {
+  const base = path.basename(src);
+  if (shouldSkipCopyEntry(base)) return;
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
-    if (skip.has(path.basename(src))) return;
+    if (skip.has(base)) return;
     fs.mkdirSync(dest, { recursive: true });
     for (const entry of fs.readdirSync(src)) {
       copyRecursive(path.join(src, entry), path.join(dest, entry), skip);
@@ -268,6 +277,7 @@ function collectJsFiles(dir, base = dir, out = []) {
     }
     if (st.isDirectory()) {
       if (name === "node_modules" || name === "dist" || name === "build") continue;
+      if (name.startsWith("tmp-") || name === ".portable-internal") continue;
       collectJsFiles(p, base, out);
       continue;
     }
@@ -482,8 +492,10 @@ function prepareProtectedBuild() {
     "disthotel",
     "distkafe",
     ".protected-build",
+    ".build-source-backup",
     ".source-backup",
     ".dist-installers-backup",
+    ".portable-internal",
     "tools",
     "tests",
     "usb-package",

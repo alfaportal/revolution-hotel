@@ -3520,12 +3520,42 @@ function checkInGuest({
   };
 }
 
+/** Faturë / check-out — pa gjurmë teknik «· cloud:uuid». */
+function sanitizeRoomChargeDescription(description) {
+  return String(description || "")
+    .replace(/\s*·\s*cloud:[0-9a-f-]{8,}/gi, "")
+    .replace(/\(\s*RS\s*·\s*\)/gi, "(RS)")
+    .trim();
+}
+
+function guestHasRoomChargeFromCloudOrder(guestId, cloudOrderId) {
+  const gid = Number(guestId);
+  const cid = String(cloudOrderId || "").trim();
+  if (!gid || !cid) return false;
+  const cidUp = cid.toUpperCase();
+  const bySource = sqlite.prepare(`
+    SELECT 1 FROM room_charges
+    WHERE guest_id = ? AND upper(source_device_id) = ?
+    LIMIT 1
+  `).get(gid, cidUp);
+  if (bySource) return true;
+  return !!sqlite.prepare(`
+    SELECT 1 FROM room_charges
+    WHERE guest_id = ? AND description LIKE ?
+    LIMIT 1
+  `).get(gid, `%cloud:${cid}%`);
+}
+
 function listRoomChargesForGuest(guestId) {
-  return sqlite.prepare(`
+  const rows = sqlite.prepare(`
     SELECT * FROM room_charges
     WHERE guest_id = ?
     ORDER BY id ASC
   `).all(Number(guestId));
+  return rows.map((c) => ({
+    ...c,
+    description: sanitizeRoomChargeDescription(c.description),
+  }));
 }
 
 function sumRoomChargesForGuest(guestId) {
@@ -3628,24 +3658,26 @@ function addRoomChargesFromOrderItems(guestId, roomId, items, {
   const tableLabel = isRoomService
     ? "RS"
     : (table_number != null && table_number !== "" ? `T${table_number}` : "POS");
-  const cloudTag = String(cloud_order_id || "").trim();
+  const cloudId = String(cloud_order_id || "").trim();
   const enriched = enrichOrderItemsWithVat(list);
   const created = [];
-  for (const it of enriched) {
+  for (let idx = 0; idx < enriched.length; idx += 1) {
+    const it = enriched[idx];
     const name = String(it.name || "Artikull").trim() || "Artikull";
     const qty = Number(it.quantity) || 1;
     const price = Number(it.price) || 0;
     const lineTotal = Math.round(qty * price * 100) / 100;
     if (lineTotal < 0) continue;
     const mid = it.menu_item_id != null ? Number(it.menu_item_id) : null;
-    const descSuffix = cloudTag ? ` · cloud:${cloudTag}` : "";
     created.push(addRoomCharge({
       guest_id: guestId,
       room_id: roomId,
-      description: `${qty}× ${name} (${tableLabel}${descSuffix})`,
+      description: `${qty}× ${name} (${tableLabel})`,
       amount: lineTotal,
       menu_item_id: mid,
       vat_category: it.vat_category || "18",
+      source_device_id: cloudId || source_device_id,
+      source_ref: cloudId ? idx + 1 : source_ref,
     }));
   }
   if (!created.length) throw new Error("Nuk ka artikuj për t'i faturuar në dhomë.");
@@ -6989,10 +7021,32 @@ function upsertPendingCloudOrders(orders) {
         payload_json = excluded.payload_json,
         last_seen_at = excluded.last_seen_at
     `);
+    const readExisting = sqlite.prepare(
+      "SELECT payload_json FROM pending_cloud_orders WHERE cloud_id = ?",
+    );
     for (const o of orders || []) {
       const id = String(o?.id || "").trim();
       if (!id || dismissed.has(id)) continue;
-      stmt.run(id, JSON.stringify(o), now, now);
+      let payload = o;
+      try {
+        const prevRow = readExisting.get(id);
+        if (prevRow?.payload_json) {
+          const prev = JSON.parse(prevRow.payload_json);
+          const prevItems = expandGuestOrderLineItems(prev);
+          const nextItems = expandGuestOrderLineItems(o);
+          if (prevItems.length && !nextItems.length) {
+            payload = {
+              ...o,
+              items: prev.items || prevItems,
+              items_json: prev.items_json ?? prev.items ?? prevItems,
+              service_lines: prev.service_lines || o.service_lines,
+            };
+          }
+        }
+      } catch {
+        /* keep incoming */
+      }
+      stmt.run(id, JSON.stringify(payload), now, now);
     }
   } catch (err) {
     console.warn("upsertPendingCloudOrders:", err.message);
@@ -7438,30 +7492,13 @@ function tryApplyCloudRoomMenuOrder(cloudOrder) {
     const cloudId = String(cloudOrder.id || "").trim();
     if (target.mode === "occupied" && target.guest?.id && cloudId) {
       const mapped = mapCloudItemsToLocal(list);
-      const synced = sqlite.prepare(`
-        SELECT 1 FROM room_charges
-        WHERE guest_id = ? AND description LIKE ?
-        LIMIT 1
-      `).get(Number(target.guest.id), `%cloud:${cloudId}%`);
-      if (mapped.length && !synced) {
-        for (const it of mapped) {
-          const qty = Number(it.quantity) || 1;
-          const name = String(it.name || "Artikull").trim() || "Artikull";
-          const lineTotal = Math.round(qty * (Number(it.price) || 0) * 100) / 100;
-          addRoomCharge({
-            guest_id: target.guest.id,
-            room_id: target.room.id,
-            description: `${qty}× ${name} (RS · cloud:${cloudId})`,
-            amount: lineTotal,
-            menu_item_id: it.menu_item_id != null ? Number(it.menu_item_id) : null,
-            vat_category: it.vat_category || "18",
-          });
-        }
-        try {
-          decrementMenuItemStock(mapped);
-        } catch (err) {
-          console.warn("[stock] room menu legacy folio sync:", err.message);
-        }
+      if (mapped.length && !guestHasRoomChargeFromCloudOrder(target.guest.id, cloudId)) {
+        addRoomChargesFromOrderItems(
+          target.guest.id,
+          target.room.id,
+          mapped,
+          { source: "room_service", decrement_stock: true, cloud_order_id: cloudId },
+        );
       }
     }
     return {
@@ -7480,12 +7517,7 @@ function tryApplyCloudRoomMenuOrder(cloudOrder) {
   if (target.mode === "occupied") {
     const cloudId = String(cloudOrder.id || "").trim();
     if (cloudId) {
-      const synced = sqlite.prepare(`
-        SELECT 1 FROM room_charges
-        WHERE guest_id = ? AND description LIKE ?
-        LIMIT 1
-      `).get(Number(target.guest.id), `%cloud:${cloudId}%`);
-      if (synced) {
+      if (guestHasRoomChargeFromCloudOrder(target.guest.id, cloudId)) {
         return {
           ok: true,
           mode: "occupied",
@@ -7691,6 +7723,44 @@ function hydrateCloudOrderForAccept(cloudOrder) {
   };
 }
 
+function expandGuestOrderLineItems(cloudOrder) {
+  let items = Array.isArray(cloudOrder?.items) ? cloudOrder.items : [];
+  if (items.length && items.every((it) => String(it?.name || "").trim())) return items;
+
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  if (!items.length && meta.nested_items?.length) items = meta.nested_items;
+
+  let raw = cloudOrder?.items_json ?? cloudOrder?.items;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  if (!items.length && Array.isArray(raw)) items = raw;
+  if (!items.length && raw && typeof raw === "object" && !Array.isArray(raw)) {
+    if (Array.isArray(raw.items) && raw.items.length) items = raw.items;
+    else if (Array.isArray(raw.service_lines) && raw.service_lines.length) {
+      items = raw.service_lines.map((sl, idx) => ({
+        name: String(sl.name || `Shërbim #${sl.service_id || idx + 1}`).trim(),
+        quantity: Math.max(1, Number(sl.quantity) || 1),
+        price: Number(sl.amount ?? sl.price ?? 0) || 0,
+        service_id: sl.service_id,
+      }));
+    }
+  }
+  if (!items.length && meta.service_lines?.length) {
+    items = meta.service_lines.map((sl, idx) => ({
+      name: String(sl.name || `Shërbim #${sl.service_id || idx + 1}`).trim(),
+      quantity: Math.max(1, Number(sl.quantity) || 1),
+      price: Number(sl.amount ?? sl.price ?? 0) || 0,
+      service_id: sl.service_id,
+    }));
+  }
+  return items.filter((it) => String(it?.name || "").trim());
+}
+
 function enrichCloudOrderForWaiter(cloudOrder) {
   if (!cloudOrder?.id) return cloudOrder;
   const staff = isCloudStaffWaiterOrder(cloudOrder);
@@ -7698,8 +7768,15 @@ function enrichCloudOrderForWaiter(cloudOrder) {
   const guestMenu = isGuestRoomMenuOrder(cloudOrder);
   const recepQr = isRecepcionCloudPendingOrder(cloudOrder);
   const qr = !staff && !guestSvc && !guestMenu && !recepQr && isCloudQrTableOrder(cloudOrder);
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  const displayItems = expandGuestOrderLineItems(cloudOrder);
+  const service_lines = Array.isArray(cloudOrder.service_lines) && cloudOrder.service_lines.length
+    ? cloudOrder.service_lines
+    : meta.service_lines;
   return {
     ...cloudOrder,
+    items: displayItems.length ? displayItems : (cloudOrder.items || []),
+    service_lines,
     is_staff_waiter: staff,
     is_guest_hotel_service: guestSvc,
     is_guest_room_menu: guestMenu,

@@ -83,14 +83,25 @@ function looksObfuscatedSource(abs) {
 }
 
 function assertSourceNotObfuscated() {
-  const critical = ["cloud-sync.js", "server.js", "database.js"];
+  /** Burimi i lexueshëm — ofuskimi vetëm në .protected-build; dyfish = app nuk nis (preload/main). */
+  const critical = [
+    ...ENTRY_FILES,
+    "integrity-check.js",
+    "online-orders-watcher.js",
+    "protection/license-boot.js",
+  ];
+  const seen = new Set();
   for (const name of critical) {
+    const norm = name.replace(/\\/g, "/");
+    if (seen.has(norm)) continue;
+    seen.add(norm);
     const abs = path.join(ROOT, name);
     if (!fs.existsSync(abs)) continue;
     if (looksObfuscatedSource(abs)) {
       fail(
-        `${name} duket i ofuskuar në burim (jo në .protected-build). ` +
-          "Rikthe nga git: git checkout HEAD -- " + name,
+        `${norm} duket i ofuskuar në burim (jo në .protected-build). ` +
+          "Rikthe nga git: git restore -- " + norm +
+          " (ose git restore . në desktop para build-it). Mos instalo Setup derisa pre-build kalon.",
       );
     }
   }

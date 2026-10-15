@@ -1258,6 +1258,7 @@ async function printGuestFolioReceipt(db, folio, opts = {}) {
 
 function syncCatalogToCloud() {
   cloudAutoSync.scheduleCatalogPush(db);
+  notifyWaitersRealtime("menu", { reason: "catalog" });
 }
 
 function toMenuItemDto(item) {

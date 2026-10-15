@@ -425,7 +425,7 @@ function main() {
     .slice(2)
     .map((s) => s.trim())
     .filter((s) => s && s !== "--mac" && s !== "--linux" && s !== "--fr")
-    .map((s) => (s === "3" ? "4" : s));
+    .map((s) => s);
   const allPackages = [...PACKAGES];
   const selected = requested.length
     ? allPackages.filter((p) => requested.includes(p.key))
@@ -433,7 +433,7 @@ function main() {
 
   if (!selected.length) {
     console.error(
-      "Asnjë paketë. Vetëm një Setup: Pako 4 (Pako 3 ndryshohet nga telefoni).",
+      "Asnjë paketë. Vetëm një Setup: Pako 3 — Premium (tier ndryshohet nga licenca / telefoni).",
     );
     process.exit(1);
   }

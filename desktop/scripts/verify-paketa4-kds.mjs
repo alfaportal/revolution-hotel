@@ -1,5 +1,5 @@
 /**
- * Verifikim i shpejtë — link personal kamarier (vetëm Paketa 4).
+ * Verifikim i shpejtë — link personal kamarier (Pako 3 Premium).
  * Përdorimi: node scripts/verify-paketa4-kds.mjs
  */
 import assert from "node:assert/strict";
@@ -16,8 +16,8 @@ const { buildWaiterPersonalUrl } = require(path.join(root, "cloud-server-url.js"
 const adminHtml = readFileSync(path.join(root, "public", "admin.html"), "utf8");
 const serverJs = readFileSync(path.join(root, "server.js"), "utf8");
 
-assert.equal(VERSION.packageTier, "pako_5", "package-tier duhet Paketa 4 (pako_5)");
-assert.equal(VERSION.packageLabel, "4", "packageLabel duhet 4");
+assert.equal(VERSION.packageTier, "pako_3", "package-tier duhet Pako 3 (pako_3)");
+assert.equal(VERSION.packageLabel, "3", "packageLabel duhet 3");
 
 const url = buildWaiterPersonalUrl("demo-kafe", "kk-123", "wt-abc");
 assert.match(url, /\/hotel\/[^/]+\/kamarier/, "URL kamarieri duhet /hotel/{slug}/kamarier");
@@ -35,5 +35,5 @@ assert.match(serverJs, /function canShowKdsStaffLinks\(\)/, "server: canShowKdsS
 assert.match(serverJs, /function resolveStaffWaiterUrl/, "server: resolveStaffWaiterUrl");
 assert.match(serverJs, /buildWaiterPersonalUrl/, "server: buildWaiterPersonalUrl");
 
-console.log("✔ verify-paketa4-kds — OK");
+console.log("✔ verify-paketa3-kds — OK");
 console.log("  Shembull URL:", url);

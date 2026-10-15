@@ -50,7 +50,7 @@ const _exports = {
   versionLabel: "Revolution HOTEL",
   appType: "hotel",
   packageTier: PACKAGE.tier || "pako_3",
-  packageLabel: PACKAGE.label || "4",
+  packageLabel: PACKAGE.label || "3",
   defaultTableCount: 10,
   SEED_PRICED_CATEGORIES,
   defaultCategories: [
