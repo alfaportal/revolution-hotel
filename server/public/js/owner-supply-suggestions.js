@@ -1,4 +1,4 @@
-/** Owner panel — Sugjerime Furnizimi (pako_5 / AI) */
+/** Owner panel — Sugjerime Furnizimi (Pako 3 Premium / AI) */
 (function () {
   let suggestionsCache = [];
   let currentDate = "";

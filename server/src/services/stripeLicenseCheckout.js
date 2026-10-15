@@ -93,7 +93,7 @@ async function createLicenseCheckoutSession(body) {
 
   const plan = normalizeCheckoutPlan(body.plan || body.package || body.package_plan);
   if (!plan) {
-    const err = new Error("Zgjidhni Pako 1, 2 ose 3. Pako 4 (AI) blihet me kontakt.");
+    const err = new Error("Zgjidhni Pako 1, 2 ose 3. Pako 3 Premium (AI) blihet me kontakt.");
     err.code = "INVALID_PLAN";
     throw err;
   }

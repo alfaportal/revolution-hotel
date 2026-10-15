@@ -31,6 +31,9 @@ const PACKAGE_TIER_ALIASES = {
   "pako 1": "pako_3",
   "pako 2": "pako_4",
   "pako 3": "pako_2",
+  "pako 3 premium": "pako_3",
+  "pako 3 — premium": "pako_3",
+  "pako 3 - premium": "pako_3",
   "pako 4": "pako_5",
   "pako 4 ai": "pako_5",
   "pako 4 ai profesionale": "pako_5",
@@ -70,7 +73,7 @@ const TIER_FEATURES = {
     accountant: false,
     ai: false,
   },
-  /** Pako 4 — Biznes + AI (legacy id pako_2) */
+  /** Legacy id pako_2 — Full (pa AI si default; AI sipas tier) */
   pako_2: { ...FULL_NO_AI, ai: true },
   /** Pako 1 — Standard — PA Kontabilist */
   pako_3: {
@@ -98,7 +101,7 @@ const TIER_FEATURES = {
     accountant: false,
     ai: false,
   },
-  /** Pako 4 — AI (+ Kontabilist si Full) */
+  /** Legacy id pako_5 — Premium (+ Kontabilist + AI) */
   pako_5: {
     pos: true,
     owner_panel: true,
@@ -130,8 +133,8 @@ const TIER_LABELS = {
   pako_2: "Pako 3 — Full (POS, KDS, kamarier, cloud, kiosk, porosi online — pa AI)",
   pako_3: "Pako 1 — Standard (POS, KDS, kamarier, cloud, kiosk)",
   pako_4: "Pako 2 — Pro (Standard + porosi online)",
-  pako_5: "Pako 4 — AI Profesionale (krejt + AI)",
-  pako_premium: "Pako 5 — Premium (krejt + AI)",
+  pako_5: "Pako 3 — Premium (krejt + Kontabilisti + AI)",
+  pako_premium: "Pako 3 — Premium (krejt + AI)",
 };
 
 const TIER_SHORT_LABELS = {
@@ -139,8 +142,8 @@ const TIER_SHORT_LABELS = {
   pako_2: "Pako 3 (pa AI)",
   pako_3: "Pako 1",
   pako_4: "Pako 2",
-  pako_5: "Pako 4 (AI)",
-  pako_premium: "Pako 5 (Premium)",
+  pako_5: "Pako 3 (Premium)",
+  pako_premium: "Pako 3 (Premium)",
 };
 
 const TIER_CONTENTS = {
@@ -155,13 +158,13 @@ const TIER_CONTENTS = {
 /** Numri marketing 1–4 për shfaqje. */
 function marketingPakoNumber(tier) {
   const n = toNewTier(tier);
-  const map = { pako_1: 1, pako_2: 2, pako_3: 3, pako_4: 4 };
+  const map = { pako_1: 1, pako_2: 2, pako_3: 3, pako_4: 3 };
   return map[n] || null;
 }
 
 function normalizePackageTier(tier) {
   const raw = String(tier || "pako_3").trim().toLowerCase();
-  /* ID exact (pako_3…pako_5) — mos e ngatërro me alias marketing "pako 4" */
+  /* ID exact legacy (pako_3…pako_5) — alias «pako 4» mapon te pako_5 (coerce hotel → pako_3) */
   if (PACKAGE_TIERS.includes(raw) || raw === "pako_premium") return raw;
 
   const spaced = raw.replace(/_/g, " ").replace(/\s+/g, " ").trim();

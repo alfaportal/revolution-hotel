@@ -514,14 +514,14 @@ function normalizeTierId(tier) {
   return Object.prototype.hasOwnProperty.call(TIER_FEATURES, mapped) ? mapped : "pako_3";
 }
 
-/** Pako 1–4 në Super Admin (ID legacy sipas package-tier-map). */
+/** Pako legacy në Super Admin (shfaqje max Pako 3 Premium). */
 const ADMIN_TIER_ORDER = ["pako_3", "pako_4", "pako_2", "pako_5"];
 const TIER_SHORT_LABELS = {
   pako_1: "Legacy",
   pako_2: "Pako 3",
   pako_3: "Pako 1",
   pako_4: "Pako 2",
-  pako_5: "Pako 4",
+  pako_5: "Pako 3 (Premium)",
 };
 
 function adminTierIdsForPicker(currentTier) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Test end-to-end Pako 4 (pako_5) — revolution-pos-server
+ * Test end-to-end Pako 3 Premium (pako_3 / legacy pako_5) — revolution-pos-server
  *
  * Env:
  *   BASE_URL=https://revolution-pos.com

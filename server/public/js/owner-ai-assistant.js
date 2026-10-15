@@ -1,4 +1,4 @@
-/** Owner panel — Asistent AI (chat + zë + kategori, Pako 4) */
+/** Owner panel — Asistent AI (chat + zë + kategori, Pako 3 Premium) */
 (function () {
   let recognition = null;
   let listening = false;

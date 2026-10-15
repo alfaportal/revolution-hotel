@@ -1,37 +1,35 @@
 /**
- * Mapimi i pakove të reja ↔ ID legacy (i njëjti me KAFENE/package-tier-map.js).
+ * Mapimi marketing 1–3 ↔ ID legacy në DB (restorant / POS).
+ * HOTEL përdor pako_1…pako_3 direkt (shih hotelPackageTier.js).
  *
- * E RE                          CLOUD / LEGACY ID
- * ─────                         ─────────────────
- * pako_1  (Pako 1)              pako_3  Standard
- * pako_2  (Pako 2)              pako_4  Pro
- * pako_3  (Pako 3, pa AI)       pako_2  (ripërdorur; Full pa AI)
- * pako_4  (Pako 4 + AI)         pako_5
+ * E RE (marketing)          LEGACY ID në DB
+ * pako_1  Pako 1             pako_3
+ * pako_2  Pako 2             pako_4
+ * pako_3  Pako 3 Premium    pako_5 (+ AI / Kontabilisti)
  */
 
-const NEW_TIERS = Object.freeze(["pako_1", "pako_2", "pako_3", "pako_4"]);
+const NEW_TIERS = Object.freeze(["pako_1", "pako_2", "pako_3"]);
 
 const ADMIN_LEGACY_ORDER = Object.freeze(["pako_3", "pako_4", "pako_2", "pako_5"]);
 
 const NEW_TO_LEGACY = Object.freeze({
   pako_1: "pako_3",
   pako_2: "pako_4",
-  pako_3: "pako_2",
-  pako_4: "pako_5",
+  pako_3: "pako_5",
 });
 
 const LEGACY_TO_NEW = Object.freeze({
   pako_3: "pako_1",
   pako_4: "pako_2",
   pako_2: "pako_3",
-  pako_5: "pako_4",
+  pako_5: "pako_3",
+  pako_premium: "pako_3",
 });
 
 const TIER_LABELS_NEW = Object.freeze({
   pako_1: "Pako 1",
   pako_2: "Pako 2",
-  pako_3: "Pako 3",
-  pako_4: "Pako 4 (AI)",
+  pako_3: "Pako 3 — Premium",
 });
 
 function normalizeTierKey(tier) {
@@ -59,7 +57,7 @@ function labelForTier(tier) {
 
 function isAiLegacyTier(tier) {
   const t = normalizeTierKey(tier);
-  return t === "pako_2" || t === "pako_5" || t === "pako_premium" || toNewTier(tier) === "pako_4";
+  return t === "pako_2" || t === "pako_5" || t === "pako_premium" || toNewTier(tier) === "pako_3";
 }
 
 module.exports = {

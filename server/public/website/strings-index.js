@@ -87,7 +87,7 @@ window.SITE_STRINGS = {
     "packages.p3.f3": "Stok / inventar — menaxhim i plotë",
     "packages.p3.f4": "Raporte X/Z të avancuara",
     "packages.p3.f5": "Promocione dhe zbritje",
-    "packages.p4.name": "Pako 4 — Full",
+    "packages.p4.name": "Pako 3 — Premium (Full + AI)",
     "packages.p4.f1": "Përfshin gjithçka nga Pako 3",
     "packages.p4.f2": "KDS — ekran kuzhine live",
     "packages.p4.f3": "Kontabilisti — libra, shpenzime, audit trail",

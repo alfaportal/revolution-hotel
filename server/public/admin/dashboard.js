@@ -155,6 +155,7 @@ function syncNewClientForm() {
   });
   const pako = document.getElementById("nc-pako")?.closest(".field");
   if (pako) pako.classList.toggle("hidden", product === "security");
+  refreshNcPakoSelect();
 }
 
 function showBridgeMsg(text) {
@@ -517,27 +518,51 @@ function renderDrawerMaxRegistersField(client, productLine) {
       </label>`;
 }
 
-/** Pako 1–5 — ID legacy në DB (si MARKET). */
+/** HOTEL — 3 pako (id pako_1…pako_3). */
+const HOTEL_PAKO_OPTS = [
+  ["pako_1", "Pako 1 — Bazik"],
+  ["pako_2", "Pako 2 — Standard"],
+  ["pako_3", "Pako 3 — Premium (+ AI)"],
+];
+
+/** POS / market — ID legacy në DB. */
 const DRAWER_PAKO_OPTS = [
   ["pako_3", "Pako 1 — Bazik"],
   ["pako_4", "Pako 2 — Standard"],
   ["pako_2", "Pako 3 — Profesional"],
-  ["pako_5", "Pako 4 — Biznes + AI"],
-  ["pako_premium", "Pako 5 — Premium"],
+  ["pako_5", "Pako 3 — Premium (+ AI)"],
+  ["pako_premium", "Pako 3 — Premium (legacy id)"],
 ];
 
-function normalizeDrawerPackageTier(tier) {
+function drawerPakoOpts(product) {
+  return String(product || "").toLowerCase() === "hotel" ? HOTEL_PAKO_OPTS : DRAWER_PAKO_OPTS;
+}
+
+function normalizeDrawerPackageTier(tier, product) {
   const raw = String(tier || "")
     .trim()
     .toLowerCase()
     .replace(/\./g, "_");
-  if (DRAWER_PAKO_OPTS.some(([v]) => v === raw)) return raw;
+  const prod = String(product || "").toLowerCase();
+  const opts = drawerPakoOpts(prod);
+  if (opts.some(([v]) => v === raw)) return raw;
+  if (prod === "hotel") {
+    const hotelLegacy = {
+      pako_3: "pako_1",
+      pako_4: "pako_3",
+      pako_2: "pako_3",
+      pako_5: "pako_3",
+      pako_premium: "pako_3",
+    };
+    return hotelLegacy[raw] || "pako_1";
+  }
   const alias = {
     pako_1: "pako_3",
     bazik: "pako_3",
     "pako 1": "pako_3",
     "pako 2": "pako_4",
     "pako 3": "pako_2",
+    "pako 3 premium": "pako_5",
     "pako 4": "pako_5",
     "pako 5": "pako_premium",
     "pako 5 (premium)": "pako_premium",
@@ -547,6 +572,17 @@ function normalizeDrawerPackageTier(tier) {
   };
   const spaced = raw.replace(/_/g, " ").replace(/\s+/g, " ").trim();
   return alias[raw] || alias[spaced] || raw;
+}
+
+function refreshNcPakoSelect() {
+  const sel = document.getElementById("nc-pako");
+  if (!sel) return;
+  const product = document.getElementById("nc-product")?.value || "hotel";
+  const opts = drawerPakoOpts(product);
+  const prev = sel.value;
+  sel.innerHTML = opts.map(([v, lab]) => `<option value="${esc(v)}">${esc(lab)}</option>`).join("");
+  const norm = normalizeDrawerPackageTier(prev, product);
+  sel.value = opts.some(([v]) => v === norm) ? norm : opts[0][0];
 }
 
 function selectOpts(options, selected) {
@@ -698,7 +734,7 @@ async function openClientDetail(id, opts = {}) {
       </label>
       <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>`
     : product === "hotel"
-      ? `<label>Paketa<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(c.package_tier))}</select></label>
+      ? `<label>Paketa<select id="dr-pako">${selectOpts(drawerPakoOpts(product), normalizeDrawerPackageTier(c.package_tier, product))}</select></label>
       <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>
       <label>Veprimtaria (HOTEL)<select id="dr-hotel-tipi">${selectOpts(
           [
@@ -710,7 +746,7 @@ async function openClientDetail(id, opts = {}) {
           ],
           c.tipi || "hotel",
         )}</select></label>`
-      : `<label>Paketa<select id="dr-pako">${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(c.package_tier))}</select></label>
+      : `<label>Paketa<select id="dr-pako">${selectOpts(drawerPakoOpts(product), normalizeDrawerPackageTier(c.package_tier, product))}</select></label>
       <label>Adresa<input id="dr-adresa" value="${esc(c.adresa || "")}"></label>
       <label>Veprimtaria (POS)<select id="dr-tipi">${selectOpts(DRAWER_TIPI_OPTS, c.tipi)}</select></label>`;
 
@@ -1518,7 +1554,7 @@ function renderLicensesList(filterText = "") {
               <div class="lic-field-block">
                 <label class="lic-field-label">Pako</label>
                 <select class="lic-edit-input lic-package-select" data-tier-input="${esc(l.id)}" aria-label="Pako">
-                  ${selectOpts(DRAWER_PAKO_OPTS, normalizeDrawerPackageTier(l.package_tier))}
+                  ${selectOpts(drawerPakoOpts(l.product_line || currentProduct), normalizeDrawerPackageTier(l.package_tier, l.product_line || currentProduct))}
                 </select>
               </div>
               <div class="lic-field-block">

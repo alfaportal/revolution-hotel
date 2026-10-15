@@ -29,7 +29,7 @@ router.get(
         plan,
         label: planLabel(plan),
       })),
-      note: "Pako 4 (AI) vetëm me leje — kontaktoni. Çmimet me telefon/email.",
+      note: "Pako 3 Premium (AI) vetëm me leje — kontaktoni. Çmimet me telefon/email.",
     });
   }),
 );

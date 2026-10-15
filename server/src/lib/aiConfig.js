@@ -1,7 +1,7 @@
 const { trimEnv } = require("./env");
 
 /**
- * Master switch për të gjitha funksionet AI (Pako 4).
+ * Master switch për të gjitha funksionet AI (Pako 3 Premium).
  * Kërkon ANTHROPIC_API_KEY (ose OPENAI_API_KEY) në environment.
  */
 const AI_ENABLED = true;

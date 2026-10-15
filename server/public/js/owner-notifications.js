@@ -1,4 +1,4 @@
-/** Owner panel — Njoftimet Telegram/SMS (pako_5) */
+/** Owner panel — Njoftimet Telegram/SMS (Pako 3 Premium) */
 (function () {
   function setMsg(text, ok) {
     const el = document.getElementById("notify-msg");

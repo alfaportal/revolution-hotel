@@ -55,7 +55,7 @@ const INVOICES_PATH = path.join(__dirname, "../../data/super-admin-invoices.json
 
 /**
  * Çmimet sipas ID legacy në DB (jo numri marketing).
- * Pako 1 → pako_3, Pako 2 → pako_4, Pako 3 → pako_2, Pako 4 → pako_5
+ * Pako 1 → pako_3, Pako 2 → pako_4, Pako 3 Premium → pako_5 (legacy DB)
  */
 const DEFAULT_SETTINGS = {
   admin_name: "Super Admin",
@@ -64,8 +64,8 @@ const DEFAULT_SETTINGS = {
     pako_3: 150, // Pako 1 — Bazik
     pako_4: 180, // Pako 2 — Standard
     pako_2: 220, // Pako 3 — Profesional
-    pako_5: 250, // Pako 4 — Biznes + AI
-    pako_premium: 320, // Pako 5 — Premium
+    pako_5: 250, // Pako 3 — Premium (+ AI)
+    pako_premium: 320, // Legacy alias → i njëjti nivel si pako_5
   },
   ai_price_per_1k_tokens: 0.0025,
   currency: "EUR",
@@ -134,11 +134,11 @@ function mergeSettings(raw) {
     { id: "pako_3", ui: "pako_1", name: "Pako 1 — Bazik", contents: packageContents("pako_3"), price: s.package_prices.pako_3 },
     { id: "pako_4", ui: "pako_2", name: "Pako 2 — Standard", contents: packageContents("pako_4"), price: s.package_prices.pako_4 },
     { id: "pako_2", ui: "pako_3", name: "Pako 3 — Profesional", contents: packageContents("pako_2"), price: s.package_prices.pako_2 },
-    { id: "pako_5", ui: "pako_4", name: "Pako 4 — Biznes + AI", contents: packageContents("pako_5"), price: s.package_prices.pako_5 },
+    { id: "pako_5", ui: "pako_3", name: "Pako 3 — Premium (+ AI)", contents: packageContents("pako_5"), price: s.package_prices.pako_5 },
     {
       id: "pako_premium",
-      ui: "pako_5",
-      name: "Pako 5 — Premium",
+      ui: "pako_3",
+      name: "Pako 3 — Premium (legacy id)",
       contents: packageContents("pako_premium"),
       price: s.package_prices.pako_premium,
     },

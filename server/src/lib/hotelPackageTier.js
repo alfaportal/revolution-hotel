@@ -7,7 +7,7 @@ const HOTEL_PACKAGE_TIERS = Object.freeze(["pako_1", "pako_2", "pako_3"]);
 
 const LEGACY_TO_HOTEL = Object.freeze({
   pako_3: "pako_1",
-  pako_4: "pako_2",
+  pako_4: "pako_3",
   pako_2: "pako_3",
   pako_5: "pako_3",
   pako_premium: "pako_3",

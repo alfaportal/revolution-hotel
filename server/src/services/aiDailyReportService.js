@@ -271,7 +271,7 @@ async function listEligibleClients() {
   const { data: clients, error: clientErr } = await db
     .from("clients")
     .select("id, emri, email, package_tier")
-    .eq("package_tier", "pako_5");
+    .in("package_tier", ["pako_3", "pako_5", "pako_premium", "pako_2"]);
   if (clientErr) throw clientErr;
 
   const eligible = [];

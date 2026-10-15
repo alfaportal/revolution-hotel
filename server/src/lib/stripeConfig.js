@@ -22,7 +22,7 @@ function paymentsConfigured() {
 
 /**
  * Çmime vjetore (€) — VETËM server / Stripe (JO publike në webfaqe).
- * Pako 1=150, 2=180, 3=220, 4=250 (Pako 4 vetëm me leje manuale).
+ * Pako 1=150, 2=180, 3=220, Premium=250 (Pako 3 Premium / plan p4 vetëm me leje manuale).
  */
 function packagePriceEur(plan) {
   const map = {

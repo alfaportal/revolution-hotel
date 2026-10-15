@@ -1,4 +1,4 @@
-/** Owner phone — waiter rating, stock predict, weekly reports (Pako 4) */
+/** Owner phone — waiter rating, stock predict, weekly reports (Pako 3 Premium) */
 (function () {
   function esc(s) {
     return String(s ?? "")
