@@ -301,6 +301,38 @@ test("fromAcceptFlow does NOT reopen a takeaway that was already paid (completed
   assert.ok(!db.getActiveOrderByCloudId(cloudId), "must not create a new active order (no double charge)");
 });
 
+test("importCloudOrderToLocal returns batch_items when same cloud id adds items on occupied table", () => {
+  const waiter = openShiftForNewWaiter("CloudWaiterBatch");
+  const table = db.getTableByNumber(3);
+  const cloudId = "cccccccc-dddd-eeee-ffff-000000000001";
+  const first = {
+    id: cloudId,
+    device_id: "WEB-WAITER",
+    table_number: table.number,
+    items: [{ name: "Test Kafe", price: 1.5, quantity: 1 }],
+    total: 1.5,
+  };
+  const second = {
+    ...first,
+    items: [{ name: "Test Kafe", price: 1.5, quantity: 3 }],
+    total: 4.5,
+  };
+
+  const imp1 = db.importCloudOrderToLocal(first, waiter.name);
+  assert.ok(imp1?.batch_items?.length === 1, "first import should print full batch");
+  assert.strictEqual(imp1.batch_items[0].quantity, 1);
+
+  const imp2 = db.importCloudOrderToLocal(second, waiter.name);
+  assert.strictEqual(imp2.already, true);
+  assert.strictEqual(imp2.merged, true);
+  assert.ok(imp2.batch_items?.length === 1, "second import should expose only delta");
+  assert.strictEqual(imp2.batch_items[0].quantity, 2, "delta is +2 kafe on same line");
+
+  const active = db.getActiveOrderForTable(table.id);
+  const items = JSON.parse(active.items_json || "[]");
+  assert.strictEqual(items[0].quantity, 3);
+});
+
 test("rebuildDailyLogFromCloudSales does not double-decrement stock", () => {
   const waiter = openShiftForNewWaiter("RebuildStock");
   const staff = db.findStaffByName(waiter.name);

@@ -7917,11 +7917,27 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
         localMapped = [];
       }
       const nextJson = JSON.stringify(cloudItems);
+      const { diffOrderItems } = require("./kitchen-ticket-html");
+      const batchItems = diffOrderItems(localMapped, cloudItems);
       if (nextJson !== JSON.stringify(localMapped)) {
         sqlite.prepare("UPDATE orders SET items_json = ?, total = ? WHERE id = ?")
           .run(nextJson, cloudTotal, activeExisting.id);
         console.log("[sync] T" + tableNum + " artikujt u përditësuan nga cloud");
       }
+      const out = {
+        ok: true,
+        already: true,
+        order_id: activeExisting.id,
+        table_id: activeExisting.table_id,
+        table_number: tableNum,
+        table_label: table ? tableLabel(table) : "",
+        waiter_name: keepWaiter,
+      };
+      if (batchItems.length > 0) {
+        out.merged = true;
+        out.batch_items = batchItems;
+      }
+      return out;
     }
     return {
       ok: true,

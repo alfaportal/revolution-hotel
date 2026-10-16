@@ -351,12 +351,13 @@ function savePrintedIds(db) {
 async function printOrderSlipAfterImport(db, printBarTicket, cloudOrder, importResult, waiterName) {
   if (typeof printBarTicket !== "function") return;
   if (!importResult?.ok || importResult.closed || importResult.cancelled) return;
-  if (importResult.already && !importResult.merged) return;
+  const slipFromBatch = Array.isArray(importResult.batch_items) && importResult.batch_items.length > 0;
+  if (importResult.already && !importResult.merged && !slipFromBatch) return;
 
   const cloudId = String(cloudOrder?.id || "").trim();
-  if (!cloudId || printedIds.has(cloudId)) return;
+  if (!cloudId || (printedIds.has(cloudId) && !slipFromBatch)) return;
 
-  let slipItems = Array.isArray(importResult.batch_items) ? importResult.batch_items : [];
+  let slipItems = slipFromBatch ? importResult.batch_items : [];
   if (!slipItems.length && importResult.table_id && typeof db.getActiveOrderForTable === "function") {
     try {
       const order = db.getActiveOrderForTable(importResult.table_id);
