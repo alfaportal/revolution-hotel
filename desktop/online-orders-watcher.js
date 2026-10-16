@@ -481,7 +481,11 @@ async function tick(db, printBarTicket) {
   if (data.ok !== false && data.connected && typeof db.importCloudOrderToLocal === "function") {
     const ordersToAutoImport = allOrders.filter(o => {
       if (!o?.id) return false;
-      if ((Number(o.table_number) || 0) <= 0) return false;
+      const tableNum =
+        typeof db.parseTableNumberFromCloudOrder === "function"
+          ? db.parseTableNumberFromCloudOrder(o)
+          : (Number(o.table_number) || 0);
+      if (tableNum <= 0) return false;
       const device = String(o.device_id || "").trim().toUpperCase();
       if (device === "WEB-WAITER") {
         if (isCloudWaiterDisabled(db)) {
@@ -503,14 +507,24 @@ async function tick(db, printBarTicket) {
       if (isExplicitlyAccepted(o, db) && isPosAcceptQueueOrder(o, db)) return true;
       return false;
     });
-    for (const order of ordersToAutoImport) {
+    for (let order of ordersToAutoImport) {
       try {
+        const parsedTn =
+          typeof db.parseTableNumberFromCloudOrder === "function"
+            ? db.parseTableNumberFromCloudOrder(order)
+            : (Number(order.table_number) || 0);
+        if (parsedTn > 0 && !(Number(order.table_number) > 0)) {
+          order = { ...order, table_number: parsedTn };
+        }
         const isQrTable =
           typeof db.isQrTableOrderSubjectToAcceptGate === "function"
           && db.isQrTableOrderSubjectToAcceptGate(order);
         let wName = String(
           order.accepted_by_waiter_name || order.accepted_by || order.waiter_name || "",
         ).trim();
+        if (isQrTable && typeof db.resolveLocalWaiterForCloudOrder === "function") {
+          wName = db.resolveLocalWaiterForCloudOrder(order) || wName;
+        }
         if (isQrTable) {
           const staffOk =
             typeof db.isLocalWaiterStaffName === "function"

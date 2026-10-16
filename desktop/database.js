@@ -8061,6 +8061,13 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   rememberStaffWaiterCloudPushKey(cloudOrder);
   linkCloudOrderId(r.lastInsertRowid, cloudId);
   sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
+  if (cloudTableNum > 0 && insertWaiter) {
+    try {
+      claimQrTableWaiter(cloudTableNum, insertWaiter);
+    } catch {
+      /* ignore */
+    }
+  }
 
   return {
     ok: true,
@@ -9429,6 +9436,37 @@ function isLocalWaiterStaffName(name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return false;
   return !!(findStaffByName(trimmed) || findStaffByNameInsensitive(trimmed));
+}
+
+/**
+ * Pas PRANO nga kamarieri cloud — emri lokal për import POS (stafi / waiter_codes).
+ */
+function resolveLocalWaiterForCloudOrder(cloudOrder) {
+  const byName = String(
+    cloudOrder?.accepted_by_waiter_name || cloudOrder?.accepted_by || "",
+  ).trim();
+  if (byName) {
+    const staff = findStaffByName(byName) || findStaffByNameInsensitive(byName);
+    if (staff?.name) return String(staff.name).trim();
+  }
+  const cloudWid = String(cloudOrder?.accepted_by_waiter_id || "").trim();
+  if (cloudWid) {
+    try {
+      const codeRow = sqlite.prepare(
+        `SELECT waiter_name FROM waiter_codes
+         WHERE (waiter_id = ? OR CAST(waiter_id AS TEXT) = ?) AND active = 1
+         ORDER BY id DESC LIMIT 1`,
+      ).get(cloudWid, cloudWid);
+      const fromCode = String(codeRow?.waiter_name || "").trim();
+      if (fromCode) {
+        const staff = findStaffByName(fromCode) || findStaffByNameInsensitive(fromCode);
+        return staff?.name ? String(staff.name).trim() : fromCode;
+      }
+    } catch {
+      /* waiter_codes opsional */
+    }
+  }
+  return byName;
 }
 
 function getOpenShift(staffId) {
@@ -14996,6 +15034,7 @@ function getVersionInfo() {
     findStaffByName,
     findStaffByNameInsensitive,
     isLocalWaiterStaffName,
+    resolveLocalWaiterForCloudOrder,
     ensureOpenShift,
     getOpenShift,
     openWaiterShiftWithCash,
