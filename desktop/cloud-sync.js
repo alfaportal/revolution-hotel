@@ -2013,6 +2013,18 @@ function getKitchenAccess(db) {
 }
 
 /** Lexon modalitetin e arkës të vendosur nga pronari te paneli i tij (telefon) — vetëm LEXIM. */
+/** Panel pronari (telefon): ditë pa «Mbyll ditën» (Raporti Z administrativ). */
+async function fetchOwnerDailyZReminder(db) {
+  if (!db || !isCloudConfigured(db)) return null;
+  try {
+    const parsed = await licenseCloudPost(db, "/api/v1/license/daily-z-reminder", {});
+    if (parsed?.ok === false) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchRegisterModeFromCloud(db) {
   const cfg = getConfig(db);
   const { slug, key } = getKitchenAccess(db);
@@ -3619,6 +3631,7 @@ module.exports = {
   checkConnection,
   fetchReceiptFormat,
   fetchRegisterModeFromCloud,
+  fetchOwnerDailyZReminder,
   syncOwnerAdminPasswordFromCloud,
   pushOwnerAdminPasswordAsync,
   fetchOnlineOrders,

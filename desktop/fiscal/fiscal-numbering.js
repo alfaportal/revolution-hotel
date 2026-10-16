@@ -122,14 +122,14 @@ function getNextDailyNumber() {
  * Thirret nga onDailySummaryPrinted — vetëm 1× në ditë.
  * NUK prek total_receipt_counter (numri rendor total nuk rifillon kurrë).
  */
-function resetDailyCounter() {
+function resetDailyCounter(forYmd) {
   if (!assertFiscalOn()) return false;
   if (isFiscalMemoryOnly()) return memResetDailyCounter();
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
   ensureLastDailyNumberDateColumn(sqlite);
-  const today = todayLocalYmd();
+  const mark = String(forYmd || "").slice(0, 10) || todayLocalYmd();
 
   sqlite
     .prepare(
@@ -140,7 +140,7 @@ function resetDailyCounter() {
         updated_at = datetime('now','localtime')
       WHERE id = 1`
     )
-    .run(today, today);
+    .run(mark, mark);
 
   return true;
 }
@@ -683,12 +683,13 @@ function getXReportSnapshot(operatorName, operatorId) {
  * - Reseton numrin ditor VETËM 1× në ditë (last_z_report_date !== sot)
  * Kur fiscal OFF → null (asnjë efekt).
  */
-function onDailySummaryPrinted(operatorName, operatorId) {
+function onDailySummaryPrinted(operatorName, operatorId, opts = {}) {
   if (!assertFiscalOn()) return null;
 
   const sqlite = getSqlite();
   ensureSettingsRow(sqlite);
   const today = todayLocalYmd();
+  const closingDay = String(opts.dateYmd || opts.report_date || "").slice(0, 10) || today;
 
   const settingsRow = sqlite
     .prepare(
@@ -698,10 +699,10 @@ function onDailySummaryPrinted(operatorName, operatorId) {
   const lastZ = settingsRow?.last_z_report_date
     ? String(settingsRow.last_z_report_date).slice(0, 10)
     : "";
-  const alreadyClosedToday = lastZ === today;
+  const alreadyClosedForDay = lastZ === closingDay;
 
-  const acc = getDailyFiscalAccumulated(today) || {
-    date: today,
+  const acc = getDailyFiscalAccumulated(closingDay) || {
+    date: closingDay,
     coupon_count: 0,
     total_amount: 0,
     total_without_tax: 0,
@@ -730,13 +731,14 @@ function onDailySummaryPrinted(operatorName, operatorId) {
     daily_receipt_counter_before: Number(settingsRow?.daily_receipt_counter) || 0,
     rfd_created_count: rfdCreated,
     reset_applied: false,
-    day_already_closed: alreadyClosedToday,
+    day_already_closed: alreadyClosedForDay,
+    closing_day: closingDay,
     official_close: true,
   };
 
   let resetApplied = false;
-  if (!alreadyClosedToday) {
-    resetApplied = !!resetDailyCounter();
+  if (!alreadyClosedForDay) {
+    resetApplied = !!resetDailyCounter(closingDay);
   }
   details.reset_applied = resetApplied;
 

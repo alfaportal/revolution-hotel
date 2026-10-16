@@ -8356,12 +8356,24 @@ app.post("/api/fiscal/x-report", auth, adminOnly, async (req, res) => {
   }
 });
 
+app.get("/api/fiscal/z-report/reminder", auth, adminOnly, async (req, res) => {
+  try {
+    const { getZReportReminderStatusAsync } = require("./fiscal/fiscal-z-reminder");
+    const status = await getZReportReminderStatusAsync(db);
+    res.json({ ok: true, ...status });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
 app.post("/api/fiscal/z-report", auth, adminOnly, async (req, res) => {
   try {
     const settings = fiscalConfig.getFiscalSettings();
     const operatorName = req.body?.operator_name || "Operator";
     const operatorId = resolveBodyOperatorId(req);
-    const details = fiscalNumbering.onDailySummaryPrinted(operatorName, operatorId);
+    const reportDate = String(req.body?.report_date || req.body?.business_date || "").slice(0, 10);
+    const zOpts = /^\d{4}-\d{2}-\d{2}$/.test(reportDate) ? { dateYmd: reportDate } : {};
+    const details = fiscalNumbering.onDailySummaryPrinted(operatorName, operatorId, zOpts);
     if (!details) throw new Error("Fiskalizimi nuk është aktiv");
 
     const text = buildZReportText(details, settings);
