@@ -11,7 +11,7 @@ function foldAscii(name) {
 }
 
 const FOOD_RE =
-  /\b(pizza|pica|pasta|mish|supa|supe|salat\w*|sallat\w*|sandwi\w*|hamburger|burger|fast\s*food|mengjes|embelsira|embel|desert|dessert|peshk|fruta\s*deti|tradicionale|shoqerime|femij|nugget|qofte|wrap|rizotto|risotto|steak|fileto|skara|grill|zgar|qebap|kebab|byrek|burek|lakror|omlet\w*|veze|patate|fries|sushi|taco|lasagn\w*|makaron|spaghetti|corba|pule|chicken|suxhuk|toast|schnitzel|cordon|pjate|pjata|kapreze|caprese)\b/;
+  /\b(pizza|pica|pasta|mish|supa|supe|salat\w*|sallat\w*|sandwi\w*|hamburger|burger|fast\s*food|mengjes|embelsira|embel|desert|dessert|peshk|fruta\s*deti|tradicionale|shoqerime|femij|nugget|qofte|wrap|rizotto|risotto|steak|biftek|bifteku|fileto|skara|grill|zgar|qebap|kebab|byrek|burek|lakror|omlet\w*|veze|patate|fries|sushi|taco|lasagn\w*|makaron|spaghetti|corba|pule|chicken|suxhuk|toast|schnitzel|cordon|pjate|pjata|kapreze|caprese)\b/;
 
 const DRINK_CAT_RE =
   /\b(pije|pijet|alkool|birra|birre|vera|vere|wine|kafe|coffee|espresso|cappuccino|latte|cocktail|koktej|beer|drink|beverage|energji|energy|caj|tea|uje|water|sok|juice|bar|ftoht|ngroht|qumesht|milk|smoothie|shake|softdrink)\b/;
@@ -82,6 +82,8 @@ function isFoodItemName(name) {
     f.includes("pica") ||
     f.includes("hamburger") ||
     f.includes("burger") ||
+    f.includes("biftek") ||
+    f.includes("steak") ||
     f.includes("pasta") ||
     f.includes("byrek") ||
     f.includes("burek")

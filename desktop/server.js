@@ -466,6 +466,10 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
     if (!row?.ok || !row.table_id) continue;
     const order = db.getActiveOrderForTable(row.table_id);
     if (!order) continue;
+    const cloudId = String(row.cloud_id || order.cloud_order_id || "").trim();
+    if (cloudId && onlineOrdersWatcher.isCloudOrderSlipMarkedPrinted(cloudId)) {
+      continue;
+    }
     const tableNum = Number(row.table_number) || 0;
     // Mos pushActiveOrderUpdate — porosia ekziston tashmë në cloud (WEB-WAITER/QR).
     let slipItems = Array.isArray(row.batch_items) ? row.batch_items : [];
@@ -477,6 +481,7 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
       }
     }
     if (!slipItems.length) continue;
+    if (cloudId) onlineOrdersWatcher.markOrdersPrinted(db, [cloudId]);
     const batchNo = db.recordPrintedBatch(order.id, order.items_json);
     await autoPrintOrderSlip(db, {
       tableNumber: tableNum || row.table_id,
@@ -777,43 +782,29 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       const r = imported[i];
       const cloudOrder = ordersBefore[i];
       if (!r?.ok || !r.table_id || !cloudOrder?.id) continue;
-      if (typeof db.isCloudQrTableOrder === "function" && !db.isCloudQrTableOrder(cloudOrder)) {
-        continue;
-      }
-      const order = db.getActiveOrderForTable(r.table_id);
+      const isQrTable = typeof db.isCloudQrTableOrder === "function"
+        && db.isCloudQrTableOrder(cloudOrder);
+      const isOnlinePickup = typeof db.isCloudOnlinePickupOrder === "function"
+        && db.isCloudOnlinePickupOrder(cloudOrder);
+      if (!isQrTable && !isOnlinePickup) continue;
+      const order = db.getActiveOrderByCloudId(cloudOrder.id)
+        || db.getActiveOrderForTable(r.table_id);
       if (!order) continue;
       const tblNum = Number(r.table_number || cloudOrder.table_number) || 0;
       try {
-        await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
+        const pushRes = await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
           cloudOrderId: cloudOrder.id,
           cloudOrder,
           waiterName,
           waiterId: ackMeta.waiterId,
           table_number: tblNum,
         });
+        if (!pushRes?.ok) {
+          console.warn("[accept] push → kuzhinë (QR/online):", pushRes.message || "dështoi");
+        }
       } catch (pushErr) {
-        console.warn("[accept] push QR → kuzhinë:", pushErr);
+        console.warn("[accept] push → kuzhinë:", pushErr);
       }
-    }
-  }
-
-  for (let i = 0; i < ordersBefore.length; i++) {
-    const r = imported[i];
-    const cloudOrder = ordersBefore[i];
-    if (!r?.ok || !r.table_id || !cloudOrder?.id) continue;
-    const isPickup = typeof db.isCloudOnlinePickupOrder === "function"
-      && db.isCloudOnlinePickupOrder(cloudOrder);
-    if (!isPickup) continue;
-    const order = db.getActiveOrderByCloudId(cloudOrder.id)
-      || db.getActiveOrderForTable(r.table_id);
-    if (!order) continue;
-    try {
-      await cloudSync.pushOnlinePickupAcceptToCloud(db, order, cloudOrder, {
-        waiterName,
-        waiterId: ackMeta.waiterId,
-      });
-    } catch (pushErr) {
-      console.warn("[accept] push takeaway → cloud:", pushErr);
     }
   }
 
@@ -3100,13 +3091,48 @@ function ensureWaiterReadyPoller() {
   }, 8000);
 }
 
-// Porosi të gatshme nga banaku — alarm te kamarieri
-const _seenReadyOrderIds = new Set();
+// Porosi të gatshme nga banaku — alarm te kamarieri (IDs ruhen në DB — jo vetëm RAM)
+const WAITER_READY_DISMISS_KEY = "waiter_ready_dismissed_order_ids";
+
+function loadWaiterReadyDismissedIds() {
+  try {
+    const raw = db.getSetting(WAITER_READY_DISMISS_KEY, "[]");
+    const arr = JSON.parse(raw);
+    return new Set((Array.isArray(arr) ? arr : []).map(id => String(id || "").trim()).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistWaiterReadyDismissedIds(set) {
+  const arr = [...set].slice(-200);
+  db.setSetting(WAITER_READY_DISMISS_KEY, JSON.stringify(arr));
+}
+
+const _seenReadyOrderIds = loadWaiterReadyDismissedIds();
+
+function filterReadyOrdersForWaiterAlarm(orders) {
+  const out = [];
+  let mutated = false;
+  for (const o of orders || []) {
+    const id = String(o?.id || "").trim();
+    if (!id || _seenReadyOrderIds.has(id)) continue;
+    const local = typeof db.getOrderByCloudId === "function" ? db.getOrderByCloudId(id) : null;
+    if (local && String(local.status || "") !== "active") {
+      _seenReadyOrderIds.add(id);
+      mutated = true;
+      continue;
+    }
+    out.push(o);
+  }
+  if (mutated) persistWaiterReadyDismissedIds(_seenReadyOrderIds);
+  return out;
+}
 
 app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (_req, res) => {
   try {
     const orders = await cloudSync.fetchReadyTableOrders(db);
-    const unseen = orders.filter(o => !_seenReadyOrderIds.has(String(o.id)));
+    const unseen = filterReadyOrdersForWaiterAlarm(orders);
     res.json({ ok: true, orders: unseen, has_ready: unseen.length > 0 });
   } catch {
     res.json({ ok: true, orders: [], has_ready: false });
@@ -3116,6 +3142,7 @@ app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (_req, res) =>
 app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, (req, res) => {
   const ids = Array.isArray(req.body?.order_ids) ? req.body.order_ids : [];
   ids.forEach(id => _seenReadyOrderIds.add(String(id)));
+  persistWaiterReadyDismissedIds(_seenReadyOrderIds);
   res.json({ ok: true, dismissed: ids.length });
 });
 

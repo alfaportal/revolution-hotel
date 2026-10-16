@@ -707,7 +707,13 @@ async function pushSaleSync(db, order, opts = {}) {
 async function pushQrWaiterAcceptToCloudKitchen(
   db,
   order,
-  { cloudOrderId = "", waiterName = "", waiterId = "", table_number = 0 } = {},
+  {
+    cloudOrderId = "",
+    cloudOrder = null,
+    waiterName = "",
+    waiterId = "",
+    table_number = 0,
+  } = {},
 ) {
   const built = buildSalePayload(db, order, {
     table_number,
@@ -730,7 +736,10 @@ async function pushQrWaiterAcceptToCloudKitchen(
     built.payload.waiter_id = wId;
     built.payload.accepted_by_waiter_id = wId;
   }
+  built.payload.pos_keep_acceptance = true;
+
   const cloudUuid = String(cloudOrderId || order?.cloud_order_id || "").trim();
+  let mappedKeys = false;
   if (cloudUuid) {
     try {
       const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
@@ -738,10 +747,18 @@ async function pushQrWaiterAcceptToCloudKitchen(
       if (key?.local_order_id && key?.device_id) {
         built.payload.device_id = String(key.device_id).trim().toUpperCase();
         built.payload.local_order_id = String(key.local_order_id).trim();
+        mappedKeys = true;
       }
     } catch {
       /* ignore */
     }
+  }
+  const co = cloudOrder && typeof cloudOrder === "object" ? cloudOrder : null;
+  if (!mappedKeys && co) {
+    const dev = String(co.device_id || "WEB-PUBLIC").trim().toUpperCase();
+    const cloudLocalId = String(co.local_order_id || "").trim();
+    if (dev) built.payload.device_id = dev;
+    if (cloudLocalId) built.payload.local_order_id = cloudLocalId;
   }
 
   try {

@@ -457,6 +457,15 @@ function tableNumFromCloudOrder(o, db) {
 /** A duhet auto-import (e njëjta logjikë si te tick). */
 function isOrderEligibleForAutoImport(o, db) {
   if (!o?.id) return false;
+  if (
+    typeof db.isCloudOnlinePickupOrder === "function"
+    && db.isCloudOnlinePickupOrder(o)
+  ) {
+    if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
+      return false;
+    }
+    return isExplicitlyAccepted(o, db);
+  }
   const tableNum = tableNumFromCloudOrder(o, db);
   if (tableNum <= 0) return false;
   const device = String(o.device_id || "").trim().toUpperCase();
@@ -527,6 +536,25 @@ function broadcastInstantPosRefresh(extra = {}) {
   }
 }
 
+async function attachOnlineSlotForPickupOrders(db, orders) {
+  const list = (orders || []).filter(Boolean);
+  if (!list.some(o => typeof db.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o))) {
+    return list;
+  }
+  let layout = [];
+  try {
+    layout = await cloudSync.fetchOnlineSlotLayout(db, { unfiltered: true });
+  } catch {
+    /* offline */
+  }
+  return list.map(o => {
+    if (typeof db.isCloudOnlinePickupOrder !== "function" || !db.isCloudOnlinePickupOrder(o)) return o;
+    const hit = layout.find(s => String(s.order?.id || "") === String(o.id));
+    if (hit?.slot) return { ...o, online_slot: hit.slot };
+    return o;
+  });
+}
+
 /**
  * Import i një porosie cloud → SQLite + print slip (nëse ka).
  * @returns {{ imported: boolean, result?: object, order?: object, waiterName?: string }}
@@ -534,6 +562,22 @@ function broadcastInstantPosRefresh(extra = {}) {
 async function autoImportOneCloudOrder(db, printBarTicket, rawOrder) {
   if (!rawOrder?.id || typeof db.importCloudOrderToLocal !== "function") {
     return { imported: false };
+  }
+  const earlyCloudId = String(rawOrder.id || "").trim();
+  if (
+    earlyCloudId
+    && typeof db.isCloudOrderHandledLocally === "function"
+    && db.isCloudOrderHandledLocally(earlyCloudId)
+    && typeof db.getActiveOrderByCloudId === "function"
+  ) {
+    const active = db.getActiveOrderByCloudId(earlyCloudId);
+    if (active) {
+      return {
+        imported: false,
+        result: { ok: true, already: true, order_id: active.id },
+        order: normalizePendingOrder(rawOrder),
+      };
+    }
   }
   let order = normalizePendingOrder(rawOrder);
   if (!order) return { imported: false };
@@ -641,11 +685,12 @@ async function runKitchenSseInstantImport(db, payload) {
 
   const printBarTicket = printBarTicketRef;
   const { hits, allOrders } = await fetchCloudOrdersForKitchenSse(db, payload);
-  const targets = hits.length
+  let targets = hits.length
     ? hits
     : (ssePayloadOrderIds(payload).length
       ? []
       : (allOrders || []).filter(o => isOrderEligibleForAutoImport(o, db)));
+  targets = await attachOnlineSlotForPickupOrders(db, targets);
 
   let importedAny = false;
   const tablesUpdated = new Set();
@@ -897,6 +942,11 @@ function markOrdersPrinted(db, orderIds) {
   savePrintedIds(db);
 }
 
+function isCloudOrderSlipMarkedPrinted(cloudOrderId) {
+  const id = String(cloudOrderId || "").trim();
+  return id ? printedIds.has(id) : false;
+}
+
 module.exports = {
   startOnlineOrdersWatcher,
   stopOnlineOrdersWatcher,
@@ -914,5 +964,6 @@ module.exports = {
   isStaffRefusedOrder,
   isInRefusalGraceOrder,
   markOrdersPrinted,
+  isCloudOrderSlipMarkedPrinted,
   normalizePendingOrder,
 };
