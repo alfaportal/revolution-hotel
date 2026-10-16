@@ -548,12 +548,14 @@ async function upsertSaleFromPos(body, { defaultStatus = "closed" } = {}) {
         || body.pos_keep_acceptance === "true"
       );
     const { isPosDesktopDevice } = require("../lib/orderSource");
+    const tableNum = Number(data?.table_number ?? body.table_number) || 0;
     const skipPosClosedKdsPing =
       finalStatus === "closed" && isPosDesktopDevice(deviceId);
-    if (!skipKdsPing && !skipPosClosedKdsPing) {
+    const posClosedDineInPing =
+      finalStatus === "closed" && isPosDesktopDevice(deviceId) && tableNum >= 1;
+    if (!skipKdsPing && (!skipPosClosedKdsPing || posClosedDineInPing)) {
       try {
         const kds = require("./kdsEvents");
-        const tableNum = Number(data?.table_number ?? body.table_number) || 0;
         kds.notifyKitchenUpdate(license.client_id, {
           order_id: data?.id,
           status: finalStatus,
@@ -703,7 +705,7 @@ async function getLiveTablesForOwner(clientId) {
     const num = Number(o.table_number) || 0;
     if (num < 1 || metaByTable.has(num)) continue;
     const device = String(o.device_id || "").trim().toUpperCase();
-    if (device === WEB_KIOSK && !isOrderAccepted(o)) continue;
+    const acceptPending = device === WEB_KIOSK && !isOrderAccepted(o);
     const src = orderSourceLabel(o);
     metaByTable.set(num, {
       id: o.id || null,
@@ -716,12 +718,16 @@ async function getLiveTablesForOwner(clientId) {
       source_icon: src.icon,
       accepted_by: String(o.accepted_by_waiter_name || "").trim(),
       accepted_at: o.accepted_at || null,
+      accept_pending: acceptPending,
     });
     activeByTable.set(num, {
       waiter_name: o.waiter_name || "",
       waiter_id: o.waiter_id || null,
       total: Number(o.total) || 0,
       active_items: normalizeItems(o.items_json),
+      device_id: o.device_id || "",
+      accept_pending: acceptPending,
+      pending_order_id: acceptPending ? o.id || null : null,
     });
   }
 
@@ -745,6 +751,7 @@ async function getLiveTablesForOwner(clientId) {
           source_icon: meta?.source_icon || "",
           accepted_by: meta?.accepted_by || "",
           accepted_at: meta?.accepted_at || null,
+          accept_pending: Boolean(meta?.accept_pending),
         }
       : null;
     return {

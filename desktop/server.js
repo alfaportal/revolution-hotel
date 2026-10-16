@@ -473,7 +473,10 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
     const tableNum = Number(row.table_number) || 0;
     // Mos pushActiveOrderUpdate — porosia ekziston tashmë në cloud (WEB-WAITER/QR).
     let slipItems = Array.isArray(row.batch_items) ? row.batch_items : [];
-    if (!slipItems.length) {
+    if (!slipItems.length && row.merged && typeof db.getOrderSlipDelta === "function") {
+      slipItems = db.getOrderSlipDelta(order);
+    }
+    if (!slipItems.length && !row.merged) {
       try {
         slipItems = JSON.parse(order.items_json || "[]");
       } catch {
@@ -798,6 +801,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
           waiterName,
           waiterId: ackMeta.waiterId,
           table_number: tblNum,
+          batch_items: Array.isArray(r.batch_items) ? r.batch_items : null,
         });
         if (!pushRes?.ok) {
           console.warn("[accept] push → kuzhinë (QR/online):", pushRes.message || "dështoi");
@@ -1086,8 +1090,9 @@ function scheduleCloudAfterTableClose(db, {
     const ids = [...new Set((cloudOrderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
     try {
       if (mirrorsCloud || ids.length) {
+        let closeRes = { closed: 0 };
         try {
-          await closeCloudLinkedSale(tableId, ids, {
+          closeRes = await closeCloudLinkedSale(tableId, ids, {
             items: closeItems,
             total: order?.total,
             payment_method: order?.payment_method,
@@ -1095,9 +1100,19 @@ function scheduleCloudAfterTableClose(db, {
             waiter_name: waiterName,
             closed_at: receipt?.printed_at || new Date().toISOString(),
             ...cloudFiscalOpts,
-          });
+          }) || closeRes;
         } finally {
           purgeClosedCloudOrdersFromWatcher(ids);
+        }
+        if (
+          table?.number
+          && !closeRes?.kitchen_kept
+          && typeof db.isPhysicalVenueTable === "function"
+        ) {
+          const tRow = db.db.prepare("SELECT * FROM tables WHERE id = ?").get(Number(tableId));
+          if (tRow && db.isPhysicalVenueTable(tRow)) {
+            await cloudSync.pushTableFree(db, table.number);
+          }
         }
       } else if (order) {
         const syncRes = await cloudSync.pushSaleSync(db, order, {
@@ -1111,7 +1126,7 @@ function scheduleCloudAfterTableClose(db, {
         });
         const st = String(syncRes?.sale_status || "").toLowerCase();
         if (syncRes?.ok && table?.number && (st === "closed" || st === "cancelled")) {
-          cloudSync.pushTableFree(db, table.number);
+          await cloudSync.pushTableFree(db, table.number);
         }
       }
     } catch (err) {

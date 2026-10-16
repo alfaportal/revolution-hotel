@@ -4,7 +4,8 @@ const {
   sendOwnerClientOfflineEmail,
 } = require("./emailService");
 
-const MILESTONES = [12, 24, 36, 48];
+/** Vetëm dy email pronari për episod offline: 24h dhe 48h (ATK). */
+const MILESTONES = [24, 48];
 const MS_HOUR = 60 * 60 * 1000;
 
 function pickLatestIso(values) {
@@ -114,7 +115,7 @@ async function fetchClientOfflineSnapshots() {
     });
   }
 
-  return [...byClient.values()].filter((c) => c.hours_offline >= 12);
+  return [...byClient.values()].filter((c) => c.hours_offline >= MILESTONES[0]);
 }
 
 async function fetchSentMilestones(clientId, offlineSince) {

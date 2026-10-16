@@ -8038,6 +8038,7 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
       ok: true,
       already: false,
       merged: true,
+      cloud_id: cloudId,
       order_id: activeOnTable.id,
       table_id: table.id,
       table_number: table.number,
@@ -8072,6 +8073,7 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   return {
     ok: true,
     already: false,
+    cloud_id: cloudId,
     order_id: r.lastInsertRowid,
     table_id: table.id,
     table_number: table.number,

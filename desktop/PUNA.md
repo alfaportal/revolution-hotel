@@ -1688,3 +1688,19 @@ LAN/IP: `local-staff-links.js` + sync cloud — **pa shkrim manual IP**; QR/hint
 
 ### Git / build
 - **Jo** commit, **jo** push, **jo** build.
+
+---
+
+## 2026-10-16 — Online 1–6 auto-mbyllje + sync mbyllje POS→telefon
+
+### Shkaku
+- `syncLocalCancelledFromCloud`: `cloudOrderedIds` jo i plotë për online → `finalizeLocalTableAfterCloudSaleClose` gabim.
+- `clearStuckCloudTableOrder` mund të prekte zone Online.
+
+### Fix
+- `cloud-sync.js`: mbrojtje Online/takeaway + `collectActiveCloudOrderIdsForSync`; `await pushTableFree`.
+- `server.js`: `await pushTableFree` pas mbylljes lokale.
+- `revolution-hotel-server` `salesService.js`: SSE pas mbylljes POS tavolinë fizike.
+
+### Provë
+- `node tests/protected-functions.test.js` → 15 passed.

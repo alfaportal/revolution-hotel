@@ -58,6 +58,7 @@ let cancelledSyncInFlight = false;
 function scheduleAutoClearStuckCloudTable(db, tableNumber) {
   const num = Number(tableNumber);
   if (!num) return;
+  if (isOnlinePickupTableNumber(db, num)) return;
   const now = Date.now();
   const last = lastAutoClearStuckByTable.get(num) || 0;
   if (now - last < 90_000) return;
@@ -65,6 +66,74 @@ function scheduleAutoClearStuckCloudTable(db, tableNumber) {
   clearStuckCloudTableOrder(db, num).catch(err => {
     console.warn("[sync] auto clear stuck T" + num + ":", err.message);
   });
+}
+
+/** Tavolinat «Online 1–6» (zone pickup) — sync nuk i mbyll vetë. */
+function isOnlinePickupTableNumber(db, tableNumber) {
+  const num = Number(tableNumber);
+  if (!num || typeof db?.isTableInOnlinePickupZone !== "function") return false;
+  try {
+    const row = typeof db.getTableByNumber === "function" ? db.getTableByNumber(num) : null;
+    return !!(row && db.isTableInOnlinePickupZone(row));
+  } catch {
+    return false;
+  }
+}
+
+/** Porosi takeaway/web publike në slot Online — vetëm mbyllje stafi (POS / telefon / SSE). */
+function isProtectedOnlinePickupLocalOrder(db, order) {
+  if (!order) return false;
+  if (isOnlinePickupTableNumber(db, order.table_number)) return true;
+  const src = String(order.source_label || "").toLowerCase();
+  if (!src) return false;
+  if (/qr\s·\s*t\d|tavolin/i.test(src)) return false;
+  return (
+    /\b(takeaway|delivery|online)\b/.test(src)
+    || /web-public|qr\s*meny|takeaway\s·/i.test(String(order.source_label || ""))
+  );
+}
+
+async function collectActiveCloudOrderIdsForSync(db, cloudData) {
+  const ids = new Set();
+  for (const t of cloudData?.tables || []) {
+    if (String(t.status || "").toLowerCase() === "occupied") {
+      const id = String(t.order?.id || t.id || "").trim();
+      if (id) ids.add(id);
+    }
+  }
+  try {
+    const onlineSlots = await fetchOnlineSlotLayout(db, { unfiltered: true });
+    for (const slot of onlineSlots || []) {
+      const id = String(slot?.order?.id || "").trim();
+      if (id) ids.add(id);
+    }
+  } catch {
+    /* offline */
+  }
+  try {
+    const online = await fetchOnlineOrders(db);
+    for (const o of [...(online.all_orders || []), ...(online.orders || [])]) {
+      const st = String(o?.status || "ordered").toLowerCase();
+      if (st !== "ordered" && st !== "ready") continue;
+      const id = String(o?.id || "").trim();
+      if (id) ids.add(id);
+    }
+  } catch {
+    /* offline */
+  }
+  try {
+    const barByTable = await fetchActiveBarOrdersByTable(db);
+    for (const o of barByTable.values()) {
+      const st = String(o?.status || "ordered").toLowerCase();
+      if (st === "ordered" || st === "ready") {
+        const id = String(o?.id || "").trim();
+        if (id) ids.add(id);
+      }
+    }
+  } catch {
+    /* offline */
+  }
+  return ids;
 }
 
 function normalizeKey(k) {
@@ -713,6 +782,7 @@ async function pushQrWaiterAcceptToCloudKitchen(
     waiterName = "",
     waiterId = "",
     table_number = 0,
+    batch_items = null,
   } = {},
 ) {
   const built = buildSalePayload(db, order, {
@@ -759,6 +829,32 @@ async function pushQrWaiterAcceptToCloudKitchen(
     const cloudLocalId = String(co.local_order_id || "").trim();
     if (dev) built.payload.device_id = dev;
     if (cloudLocalId) built.payload.local_order_id = cloudLocalId;
+  }
+
+  const batchOnly = Array.isArray(batch_items) && batch_items.length ? batch_items : null;
+  if (batchOnly) {
+    const slipItems = enrichSaleItemsFromMenu(db, normalizeItems(batchOnly));
+    built.payload.items = slipItems;
+    built.payload.total = Math.round(
+      slipItems.reduce((s, i) => s + i.price * i.quantity, 0) * 100,
+    ) / 100;
+  } else if (co) {
+    let raw = co.items ?? co.items_json;
+    try {
+      if (typeof raw === "string") raw = JSON.parse(raw);
+    } catch {
+      raw = [];
+    }
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      raw = raw.items || [];
+    }
+    const cloudOnly = enrichSaleItemsFromMenu(db, normalizeItems(Array.isArray(raw) ? raw : []));
+    if (cloudOnly.length) {
+      built.payload.items = cloudOnly;
+      built.payload.total = Math.round(
+        cloudOnly.reduce((s, i) => s + i.price * i.quantity, 0) * 100,
+      ) / 100;
+    }
   }
 
   try {
@@ -1107,6 +1203,9 @@ async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
   const num = Number(tableNumber);
   if (!num) return { ok: false, message: "Numri i tavolinës mungon." };
   if (!isCloudConfigured(db)) return { ok: false, message: "Cloud nuk është konfiguruar." };
+  if (isOnlinePickupTableNumber(db, num)) {
+    return { ok: false, skipped: true, reason: "online_pickup_protected" };
+  }
 
   const orders = await collectCloudOrdersForTable(db, num);
   const prefIds = [...new Set((opts.cloud_order_ids || []).map(id => String(id || "").trim()).filter(Boolean))];
@@ -1121,6 +1220,10 @@ async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
   const now = Date.now();
   for (const o of orders) {
     const accepted = isCloudOrderAccepted(o, db);
+    const dev = String(o?.device_id || "").trim().toUpperCase();
+    if (accepted && (dev === "WEB-KIOSK" || dev === "WEB-WAITER")) {
+      continue;
+    }
     const orderedRaw = o?.ordered_at || o?.created_at || "";
     const orderedTs = orderedRaw ? new Date(orderedRaw).getTime() : 0;
     const ageMs = Number.isFinite(orderedTs) ? now - orderedTs : 0;
@@ -1130,9 +1233,25 @@ async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
     ) {
       continue;
     }
+    if ((dev === "WEB-KIOSK" || dev === "WEB-WAITER") && ageMs < QR_PENDING_PROTECT_MS) {
+      continue;
+    }
     results.push(await forceCancelCloudSalesOrder(db, o));
   }
 
+  const hasRemoteDineIn = orders.some(o => {
+    const d = String(o?.device_id || "").trim().toUpperCase();
+    return (d === "WEB-KIOSK" || d === "WEB-WAITER") && Number(o?.table_number || num) >= 1;
+  });
+  if (hasRemoteDineIn && !opts.force) {
+    console.log(`[sync] T${num} skip table-free — porosi QR/telefon; mbyllje vetëm nga stafi`);
+    return {
+      ok: false,
+      table_number: num,
+      skipped: true,
+      reason: "remote_dine_in_active",
+    };
+  }
   const pendingKitchenOnly =
     orders.length > 0
     && !results.length
@@ -1168,9 +1287,9 @@ async function clearStuckCloudTableOrder(db, tableNumber, opts = {}) {
 function pushTableFree(db, tableNumber) {
   const cfg = getConfig(db);
   const num = Number(tableNumber);
-  if (!cfg.celesi || !num) return;
+  if (!cfg.celesi || !num) return Promise.resolve();
 
-  requestJson("POST", cfg.serverUrl, "/api/v1/sales/table-free", {
+  return requestJson("POST", cfg.serverUrl, "/api/v1/sales/table-free", {
     celesi: cfg.celesi,
     device_id: cfg.deviceId,
     table_number: num,
@@ -1179,9 +1298,11 @@ function pushTableFree(db, tableNumber) {
       if (r.status >= 400) {
         console.warn("Cloud table-free:", r.status, r.data?.slice?.(0, 120));
       }
+      return r;
     })
     .catch(err => {
       console.warn("Cloud table-free dështoi:", err.message);
+      return null;
     });
 }
 
@@ -2741,6 +2862,7 @@ async function syncLocalCancelledFromCloud(db) {
       }
 
       if (localDeviceId && cloudDevice === localDeviceId) {
+        if (isOnlinePickupTableNumber(db, tNum)) continue;
         if (ageMs > 0 && ageMs < CLOUD_POS_ORDER_YOUNG_MS) {
           console.log(
             `[sync] T${tNum} SKIP auto-pastim — porosi e re në cloud (${Math.round(ageMs / 1000)}s)`,
@@ -2754,9 +2876,12 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
-      // WEB-KIOSK/telefon: table-free nuk i anulon — pastrim i plotë pas 3 min ose pas pranimit
-      if (accepted || ageMs >= STUCK_TABLE_AUTO_CLEAR_MS) {
-        scheduleAutoClearStuckCloudTable(db, tNum);
+      if (
+        isKiosk
+        || cloudDevice === "WEB-WAITER"
+        || cloudDevice === "WEB-PUBLIC"
+      ) {
+        continue;
       }
     }
 
@@ -2765,38 +2890,7 @@ async function syncLocalCancelledFromCloud(db) {
     const activeOrders = db.listLocalActiveOrders();
     if (!activeOrders.length) return;
 
-    // Mblidh IDs e porosive cloud aktive (status=ordered/ready)
-    const cloudOrderedIds = new Set(
-      cloudData.tables
-        .filter(t => t.status === "occupied")
-        .map(t => String(t.order?.id || t.id || ""))
-        .filter(Boolean),
-    );
-
-    try {
-      const onlineSlots = await fetchOnlineSlotLayout(db);
-      if (Array.isArray(onlineSlots)) {
-        for (const slot of onlineSlots) {
-          const slotOrderId = String(slot?.order?.id || "").trim();
-          if (slotOrderId) cloudOrderedIds.add(slotOrderId);
-        }
-      }
-    } catch {
-      /* offline */
-    }
-
-    try {
-      const barByTable = await fetchActiveBarOrdersByTable(db);
-      for (const o of barByTable.values()) {
-        const st = String(o?.status || "ordered").toLowerCase();
-        if (st === "ordered" || st === "ready") {
-          const id = String(o?.id || "").trim();
-          if (id) cloudOrderedIds.add(id);
-        }
-      }
-    } catch {
-      /* offline */
-    }
+    const cloudOrderedIds = await collectActiveCloudOrderIdsForSync(db, cloudData);
 
     const cloudFreeTableNums = new Set(
       cloudData.tables
@@ -2824,12 +2918,25 @@ async function syncLocalCancelledFromCloud(db) {
     for (const order of activeOrders) {
       const tableNum = Number(order.table_number);
       if (!tableNum) continue;
+      if (isProtectedOnlinePickupLocalOrder(db, order)) {
+        console.log(
+          `[sync] T${tableNum} SKIP auto-mbyllje — Online/takeaway (vetëm stafi / SSE closed) order#${order.id}`,
+        );
+        continue;
+      }
       const ageMs = now - new Date(order.created_at || 0).getTime();
       if (ageMs < GRACE_MS) continue;
 
       if (!order.cloud_order_id) {
         if (!cloudFreeTableNums.has(tableNum)) continue;
         if (pendingClosePrintTables.has(tableNum)) continue;
+        const srcHint = String(order.source_label || order.waiter_name || "").toLowerCase();
+        if (/qr|kiosk|tavolin/.test(srcHint)) {
+          console.log(
+            `[sync] T${tableNum} SKIP auto-mbyllje — porosi QR/kiosk lokale, prit PRANO/mbyllje manuale order#${order.id}`,
+          );
+          continue;
+        }
         console.log(
           `[sync] T${tableNum} cloud tavolinë e lirë — kompleto porosi lokale pa cloud_order_id order#${order.id}`,
         );
@@ -3229,7 +3336,7 @@ async function closeCloudTableOrdersForPayment(db, tableNumber, opts = {}) {
   const targetList = [...targets.values()];
   const primary = pickPrimaryCloudCloseTarget(targetList, preferredIds);
   if (!primary) {
-    pushTableFree(db, num);
+    await pushTableFree(db, num);
     return { closed: 0 };
   }
 
@@ -3278,7 +3385,7 @@ async function closeCloudTableOrdersForPayment(db, tableNumber, opts = {}) {
     console.warn("[cloud] close table sale:", err.message);
   }
 
-  pushTableFree(db, num);
+  await pushTableFree(db, num);
   return { closed };
 }
 

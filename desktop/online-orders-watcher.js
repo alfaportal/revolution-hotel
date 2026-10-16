@@ -355,13 +355,18 @@ async function printOrderSlipAfterImport(db, printBarTicket, cloudOrder, importR
   if (importResult.already && !importResult.merged && !slipFromBatch) return;
 
   const cloudId = String(cloudOrder?.id || "").trim();
-  if (!cloudId || (printedIds.has(cloudId) && !slipFromBatch)) return;
+  if (!cloudId || isCloudOrderSlipMarkedPrinted(cloudId)) return;
 
   let slipItems = slipFromBatch ? importResult.batch_items : [];
   if (!slipItems.length && importResult.table_id && typeof db.getActiveOrderForTable === "function") {
     try {
       const order = db.getActiveOrderForTable(importResult.table_id);
-      slipItems = JSON.parse(order?.items_json || "[]");
+      if (importResult.merged && typeof db.getOrderSlipDelta === "function") {
+        slipItems = db.getOrderSlipDelta(order);
+      }
+      if (!slipItems.length && !importResult.merged) {
+        slipItems = JSON.parse(order?.items_json || "[]");
+      }
     } catch {
       slipItems = [];
     }
@@ -559,7 +564,7 @@ async function attachOnlineSlotForPickupOrders(db, orders) {
  * Import i një porosie cloud → SQLite + print slip (nëse ka).
  * @returns {{ imported: boolean, result?: object, order?: object, waiterName?: string }}
  */
-async function autoImportOneCloudOrder(db, printBarTicket, rawOrder) {
+async function autoImportOneCloudOrder(db, printBarTicket, rawOrder, opts = {}) {
   if (!rawOrder?.id || typeof db.importCloudOrderToLocal !== "function") {
     return { imported: false };
   }
@@ -625,7 +630,10 @@ async function autoImportOneCloudOrder(db, printBarTicket, rawOrder) {
       imported?.ok
       && !imported?.needs_accept
       && (imported.already === false || imported.merged || slipDelta);
-    void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
+    const skipSlip = opts.skipSlipPrint || isCloudOrderSlipMarkedPrinted(String(order.id || ""));
+    if (!skipSlip) {
+      void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
+    }
     return { imported: !!didWrite, result: imported, order, waiterName: wName };
   } catch (err) {
     console.warn("[online-orders] auto-import:", err.message || err);
@@ -698,7 +706,8 @@ async function runKitchenSseInstantImport(db, payload) {
   for (const raw of targets) {
     const order = mergeKitchenSseIntoOrder(raw, payload);
     if (!order || !isOrderEligibleForAutoImport(order, db)) continue;
-    const out = await autoImportOneCloudOrder(db, printBarTicket, order);
+    const skipSlipPrint = status === "accepted" || isCloudOrderSlipMarkedPrinted(String(order.id || ""));
+    const out = await autoImportOneCloudOrder(db, printBarTicket, order, { skipSlipPrint });
     if (out.imported) {
       importedAny = true;
       const tn = Number(out.result?.table_number) || tableNumFromCloudOrder(order, db);
@@ -760,7 +769,9 @@ async function tick(db, printBarTicket) {
   if (data.ok !== false && data.connected && typeof db.importCloudOrderToLocal === "function") {
     const ordersToAutoImport = allOrders.filter(o => isOrderEligibleForAutoImport(o, db));
     for (const order of ordersToAutoImport) {
-      await autoImportOneCloudOrder(db, printBarTicket, order);
+      await autoImportOneCloudOrder(db, printBarTicket, order, {
+        skipSlipPrint: isCloudOrderSlipMarkedPrinted(String(order.id || "")),
+      });
     }
 
     // Takeaway/Delivery të pranuara → importo vetëm për kamarierin që e pranoi (emër lokal)
@@ -779,7 +790,10 @@ async function tick(db, printBarTicket) {
         try {
           const imported = db.importCloudOrderToLocal({ ...slot.order, online_slot: slot.slot }, acceptName);
           if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) continue;
-          void printOrderSlipAfterImport(db, printBarTicket, slot.order, imported, acceptName);
+          const slotCloudId = String(slot.order?.id || "").trim();
+          if (slotCloudId && !isCloudOrderSlipMarkedPrinted(slotCloudId)) {
+            void printOrderSlipAfterImport(db, printBarTicket, slot.order, imported, acceptName);
+          }
         } catch {
           /* injoro */
         }
