@@ -1077,6 +1077,27 @@
       if (msg) { msg.hidden = true; msg.textContent = ""; }
     }
 
+    function mapPublicServiceRequestToRecepQueue(r) {
+      const svc = String(r.service_name || "Shërbim").trim();
+      const when = `${String(r.requested_date || "").slice(0, 10)} ${String(r.requested_time || "").trim()}`.trim();
+      return {
+        id: `public-svc-${r.id}`,
+        public_service_request_id: String(r.id),
+        is_public_service_request: true,
+        source_label: `${svc} · faqja publike`,
+        customer_label: String(r.guest_name || "Mysafir").trim(),
+        customer_name: r.guest_name,
+        guest_phone: r.guest_phone,
+        guest_email: r.guest_email,
+        room_number: "",
+        total: 0,
+        persons: Number(r.persons) || 1,
+        requested_date: r.requested_date,
+        requested_time: r.requested_time,
+        items: [{ name: `${svc}${when ? ` · ${when}` : ""}`, quantity: Number(r.persons) || 1 }],
+      };
+    }
+
     function renderRecepGuestServicePreview(orders) {
       const body = document.getElementById("recep-online-pop-preview");
       if (!body) return;
@@ -1093,16 +1114,20 @@
       const src = o.source_label || (eshtePorosiSherbimiHoteliQr(o) ? "Shërbim hoteli" : "Room service");
       const customer = o.customer_label || o.customer_name || o.waiter_name || "Mysafir";
       const roomNum = String(o.room_number || "").trim();
-      const room = roomNum ? `Dh. ${roomNum}` : "Dhoma";
+      const room = roomNum ? `Dh. ${roomNum}` : (o.is_public_service_request ? "Faqja publike" : "Dhoma");
+      const phone = String(o.guest_phone || "").trim();
       const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} tjetër në radhë</p>` : "";
+      const hint = o.is_public_service_request
+        ? "Pranoni në POS — mysafiri njoftohet me email."
+        : "QR — prano për faturën e dhomës (pa PIN sërish)";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <div class="waiter-online-pop-meta">
           <strong>${escHtml(src)}</strong>
-          <span class="waiter-online-pop-customer">${escHtml(customer)}</span>
-          <span class="waiter-online-pop-total">${escHtml(room)} · ${formatEuro(o.total || 0)}</span>
+          <span class="waiter-online-pop-customer">${escHtml(customer)}${phone ? " · " + escHtml(phone) : ""}</span>
+          <span class="waiter-online-pop-total">${escHtml(room)}${o.total ? " · " + formatEuro(o.total) : ""}</span>
         </div>
         <ul class="waiter-online-pop-items">${itemRows || "<li>—</li>"}</ul>
-        <small>QR — prano për faturën e dhomës (pa PIN sërish)</small>
+        <small>${hint}</small>
         ${extra}
       </div>`;
     }
@@ -1174,8 +1199,15 @@
 
     async function ngarkoPorosiSherbimiRecep() {
       try {
-        const data = await api("/api/waiter/online-orders/pending");
-        recepGuestServiceOrders = filtroPorosiSherbimiRecep(data.orders || []);
+        const [data, svcData] = await Promise.all([
+          api("/api/waiter/online-orders/pending"),
+          api("/api/waiter/public-service-requests/pending").catch(() => ({ requests: [] })),
+        ]);
+        const cloudOrders = filtroPorosiSherbimiRecep(data.orders || []);
+        const publicSvc = (svcData.requests || [])
+          .filter((r) => String(r.status || "").toLowerCase() === "pending")
+          .map(mapPublicServiceRequestToRecepQueue);
+        recepGuestServiceOrders = [...publicSvc, ...cloudOrders];
         const pending = recepGuestServiceOrders.length;
         const prevPending = lastRecepGuestSvcPending;
         if (pending <= 0) {
@@ -1227,22 +1259,33 @@
       const msg = document.getElementById("recep-online-accept-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
       try {
-        const data = await api("/api/waiter/online-orders/accept", {
-          method: "POST",
-          body: JSON.stringify({
-            order_ids: [String(first.id)],
-            orders: recepGuestServiceOrders,
-          }),
-        });
-        const localOk = Array.isArray(data.imported) && data.imported.some((r) => r.ok && (r.guest_service || r.room_menu));
-        if (data.cloud_message && !data.cloud_ok && !localOk && msg) {
-          msg.textContent = data.cloud_message;
-          msg.hidden = false;
-        } else if (localOk && msg) {
-          msg.hidden = true;
-          msg.textContent = "";
+        if (first.is_public_service_request && first.public_service_request_id) {
+          await api(
+            `/api/waiter/public-service-requests/${encodeURIComponent(first.public_service_request_id)}/accept`,
+            {
+              method: "POST",
+              body: JSON.stringify({ staff_name: user?.emri || "Recepsion" }),
+            },
+          );
+          mbyllRecepOnlinePop();
+        } else {
+          const data = await api("/api/waiter/online-orders/accept", {
+            method: "POST",
+            body: JSON.stringify({
+              order_ids: [String(first.id)],
+              orders: recepGuestServiceOrders.filter((o) => !o.is_public_service_request),
+            }),
+          });
+          const localOk = Array.isArray(data.imported) && data.imported.some((r) => r.ok && (r.guest_service || r.room_menu));
+          if (data.cloud_message && !data.cloud_ok && !localOk && msg) {
+            msg.textContent = data.cloud_message;
+            msg.hidden = false;
+          } else if (localOk && msg) {
+            msg.hidden = true;
+            msg.textContent = "";
+          }
+          mbyllRecepOnlinePop();
         }
-        mbyllRecepOnlinePop();
         await ngarkoPorosiSherbimiRecep();
         if (recepView === "orders") {
           await ngarkoPorositeRecep();
@@ -1273,15 +1316,29 @@
       const msg = document.getElementById("recep-online-accept-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
       try {
-        const data = await api("/api/waiter/online-orders/refuse", {
-          method: "POST",
-          body: JSON.stringify({ order_ids: [String(first.id)], reason }),
-        });
-        if (data.cloud_message && !data.cloud_ok && msg) {
-          msg.textContent = data.cloud_message;
-          msg.hidden = false;
+        if (first.is_public_service_request && first.public_service_request_id) {
+          await api(
+            `/api/waiter/public-service-requests/${encodeURIComponent(first.public_service_request_id)}/reject`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                staff_name: user?.emri || "Recepsion",
+                reason,
+              }),
+            },
+          );
+          mbyllRecepOnlinePop();
+        } else {
+          const data = await api("/api/waiter/online-orders/refuse", {
+            method: "POST",
+            body: JSON.stringify({ order_ids: [String(first.id)], reason }),
+          });
+          if (data.cloud_message && !data.cloud_ok && msg) {
+            msg.textContent = data.cloud_message;
+            msg.hidden = false;
+          }
+          mbyllRecepOnlinePop();
         }
-        mbyllRecepOnlinePop();
         await ngarkoPorosiSherbimiRecep();
       } catch (err) {
         if (msg) {
@@ -1963,11 +2020,15 @@
       const tbody = document.getElementById("rc-orders-tbody");
       const empty = document.getElementById("rc-orders-empty");
       showMsg("recep-orders-msg", "", true);
-      const [activeData, pendingData] = await Promise.all([
+      const [activeData, pendingData, svcPendingData] = await Promise.all([
         api("/api/waiter/active-orders"),
         api("/api/waiter/online-orders/pending").catch(() => ({ orders: [] })),
+        api("/api/waiter/public-service-requests/pending").catch(() => ({ requests: [] })),
       ]);
-      const pendingRows = filtroPorosiSherbimiRecep(pendingData.orders || []);
+      const publicSvcRows = (svcPendingData.requests || [])
+        .filter((r) => String(r.status || "").toLowerCase() === "pending")
+        .map(mapPublicServiceRequestToRecepQueue);
+      const pendingRows = [...publicSvcRows, ...filtroPorosiSherbimiRecep(pendingData.orders || [])];
       const rows = (activeData.orders || []).filter((o) => o.kind !== "table");
       if (!tbody) return;
       tbody.innerHTML = "";

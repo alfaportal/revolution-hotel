@@ -687,6 +687,38 @@ async function deletePublicBookingRequest(db, id) {
   return parseJsonResponse(r);
 }
 
+async function listPublicServiceRequestsPending(db, { status = "open" } = {}) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) return { ok: true, skipped: true, requests: [] };
+  const q =
+    `celesi=${encodeURIComponent(cfg.celesi)}`
+    + `&status=${encodeURIComponent(String(status || "open"))}`;
+  const r = await requestJson("GET", `/api/v1/hotel/service-requests/pending?${q}`, null);
+  return parseJsonResponse(r);
+}
+
+async function acceptPublicServiceRequest(db, id, payload = {}) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
+  const r = await requestJson(
+    "POST",
+    `/api/v1/hotel/service-requests/${encodeURIComponent(id)}/accept`,
+    { celesi: cfg.celesi, ...payload },
+  );
+  return parseJsonResponse(r);
+}
+
+async function rejectPublicServiceRequest(db, id, payload = {}) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
+  const r = await requestJson(
+    "POST",
+    `/api/v1/hotel/service-requests/${encodeURIComponent(id)}/reject`,
+    { celesi: cfg.celesi, ...payload },
+  );
+  return parseJsonResponse(r);
+}
+
 module.exports = {
   LAST_SYNC_KEY,
   listPublicBookingRequestsPending,
@@ -694,6 +726,9 @@ module.exports = {
   acceptPublicBookingRequest,
   applyPublicBookingsPendingFromCloud,
   deletePublicBookingRequest,
+  listPublicServiceRequestsPending,
+  acceptPublicServiceRequest,
+  rejectPublicServiceRequest,
   pushRoomsToCloud,
   pushGuestsToCloud,
   pushGuestStaySnapshotToCloud,

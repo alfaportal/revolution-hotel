@@ -3521,6 +3521,47 @@ app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterO
   }
 });
 
+/** Kërkesa publike bazen/spa — POS recepsion (burimi kryesor i pranimit). */
+app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, async (_req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const data = await hotelCloudSync.listPublicServiceRequestsPending(db, { status: "open" });
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, requests: [] });
+  }
+});
+
+app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
+    const data = await hotelCloudSync.acceptPublicServiceRequest(db, req.params.id, {
+      staff_name: staffName,
+      request_prepayment: req.body?.request_prepayment,
+    });
+    auditReq(req, "Shërbim publik pranuar", req.params.id);
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
+    const data = await hotelCloudSync.rejectPublicServiceRequest(db, req.params.id, {
+      staff_name: staffName,
+      staff_note: req.body?.staff_note || req.body?.reason || "",
+    });
+    auditReq(req, "Shërbim publik refuzuar", req.params.id);
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
