@@ -2932,6 +2932,30 @@ async function fetchReadyTableOrders(db) {
   }
 }
 
+/** Pas «E mora» te kamarieri — hiq porositë nga statusi ready në cloud. */
+async function acknowledgeReadyOrdersPicked(db, orderIds) {
+  const cfg = getConfig(db);
+  const { slug, key } = getKitchenAccess(db);
+  const ids = (orderIds || []).map((id) => String(id || "").trim()).filter(Boolean);
+  if (!cfg.serverUrl || !slug || !key || !ids.length) return { ok: false, updated: 0 };
+  try {
+    const res = await requestJson(
+      "POST",
+      cfg.serverUrl,
+      `/api/kds/${encodeURIComponent(slug)}/bar/orders/ready-ack?key=${encodeURIComponent(key)}`,
+      { order_ids: ids },
+      { timeoutMs: 10000 },
+    );
+    const parsed = parseCloudJson(res.data);
+    if (res.status < 400 && parsed.ok !== false) {
+      return { ok: true, updated: Number(parsed.updated) || 0 };
+    }
+    return { ok: false, updated: 0 };
+  } catch (err) {
+    return { ok: false, updated: 0, message: err.message };
+  }
+}
+
 async function fetchOnlineSlotLayout(db, { waiterId = "", waiterName = "", unfiltered = false } = {}) {
   const cfg = getConfig(db);
   const { slug, key } = getKitchenAccess(db);
@@ -3691,6 +3715,7 @@ module.exports = {
   updateCloudReservationStatus,
   syncLocalCancelledFromCloud,
   fetchReadyTableOrders,
+  acknowledgeReadyOrdersPicked,
   fetchLiveCloudTables,
   ensureCloudTableImported,
   resolveCloudOrderPayload,

@@ -3077,7 +3077,8 @@ function broadcastWaiterReadyIfChanged(orders) {
 async function pollWaiterReadyOrdersBroadcast() {
   if (!cloudSync.isCloudConfigured(db)) return;
   try {
-    const orders = await cloudSync.fetchReadyTableOrders(db);
+    const raw = await cloudSync.fetchReadyTableOrders(db);
+    const orders = filterReadyOrdersForWaiterAlarm(raw);
     broadcastWaiterReadyIfChanged(orders);
   } catch {
     /* ignore */
@@ -3139,10 +3140,17 @@ app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (_req, res) =>
   }
 });
 
-app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, (req, res) => {
+app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) => {
   const ids = Array.isArray(req.body?.order_ids) ? req.body.order_ids : [];
   ids.forEach(id => _seenReadyOrderIds.add(String(id)));
   persistWaiterReadyDismissedIds(_seenReadyOrderIds);
+  try {
+    if (cloudSync.isCloudConfigured(db) && ids.length) {
+      await cloudSync.acknowledgeReadyOrdersPicked(db, ids);
+    }
+  } catch (err) {
+    console.warn("[ready-dismiss] cloud ack:", err?.message || err);
+  }
   res.json({ ok: true, dismissed: ids.length });
 });
 

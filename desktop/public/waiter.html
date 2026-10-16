@@ -2045,7 +2045,7 @@
     let _readyAlarmActive = false;
     let _readyAlarmOrderIds = [];
     let _readyAlarmRepeatTimer = null;
-    let _readyLastDismissMs = 0; // debounce: mos ri-shfaq për 60s pas dismiss
+    let _readyLastDismissMs = 0;
 
     function playReadyBeep() {
       dridhPorosieWaiter();
@@ -2110,10 +2110,9 @@
 
     async function ngarkoPorosiGati() {
       try {
-        // Mos ri-kontroll brenda 60s pas dismiss
-        if (Date.now() - _readyLastDismissMs < 60000) return;
+        if (_readyAlarmActive) return;
         const data = await api("/api/waiter/orders/ready-check");
-        if (data.has_ready && (data.orders?.length ?? 0) > 0 && !_readyAlarmActive) {
+        if (data.has_ready && (data.orders?.length ?? 0) > 0) {
           showReadyAlarm(data.orders);
         }
       } catch { /* cloud offline */ }
