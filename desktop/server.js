@@ -408,6 +408,22 @@ const { buildEscPosFromPlainText } = require("./receipt-text");
 const cloudSync = require("./cloud-sync");
 const cloudAutoSync = require("./cloud-auto-sync");
 const onlineOrdersWatcher = require("./online-orders-watcher");
+
+/* ── Njoftimet "faturë në dhomë" — recepsioni i lexon me poll ────────── */
+const _roomChargeNotifs = [];
+const ROOM_CHARGE_NOTIF_TTL = 90_000;
+function pushRoomChargeNotification(info) {
+  _roomChargeNotifs.push({ ...info, ts: Date.now() });
+  while (_roomChargeNotifs.length > 50) _roomChargeNotifs.shift();
+}
+function drainRoomChargeNotifications() {
+  const now = Date.now();
+  while (_roomChargeNotifs.length && now - _roomChargeNotifs[0].ts > ROOM_CHARGE_NOTIF_TTL) {
+    _roomChargeNotifs.shift();
+  }
+  const out = _roomChargeNotifs.splice(0, _roomChargeNotifs.length);
+  return out;
+}
 const license = require("./license");
 const receiptPrint = require("./receipt-print");
 const { printClosedTableReceipt } = require("./close-table-print");
@@ -1073,7 +1089,7 @@ async function ensureCloudTableImportedForCheckout(dbRef, tableNumber, waiterNam
   }
 }
 
-/** Cloud pas mbylljes lokale — mos blloko pagesën; mos table-free kur kuzhina mbetet active. */
+/** Cloud pas mbylljes lokale — mos blloko pagesën; lirim tavoline/slot sapo cloud mbyll. */
 function scheduleCloudAfterTableClose(db, {
   tableId,
   order,
@@ -1104,11 +1120,7 @@ function scheduleCloudAfterTableClose(db, {
         } finally {
           purgeClosedCloudOrdersFromWatcher(ids);
         }
-        if (
-          table?.number
-          && !closeRes?.kitchen_kept
-          && typeof db.isPhysicalVenueTable === "function"
-        ) {
+        if (table?.number && typeof db.isPhysicalVenueTable === "function") {
           const tRow = db.db.prepare("SELECT * FROM tables WHERE id = ?").get(Number(tableId));
           if (tRow && db.isPhysicalVenueTable(tRow)) {
             await cloudSync.pushTableFree(db, table.number);
@@ -4280,6 +4292,11 @@ app.get("/api/waiter/rooms", auth, staffOrAdmin, (_req, res) => {
   res.json(db.listRoomsWithGuests());
 });
 
+/** Njoftimet kur tavolina faturohet në dhomë — recepsioni poll. */
+app.get("/api/waiter/room-charge-notifications", auth, staffOrAdmin, (_req, res) => {
+  res.json({ ok: true, notifications: drainRoomChargeNotifications() });
+});
+
 app.post("/api/waiter/rooms/:id/check-in", auth, staffOrAdmin, (req, res) => {
   try {
     const result = db.checkInGuest({
@@ -4770,6 +4787,17 @@ app.post("/api/admin/room-reservations/:id/check-in", auth, adminOnly, (req, res
   }
 });
 
+/** Rezervime / dhoma nga cloud (telefon recepsion) → SQLite para listës në POS. */
+app.post("/api/waiter/hotel-pms/pull-cloud", auth, staffOrAdmin, async (_req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const result = await hotelCloudSync.pullHotelPmsFromCloudOnly(db);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message || "Gabim." });
+  }
+});
+
 /** Rezervime dhomash — recepsioni (SQLite lokal) */
 app.get("/api/waiter/room-reservations", auth, staffOrAdmin, (req, res) => {
   try {
@@ -5018,6 +5046,15 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       "Faturë në dhomë",
       `T${table?.number || "?"} → Dhoma ${room.room_number} · ${guest.guest_name} · ${order.total}€`,
     );
+
+    pushRoomChargeNotification({
+      table_number: table?.number || 0,
+      room_number: room.room_number,
+      guest_name: guest.guest_name,
+      total: Number(order.total) || 0,
+      waiter_name: waiterName,
+      source: "pos",
+    });
 
     const bill = onSecondaryRegister ? null : db.getCheckoutPreview(roomId).bill;
     res.json({
@@ -10133,12 +10170,285 @@ function listLanIPv4Addresses() {
   return out.sort((a, b) => (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2)).map((x) => x.ip);
 }
 
-/** SYNC RESET — relay/snapshot cloud + master tick hequr. */
+const CATALOG_SNAPSHOT_PUBLISH_MS = 5 * 60 * 1000;
+const RELAY_TICK_ACTIVE_MS = 10 * 1000;
+const RELAY_TICK_IDLE_STEPS_MS = [10 * 1000, 30 * 1000, 60 * 1000, 120 * 1000, 180 * 1000];
+const RELAY_TICK_MAX_ONLINE_MS = 60 * 1000;
+const RELAY_TICK_MAX_OFFLINE_MS = 180 * 1000;
+const RELAY_TICK_UNAVAILABLE_MS = 10 * 60 * 1000;
+const RELAY_DIRTY_PUBLISH_MS = 120 * 1000;
+const RELAY_PAIRING_WINDOW_MS = 30 * 60 * 1000;
+const RELAY_PRESENCE_ONLINE_MS = 90 * 1000;
+
+let masterCloudRelayBusy = false;
 let terminalLanSyncInstance = null;
-function markMasterCatalogDirty() {}
-function markMasterRelayDirty() {}
-function scheduleMasterCloudRelay(_delayMs) {}
-async function publishMasterCatalogSnapshots() {}
+const catalogSnapshotPublished = {};
+const relayPresenceSeen = new Map();
+const masterCatalogDirty = { at: 0 };
+const masterCloudRelay = {
+  timer: null,
+  idleStep: 0,
+  pairingUntil: 0,
+  lastSecondaryOnline: false,
+};
+
+function markMasterCatalogDirty() {
+  if (terminalRegisterNumberLocal() >= 2) return;
+  masterCatalogDirty.at = Date.now();
+  scheduleMasterCloudRelay(400);
+}
+
+function markMasterRelayDirty() {
+  markMasterCatalogDirty();
+}
+
+function isRelayPresenceOnline(entry) {
+  const t = Date.parse(entry?.updated_at || "");
+  if (!Number.isFinite(t) || Date.now() - t > RELAY_PRESENCE_ONLINE_MS) return false;
+  if (Math.floor(Number(entry?.register_number) || 0) < 2) return false;
+  return entry?.body?.online !== false;
+}
+
+function computeMasterCloudRelayDelayMs(result) {
+  if (result?.unavailable) return RELAY_TICK_UNAVAILABLE_MS;
+  if (result?.hadQueueRows || result?.hadImport) {
+    masterCloudRelay.idleStep = 0;
+    return RELAY_TICK_ACTIVE_MS;
+  }
+  masterCloudRelay.idleStep = Math.min(
+    masterCloudRelay.idleStep + 1,
+    RELAY_TICK_IDLE_STEPS_MS.length - 1,
+  );
+  let next = RELAY_TICK_IDLE_STEPS_MS[masterCloudRelay.idleStep];
+  const online = !!result?.secondaryOnline;
+  masterCloudRelay.lastSecondaryOnline = online;
+  if (online) {
+    next = Math.min(next, RELAY_TICK_MAX_ONLINE_MS);
+  } else {
+    next = RELAY_TICK_MAX_OFFLINE_MS;
+  }
+  if (Date.now() < masterCloudRelay.pairingUntil) {
+    next = Math.min(next, RELAY_TICK_ACTIVE_MS);
+  }
+  return next;
+}
+
+function scheduleMasterCloudRelay(delayMs) {
+  if (terminalRegisterNumberLocal() >= 2) return;
+  if (masterCloudRelay.timer) clearTimeout(masterCloudRelay.timer);
+  masterCloudRelay.timer = setTimeout(async () => {
+    masterCloudRelay.timer = null;
+    let result = { skipped: true };
+    try {
+      result = await masterCloudRelayTick();
+    } catch (e) {
+      console.warn("[relay] Kryesorja:", e.message || e);
+      result = { unavailable: e.code === "RELAY_UNAVAILABLE" };
+    }
+    if (result.skipped) {
+      scheduleMasterCloudRelay(RELAY_TICK_IDLE_STEPS_MS[2]);
+      return;
+    }
+    scheduleMasterCloudRelay(computeMasterCloudRelayDelayMs(result));
+  }, Math.max(0, delayMs));
+}
+
+async function publishMasterCatalogSnapshots() {
+  if (terminalRegisterNumberLocal() >= 2) return;
+  const celesi = storedLicenseKeyForCloud();
+  if (!celesi) return;
+  try {
+    const terminalRelay = require("./terminal-relay");
+    const staff = buildTerminalStaffList();
+    const menuPayload = buildTerminalMenuPayload();
+    const servicesPayload = buildTerminalServicesPayload();
+    const items = db.getStockForTerminal();
+    const port = Number(process.env.ACTUAL_PORT || process.env.PORT || 3001);
+    const snapshots = {
+      master: {
+        device_id: ownTerminalDeviceId(),
+        lan_hosts: listLanIPv4Addresses(),
+        port,
+        app_version: db.getVersionInfo().app_version || db.getVersionInfo().version,
+      },
+    };
+    if (staff.length) snapshots.staff = { staff };
+    if (menuPayload.categories?.length && menuPayload.items?.length) {
+      snapshots.menu = { categories: menuPayload.categories, items: menuPayload.items };
+    }
+    if (servicesPayload.services?.length) {
+      snapshots.services = {
+        categories: servicesPayload.categories || [],
+        services: servicesPayload.services,
+        groups: servicesPayload.groups || [],
+      };
+    }
+    snapshots.stock = { items: items || [], relay_acked_through: db.getRelayAckedThrough() };
+    const r = await terminalRelay.publishSnapshots({
+      celesi,
+      deviceId: ownTerminalDeviceId(),
+      snapshots,
+      published: catalogSnapshotPublished,
+    });
+    if (r.published) {
+      Object.assign(catalogSnapshotPublished, r.hashes);
+      console.log(`[relay-snapshots] Kryesorja → cloud: ${(r.kinds || []).join(", ")}`);
+    }
+  } catch (e) {
+    if (e.code !== "RELAY_UNAVAILABLE") console.warn("[relay-snapshots] Kryesorja:", e.message || e);
+  }
+}
+
+async function masterCloudRelayTick() {
+  if (masterCloudRelayBusy || terminalRegisterNumberLocal() >= 2) return { skipped: true };
+  const celesi = storedLicenseKeyForCloud();
+  if (!celesi) return { skipped: true };
+  masterCloudRelayBusy = true;
+  let secondaryOnline = false;
+  let hadQueueRows = false;
+  let hadImport = false;
+  let unavailable = false;
+  try {
+    const terminalRelay = require("./terminal-relay");
+    const deviceId = ownTerminalDeviceId();
+
+    try {
+      const pres = await terminalRelay.fetchRelayPresence({ celesi, deviceId });
+      for (const p of pres.presence || []) {
+        if (isRelayPresenceOnline(p)) secondaryOnline = true;
+        if (!p.body || !p.updated_at || Math.floor(Number(p.register_number) || 0) < 2) continue;
+        const dev = String(p.device_id || "").trim().toUpperCase();
+        const seenKey = `${dev}:${p.updated_at}`;
+        if (relayPresenceSeen.get(dev) === seenKey) continue;
+        relayPresenceSeen.set(dev, seenKey);
+        try {
+          db.touchRemoteRegister(
+            dev,
+            p.register_number,
+            { ...p.body, via: "cloud", online: p.body.online !== false },
+            p.body.remote_ip || p.body.lan_ip || null,
+            p.updated_at,
+          );
+        } catch (e) {
+          console.warn(`[relay-presence] Arka ${p.register_number}:`, e.message);
+        }
+      }
+    } catch (e) {
+      if (e.code !== "RELAY_UNAVAILABLE") {
+        console.warn("[relay-presence] Kryesorja:", e.message || e);
+      } else {
+        unavailable = true;
+      }
+    }
+
+    const pulled = await terminalRelay.pullQueue({
+      celesi,
+      deviceId,
+      limit: 100,
+    });
+    hadQueueRows = (pulled.items || []).length > 0;
+    const ackIds = [];
+    const ackedThrough = db.getRelayAckedThrough();
+    let throughChanged = false;
+    for (const row of pulled.items || []) {
+      if (!row.body) {
+        console.warn(
+          `[relay] rreshti #${row.id} nga Arka ${row.register_number} nuk u hap (${row.error || ""}) — pa ack`,
+        );
+        continue;
+      }
+      const dev = String(row.source_device_id || "").trim().toUpperCase();
+      const reg = Math.floor(Number(row.register_number) || 0);
+      const maxRegRelay = db.getMaxRegisters();
+      if (!dev || reg < 2) continue;
+      if (reg > maxRegRelay) {
+        console.warn(`[relay] queue#${row.id} Arka ${reg} tejkalon max_registers=${maxRegRelay} — pa import`);
+        continue;
+      }
+      try {
+        db.touchRemoteRegister(
+          dev,
+          reg,
+          {
+            via: "cloud",
+            register_number: reg,
+            app_version: masterRemoteAppVersion(),
+          },
+          null,
+          row.created_at,
+        );
+      } catch (e) {
+        console.warn(`[relay] Arka ${reg} presence:`, e.message);
+      }
+      const source = { device_id: dev, register_number: reg };
+      let imported = false;
+      if (row.kind === "sale") {
+        const { accepted, rejected } = db.importSalesFromTerminal([row.body], source);
+        imported = accepted.length > 0 && rejected.length === 0;
+        if (imported) {
+          console.log(
+            `[relay] Arka ${reg} (${dev}) daily_log#${accepted[0]} u importua te Kryesorja (queue#${row.id})`,
+          );
+        } else if (rejected.length) {
+          console.warn(`[relay] queue#${row.id} shitje: ${rejected[0].gabim}`);
+        }
+      } else if (row.kind === "shift") {
+        const { accepted_shifts, rejected_shifts } = db.importShiftsFromTerminal([row.body], source);
+        imported = accepted_shifts.length > 0 && rejected_shifts.length === 0;
+        if (imported) {
+          console.log(
+            `[relay] Arka ${reg} (${dev}) ndërrimi#${accepted_shifts[0]} u importua te Kryesorja (queue#${row.id})`,
+          );
+        } else if (rejected_shifts.length) {
+          console.warn(`[relay] queue#${row.id} ndërrim: ${rejected_shifts[0].gabim}`);
+        }
+      } else if (row.kind === "room_charge") {
+        const { accepted, rejected } = db.importRoomChargesFromTerminal([row.body], source);
+        imported = accepted.length > 0 && rejected.length === 0;
+        if (imported) {
+          console.log(
+            `[relay] Arka ${reg} (${dev}) room_charge#${accepted[0]} u importua te Kryesorja (queue#${row.id})`,
+          );
+        } else if (rejected.length) {
+          console.warn(`[relay] queue#${row.id} room_charge: ${rejected[0].gabim}`);
+        }
+      }
+      if (imported) {
+        ackIds.push(row.id);
+        ackedThrough[dev] = Math.max(Number(ackedThrough[dev]) || 0, Number(row.id) || 0);
+        throughChanged = true;
+      }
+    }
+    if (throughChanged) db.setRelayAckedThrough(ackedThrough);
+    if (ackIds.length) {
+      const ack = await terminalRelay.ackQueueItems({
+        celesi,
+        deviceId,
+        ids: ackIds,
+        relayAckedThrough: throughChanged ? ackedThrough : null,
+      });
+      if (Number(ack.acked) !== ackIds.length) {
+        console.warn(`[relay] ack: u kërkuan ${ackIds.length}, u konfirmuan ${Number(ack.acked) || 0}`);
+      }
+    }
+    hadImport = ackIds.length > 0;
+
+    const needPublish =
+      (masterCatalogDirty.at && Date.now() - masterCatalogDirty.at < RELAY_DIRTY_PUBLISH_MS) ||
+      Date.now() < masterCloudRelay.pairingUntil ||
+      secondaryOnline;
+    if (needPublish) {
+      await publishMasterCatalogSnapshots();
+      if (masterCatalogDirty.at) masterCatalogDirty.at = 0;
+    }
+  } catch (e) {
+    if (e.code !== "RELAY_UNAVAILABLE") console.warn("[relay] Kryesorja (cloud):", e.message || e);
+    else unavailable = true;
+  } finally {
+    masterCloudRelayBusy = false;
+  }
+  return { hadQueueRows, hadImport, secondaryOnline, unavailable };
+}
 
 /** LAN: vetëm rrjet lokal, çelësi i licencës, dhe vetëm Kryesorja (arka1) përgjigjet. */
 function assertLanTerminalMaster(req, res) {
@@ -10357,6 +10667,13 @@ app.post("/api/terminal/report", (req, res) => {
   if (!/^[A-F0-9]{12}$/.test(deviceId) || deviceId === ownDevice || registerNumber < 2) {
     return res.status(400).json({ ok: false, gabim: "device_id / register_number i pavlefshëm." });
   }
+  const maxRegLan = db.getMaxRegisters();
+  if (registerNumber > maxRegLan) {
+    return res.status(400).json({
+      ok: false,
+      gabim: `Arka ${registerNumber} tejkalon limitin e licencës (${maxRegLan}).`,
+    });
+  }
   try {
     const status =
       req.body?.status && typeof req.body.status === "object"
@@ -10455,6 +10772,9 @@ app.post("/api/admin/generate-pair-code", auth, adminOnly, async (req, res) => {
         gabim: parsed.gabim || parsed.message || "Nuk u gjenerua kodi.",
       });
     }
+    masterCloudRelay.pairingUntil = Date.now() + RELAY_PAIRING_WINDOW_MS;
+    markMasterCatalogDirty();
+    scheduleMasterCloudRelay(400);
     res.status(201).json(parsed);
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message || "Gabim cloud." });
@@ -11020,6 +11340,19 @@ function onServerListening(server, port) {
       terminalLanSyncInstance.startTerminalLanSync();
     } catch (e) {
       console.warn("[lan-sync] start:", e.message);
+    }
+    try {
+      scheduleMasterCloudRelay(8000);
+    } catch (e) {
+      console.warn("[relay] schedule:", e.message);
+    }
+    if (terminalRegisterNumberLocal() < 2) {
+      setTimeout(() => {
+        publishMasterCatalogSnapshots().catch((e) => console.warn("[relay-snapshots]", e.message || e));
+      }, 12000);
+      setInterval(() => {
+        publishMasterCatalogSnapshots().catch((e) => console.warn("[relay-snapshots]", e.message || e));
+      }, CATALOG_SNAPSHOT_PUBLISH_MS);
     }
     try {
       const {

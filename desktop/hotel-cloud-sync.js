@@ -568,19 +568,32 @@ async function applyPublicBookingsPendingFromCloud(db) {
   return { ok: true, applied, failed, pending: requests.length };
 }
 
+/** Vetëm cloud → PC (rezervime nga telefon/web) — lejohet edhe Arka 2+. */
+async function pullHotelPmsFromCloudOnly(db) {
+  if (!db) return { ok: false, message: "DB mungon." };
+  if (!cloudSync.isCloudConfigured(db)) {
+    return { ok: false, skipped: true, message: "Cloud nuk është konfiguruar." };
+  }
+  const pull = await pullHotelDataFromCloud(db);
+  try {
+    if (typeof db.flushDatabase === "function") db.flushDatabase();
+  } catch {
+    /* ignore */
+  }
+  return { ok: true, pull };
+}
+
 async function fullHotelSync(db) {
   if (!db) return { ok: false, message: "DB mungon." };
   if (!cloudSync.isCloudConfigured(db)) {
     return { ok: false, skipped: true, message: "Cloud nuk është konfiguruar." };
   }
+  let isSecondaryRegister = false;
   try {
     const license = require("./license");
-    if (license.terminalRegisterNumber() >= 2) {
-      return {
-        ok: true,
-        skipped: true,
-        message: "Arka 2+ — PMS cloud push/pull vetëm nga Kryesorja.",
-      };
+    isSecondaryRegister = license.terminalRegisterNumber() >= 2;
+    if (isSecondaryRegister) {
+      return pullHotelPmsFromCloudOnly(db);
     }
   } catch {
     /* ignore */
@@ -676,5 +689,6 @@ module.exports = {
   pushServicesToCloud,
   pushHotelQrVenuesToCloud,
   pullHotelDataFromCloud,
+  pullHotelPmsFromCloudOnly,
   fullHotelSync,
 };

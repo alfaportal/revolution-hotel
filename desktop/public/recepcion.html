@@ -854,6 +854,23 @@
 
   <div id="print-fature" class="print-receipt"></div>
 
+  <!-- Toast njoftimi faturë-në-dhomë -->
+  <div id="room-charge-toast" class="room-charge-toast hidden" role="status" aria-live="polite"></div>
+  <style>
+    .room-charge-toast {
+      position: fixed; top: 1rem; right: 1rem; z-index: 15000;
+      display: flex; flex-direction: column; gap: 0.35rem; pointer-events: none;
+    }
+    .room-charge-toast.hidden { display: none; }
+    .rc-toast-item {
+      background: linear-gradient(135deg, #92400e 0%, #f59e0b 100%);
+      color: #fff; padding: 0.65rem 1rem; border-radius: 12px;
+      font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      animation: rcToastIn 0.35s ease;
+    }
+    @keyframes rcToastIn { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
+  </style>
+
   <script src="/js/app.js?v=8"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
@@ -1262,6 +1279,36 @@
       setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 8_000);
     }
 
+    /* ── Njoftim "faturë në dhomë" — toast recepsionit ─────────────────── */
+    function showRoomChargeToast(n) {
+      const wrap = document.getElementById("room-charge-toast");
+      if (!wrap) return;
+      const div = document.createElement("div");
+      div.className = "rc-toast-item";
+      div.textContent = `🏨 T${n.table_number || "?"} → Dhoma ${n.room_number} · ${n.guest_name} · ${Number(n.total || 0).toFixed(2)} €`;
+      wrap.classList.remove("hidden");
+      wrap.appendChild(div);
+      setTimeout(() => {
+        div.remove();
+        if (!wrap.children.length) wrap.classList.add("hidden");
+      }, 8000);
+    }
+
+    async function pollRoomChargeNotifications() {
+      try {
+        const data = await api("/api/waiter/room-charge-notifications");
+        for (const n of data.notifications || []) {
+          showRoomChargeToast(n);
+          if (typeof window.staffOrderAlert === "function") window.staffOrderAlert("charge");
+        }
+      } catch { /* offline */ }
+    }
+
+    function startRoomChargePolling() {
+      pollRoomChargeNotifications().catch(() => {});
+      setInterval(() => pollRoomChargeNotifications().catch(() => {}), 8_000);
+    }
+
     document.getElementById("btn-recep-online-pop-close")?.addEventListener("click", mbyllRecepOnlinePop);
     document.getElementById("recep-online-backdrop")?.addEventListener("click", mbyllRecepOnlinePop);
     document.getElementById("btn-recep-online-accept")?.addEventListener("click", pranoPorosiSherbimiRecep);
@@ -1658,7 +1705,16 @@
       }
     }
 
+    async function syncRecepHotelFromCloud() {
+      try {
+        await api("/api/waiter/hotel-pms/pull-cloud", { method: "POST", body: "{}" });
+      } catch (e) {
+        console.warn("syncRecepHotelFromCloud:", e.message || e);
+      }
+    }
+
     async function ngarkoRezervimetRecep() {
+      await syncRecepHotelFromCloud();
       const [listRes, statsRes] = await Promise.all([
         api("/api/waiter/room-reservations?status=active&limit=300"),
         api("/api/waiter/room-reservations/today-stats"),
@@ -2386,6 +2442,7 @@
     }
 
     async function ngarkoDhomat() {
+      await syncRecepHotelFromCloud();
       const rooms = await api("/api/waiter/rooms");
       lastRooms = Array.isArray(rooms) ? rooms : [];
       renderRoomsGrid(lastRooms);
@@ -3119,6 +3176,7 @@
       await ensureRecepShiftOpen();
       setRecepView(initialView);
       startRecepGuestServicePolling();
+      startRoomChargePolling();
     })();
   </script>
 </body>

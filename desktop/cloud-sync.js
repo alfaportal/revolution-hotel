@@ -701,6 +701,10 @@ function buildSalePayload(db, order, opts = {}) {
   };
   if (orderedAt) payload.ordered_at = orderedAt;
   if (closedAt) payload.closed_at = closedAt;
+  if (saleStatus === "closed") {
+    payload.pos_finalize_table_close = true;
+    payload.waiter_table_close = true;
+  }
 
   const cloudUuid = String(order.cloud_order_id || "").trim();
   if (cloudUuid) {
@@ -1309,6 +1313,42 @@ function pushTableFree(db, tableNumber) {
 /** @deprecated — përdor reconcileAllTablesWithCloud */
 function pushAllActiveTables(db) {
   reconcileAllTablesWithCloud(db);
+}
+
+/**
+ * Pas merge POS + WEB-WAITER: anulo rreshtin WEB-WAITER në cloud
+ * që cloud të mos bashkojë dy rreshta (dyfishim artikujsh).
+ * POS-i pushon artikujt e bashkuar me kredencialet e veta.
+ */
+function cancelMergedWaiterCloudOrder(db, cloudOrder) {
+  const cfg = getConfig(db);
+  if (!cfg.celesi) return;
+  const localOrderId = String(cloudOrder?.local_order_id || "").trim();
+  const deviceId = String(cloudOrder?.device_id || "WEB-WAITER").trim().toUpperCase();
+  const tableNum = Number(cloudOrder?.table_number) || 0;
+  if (!localOrderId) return;
+
+  requestJson("POST", cfg.serverUrl, "/api/v1/sales/update", {
+    celesi: cfg.celesi,
+    device_id: deviceId,
+    local_order_id: localOrderId,
+    table_number: tableNum,
+    items: [],
+    total: 0,
+    status: "cancelled",
+    waiter_name: cloudOrder?.waiter_name || "",
+    force_kitchen_cancel: true,
+  })
+    .then(r => {
+      if (r.status >= 400) {
+        console.warn("[cloud] cancel merged WEB-WAITER:", r.status, r.data?.slice?.(0, 120));
+      } else {
+        console.log("[cloud] WEB-WAITER merged row cancelled — T" + tableNum);
+      }
+    })
+    .catch(err => {
+      console.warn("[cloud] cancel merged WEB-WAITER dështoi:", err.message);
+    });
 }
 
 function pushTableCancelled(db, tableId) {
@@ -2931,9 +2971,9 @@ async function syncLocalCancelledFromCloud(db) {
         if (!cloudFreeTableNums.has(tableNum)) continue;
         if (pendingClosePrintTables.has(tableNum)) continue;
         const srcHint = String(order.source_label || order.waiter_name || "").toLowerCase();
-        if (/qr|kiosk|tavolin/.test(srcHint)) {
+        if (/qr|kiosk|tavolin|kamarier/.test(srcHint)) {
           console.log(
-            `[sync] T${tableNum} SKIP auto-mbyllje — porosi QR/kiosk lokale, prit PRANO/mbyllje manuale order#${order.id}`,
+            `[sync] T${tableNum} SKIP auto-mbyllje — porosi QR/kiosk/kamarier lokale, prit mbyllje manuale order#${order.id}`,
           );
           continue;
         }
@@ -3358,6 +3398,8 @@ async function closeCloudTableOrdersForPayment(db, tableNumber, opts = {}) {
     payment_method: db.normalizePaymentMethod(opts.payment_method || "cash"),
     closed_at: now,
     ordered_at: primary.ordered_at || primary.created_at || now,
+    pos_finalize_table_close: true,
+    waiter_table_close: true,
   };
 
   let closed = 0;
@@ -3371,15 +3413,10 @@ async function closeCloudTableOrdersForPayment(db, tableNumber, opts = {}) {
     );
     const parsed = parseCloudJson(res.data);
     const saleStatus = String(parsed?.sale?.status || "").toLowerCase();
-    const kitchenStillActive =
-      saleStatus === "ordered" || saleStatus === "ready";
     if (res.status < 400) closed = 1;
     else console.warn("[cloud] close table sale:", res.status, res.data?.slice?.(0, 120));
-    if (kitchenStillActive) {
-      console.log(
-        `[cloud] T${num} pagesë — porosia mbetet te kuzhina (${saleStatus}), skip table-free`,
-      );
-      return { closed, kitchen_kept: true };
+    if (saleStatus && saleStatus !== "closed" && saleStatus !== "cancelled") {
+      console.warn(`[cloud] T${num} mbyllje — status cloud: ${saleStatus}`);
     }
   } catch (err) {
     console.warn("[cloud] close table sale:", err.message);
@@ -3807,6 +3844,7 @@ module.exports = {
   pushTableFree,
   clearStuckCloudTableOrder,
   pushTableCancelled,
+  cancelMergedWaiterCloudOrder,
   pushCatalog,
   pushCatalogAsync,
   pushStaffLocalLinksAsync,
