@@ -1707,9 +1707,14 @@
 
     async function syncRecepHotelFromCloud() {
       try {
-        await api("/api/waiter/hotel-pms/pull-cloud", { method: "POST", body: "{}" });
+        const r = await api("/api/waiter/hotel-pms/pull-cloud?full=1", { method: "POST", body: "{}" });
+        if (r && r.skipped && r.message) {
+          showMsg("recep-rooms-msg", r.message, false);
+        }
       } catch (e) {
-        console.warn("syncRecepHotelFromCloud:", e.message || e);
+        const msg = e.message || String(e);
+        console.warn("syncRecepHotelFromCloud:", msg);
+        showMsg("recep-rooms-msg", "Cloud → POS: " + msg, false);
       }
     }
 

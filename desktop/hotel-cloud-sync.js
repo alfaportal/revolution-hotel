@@ -467,21 +467,24 @@ function applyPullPayload(db, data) {
   return applied;
 }
 
-async function pullHotelDataFromCloud(db) {
+async function pullHotelDataFromCloud(db, { forceFull = false } = {}) {
   if (!cloudSync.isCloudConfigured(db)) {
     return { ok: false, skipped: true, applied: {} };
   }
   const cfg = getCfg(db);
   if (!cfg.celesi) return { ok: false, skipped: true, applied: {} };
 
-  const since = String(db.getSetting(LAST_SYNC_KEY, DEFAULT_SINCE) || DEFAULT_SINCE).trim()
+  let since = String(db.getSetting(LAST_SYNC_KEY, DEFAULT_SINCE) || DEFAULT_SINCE).trim()
     || DEFAULT_SINCE;
+  if (forceFull) since = DEFAULT_SINCE;
   const path =
     `/api/v1/hotel/sync/pull?since=${encodeURIComponent(since)}`
     + `&celesi=${encodeURIComponent(cfg.celesi)}`;
   const r = await requestJson("GET", path, null);
   const parsed = parseJsonResponse(r);
   const applied = applyPullPayload(db, parsed);
+  const syncStamp = new Date().toISOString();
+  db.setSetting(LAST_SYNC_KEY, syncStamp);
   return {
     ok: true,
     since,
@@ -569,12 +572,12 @@ async function applyPublicBookingsPendingFromCloud(db) {
 }
 
 /** Vetëm cloud → PC (rezervime nga telefon/web) — lejohet edhe Arka 2+. */
-async function pullHotelPmsFromCloudOnly(db) {
+async function pullHotelPmsFromCloudOnly(db, { forceFull = false } = {}) {
   if (!db) return { ok: false, message: "DB mungon." };
   if (!cloudSync.isCloudConfigured(db)) {
     return { ok: false, skipped: true, message: "Cloud nuk është konfiguruar." };
   }
-  const pull = await pullHotelDataFromCloud(db);
+  const pull = await pullHotelDataFromCloud(db, { forceFull });
   try {
     if (typeof db.flushDatabase === "function") db.flushDatabase();
   } catch {
@@ -593,7 +596,19 @@ async function fullHotelSync(db) {
     const license = require("./license");
     isSecondaryRegister = license.terminalRegisterNumber() >= 2;
     if (isSecondaryRegister) {
-      return pullHotelPmsFromCloudOnly(db);
+      const pull = await pullHotelDataFromCloud(db);
+      const push = {
+        rooms: await pushRoomsToCloud(db),
+        guests: await pushGuestsToCloud(db),
+        reservations: await pushReservationsToCloud(db),
+        housekeeping: await pushHousekeepingToCloud(db),
+      };
+      try {
+        if (typeof db.flushDatabase === "function") db.flushDatabase();
+      } catch {
+        /* ignore */
+      }
+      return { ok: true, secondary_register: true, pull, push };
     }
   } catch {
     /* ignore */

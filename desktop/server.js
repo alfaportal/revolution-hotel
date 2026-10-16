@@ -4788,10 +4788,13 @@ app.post("/api/admin/room-reservations/:id/check-in", auth, adminOnly, (req, res
 });
 
 /** Rezervime / dhoma nga cloud (telefon recepsion) → SQLite para listës në POS. */
-app.post("/api/waiter/hotel-pms/pull-cloud", auth, staffOrAdmin, async (_req, res) => {
+app.post("/api/waiter/hotel-pms/pull-cloud", auth, staffOrAdmin, async (req, res) => {
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
-    const result = await hotelCloudSync.pullHotelPmsFromCloudOnly(db);
+    const forceFull =
+      String(req.query?.full || req.body?.full || "").trim() === "1"
+      || String(req.body?.force_full || "").trim() === "1";
+    const result = await hotelCloudSync.pullHotelPmsFromCloudOnly(db, { forceFull });
     res.json(result);
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message || "Gabim." });
