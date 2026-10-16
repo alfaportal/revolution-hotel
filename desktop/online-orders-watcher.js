@@ -512,9 +512,20 @@ async function tick(db, printBarTicket) {
           order.accepted_by_waiter_name || order.accepted_by || order.waiter_name || "",
         ).trim();
         if (isQrTable) {
-          if (!wName || typeof db.isLocalWaiterStaffName !== "function" || !db.isLocalWaiterStaffName(wName)) {
+          const staffOk =
+            typeof db.isLocalWaiterStaffName === "function"
+              ? db.isLocalWaiterStaffName(wName)
+              : !!(typeof db.findStaffByNameInsensitive === "function"
+                && db.findStaffByNameInsensitive(wName));
+          if (!staffOk) {
+            console.warn("[online-orders] QR skip import — emri i pranuesit nuk është staf lokal:", wName || "(bosh)");
             continue;
           }
+          const localStaff =
+            typeof db.findStaffByNameInsensitive === "function"
+              ? db.findStaffByNameInsensitive(wName)
+              : null;
+          if (localStaff?.name) wName = String(localStaff.name).trim();
         } else if (!wName) {
           wName = "Kamarier";
         }

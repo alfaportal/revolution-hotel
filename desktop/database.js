@@ -9424,6 +9424,13 @@ function findStaffByNameInsensitive(name) {
   return sqlite.prepare("SELECT * FROM staff WHERE LOWER(name) = LOWER(?) AND active = 1").get(trimmed);
 }
 
+/** Emër kamarieri që ekziston te stafi lokal (pas pranimit QR nga cloud). */
+function isLocalWaiterStaffName(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return false;
+  return !!(findStaffByName(trimmed) || findStaffByNameInsensitive(trimmed));
+}
+
 function getOpenShift(staffId) {
   const id = Number(staffId);
   if (!id) return null;
@@ -14988,6 +14995,7 @@ function getVersionInfo() {
     deleteStaff,
     findStaffByName,
     findStaffByNameInsensitive,
+    isLocalWaiterStaffName,
     ensureOpenShift,
     getOpenShift,
     openWaiterShiftWithCash,

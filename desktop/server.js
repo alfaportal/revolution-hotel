@@ -478,7 +478,7 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
     }
     if (!slipItems.length) continue;
     const batchNo = db.recordPrintedBatch(order.id, order.items_json);
-    void autoPrintOrderSlip(db, {
+    await autoPrintOrderSlip(db, {
       tableNumber: tableNum || row.table_id,
       waiterName: row.waiter_name || waiterName,
       items: slipItems,
@@ -758,12 +758,19 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   if (tableImports.length) {
     await finalizeImportedCloudOrders(tableImports, waiterName);
+    const slipCloudIds = [];
+    for (let i = 0; i < ordersBefore.length; i++) {
+      const r = imported[i];
+      if (r?.ok && r.table_id && !r.room_menu && !r.guest_service && ordersBefore[i]?.id) {
+        slipCloudIds.push(String(ordersBefore[i].id));
+      }
+    }
+    if (slipCloudIds.length) onlineOrdersWatcher.markOrdersPrinted(db, slipCloudIds);
   }
 
   onlineOrdersWatcher.persistAcknowledged(db, ids);
   db.removePendingCloudOrders(ids);
   onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
-  onlineOrdersWatcher.markOrdersPrinted(db, ids);
 
   if (tableImports.length) {
     for (let i = 0; i < ordersBefore.length; i++) {
