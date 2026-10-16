@@ -447,6 +447,240 @@ function isPosAcceptQueueOrder(o, db) {
   return (Number(o?.table_number) || 0) > 0;
 }
 
+function tableNumFromCloudOrder(o, db) {
+  if (typeof db.parseTableNumberFromCloudOrder === "function") {
+    return db.parseTableNumberFromCloudOrder(o);
+  }
+  return Number(o?.table_number) || 0;
+}
+
+/** A duhet auto-import (e njëjta logjikë si te tick). */
+function isOrderEligibleForAutoImport(o, db) {
+  if (!o?.id) return false;
+  const tableNum = tableNumFromCloudOrder(o, db);
+  if (tableNum <= 0) return false;
+  const device = String(o.device_id || "").trim().toUpperCase();
+  if (device === "WEB-WAITER") {
+    if (isCloudWaiterDisabled(db)) {
+      console.log("[watcher] SKIP WEB-WAITER import — cloud kamarieri i çaktivizuar");
+      return false;
+    }
+    return true;
+  }
+  if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
+    return false;
+  }
+  if (
+    typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(o)
+    && typeof db.isCloudOrderAcceptedForImport === "function"
+    && !db.isCloudOrderAcceptedForImport(o)
+  ) {
+    return false;
+  }
+  if (isExplicitlyAccepted(o, db) && isPosAcceptQueueOrder(o, db)) return true;
+  return false;
+}
+
+function mergeKitchenSseIntoOrder(order, payload) {
+  if (!order) return null;
+  const acceptedBy = String(payload?.accepted_by || payload?.accepted_by_waiter_name || "").trim();
+  const device = String(order.device_id || payload?.device_id || "").trim().toUpperCase();
+  const tableNum = Number(order.table_number) || Number(payload?.table_number) || 0;
+  const merged = {
+    ...order,
+    ...(device ? { device_id: device } : {}),
+    ...(tableNum > 0 ? { table_number: tableNum } : {}),
+  };
+  if (acceptedBy) {
+    merged.accepted_by_waiter_name = String(merged.accepted_by_waiter_name || acceptedBy).trim() || acceptedBy;
+    merged.accepted_by = String(merged.accepted_by || acceptedBy).trim() || acceptedBy;
+  }
+  const st = String(payload?.status || "").trim().toLowerCase();
+  if (st === "accepted" && !merged.accepted_at) {
+    merged.accepted_at = merged.accepted_at || new Date().toISOString();
+  }
+  return merged;
+}
+
+function ssePayloadOrderIds(payload) {
+  return [
+    ...new Set(
+      [
+        ...(Array.isArray(payload?.order_ids) ? payload.order_ids : []),
+        ...(payload?.order_id ? [payload.order_id] : []),
+      ]
+        .map(id => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function broadcastInstantPosRefresh(extra = {}) {
+  try {
+    const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
+    broadcastWaiterRealtime("tables", { reason: "sse_instant_import", ...extra });
+    broadcastWaiterRealtime("online_orders", { reason: "sse_instant_import", ...extra });
+    broadcastWaiterRealtime("cloud_tables", { reason: "sse_instant_import", ...extra });
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Import i një porosie cloud → SQLite + print slip (nëse ka).
+ * @returns {{ imported: boolean, result?: object, order?: object, waiterName?: string }}
+ */
+async function autoImportOneCloudOrder(db, printBarTicket, rawOrder) {
+  if (!rawOrder?.id || typeof db.importCloudOrderToLocal !== "function") {
+    return { imported: false };
+  }
+  let order = normalizePendingOrder(rawOrder);
+  if (!order) return { imported: false };
+
+  const parsedTn = tableNumFromCloudOrder(order, db);
+  if (parsedTn > 0 && !(Number(order.table_number) > 0)) {
+    order = { ...order, table_number: parsedTn };
+  }
+
+  const isQrTable =
+    typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(order);
+  let wName = String(
+    order.accepted_by_waiter_name || order.accepted_by || order.waiter_name || "",
+  ).trim();
+  if (isQrTable && typeof db.resolveLocalWaiterForCloudOrder === "function") {
+    wName = db.resolveLocalWaiterForCloudOrder(order) || wName;
+  }
+  if (isQrTable) {
+    const staffOk =
+      typeof db.isLocalWaiterStaffName === "function"
+        ? db.isLocalWaiterStaffName(wName)
+        : !!(typeof db.findStaffByNameInsensitive === "function"
+          && db.findStaffByNameInsensitive(wName));
+    if (!staffOk) {
+      console.warn("[online-orders] QR skip import — emri i pranuesit nuk është staf lokal:", wName || "(bosh)");
+      return { imported: false };
+    }
+    const localStaff =
+      typeof db.findStaffByNameInsensitive === "function"
+        ? db.findStaffByNameInsensitive(wName)
+        : null;
+    if (localStaff?.name) wName = String(localStaff.name).trim();
+  } else if (!wName) {
+    wName = "Kamarier";
+  }
+
+  try {
+    const imported = db.importCloudOrderToLocal(order, wName);
+    if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) {
+      return { imported: false, result: imported, order, waiterName: wName };
+    }
+    const slipDelta = Array.isArray(imported.batch_items) && imported.batch_items.length > 0;
+    const didWrite =
+      imported?.ok
+      && !imported?.needs_accept
+      && (imported.already === false || imported.merged || slipDelta);
+    void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
+    return { imported: !!didWrite, result: imported, order, waiterName: wName };
+  } catch (err) {
+    console.warn("[online-orders] auto-import:", err.message || err);
+    return { imported: false };
+  }
+}
+
+async function fetchCloudOrdersForKitchenSse(db, payload) {
+  const wantIds = ssePayloadOrderIds(payload);
+  const tableHint = Number(payload?.table_number) || 0;
+  const deviceHint = String(payload?.device_id || "").trim().toUpperCase();
+  const attempts = 5;
+  const delays = [0, 60, 120, 200, 350];
+
+  for (let i = 0; i < attempts; i++) {
+    if (delays[i] > 0) {
+      await new Promise(r => setTimeout(r, delays[i]));
+    }
+    let data;
+    try {
+      data = await cloudSync.fetchOnlineOrders(db);
+    } catch {
+      continue;
+    }
+    const allOrders = (data.all_orders || []).map(normalizePendingOrder).filter(Boolean);
+    if (allOrders.length) lastKnownOrders = allOrders;
+
+    let hits = [];
+    if (wantIds.length) {
+      const want = new Set(wantIds);
+      hits = allOrders.filter(o => want.has(String(o.id)));
+      if (!hits.length) {
+        hits = lastKnownOrders.filter(o => want.has(String(o.id)));
+      }
+    } else if (tableHint > 0) {
+      hits = allOrders.filter(o => {
+        const tn = tableNumFromCloudOrder(o, db);
+        if (tn !== tableHint) return false;
+        if (deviceHint && String(o.device_id || "").trim().toUpperCase() !== deviceHint) return false;
+        return isOrderEligibleForAutoImport(o, db);
+      });
+    }
+
+    if (hits.length || (i === attempts - 1 && allOrders.length)) {
+      return { data, allOrders, hits };
+    }
+  }
+  return { data: null, allOrders: lastKnownOrders, hits: [] };
+}
+
+/** Rruga kryesore SSE: import menjëherë, pastaj WS; poll 5s mbetet fallback. */
+async function runKitchenSseInstantImport(db, payload) {
+  const status = String(payload?.status || "").trim().toLowerCase();
+  if (status !== "ordered" && status !== "accepted") return { imported: false };
+
+  if (!cloudReady(db)) return { imported: false };
+
+  const printBarTicket = printBarTicketRef;
+  const { hits, allOrders } = await fetchCloudOrdersForKitchenSse(db, payload);
+  const targets = hits.length
+    ? hits
+    : (ssePayloadOrderIds(payload).length
+      ? []
+      : (allOrders || []).filter(o => isOrderEligibleForAutoImport(o, db)));
+
+  let importedAny = false;
+  const tablesUpdated = new Set();
+
+  for (const raw of targets) {
+    const order = mergeKitchenSseIntoOrder(raw, payload);
+    if (!order || !isOrderEligibleForAutoImport(order, db)) continue;
+    const out = await autoImportOneCloudOrder(db, printBarTicket, order);
+    if (out.imported) {
+      importedAny = true;
+      const tn = Number(out.result?.table_number) || tableNumFromCloudOrder(order, db);
+      if (tn > 0) tablesUpdated.add(tn);
+      console.log("[online-orders] SSE instant import", {
+        status,
+        cloud_id: order.id,
+        table: tn,
+      });
+    }
+  }
+
+  if (importedAny) {
+    broadcastInstantPosRefresh({
+      status,
+      table_numbers: [...tablesUpdated],
+      order_ids: targets.map(o => o.id).filter(Boolean),
+    });
+  }
+
+  void tick(db, printBarTicket).catch(err => {
+    console.warn("[online-orders] SSE fallback tick:", err.message);
+  });
+
+  return { imported: importedAny };
+}
+
 async function tick(db, printBarTicket) {
   if (tickInFlight) return tickInFlight;
   tickInFlight = (async () => {
@@ -479,76 +713,9 @@ async function tick(db, printBarTicket) {
   // - QR/kiosk (WEB-KIOSK) → importo VETËM pasi pranohet (accepted_at ≠ null)
   // - QR/kiosk të pranuara (nga bari ose gjetkë) → importo pasi nuk shfaqen më në pending
   if (data.ok !== false && data.connected && typeof db.importCloudOrderToLocal === "function") {
-    const ordersToAutoImport = allOrders.filter(o => {
-      if (!o?.id) return false;
-      const tableNum =
-        typeof db.parseTableNumberFromCloudOrder === "function"
-          ? db.parseTableNumberFromCloudOrder(o)
-          : (Number(o.table_number) || 0);
-      if (tableNum <= 0) return false;
-      const device = String(o.device_id || "").trim().toUpperCase();
-      if (device === "WEB-WAITER") {
-        if (isCloudWaiterDisabled(db)) {
-          console.log("[watcher] SKIP WEB-WAITER import — cloud kamarieri i çaktivizuar");
-          return false;
-        }
-        return true;
-      }
-      if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) return false;
-      // Porosi QR/kiosk të pranuara (pranuar nga kamarieri/bari → importo në arkë)
-      if (
-        typeof db.isQrTableOrderSubjectToAcceptGate === "function"
-        && db.isQrTableOrderSubjectToAcceptGate(o)
-        && typeof db.isCloudOrderAcceptedForImport === "function"
-        && !db.isCloudOrderAcceptedForImport(o)
-      ) {
-        return false;
-      }
-      if (isExplicitlyAccepted(o, db) && isPosAcceptQueueOrder(o, db)) return true;
-      return false;
-    });
-    for (let order of ordersToAutoImport) {
-      try {
-        const parsedTn =
-          typeof db.parseTableNumberFromCloudOrder === "function"
-            ? db.parseTableNumberFromCloudOrder(order)
-            : (Number(order.table_number) || 0);
-        if (parsedTn > 0 && !(Number(order.table_number) > 0)) {
-          order = { ...order, table_number: parsedTn };
-        }
-        const isQrTable =
-          typeof db.isQrTableOrderSubjectToAcceptGate === "function"
-          && db.isQrTableOrderSubjectToAcceptGate(order);
-        let wName = String(
-          order.accepted_by_waiter_name || order.accepted_by || order.waiter_name || "",
-        ).trim();
-        if (isQrTable && typeof db.resolveLocalWaiterForCloudOrder === "function") {
-          wName = db.resolveLocalWaiterForCloudOrder(order) || wName;
-        }
-        if (isQrTable) {
-          const staffOk =
-            typeof db.isLocalWaiterStaffName === "function"
-              ? db.isLocalWaiterStaffName(wName)
-              : !!(typeof db.findStaffByNameInsensitive === "function"
-                && db.findStaffByNameInsensitive(wName));
-          if (!staffOk) {
-            console.warn("[online-orders] QR skip import — emri i pranuesit nuk është staf lokal:", wName || "(bosh)");
-            continue;
-          }
-          const localStaff =
-            typeof db.findStaffByNameInsensitive === "function"
-              ? db.findStaffByNameInsensitive(wName)
-              : null;
-          if (localStaff?.name) wName = String(localStaff.name).trim();
-        } else if (!wName) {
-          wName = "Kamarier";
-        }
-        const imported = db.importCloudOrderToLocal(order, wName);
-        if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) continue;
-        void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
-      } catch {
-        /* artikujt mund të mos njohen lokalisht — injorohet */
-      }
+    const ordersToAutoImport = allOrders.filter(o => isOrderEligibleForAutoImport(o, db));
+    for (const order of ordersToAutoImport) {
+      await autoImportOneCloudOrder(db, printBarTicket, order);
     }
 
     // Takeaway/Delivery të pranuara → importo vetëm për kamarierin që e pranoi (emër lokal)
@@ -690,39 +857,21 @@ function stopOnlineOrdersWatcher() {
   printBarTicketRef = null;
 }
 
-/** SSE status=ordered — refresh menjëherë, mos prit polling 2s. */
+/** SSE status=ordered — import + WS menjëherë (WEB-WAITER / tavolinë). */
 function refreshOnKitchenSseOrdered(db, payload) {
   const status = String(payload?.status || "").trim().toLowerCase();
   if (status !== "ordered") return;
-  try {
-    const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
-    broadcastWaiterRealtime("online_orders", { reason: "kds_sse_ordered" });
-    broadcastWaiterRealtime("cloud_tables", { reason: "kds_sse_ordered" });
-    broadcastWaiterRealtime("tables", { reason: "kds_sse_ordered" });
-  } catch {
-    /* ignore */
-  }
-  if (!printBarTicketRef) return;
-  void refreshOnlineOrders(db, printBarTicketRef).catch(err => {
-    console.warn("[online-orders] SSE ordered refresh:", err.message);
+  void runKitchenSseInstantImport(db, payload).catch(err => {
+    console.warn("[online-orders] SSE ordered instant import:", err.message);
   });
 }
 
-/** SSE status=accepted — pranim nga telefon/cloud → fshi alarmin në POS (si KAFENE). */
+/** SSE status=accepted — QR / pranim cloud → import + WS menjëherë. */
 function refreshOnKitchenSseAccepted(db, payload) {
   const status = String(payload?.status || "").trim().toLowerCase();
   if (status !== "accepted") return;
-  try {
-    const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
-    broadcastWaiterRealtime("online_orders", { reason: "kds_sse_accepted" });
-    broadcastWaiterRealtime("cloud_tables", { reason: "kds_sse_accepted" });
-    broadcastWaiterRealtime("tables", { reason: "kds_sse_accepted" });
-  } catch {
-    /* ignore */
-  }
-  if (!printBarTicketRef) return;
-  void refreshOnlineOrders(db, printBarTicketRef).catch(err => {
-    console.warn("[online-orders] SSE accepted refresh:", err.message);
+  void runKitchenSseInstantImport(db, payload).catch(err => {
+    console.warn("[online-orders] SSE accepted instant import:", err.message);
   });
 }
 
