@@ -3452,6 +3452,7 @@ function checkInGuest({
   check_out_date,
   deposit,
   notes,
+  apply_reservation_id,
 } = {}) {
   const room = getRoomById(room_id);
   if (!room) throw new Error("Dhoma nuk u gjet.");
@@ -3506,9 +3507,30 @@ function checkInGuest({
   });
 
   const guest = insert();
+  let service_charges = [];
+  let qr_pending_charges = [];
+  let reservation_id_applied = null;
+  const explicitResId = Number(apply_reservation_id);
+  if (explicitResId > 0) {
+    const applied = applyReservationPendingForCheckIn(explicitResId, guest.id, room.id);
+    service_charges = applied.service_charges || [];
+    qr_pending_charges = applied.qr_pending_charges || [];
+    reservation_id_applied = applied.reservation_id || explicitResId;
+  } else {
+    const autoResId = findActiveRoomReservationIdForCheckIn(room.id, inDate, outDate);
+    if (autoResId) {
+      const applied = applyReservationPendingForCheckIn(autoResId, guest.id, room.id);
+      service_charges = applied.service_charges || [];
+      qr_pending_charges = applied.qr_pending_charges || [];
+      reservation_id_applied = applied.reservation_id || autoResId;
+    }
+  }
   return {
     guest,
     room: getRoomById(room.id),
+    service_charges,
+    qr_pending_charges,
+    reservation_id_applied,
   };
 }
 
@@ -5896,6 +5918,31 @@ function getRoomAvailabilityCalendar({ from, to } = {}) {
   return { from: fromDate, to: toDate, dates, rooms: rows };
 }
 
+function findActiveRoomReservationIdForCheckIn(roomId, checkInDate, checkOutDate) {
+  const row = sqlite.prepare(`
+    SELECT id FROM reservations
+    WHERE room_id = ?
+      AND (reservation_type IS NULL OR reservation_type = 'room')
+      AND status IN ${SQL_ACTIVE_ROOM_RESERVATION_STATUSES}
+      AND check_in_date < ?
+      AND check_out_date > ?
+    ORDER BY check_in_date ASC, id ASC
+    LIMIT 1
+  `).get(Number(roomId), String(checkOutDate), String(checkInDate));
+  return row ? Number(row.id) : null;
+}
+
+function applyReservationPendingForCheckIn(reservationId, guestId, roomId) {
+  const rid = Number(reservationId);
+  if (!rid) return { service_charges: [], qr_pending_charges: [] };
+  const service_charges = applyReservationServicesOnCheckIn(rid, guestId, roomId);
+  const qr_pending_charges = applyReservationQrPendingOnCheckIn(rid, guestId, roomId);
+  sqlite.prepare(`
+    UPDATE reservations SET status = 'checked_in' WHERE id = ?
+  `).run(rid);
+  return { service_charges, qr_pending_charges, reservation_id: rid };
+}
+
 function convertReservationToCheckIn(reservationId) {
   const rv = getRoomReservationById(reservationId);
   if (!rv) throw new Error("Rezervimi nuk u gjet.");
@@ -5912,27 +5959,11 @@ function convertReservationToCheckIn(reservationId) {
     check_out_date: rv.check_out_date,
     deposit: rv.deposit || 0,
     notes: rv.notes || "",
+    apply_reservation_id: Number(reservationId),
   });
-
-  const serviceCharges = applyReservationServicesOnCheckIn(
-    reservationId,
-    result.guest.id,
-    rv.room_id,
-  );
-  const qrPendingCharges = applyReservationQrPendingOnCheckIn(
-    reservationId,
-    result.guest.id,
-    rv.room_id,
-  );
-
-  sqlite.prepare(`
-    UPDATE reservations SET status = 'checked_in' WHERE id = ?
-  `).run(Number(reservationId));
 
   return {
     ...result,
-    service_charges: serviceCharges,
-    qr_pending_charges: qrPendingCharges,
     reservation: getRoomReservationById(reservationId),
   };
 }
@@ -6972,11 +7003,21 @@ function getActiveOrderByCloudId(cloudOrderId) {
 }
 
 function isCloudOrderHandledLocally(cloudOrderId) {
-  const prior = getOrderByCloudId(cloudOrderId);
-  if (!prior) return false;
-  const st = String(prior.status || "").toLowerCase();
-  // active = në punë; completed/cancelled = tashmë mbyllur/anuluar lokalisht — mos ri-importo nga cloud
-  return st === "active" || st === "completed" || st === "cancelled";
+  const cid = String(cloudOrderId || "").trim();
+  if (!cid) return false;
+  const prior = getOrderByCloudId(cid);
+  if (prior) {
+    const st = String(prior.status || "").toLowerCase();
+    // active = në punë; completed/cancelled = tashmë mbyllur/anuluar lokalisht — mos ri-importo nga cloud
+    if (st === "active" || st === "completed" || st === "cancelled") return true;
+  }
+  // WEB-WAITER i bashkuar në POS order — cloud_order_id nuk vendoset në orders,
+  // por linkCloudOrderId e ruan. Mos ri-importo (do dyfishonte artikujt).
+  try {
+    const links = JSON.parse(getSetting("cloud_order_id_links", "{}"));
+    if (links[cid]) return true;
+  } catch { /* ignore */ }
+  return false;
 }
 
 // Merr të gjitha cloud order ID-të të lidhura me një porosi lokale (direkt + nga links)
@@ -7638,7 +7679,11 @@ function isGuestRoomMenuKitchenOrder(cloudOrder) {
 /** Shërbime hoteli (spa, bazen…) — recepsioni; ushqim/pije QR dhomë → kamarier/kuzhinë. */
 function isRecepcionCloudPendingOrder(cloudOrder) {
   if (isGuestHotelServiceOrder(cloudOrder)) return true;
-  if (isGuestRoomMenuOrder(cloudOrder)) return false;
+  if (isGuestRoomMenuOrder(cloudOrder)) {
+    if (cloudOrder.folio_pre_applied) return true;
+    if (!isGuestRoomMenuKitchenOrder(cloudOrder)) return true;
+    return false;
+  }
   const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
   if (!roomNum) return false;
   if (isCloudQrTableOrder(cloudOrder)) return false;
@@ -8026,11 +8071,14 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
     const merged = mergeOrderItemsLocal(parseOrderItems(activeOnTable.items_json), items);
     const mergedTotal = merged.reduce((s, i) => s + i.price * i.quantity, 0);
     const label = sourceLabel || String(activeOnTable.source_label || "").trim();
+    // Mos vendos cloud_order_id = WEB-WAITER UUID në porosinë POS —
+    // përndryshe reconcile e kapërcen (orderMirrorsRemoteCloud) dhe POS nuk pushon më.
+    // linkCloudOrderId e ruan lidhjen pa bllokuar sync-in.
     sqlite.prepare(`
-      UPDATE orders SET cloud_order_id = ?, items_json = ?, total = ?, source_label = ?
+      UPDATE orders SET items_json = ?, total = ?, source_label = ?
       WHERE id = ?
-    `).run(cloudId, JSON.stringify(merged), mergedTotal, label, activeOnTable.id);
-    console.log("[sync] T" + table.number + " cloud_order_id u përditësua: " + cloudId);
+    `).run(JSON.stringify(merged), mergedTotal, label, activeOnTable.id);
+    console.log("[sync] T" + table.number + " WEB-WAITER artikuj u bashkuan në POS order (pa cloud_order_id)");
     linkCloudOrderId(activeOnTable.id, cloudId);
     rememberStaffWaiterCloudPushKey(cloudOrder);
     sqlite.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
@@ -8038,6 +8086,8 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
       ok: true,
       already: false,
       merged: true,
+      pos_table_merged: true,
+      waiter_cloud_order: cloudOrder,
       cloud_id: cloudId,
       order_id: activeOnTable.id,
       table_id: table.id,
@@ -8046,7 +8096,6 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
       waiter_name: keepWaiter,
       total: mergedTotal,
       batch_items: items,
-      total,
     };
   }
 

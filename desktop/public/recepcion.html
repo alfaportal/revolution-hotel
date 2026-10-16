@@ -1972,7 +1972,12 @@
       if (!tbody) return;
       tbody.innerHTML = "";
       if (!pendingRows.length && !rows.length) {
-        if (empty) empty.hidden = false;
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent =
+            "Nuk ka porosi aktive. Ushqim/pije QR (kuzhina) → kamarieri. "
+            + "Spa/bazen/minibar dhe room service në folio shfaqen këtu pas pranimit / check-in.";
+        }
         return;
       }
       if (empty) empty.hidden = true;
