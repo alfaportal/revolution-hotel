@@ -3504,11 +3504,17 @@ app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterO
       booking.check_out_date,
     ).filter((room) => {
       const want = String(booking.room_type || "").trim().toLowerCase();
-      const got = String(room.room_type || "").trim().toLowerCase();
+      const got = String(room.room_type || room.type || "").trim().toLowerCase();
       if (!want) return true;
       if (!got) return true;
       return want === got || got.includes(want) || want.includes(got);
-    });
+    }).map((room) => ({
+      id: room.id,
+      room_number: room.room_number,
+      room_type: room.room_type || room.type || "",
+      floor: room.floor,
+      price_per_night: room.price_per_night,
+    }));
     res.json({ ok: true, rooms, booking });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });

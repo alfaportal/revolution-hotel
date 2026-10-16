@@ -616,6 +616,25 @@
     </div>
   </div>
 
+  <div id="modal-rc-web-booking" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-web-booking-backdrop"></div>
+    <div class="table-modal-content">
+      <h2>Prano rezervimin web</h2>
+      <p class="table-modal-sub" style="margin-top:-0.5rem;margin-bottom:0.85rem;color:#64748b;font-size:0.9rem">
+        Zgjidhni dhomën e lirë për datat e kërkesës. Mysafiri merr email konfirmimi.
+      </p>
+      <div class="hotel-form-field wide">
+        <label for="rc-web-booking-room">Dhoma</label>
+        <select id="rc-web-booking-room" class="hotel-input"></select>
+      </div>
+      <div id="rc-web-booking-modal-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-ghost" id="rc-web-booking-cancel">Anulo</button>
+        <button type="button" class="btn btn-primary" id="rc-web-booking-confirm" style="flex:1">Konfirmo</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-rc-checkin" class="table-modal" hidden>
     <div class="table-modal-backdrop" id="rc-checkin-backdrop"></div>
     <div class="table-modal-content">
@@ -920,6 +939,7 @@
     };
 
     let recepView = "rooms";
+    let webBookingAcceptId = null;
     let lastRooms = [];
     let recepCheckoutPreview = null;
     let checkoutCouponType = "thermal";
@@ -1668,40 +1688,96 @@
           });
         });
         listEl.querySelectorAll(".rc-web-accept").forEach((btn) => {
-          btn.addEventListener("click", async () => {
+          btn.addEventListener("click", () => {
             const id = btn.getAttribute("data-id");
-            try {
-              const avail = await api(
-                `/api/waiter/public-booking-requests/${encodeURIComponent(id)}/available-rooms`,
-              );
-              const rooms = avail.rooms || [];
-              if (!rooms.length) {
-                showMsg("recep-rez-msg", "Nuk ka dhoma të lira për këto data.", false);
-                return;
-              }
-              const labels = rooms.map((rm) => `${rm.room_number} (${rm.room_type || ""})`).join("\n");
-              const pick = prompt(`Zgjidhni numrin e dhomës (nga lista):\n${labels}`);
-              if (!pick) return;
-              const room = rooms.find((rm) => String(rm.room_number) === String(pick).trim());
-              if (!room) {
-                showMsg("recep-rez-msg", "Dhoma nuk u gjet në listën e lira.", false);
-                return;
-              }
-              await api(`/api/waiter/public-booking-requests/${encodeURIComponent(id)}/accept`, {
-                method: "POST",
-                body: JSON.stringify({ room_id: room.id }),
-              });
-              await ngarkoWebBookingRequestsRecep();
-              await ngarkoRezervimetRecep();
-              await ngarkoDhomat();
-              showMsg("recep-rez-msg", "Rezervimi u krijua.", true);
-            } catch (e) {
-              showMsg("recep-rez-msg", e.message || "Gabim", false);
-            }
+            if (id) openWebBookingAcceptModal(id);
           });
         });
-      } catch {
+      } catch (e) {
         if (wrap) wrap.hidden = true;
+        showMsg("recep-rez-msg", e.message || "Kërkesat web nuk u ngarkuan.", false);
+      }
+    }
+
+    function mbyllWebBookingAcceptModal() {
+      webBookingAcceptId = null;
+      const modal = document.getElementById("modal-rc-web-booking");
+      if (modal) modal.hidden = true;
+      const msg = document.getElementById("rc-web-booking-modal-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    async function openWebBookingAcceptModal(id) {
+      webBookingAcceptId = id;
+      const modal = document.getElementById("modal-rc-web-booking");
+      const sel = document.getElementById("rc-web-booking-room");
+      const msg = document.getElementById("rc-web-booking-modal-msg");
+      if (!modal || !sel) return;
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      sel.innerHTML = '<option value="">Duke ngarkuar…</option>';
+      modal.hidden = false;
+      try {
+        const avail = await api(
+          `/api/waiter/public-booking-requests/${encodeURIComponent(id)}/available-rooms`,
+        );
+        const rooms = avail.rooms || [];
+        if (!rooms.length) {
+          sel.innerHTML = '<option value="">Nuk ka dhoma të lira</option>';
+          if (msg) {
+            msg.textContent = "Nuk ka dhoma të lira për këto data.";
+            msg.hidden = false;
+          }
+          return;
+        }
+        sel.innerHTML =
+          '<option value="">Zgjidhni dhomën</option>'
+          + rooms.map(
+            (rm) =>
+              `<option value="${escHtml(String(rm.id))}">${escHtml(String(rm.room_number))} — ${escHtml(rm.room_type || "")}</option>`,
+          ).join("");
+      } catch (e) {
+        sel.innerHTML = '<option value="">Gabim</option>';
+        if (msg) {
+          msg.textContent = e.message || "Gabim ngarkimi dhomash.";
+          msg.hidden = false;
+        }
+      }
+    }
+
+    async function confirmWebBookingAcceptModal() {
+      const id = webBookingAcceptId;
+      const sel = document.getElementById("rc-web-booking-room");
+      const btn = document.getElementById("rc-web-booking-confirm");
+      const msg = document.getElementById("rc-web-booking-modal-msg");
+      if (!id || !sel) return;
+      const roomId = Number(sel.value);
+      if (!roomId) {
+        if (msg) {
+          msg.textContent = "Zgjidhni dhomën.";
+          msg.hidden = false;
+        }
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        await api(`/api/waiter/public-booking-requests/${encodeURIComponent(id)}/accept`, {
+          method: "POST",
+          body: JSON.stringify({ room_id: roomId }),
+        });
+        mbyllWebBookingAcceptModal();
+        await ngarkoWebBookingRequestsRecep();
+        await ngarkoRezervimetRecep();
+        await ngarkoDhomat();
+        showMsg("recep-rez-msg", "Rezervimi u pranua — mysafiri njoftohet me email.", true);
+      } catch (e) {
+        if (msg) {
+          msg.textContent = e.message || "Gabim";
+          msg.hidden = false;
+        } else {
+          showMsg("recep-rez-msg", e.message || "Gabim", false);
+        }
+      } finally {
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -2918,6 +2994,11 @@
     document.getElementById("btn-rc-rez-new")?.addEventListener("click", () => hapRezervimFormRecep(null));
     document.getElementById("rc-rez-backdrop")?.addEventListener("click", mbyllRezervimFormRecep);
     document.getElementById("rc-rez-cancel")?.addEventListener("click", mbyllRezervimFormRecep);
+    document.getElementById("rc-web-booking-cancel")?.addEventListener("click", mbyllWebBookingAcceptModal);
+    document.getElementById("rc-web-booking-backdrop")?.addEventListener("click", mbyllWebBookingAcceptModal);
+    document.getElementById("rc-web-booking-confirm")?.addEventListener("click", () => {
+      confirmWebBookingAcceptModal().catch(() => {});
+    });
     document.getElementById("rc-rez-in")?.addEventListener("change", () => {
       clearTimeout(rezRoomReloadTimer);
       rezRoomReloadTimer = setTimeout(() => refreshRezAvailableRoomsRecep().catch(() => {}), 200);
