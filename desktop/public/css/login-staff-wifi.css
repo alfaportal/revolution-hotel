@@ -313,3 +313,25 @@ html.login-mode-staff-recepsion .staff-main .alert-error {
   border-color: rgba(248, 113, 113, 0.45);
   color: #fecaca;
 }
+
+html.login-mode-staff-kamarier .login-staff-hub-link,
+html.login-mode-staff-recepsion .login-staff-hub-link {
+  display: block;
+  width: 100%;
+  margin: 1rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+
+html.login-mode-staff-kamarier .login-staff-hub-link:active,
+html.login-mode-staff-recepsion .login-staff-hub-link:active {
+  background: rgba(30, 41, 59, 0.85);
+}

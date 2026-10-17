@@ -95,8 +95,16 @@ function lexoRecepSessionBridge() {
   return null;
 }
 
-function loginUrlForRole(roli) {
+function staffRoleUsesLoginHub(roli) {
   const r = String(roli || "").toLowerCase();
+  return r === "recepsion" || r === "kamarier";
+}
+
+/** hub=1 → paneli kryesor (Pronari + Ndërro zonë), jo PIN-only mobile. */
+function loginUrlForRole(roli, opts = {}) {
+  const hub = opts.hub === true || opts.kryesor === true;
+  const r = String(roli || "").toLowerCase();
+  if (hub && staffRoleUsesLoginHub(r)) return "/login.html?hub=1";
   if (r === "recepsion") return "/login.html?mode=recepsion";
   if (r === "kamarier") return "/login.html?mode=kamarier";
   return "/login.html";
@@ -131,13 +139,15 @@ function dil() {
   } catch {
     /* ignore */
   }
-  window.location.href = loginUrlForRole(u?.roli);
+  window.location.href = loginUrlForRole(u?.roli, { hub: staffRoleUsesLoginHub(u?.roli) });
 }
 
 function kerkonHyrje(roliKerkuar) {
   const u = lexoSesionin();
   if (!u || u.roli !== roliKerkuar || !u.token) {
-    window.location.href = loginUrlForRole(roliKerkuar || u?.roli);
+    window.location.href = loginUrlForRole(roliKerkuar || u?.roli, {
+      hub: staffRoleUsesLoginHub(roliKerkuar || u?.roli),
+    });
     return null;
   }
   if (u.login_time) {

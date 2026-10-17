@@ -799,9 +799,10 @@
       <a href="/recepcion.html" class="top-kasa-link" style="font-size:.85rem;font-weight:600;color:var(--muted)">Dhomat · Check-in</a>
     </div>
     <div class="top-bar-rest">
+      <button type="button" class="kasa-btn-exit" id="btn-recep-z-report" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
       <div class="who" id="who"></div>
       <button type="button" class="kasa-btn-exit" id="btn-close-shift" hidden>Mbyll arkën</button>
-      <a href="/login.html" class="kasa-btn-exit" data-dil="1">Dil</a>
+      <a href="/login.html?hub=1" class="kasa-btn-exit" data-dil="1">Dil</a>
     </div>
   </header>
 
@@ -923,14 +924,14 @@
     </section>
   </div>
 
-  <script src="/js/app.js?v=9"></script>
+  <script src="/js/app.js?v=10"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
   <script>
     (function guardRecepsionSession() {
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
       if (!u || u.roli !== "recepsion" || !u.token) {
-        window.location.replace("/login.html?mode=recepsion");
+        window.location.replace("/login.html?hub=1");
         throw new Error("no session");
       }
       if (typeof ruajSesionin === "function") ruajSesionin(u);
@@ -1446,6 +1447,29 @@
     };
     document.getElementById("btn-close-shift").onclick = () => {
       window.location.href = "/recepcion.html";
+    };
+
+    document.getElementById("btn-recep-z-report").onclick = async function zReportKasaRecep() {
+      const btn = this;
+      const op = String(user?.emri || "Recepsion").trim();
+      if (!window.confirm(`Raporti Z — mbyll ditën fiskale?\nOperator: ${op}\n\nVazhdoni?`)) return;
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "…";
+      try {
+        const data = await api("/api/staff/fiscal/z-report", {
+          method: "POST",
+          body: JSON.stringify({ operator_name: op }),
+        });
+        const printInfo = data.printed ? "Printuar." : (data.printMessage || "Printimi nuk u bë.");
+        window.alert(`Raporti Z u gjenerua.\n${printInfo}`);
+        await loadShift();
+      } catch (err) {
+        window.alert(err.message || "Raporti Z dështoi.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
     };
 
     (async function init() {

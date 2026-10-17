@@ -169,6 +169,16 @@ body.recep-embed-kasa #ekrani-recepcion.waiter-shell {
   box-shadow: 0 4px 14px rgba(255, 107, 53, 0.35);
 }
 
+#ekrani-recepcion .btn-raporti-z {
+  border-radius: 10px;
+  font-size: 0.72rem;
+  min-height: 38px;
+}
+
+#ekrani-recepcion .btn-raporti-z:hover:not(:disabled) {
+  background: #dc2626;
+}
+
 #ekrani-recepcion #recep-rooms-panel:not([hidden]),
 #ekrani-recepcion #recep-services-panel:not([hidden]),
 #ekrani-recepcion #recep-reservations-panel:not([hidden]),

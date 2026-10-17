@@ -449,9 +449,12 @@
       </div>
 
       <header class="waiter-topbar">
-        <div class="waiter-topbar-left">
-          <span class="waiter-topbar-greeting">Recepsion,</span>
-          <strong id="hdr-staff-top">—</strong>
+        <div class="waiter-topbar-start">
+          <button type="button" class="btn btn-raporti-z btn-sm" id="btn-rc-raporti-z" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
+          <div class="waiter-topbar-left">
+            <span class="waiter-topbar-greeting">Recepsion,</span>
+            <strong id="hdr-staff-top">—</strong>
+          </div>
         </div>
         <span class="app-version-pill" id="recep-app-version" hidden></span>
         <a href="/kasa-recepcion.html" class="btn btn-primary btn-sm">Kasa (arka)</a>
@@ -935,7 +938,7 @@
     @keyframes rcToastIn { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
   </style>
 
-  <script src="/js/app.js?v=9"></script>
+  <script src="/js/app.js?v=10"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
@@ -985,7 +988,7 @@
       }
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
       if (!u || u.roli !== "recepsion" || !u.token) {
-        window.location.replace("/login.html?mode=recepsion");
+        window.location.replace("/login.html?hub=1");
         throw new Error("no session");
       }
       /* Pa skadim 12h lokale — recepsioni mbetet derisa stafi klikon DIL (sesioni serveri vlen). */
@@ -3011,6 +3014,31 @@
       el.hidden = !(shiftSummary && shiftSummary.blocks_new_shift);
     }
 
+    async function shtypRaportinZRecepcion(ev) {
+      const btn = ev?.currentTarget;
+      if (!btn) return;
+      const op = String(user?.emri || "Recepsion").trim();
+      if (!window.confirm(`Raporti Z — mbyll ditën fiskale?\nOperator: ${op}\n\nVazhdoni?`)) return;
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "…";
+      try {
+        const data = await api("/api/staff/fiscal/z-report", {
+          method: "POST",
+          body: JSON.stringify({ operator_name: op }),
+        });
+        const printInfo = data.printed ? "Printuar." : (data.printMessage || "Printimi nuk u bë.");
+        window.alert(`Raporti Z u gjenerua.\n${printInfo}`);
+        const s = await ngarkoShiftRecep();
+        if (s) syncSidebarZReportWarn(s);
+      } catch (err) {
+        window.alert(err.message || "Raporti Z dështoi.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    }
+
     function showRcShiftOpenModal(blockedByZ) {
       const nameEl = document.getElementById("rc-shift-open-staff-name");
       if (nameEl) nameEl.textContent = user?.emri || "Recepsion";
@@ -3191,6 +3219,7 @@
     }
 
     document.getElementById("btn-rc-mbyll-nderrimin")?.addEventListener("click", mbyllNderriminRecep);
+    document.getElementById("btn-rc-raporti-z")?.addEventListener("click", shtypRaportinZRecepcion);
     document.getElementById("btn-rc-shift-close-cancel")?.addEventListener("click", hideRcShiftEndModal);
     document.getElementById("btn-rc-shift-close-confirm")?.addEventListener("click", async () => {
       const msgEl = document.getElementById("rc-shift-close-msg");
@@ -3209,7 +3238,6 @@
         hideRcShiftEndModal();
         recepShiftOpen = false;
         if (typeof dil === "function") dil();
-        window.location.href = "/login.html?mode=recepsion";
       } catch (err) {
         if (msgEl) {
           msgEl.textContent = err.message;

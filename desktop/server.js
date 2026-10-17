@@ -3894,6 +3894,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     const staffId = resolveWaiterStaffId(req.session);
 
     const fallbackOrders = Array.isArray(req.body?.orders) ? req.body.orders : [];
+    const acceptNote = String(req.body?.accept_note || req.body?.staff_note || "").trim();
     const flow = await acceptOnlineOrdersFlow(
       ids,
       pin,
@@ -3904,6 +3905,9 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
         allowCloudOutbound: allowCloudOutboundForGuestOrderSession(req.session),
       },
     );
+    if (acceptNote) {
+      auditReq(req, "Porosi online pranuar — shënim", acceptNote);
+    }
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
     notifyWaitersRealtime("online_orders", { reason: "accept" });
@@ -9282,20 +9286,16 @@ app.post("/api/fiscal/x-report", auth, adminOnly, async (req, res) => {
   }
 });
 
-app.get("/api/fiscal/z-report/reminder", auth, adminOnly, async (req, res) => {
-  try {
-    const { getZReportReminderStatusAsync } = require("./fiscal/fiscal-z-reminder");
-    const status = await getZReportReminderStatusAsync(db);
-    res.json({ ok: true, ...status });
-  } catch (e) {
-    res.status(400).json({ ok: false, error: e.message });
-  }
-});
+async function getFiscalZReportReminderPayload() {
+  const { getZReportReminderStatusAsync } = require("./fiscal/fiscal-z-reminder");
+  return getZReportReminderStatusAsync(db);
+}
 
-app.post("/api/fiscal/z-report", auth, adminOnly, async (req, res) => {
+async function postFiscalZReportHandler(req, res) {
   try {
     const settings = fiscalConfig.getFiscalSettings();
-    const operatorName = req.body?.operator_name || "Operator";
+    const sessionName = String(req.session?.emri || "").trim();
+    const operatorName = String(req.body?.operator_name || sessionName || "Operator").trim();
     const operatorId = resolveBodyOperatorId(req);
     const reportDate = String(req.body?.report_date || req.body?.business_date || "").slice(0, 10);
     const zOpts = /^\d{4}-\d{2}-\d{2}$/.test(reportDate) ? { dateYmd: reportDate } : {};
@@ -9335,6 +9335,11 @@ app.post("/api/fiscal/z-report", auth, adminOnly, async (req, res) => {
       console.warn("[z-report] delivery:", de.message || de);
     }
 
+    const role = String(req.session?.role || "").trim().toLowerCase();
+    if (role && role !== "admin") {
+      auditReq(req, "Raporti Z (staf)", operatorName);
+    }
+
     res.json({
       ok: true,
       details: enrichedDetails,
@@ -9347,7 +9352,29 @@ app.post("/api/fiscal/z-report", auth, adminOnly, async (req, res) => {
     console.error("[z-report]", e);
     res.status(400).json({ ok: false, error: e.message });
   }
+}
+
+app.get("/api/fiscal/z-report/reminder", auth, adminOnly, async (req, res) => {
+  try {
+    const status = await getFiscalZReportReminderPayload();
+    res.json({ ok: true, ...status });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
 });
+
+app.post("/api/fiscal/z-report", auth, adminOnly, postFiscalZReportHandler);
+
+app.get("/api/staff/fiscal/z-report/reminder", auth, staffOrAdmin, async (req, res) => {
+  try {
+    const status = await getFiscalZReportReminderPayload();
+    res.json({ ok: true, ...status });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/api/staff/fiscal/z-report", auth, staffOrAdmin, postFiscalZReportHandler);
 
 app.post("/api/fiscal/z-report/send-atk", auth, adminOnly, async (req, res) => {
   try {

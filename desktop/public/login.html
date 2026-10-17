@@ -19,6 +19,7 @@
       const p = window.location.pathname.replace(/\/+$/, "");
       const m = p.match(/\/(kamarier|recepsion|sherbimi|kuzhina|banaku)(?:\/(\d{3}))?$/i);
       const qs = new URLSearchParams(window.location.search);
+      if (qs.get("hub") === "1") return;
       let mode = m ? m[1].toLowerCase() : null;
       if (!mode && qs.get("mode") === "recepsion") mode = "recepsion";
       if (!mode && qs.get("mode") === "kamarier") mode = "kamarier";
@@ -38,6 +39,7 @@
       /* Në iframe (p.sh. kasa recepsion) — mos ridrejto te kamarieri. */
       if (window.parent !== window) return;
       const qs = new URLSearchParams(window.location.search);
+      if (qs.get("hub") === "1") return;
       if (qs.get("mode") === "kamarier" || qs.get("mode") === "recepsion") return;
       const host = (window.location.hostname || "").toLowerCase();
       if (host === "127.0.0.1" || host === "localhost" || host === "::1") return;
@@ -286,6 +288,7 @@
               </div>
               <button type="button" class="login-emergency-link" id="btn-emergency-waiter">🔑 Kod emergjence (harruat PIN-in?)</button>
               <p class="staff-login-foot" id="staff-login-foot" hidden></p>
+              <button type="button" class="login-staff-hub-link" id="btn-login-staff-hub" hidden>← Paneli kryesor</button>
             </div>
             <div class="login-rfid-section" id="login-rfid-section">
               <div class="login-rfid-icon" aria-hidden="true">
@@ -353,7 +356,7 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=6"></script>
+  <script src="/js/app.js?v=10"></script>
   <script src="/js/i18n-client.js"></script>
   <script>
     try { sessionStorage.removeItem("rh_user"); } catch { /* */ }
@@ -822,8 +825,11 @@
       return { mode: m[1].toLowerCase(), waiter_code: m[2] || "" };
     })();
     const urlParams = new URLSearchParams(window.location.search);
-    const urlMode = String(urlParams.get("mode") || "").toLowerCase();
-    const staffLoginMode = staffInjected.mode === "recepsion" || staffFromPath?.mode === "recepsion"
+    const loginHubPanel = urlParams.get("hub") === "1";
+    const urlMode = loginHubPanel ? "" : String(urlParams.get("mode") || "").toLowerCase();
+    const staffLoginMode = loginHubPanel
+      ? null
+      : staffInjected.mode === "recepsion" || staffFromPath?.mode === "recepsion"
       ? "recepsion"
       : staffInjected.mode === "pastrim" || staffFromPath?.mode === "sherbimi"
         ? "pastrim"
@@ -941,9 +947,25 @@
       syncLoginZoneUi();
       const zonePick = document.getElementById("login-zone-pick");
       if (zonePick) zonePick.hidden = true;
+      const hubBtn = document.getElementById("btn-login-staff-hub");
+      if (hubBtn) {
+        hubBtn.hidden = false;
+        hubBtn.addEventListener("click", () => {
+          window.location.href = "/login.html?hub=1";
+        });
+      }
+    }
+
+    if (loginHubPanel) {
+      document.documentElement.classList.remove(
+        "login-mode-staff",
+        "login-mode-staff-kamarier",
+        "login-mode-staff-recepsion",
+      );
     }
 
     function isStaffMobileLoginUi() {
+      if (loginHubPanel) return false;
       return isStaffOnlyLoginMode
         || document.documentElement.classList.contains("login-mode-staff-kamarier")
         || document.documentElement.classList.contains("login-mode-staff-recepsion");

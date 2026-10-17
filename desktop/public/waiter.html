@@ -174,6 +174,25 @@
       font-weight: 700;
       opacity: 0.95;
     }
+    .waiter-sidebar-porosi {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      width: 100%;
+      margin-bottom: 0.25rem;
+    }
+    .waiter-sidebar-porosi[hidden] {
+      display: none !important;
+    }
+    .waiter-sidebar-porosi-label {
+      font-size: 0.58rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #fbbf24;
+      text-align: center;
+      line-height: 1.2;
+    }
     .waiter-rooms-legend {
       display: flex; flex-wrap: wrap; gap: 0.55rem 1.1rem;
       margin: 0 0 0.9rem; padding: 0.55rem 0.75rem;
@@ -874,6 +893,12 @@
           <strong class="waiter-sidebar-z-warn-title">Raporti Z nuk është shtypur!</strong>
           <span class="waiter-sidebar-z-warn-sub">Duhet Raporti Z para ndërrimit të ri</span>
         </div>
+        <div id="sidebar-porosi-actions" class="waiter-sidebar-porosi" hidden aria-label="Porosi në pritje">
+          <span class="waiter-sidebar-porosi-label" id="sidebar-porosi-label">Porosi</span>
+          <button type="button" class="waiter-nav-btn waiter-nav-accept" id="btn-sidebar-online-accept" title="Prano porosinë">PRANO</button>
+          <button type="button" class="waiter-nav-btn waiter-nav-refuse" id="btn-sidebar-online-refuse" title="Refuzo porosinë">REFUZO</button>
+        </div>
+        <button type="button" class="waiter-nav-btn waiter-nav-z" id="btn-sidebar-raporti-z" title="Printo Raportin Z fiskal">Raporti Z</button>
         <button type="button" class="waiter-nav-btn waiter-nav-calc" data-open-calc title="Kalkulatorë" aria-label="Kalkulatorë">Kalkulatorë</button>
         <button type="button" class="waiter-nav-btn waiter-nav-exit" onclick="dil()">DIL</button>
       </nav>
@@ -881,9 +906,12 @@
 
     <main class="waiter-main">
       <header class="waiter-topbar">
-        <div class="waiter-topbar-left">
-          <span class="waiter-topbar-greeting">Hyrja,</span>
-          <strong id="hdr-kamarier-top">Kamarier</strong>
+        <div class="waiter-topbar-start">
+          <button type="button" class="btn btn-raporti-z btn-sm" id="btn-topbar-raporti-z" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
+          <div class="waiter-topbar-left">
+            <span class="waiter-topbar-greeting">Hyrja,</span>
+            <strong id="hdr-kamarier-top">Kamarier</strong>
+          </div>
         </div>
         <span class="app-version-pill" id="waiter-app-version" hidden></span>
         <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Jashtë linje">☁ Jashtë linje</span>
@@ -1639,7 +1667,7 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=6"></script>
+  <script src="/js/app.js?v=10"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/order-alarm-sound.js"></script>
@@ -1811,7 +1839,7 @@
       </div>`;
     }
 
-    async function pranoNjëPorosiOnline() {
+    async function pranoNjëPorosiOnline(acceptNote = "") {
       const first = waiterOnlineOrders[0];
       if (!first?.id) return null;
       const ids = [];
@@ -1831,25 +1859,89 @@
       }
       if (!ids.length) ids.push(String(first.id));
       const uniqueIds = [...new Set(ids)];
+      const body = {
+        order_ids: uniqueIds,
+        orders: waiterOnlineOrders,
+      };
+      const note = String(acceptNote || "").trim();
+      if (note) body.accept_note = note;
       return api("/api/waiter/online-orders/accept", {
         method: "POST",
-        body: JSON.stringify({
-          order_ids: uniqueIds,
-          orders: waiterOnlineOrders,
-        }),
+        body: JSON.stringify(body),
+      });
+    }
+
+    function setWaiterOnlineAcceptButtonsBusy(busy, label) {
+      document.querySelectorAll("#btn-waiter-online-accept, #btn-sidebar-online-accept").forEach((btn) => {
+        btn.disabled = !!busy;
+        btn.textContent = busy ? "…" : (label || "PRANO");
+      });
+    }
+
+    function setWaiterOnlineRefuseButtonsBusy(busy, label) {
+      document.querySelectorAll("#btn-waiter-online-cancel, #btn-sidebar-online-refuse").forEach((btn) => {
+        btn.disabled = !!busy;
+        btn.textContent = busy ? "…" : (label || "REFUZO");
+      });
+    }
+
+    function syncWaiterSidebarPorosiActions() {
+      const wrap = document.getElementById("sidebar-porosi-actions");
+      const label = document.getElementById("sidebar-porosi-label");
+      const n = (waiterOnlineOrders || []).length;
+      if (wrap) wrap.hidden = n <= 0;
+      if (label && n > 0) {
+        label.textContent = n === 1 ? tt("1 porosi") : `${n} ${tt("porosi")}`;
+      }
+    }
+
+    function pickAcceptNoteWaiter() {
+      return new Promise((resolve) => {
+        const existing = document.getElementById("accept-note-modal");
+        if (existing) existing.remove();
+        const wrap = document.createElement("div");
+        wrap.id = "accept-note-modal";
+        wrap.style.cssText = "position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem;";
+        wrap.innerHTML = `
+          <div style="background:#fff;border-radius:14px;max-width:340px;width:100%;padding:1rem 1.1rem">
+            <h3 style="margin:0 0 .5rem;font-size:1.1rem">${tt("Prano porosinë")}</h3>
+            <p style="margin:0 0 .65rem;font-size:.85rem;color:#64748b">${tt("Shënim për klientin (opsional)")}</p>
+            <input id="accept-note-input" type="text" maxlength="300" placeholder="${tt("p.sh. Kohë e pritshme 20 min…")}"
+              style="width:100%;padding:.55rem .7rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box" />
+            <div style="display:flex;gap:.5rem;margin-top:.85rem">
+              <button type="button" id="accept-note-cancel" style="flex:1;padding:.65rem;border:none;border-radius:8px;background:#e5e7eb;font-weight:600">${tt("Anulo")}</button>
+              <button type="button" id="accept-note-ok" style="flex:1;padding:.65rem;border:none;border-radius:8px;background:#16a34a;color:#fff;font-weight:700">${tt("PRANO")}</button>
+            </div>
+          </div>`;
+        document.body.appendChild(wrap);
+        const input = wrap.querySelector("#accept-note-input");
+        input?.focus();
+        const finish = (val) => { wrap.remove(); resolve(val); };
+        wrap.querySelector("#accept-note-cancel").onclick = () => finish(null);
+        wrap.querySelector("#accept-note-ok").onclick = () => {
+          finish(String(input?.value || "").trim());
+        };
+        wrap.addEventListener("click", (e) => { if (e.target === wrap) finish(null); });
+        input?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            finish(String(input.value || "").trim());
+          }
+        });
       });
     }
 
     async function pranoPorosiOnlineWaiter() {
       if (waiterAcceptBusy) return;
+      const acceptNote = await pickAcceptNoteWaiter();
+      if (acceptNote == null) return;
       waiterAcceptBusy = true;
-      const acceptBtn = document.getElementById("btn-waiter-online-accept");
-      if (acceptBtn) { acceptBtn.disabled = true; acceptBtn.textContent = "…"; }
+      setWaiterOnlineAcceptButtonsBusy(true);
       const msg = document.getElementById("online-accept-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
       let lastImp = null;
       try {
-        const data = await pranoNjëPorosiOnline();
+        const data = await pranoNjëPorosiOnline(acceptNote);
         if (!data) return;
         if (data.ok === false || data.cloud_ok === false) {
           if (msg) {
@@ -1889,7 +1981,7 @@
         }
       } finally {
         waiterAcceptBusy = false;
-        if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = "PRANO"; }
+        setWaiterOnlineAcceptButtonsBusy(false);
       }
     }
 
@@ -1948,8 +2040,7 @@
       if (reason == null) return;
 
       waiterAcceptBusy = true;
-      const refuseBtn = document.getElementById("btn-waiter-online-cancel");
-      if (refuseBtn) { refuseBtn.disabled = true; refuseBtn.textContent = "…"; }
+      setWaiterOnlineRefuseButtonsBusy(true);
       const msg = document.getElementById("online-accept-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
       try {
@@ -1971,7 +2062,40 @@
         }
       } finally {
         waiterAcceptBusy = false;
-        if (refuseBtn) { refuseBtn.disabled = false; refuseBtn.textContent = "REFUZO"; }
+        setWaiterOnlineRefuseButtonsBusy(false);
+      }
+    }
+
+    async function shtypRaportinZWaiter(ev) {
+      const btn = ev?.currentTarget;
+      if (!btn) return;
+      const op = String(user?.emri || "Kamarier").trim();
+      const ok = window.confirm(
+        `${tt("Raporti Z — mbyll ditën fiskale?")}\n${tt("Operator")}: ${op}\n\n${tt("Vazhdoni?")}`,
+      );
+      if (!ok) return;
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "…";
+      try {
+        const data = await api("/api/staff/fiscal/z-report", {
+          method: "POST",
+          body: JSON.stringify({ operator_name: op }),
+        });
+        const printInfo = data.printed
+          ? tt("Printuar.")
+          : (data.printMessage || tt("Printimi nuk u bë."));
+        window.alert(`${tt("Raporti Z u gjenerua.")}\n${printInfo}`);
+        try {
+          const s = await api("/api/waiter/shift");
+          lastShiftSummary = s;
+          syncSidebarZReportWarn(s);
+        } catch { /* ignore */ }
+      } catch (err) {
+        window.alert(err.message || tt("Raporti Z dështoi."));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
       }
     }
 
@@ -2093,6 +2217,7 @@
           }
         }
         ndertoRjetenTavolinave();
+        syncWaiterSidebarPorosiActions();
       } catch {
         /* cloud offline */
       }
@@ -4634,6 +4759,16 @@
     document.getElementById("btn-waiter-online-pop-close")?.addEventListener("click", mbyllWaiterOnlinePop);
     document.getElementById("btn-waiter-online-accept")?.addEventListener("click", pranoPorosiOnlineWaiter);
     document.getElementById("btn-waiter-online-cancel")?.addEventListener("click", anuloPorosiOnlineWaiter);
+    document.getElementById("btn-sidebar-online-accept")?.addEventListener("click", () => {
+      if (waiterOnlineOrders.length && !waiterOnlinePopOpen) hapWaiterOnlinePop();
+      pranoPorosiOnlineWaiter();
+    });
+    document.getElementById("btn-sidebar-online-refuse")?.addEventListener("click", () => {
+      if (waiterOnlineOrders.length && !waiterOnlinePopOpen) hapWaiterOnlinePop();
+      anuloPorosiOnlineWaiter();
+    });
+    document.getElementById("btn-sidebar-raporti-z")?.addEventListener("click", shtypRaportinZWaiter);
+    document.getElementById("btn-topbar-raporti-z")?.addEventListener("click", shtypRaportinZWaiter);
     document.getElementById("waiter-online-backdrop")?.addEventListener("click", mbyllWaiterOnlinePop);
     
     document.getElementById("orders-modal-backdrop")?.addEventListener("click", () => {

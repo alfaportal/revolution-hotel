@@ -117,6 +117,21 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
   color: #fff;
 }
 
+#ekrani-tavolina .waiter-nav-accept {
+  background: #22c55e;
+  color: #fff;
+}
+
+#ekrani-tavolina .waiter-nav-refuse {
+  background: #e11d48;
+  color: #fff;
+}
+
+#ekrani-tavolina .waiter-nav-z {
+  background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+  color: #fff;
+}
+
 #ekrani-tavolina .waiter-nav-exit {
   background: #e11d48;
   color: #fff;
@@ -147,6 +162,17 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
 #ekrani-tavolina .waiter-topbar-left strong {
   color: #fff;
   font-weight: 800;
+}
+
+#ekrani-tavolina .btn-raporti-z {
+  border-radius: 10px;
+  font-size: 0.72rem;
+  min-height: 38px;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+}
+
+#ekrani-tavolina .btn-raporti-z:hover:not(:disabled) {
+  background: #dc2626;
 }
 
 #ekrani-tavolina .waiter-topbar-time {
