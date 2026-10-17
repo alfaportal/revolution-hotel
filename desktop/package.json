@@ -1,6 +1,6 @@
 {
   "name": "revolution-hotel",
-  "version": "1.0.621",
+  "version": "1.0.628",
   "description": "Revolution HOTEL — sistem lokal (një Setup, pako 3/4 nga telefoni)",
   "main": "main.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "@homebridge/ciao": "^1.3.12",
     "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",

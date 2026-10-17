@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+
+<html lang="sq">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+  <meta name="theme-color" content="#0f172a">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <link rel="manifest" href="/manifest-sherbimi.json">
+
+  <link rel="apple-touch-icon" href="/icon-192.png">
+
+  <title>Pastrim — Revolution HOTEL</title>
+
+  <script src="/js/pwa-staff-register.js" defer></script>
+
+  <script src="/js/staff-auto-connect.js" defer></script>
+
+  <style>
+
+    :root {
+
+      --bg: #0f172a;
+
+      --card: #1e293b;
+
+      --border: #334155;
+
+      --text: #f1f5f9;
+
+      --muted: #94a3b8;
+
+      --ok: #22c55e;
+
+      --warn: #f59e0b;
+
+      --bad: #ef4444;
+
+      --accent: #38bdf8;
+
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+
+      margin: 0;
+
+      min-height: 100%;
+
+      background: var(--bg);
+
+      color: var(--text);
+
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+    }
+
+    .hk-shell {
+
+      max-width: 520px;
+
+      margin: 0 auto;
+
+      padding: calc(0.75rem + env(safe-area-inset-top, 0px)) 0.85rem calc(1rem + env(safe-area-inset-bottom, 0px));
+
+    }
+
+    .hk-head {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 0.5rem;
+
+      margin-bottom: 0.75rem;
+
+    }
+
+    .hk-head h1 {
+
+      margin: 0;
+
+      font-size: 1.15rem;
+
+      font-weight: 800;
+
+    }
+
+    .hk-head p {
+
+      margin: 0.15rem 0 0;
+
+      font-size: 0.78rem;
+
+      color: var(--muted);
+
+    }
+
+    .hk-btn-ghost {
+
+      border: 1px solid var(--border);
+
+      background: var(--card);
+
+      color: var(--text);
+
+      border-radius: 10px;
+
+      padding: 0.45rem 0.65rem;
+
+      font-weight: 700;
+
+      font-size: 0.78rem;
+
+      min-height: 44px;
+
+    }
+
+    .hk-stats {
+
+      display: grid;
+
+      grid-template-columns: repeat(3, 1fr);
+
+      gap: 0.45rem;
+
+      margin-bottom: 0.85rem;
+
+    }
+
+    .hk-stat {
+
+      background: var(--card);
+
+      border: 1px solid var(--border);
+
+      border-radius: 12px;
+
+      padding: 0.5rem;
+
+      text-align: center;
+
+    }
+
+    .hk-stat strong { display: block; font-size: 1.1rem; }
+
+    .hk-stat span { font-size: 0.68rem; color: var(--muted); }
+
+    .hk-msg {
+
+      min-height: 1.25rem;
+
+      font-size: 0.8rem;
+
+      margin-bottom: 0.5rem;
+
+      color: var(--accent);
+
+    }
+
+    .hk-msg.err { color: #fca5a5; }
+
+    .hk-msg.ok { color: #86efac; }
+
+    .hk-list { display: flex; flex-direction: column; gap: 0.55rem; }
+
+    .hk-room {
+
+      background: var(--card);
+
+      border: 1px solid var(--border);
+
+      border-radius: 14px;
+
+      padding: 0.65rem 0.75rem;
+
+    }
+
+    .hk-room-top {
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      gap: 0.5rem;
+
+      margin-bottom: 0.55rem;
+
+    }
+
+    .hk-room-num { font-size: 1.05rem; font-weight: 800; }
+
+    .hk-room-meta { font-size: 0.72rem; color: var(--muted); }
+
+    .hk-badge {
+
+      font-size: 0.68rem;
+
+      font-weight: 800;
+
+      padding: 0.25rem 0.45rem;
+
+      border-radius: 999px;
+
+      text-transform: uppercase;
+
+      letter-spacing: 0.02em;
+
+    }
+
+    .hk-badge.clean { background: rgba(34,197,94,.2); color: #86efac; }
+
+    .hk-badge.dirty { background: rgba(239,68,68,.2); color: #fca5a5; }
+
+    .hk-badge.in_progress { background: rgba(245,158,11,.2); color: #fcd34d; }
+
+    .hk-badge.occupied { background: rgba(148,163,184,.25); color: #cbd5e1; }
+
+    .hk-actions {
+
+      display: grid;
+
+      grid-template-columns: 1fr 1fr 1fr;
+
+      gap: 0.35rem;
+
+    }
+
+    .hk-actions button {
+
+      min-height: 48px;
+
+      border-radius: 10px;
+
+      border: 1px solid var(--border);
+
+      background: #0b1220;
+
+      color: var(--text);
+
+      font-weight: 700;
+
+      font-size: 0.72rem;
+
+      padding: 0.35rem 0.25rem;
+
+      transition: background 0.15s, border-color 0.15s, transform 0.08s;
+
+    }
+
+    .hk-actions button:active:not(:disabled) { transform: scale(0.98); }
+
+    .hk-actions button:disabled {
+
+      opacity: 0.45;
+
+      pointer-events: none;
+
+    }
+
+    .hk-actions button.is-active {
+
+      border-color: transparent;
+
+      color: #0f172a;
+
+    }
+
+    .hk-actions button.is-active[data-act="dirty"] {
+
+      background: #fca5a5;
+
+    }
+
+    .hk-actions button.is-active[data-act="in_progress"] {
+
+      background: #fcd34d;
+
+    }
+
+    .hk-actions button.is-active[data-act="clean"] {
+
+      background: #86efac;
+
+    }
+
+    .hk-actions button.is-loading {
+
+      opacity: 0.7;
+
+    }
+
+    .hk-empty {
+
+      text-align: center;
+
+      color: var(--muted);
+
+      padding: 2rem 1rem;
+
+      font-size: 0.9rem;
+
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+  <div class="hk-shell">
+
+    <header class="hk-head">
+
+      <div>
+
+        <h1>Pastrim</h1>
+
+        <p id="hk-staff-name">Revolution HOTEL</p>
+
+      </div>
+
+      <button type="button" class="hk-btn-ghost" id="hk-btn-logout">Dalje</button>
+
+    </header>
+
+    <div class="hk-stats">
+
+      <div class="hk-stat"><strong id="hk-count-dirty">0</strong><span>E papastër</span></div>
+
+      <div class="hk-stat"><strong id="hk-count-progress">0</strong><span>Në pastrim</span></div>
+
+      <div class="hk-stat"><strong id="hk-count-clean">0</strong><span>Pastër</span></div>
+
+    </div>
+
+    <div class="hk-msg" id="hk-msg" aria-live="polite"></div>
+
+    <div class="hk-list" id="hk-list"></div>
+
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/js/local-staff-events.js?v=1"></script>
+
+  <script>
+
+    (function () {
+
+      const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+
+      if (!u?.token || (u.roli !== "pastrim" && u.roli !== "admin")) {
+
+        fetch("/api/login/staff-wifi-links", { cache: "no-store" })
+
+          .then((r) => (r.ok ? r.json() : null))
+
+          .then((d) => {
+
+            const url = d?.local_sherbimi_url || d?.local_staff_wifi?.sherbimi || "/login.html";
+
+            window.location.replace(url);
+
+          })
+
+          .catch(() => { window.location.replace("/login.html"); });
+
+        return;
+
+      }
+
+
+
+      const msgEl = document.getElementById("hk-msg");
+
+      const listEl = document.getElementById("hk-list");
+
+      const staffEl = document.getElementById("hk-staff-name");
+
+      if (staffEl && u.emri) staffEl.textContent = u.emri;
+
+
+
+      let roomsCache = [];
+
+      let savingRoomId = null;
+
+
+
+      function showMsg(text, kind) {
+
+        if (!msgEl) return;
+
+        msgEl.textContent = text || "";
+
+        msgEl.classList.remove("err", "ok");
+
+        if (kind === "err") msgEl.classList.add("err");
+
+        else if (kind === "ok") msgEl.classList.add("ok");
+
+      }
+
+
+
+      function badgeLabel(st) {
+
+        if (st === "clean") return "Pastër";
+
+        if (st === "in_progress") return "Në pastrim";
+
+        if (st === "occupied") return "E zënë";
+
+        return "E papastër";
+
+      }
+
+
+
+      function activeStatusForRoom(r) {
+
+        const st = r?.status || "clean";
+
+        if (st === "occupied") return null;
+
+        if (st === "in_progress" || st === "clean" || st === "dirty") return st;
+
+        return "dirty";
+
+      }
+
+
+
+      function renderRooms(rooms, counts) {
+
+        roomsCache = Array.isArray(rooms) ? rooms.slice() : [];
+
+        document.getElementById("hk-count-dirty").textContent = String(counts?.dirty ?? 0);
+
+        document.getElementById("hk-count-progress").textContent = String(counts?.in_progress ?? 0);
+
+        document.getElementById("hk-count-clean").textContent = String(counts?.clean ?? 0);
+
+        if (!roomsCache.length) {
+
+          listEl.innerHTML = '<p class="hk-empty">Nuk ka dhoma — shtoni dhoma te recepsioni / admin.</p>';
+
+          return;
+
+        }
+
+        listEl.innerHTML = roomsCache.map((r) => {
+
+          const st = r.status || "clean";
+
+          const disabled = st === "occupied";
+
+          const active = activeStatusForRoom(r);
+
+          const busy = savingRoomId != null && String(savingRoomId) === String(r.id);
+
+          function btn(act, label) {
+
+            const sel = active === act ? " is-active" : "";
+
+            const load = busy ? " is-loading" : "";
+
+            return `<button type="button" data-act="${act}"${disabled || busy ? " disabled" : ""} class="${sel}${load}">${busy && active === act ? "…" : label}</button>`;
+
+          }
+
+          return `<article class="hk-room" data-id="${r.id}">
+
+            <div class="hk-room-top">
+
+              <div>
+
+                <div class="hk-room-num">Dhoma ${escapeHtml(String(r.room_number))}</div>
+
+                <div class="hk-room-meta">Kati ${escapeHtml(String(r.floor ?? "—"))}${r.type ? " · " + escapeHtml(String(r.type)) : ""}</div>
+
+              </div>
+
+              <span class="hk-badge ${escapeHtml(st)}">${badgeLabel(st)}</span>
+
+            </div>
+
+            <div class="hk-actions">
+
+              ${btn("dirty", "E papastër")}
+
+              ${btn("in_progress", "Në pastrim")}
+
+              ${btn("clean", "Pastër")}
+
+            </div>
+
+          </article>`;
+
+        }).join("");
+
+      }
+
+
+
+      function escapeHtml(s) {
+
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+      }
+
+
+
+      function patchRoomInCache(room) {
+
+        if (!room?.id) return;
+
+        const i = roomsCache.findIndex((x) => String(x.id) === String(room.id));
+
+        if (i >= 0) roomsCache[i] = { ...roomsCache[i], ...room };
+
+      }
+
+
+
+      async function loadRooms() {
+
+        const data = await api("/api/sherbimi/rooms");
+
+        renderRooms(data.rooms, data.counts);
+
+      }
+
+
+
+      async function setStatus(roomId, status, btn) {
+
+        if (savingRoomId != null) return;
+
+        savingRoomId = roomId;
+
+        showMsg("Duke ruajtur…", null);
+
+        if (btn) {
+
+          btn.classList.add("is-loading");
+
+          btn.disabled = true;
+
+        }
+
+        try {
+
+          const data = await api(`/api/sherbimi/rooms/${roomId}/status`, {
+
+            method: "POST",
+
+            body: JSON.stringify({ status }),
+
+          });
+
+          if (data?.room) patchRoomInCache(data.room);
+
+          showMsg("U ruajt.", "ok");
+
+          await loadRooms();
+
+        } catch (e) {
+
+          showMsg(e.message || "Gabim", "err");
+
+          await loadRooms().catch(() => {});
+
+        } finally {
+
+          savingRoomId = null;
+
+        }
+
+      }
+
+
+
+      listEl.addEventListener("click", (ev) => {
+
+        const btn = ev.target.closest("button[data-act]");
+
+        if (!btn || btn.disabled) return;
+
+        const card = btn.closest(".hk-room");
+
+        const id = card?.dataset?.id;
+
+        if (!id) return;
+
+        void setStatus(id, btn.dataset.act, btn);
+
+      });
+
+
+
+      document.getElementById("hk-btn-logout")?.addEventListener("click", () => {
+
+        if (typeof dil === "function") dil();
+
+        fetch("/api/login/staff-wifi-links", { cache: "no-store" })
+
+          .then((r) => (r.ok ? r.json() : null))
+
+          .then((d) => {
+
+            window.location.replace(d?.local_sherbimi_url || "/login.html");
+
+          })
+
+          .catch(() => { window.location.replace("/login.html"); });
+
+      });
+
+
+
+      loadRooms().catch((e) => showMsg(e.message, "err"));
+
+      if (window.LocalStaffEvents) {
+        window.LocalStaffEvents.on("room-assigned", () => loadRooms().catch(() => {}));
+        window.LocalStaffEvents.on("room-status", () => loadRooms().catch(() => {}));
+        window.LocalStaffEvents.connect(() => loadRooms().catch(() => {}));
+      }
+
+      setInterval(() => { loadRooms().catch(() => {}); }, 30_000);
+
+    })();
+
+  </script>
+
+</body>
+
+</html>
+
+

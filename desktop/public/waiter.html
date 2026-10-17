@@ -2,11 +2,20 @@
 <html lang="sq" class="waiter-root">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest-kamarier.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/pwa-staff-register.js" defer></script>
+  <script src="/js/staff-auto-connect.js" defer></script>
   <link rel="stylesheet" href="/css/waiter-modern.css?v=13">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
+  <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=1">
+  <script src="/js/staff-cloud-disabled.js"></script>
   <style>
     #ekrani-tavolina.hidden { display: none !important; }
 
@@ -822,7 +831,7 @@
   </style>
   <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=1">
 </head>
-<body class="waiter-screen">
+<body class="waiter-screen staff-cloud-ui-off">
   <div id="ekrani-tavolina" class="waiter-shell">
     <aside class="waiter-sidebar">
       <div class="waiter-sidebar-top">
@@ -1585,6 +1594,7 @@
   </div>
 
   <script src="/js/app.js?v=6"></script>
+  <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/order-alarm-sound.js"></script>
   <script src="/js/staff-order-alert.js"></script>
@@ -1989,6 +1999,7 @@
     }
 
     async function ngarkoPorosiOnlineWaiter(skipLayoutFetch = false) {
+      if (window.STAFF_CLOUD_FEATURES_OFF) return;
       try {
         const data = await api("/api/waiter/online-orders/pending");
         waiterOnlineOrders = filtroPorosiOnlineRestorant(data.orders || []);
@@ -2109,6 +2120,7 @@
     }
 
     async function ngarkoPorosiGati() {
+      if (window.STAFF_CLOUD_FEATURES_OFF) return;
       try {
         if (_readyAlarmActive) return;
         const data = await api("/api/waiter/orders/ready-check");
@@ -2120,6 +2132,7 @@
     // ─────────────────────────────────────────────────────────────────────
 
     async function ngarkoCloudTavolinat() {
+      if (window.STAFF_CLOUD_FEATURES_OFF) return;
       try {
         const data = await api("/api/waiter/cloud-tables");
         const next = new Map();
@@ -3674,9 +3687,11 @@
       }, 6000, 120000);
       guardedPoll(ngarkoMenu, 30000, 180000);
       guardedPoll(ngarkoPazarin, 8000, 120000);
-      guardedPoll(ngarkoPorosiOnlineWaiter, 6000, 120000);
-      guardedPoll(ngarkoCloudTavolinat, 8000, 150000);
-      guardedPoll(ngarkoPorosiGati, 8000, 120000);
+      if (!window.STAFF_CLOUD_FEATURES_OFF) {
+        guardedPoll(ngarkoPorosiOnlineWaiter, 6000, 120000);
+        guardedPoll(ngarkoCloudTavolinat, 8000, 150000);
+        guardedPoll(ngarkoPorosiGati, 8000, 120000);
+      }
       guardedPoll(refreshRegisterMode, 10000, 180000);
       if (typeof setWaiterPollingRescheduleAll === "function") {
         setWaiterPollingRescheduleAll(() => {
@@ -4792,6 +4807,24 @@
           ngarkoPromocionetAktive().catch(() => {});
           ngarkoMenu().catch(() => {});
         },
+      });
+    }
+
+    if (window.LocalStaffEvents) {
+      window.LocalStaffEvents.on("order-status", (env) => {
+        const st = String(env?.data?.status || "").toLowerCase();
+        if (st === "ready") ngarkoPorosiGati().catch(() => {});
+        else ngarkoTavolinat(true).catch(() => {});
+      });
+      window.LocalStaffEvents.on("order-accepted", () => ngarkoPorosiOnlineWaiter(true).catch(() => {}));
+      window.LocalStaffEvents.on("order-refused", () => ngarkoPorosiOnlineWaiter(true).catch(() => {}));
+      window.LocalStaffEvents.on("table-update", () => ngarkoTavolinat(true).catch(() => {}));
+      window.LocalStaffEvents.on("guest-order", () => ngarkoPorosiOnlineWaiter(true).catch(() => {}));
+      window.LocalStaffEvents.on("order-new", () => ngarkoTavolinat(true).catch(() => {}));
+      window.LocalStaffEvents.connect(() => {
+        ngarkoTavolinat(true).catch(() => {});
+        ngarkoPorosiGati().catch(() => {});
+        ngarkoPorosiOnlineWaiter(true).catch(() => {});
       });
     }
 
@@ -5991,8 +6024,10 @@
         setWaiterView("tables");
         startWaiterPolling();
       }
-      initCloudStatusIndicator("cloud-status-pill");
-      if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
+      if (!window.STAFF_CLOUD_FEATURES_OFF) {
+        initCloudStatusIndicator("cloud-status-pill");
+        if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
+      }
     })();
   </script>
 </body>

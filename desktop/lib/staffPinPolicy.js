@@ -12,7 +12,9 @@ function normalizeStaffRoleKey(raw) {
 
 function loginModeForStaffRole(staffRole) {
   const k = normalizeStaffRoleKey(staffRole);
-  return k === "recepsion" || k === "housekeeping" ? "recepsion" : "kamarier";
+  if (k === "housekeeping") return "pastrim";
+  if (k === "recepsion") return "recepsion";
+  return "kamarier";
 }
 
 function pinDigitsForStaffRole(staffRole) {
@@ -22,7 +24,9 @@ function pinDigitsForStaffRole(staffRole) {
 }
 
 function pinDigitsForLoginMode(loginMode) {
-  return String(loginMode || "").trim().toLowerCase() === "recepsion" ? 6 : 4;
+  const m = String(loginMode || "").trim().toLowerCase();
+  if (m === "recepsion" || m === "pastrim" || m === "sherbimi" || m === "housekeeping") return 6;
+  return 4;
 }
 
 /** Pranon 6 shifra për restorant vetëm legacy (pa ndryshuar DB pa OK të Naserit). */
@@ -38,7 +42,9 @@ function acceptsStaffPin(pin, staffRole) {
 function acceptsLoginPin(pin, loginMode) {
   const mode = String(loginMode || "kamarier").trim().toLowerCase();
   const p = String(pin ?? "").trim();
-  if (mode === "recepsion") return /^\d{6}$/.test(p);
+  if (mode === "recepsion" || mode === "pastrim" || mode === "sherbimi" || mode === "housekeeping") {
+    return /^\d{6}$/.test(p);
+  }
   return /^\d{4}$/.test(p) || /^\d{6}$/.test(p);
 }
 
@@ -68,10 +74,17 @@ function isStaffPinSyncable(pin) {
 
 function wrongZoneMessage(staffRole, loginMode) {
   const staffZone = loginModeForStaffRole(staffRole);
-  const mode = String(loginMode || "kamarier").trim().toLowerCase();
+  let mode = String(loginMode || "kamarier").trim().toLowerCase();
+  if (mode === "sherbimi" || mode === "housekeeping" || mode === "pastrimi") mode = "pastrim";
   if (staffZone === mode) return null;
   if (staffZone === "recepsion") {
     return "Ky PIN është për Recepsionin — kliko Ndërro.";
+  }
+  if (staffZone === "pastrim") {
+    return "Ky PIN është për Pastrimin — përdorni linkun e pastrimit.";
+  }
+  if (mode === "pastrim" || mode === "sherbimi") {
+    return "Ky PIN nuk është për Pastrimin.";
   }
   return "Ky PIN është për Restorantin — kliko Ndërro.";
 }

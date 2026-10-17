@@ -2,12 +2,20 @@
 <html lang="sq" class="waiter-root">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest-recepsion.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <title>Recepsion — Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/pwa-staff-register.js" defer></script>
+  <script src="/js/staff-auto-connect.js" defer></script>
   <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <link rel="stylesheet" href="/css/recepcion-truffle.css?v=2">
+  <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=1">
   <style>
     .recepcion-shell { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
@@ -378,7 +386,7 @@
     body.recep-embed-kasa a[href="/kasa-recepcion.html"] { display: none !important; }
   </style>
 </head>
-<body class="waiter-screen">
+<body class="waiter-screen staff-cloud-ui-off">
   <div id="ekrani-recepcion" class="waiter-shell recepcion-shell">
     <aside class="waiter-sidebar">
       <div class="waiter-sidebar-top">
@@ -887,10 +895,14 @@
       font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 14px rgba(0,0,0,0.3);
       animation: rcToastIn 0.35s ease;
     }
+    .rc-toast-item.hk-toast-item {
+      background: linear-gradient(135deg, #065f46 0%, #22c55e 100%);
+    }
     @keyframes rcToastIn { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
   </style>
 
   <script src="/js/app.js?v=8"></script>
+  <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
   <script>
@@ -1353,7 +1365,7 @@
 
     function startRecepGuestServicePolling() {
       ngarkoPorosiSherbimiRecep().catch(() => {});
-      setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 8_000);
+      setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 30_000);
     }
 
     /* ── Njoftim "faturë në dhomë" — toast recepsionit ─────────────────── */
@@ -1383,7 +1395,79 @@
 
     function startRoomChargePolling() {
       pollRoomChargeNotifications().catch(() => {});
-      setInterval(() => pollRoomChargeNotifications().catch(() => {}), 8_000);
+      setInterval(() => pollRoomChargeNotifications().catch(() => {}), 30_000);
+    }
+
+    function hkStatusLabelRecep(st) {
+      const s = String(st || "").toLowerCase();
+      if (s === "clean") return "Pastër";
+      if (s === "in_progress") return "Në pastrim";
+      if (s === "dirty") return "E papastër";
+      return st || "—";
+    }
+
+    function showHousekeepingToast(u) {
+      const wrap = document.getElementById("room-charge-toast");
+      if (!wrap) return;
+      const div = document.createElement("div");
+      div.className = "rc-toast-item hk-toast-item";
+      const label = u.status_label || hkStatusLabelRecep(u.status);
+      const who = u.changed_by ? ` (nga ${u.changed_by})` : "";
+      div.textContent = `🧹 Dhoma ${u.room_number} — ${label}${who}`;
+      wrap.classList.remove("hidden");
+      wrap.appendChild(div);
+      setTimeout(() => {
+        div.remove();
+        if (!wrap.children.length) wrap.classList.add("hidden");
+      }, 5000);
+    }
+
+    async function pollHousekeepingUpdates() {
+      try {
+        const data = await api("/api/waiter/housekeeping-updates");
+        const updates = data.updates || [];
+        if (!updates.length) return;
+        for (const u of updates) showHousekeepingToast(u);
+        if (recepView === "housekeeping") {
+          await ngarkoHousekeepingRecep().catch(() => {});
+        } else {
+          await ngarkoDhomat().catch(() => {});
+        }
+      } catch { /* offline */ }
+    }
+
+    function startHousekeepingUpdatesPolling() {
+      pollHousekeepingUpdates().catch(() => {});
+      setInterval(() => pollHousekeepingUpdates().catch(() => {}), 30_000);
+    }
+
+    function startLocalStaffEventsRecep() {
+      if (!window.LocalStaffEvents) return;
+      const refreshFromHk = (payload) => {
+        const d = payload?.data || payload || {};
+        if (d.room_number) {
+          showHousekeepingToast({
+            room_number: d.room_number,
+            status: d.status,
+            status_label: d.status_label,
+            changed_by: d.changed_by,
+          });
+        }
+        if (recepView === "housekeeping") {
+          ngarkoHousekeepingRecep().catch(() => {});
+        } else {
+          ngarkoDhomat().catch(() => {});
+        }
+      };
+      window.LocalStaffEvents.on("room-status", refreshFromHk);
+      window.LocalStaffEvents.on("guest-order", () => {
+        ngarkoPorosiSherbimiRecep().catch(() => {});
+      });
+      window.LocalStaffEvents.connect(() => {
+        ngarkoDhomat().catch(() => {});
+        ngarkoPorosiSherbimiRecep().catch(() => {});
+        if (recepView === "housekeeping") ngarkoHousekeepingRecep().catch(() => {});
+      });
     }
 
     document.getElementById("btn-recep-online-pop-close")?.addEventListener("click", mbyllRecepOnlinePop);
@@ -1839,6 +1923,7 @@
     }
 
     async function syncRecepHotelFromCloud() {
+      if (window.STAFF_CLOUD_FEATURES_OFF) return;
       try {
         const r = await api("/api/waiter/hotel-pms/pull-cloud?full=1", { method: "POST", body: "{}" });
         if (r && r.skipped && r.message) {
@@ -1847,7 +1932,7 @@
       } catch (e) {
         const msg = e.message || String(e);
         console.warn("syncRecepHotelFromCloud:", msg);
-        showMsg("recep-rooms-msg", "Cloud → POS: " + msg, false);
+        showMsg("recep-rooms-msg", msg, false);
       }
     }
 
@@ -2036,8 +2121,7 @@
         if (empty) {
           empty.hidden = false;
           empty.textContent =
-            "Nuk ka porosi aktive. Ushqim/pije QR (kuzhina) → kamarieri. "
-            + "Spa/bazen/minibar dhe room service në folio shfaqen këtu pas pranimit / check-in.";
+            "Nuk ka porosi aktive në recepsion. Porositë e tavolinave → kamarieri; shërbimet e dhomës → pas check-in.";
         }
         return;
       }
@@ -3329,6 +3413,8 @@
       setRecepView(initialView);
       startRecepGuestServicePolling();
       startRoomChargePolling();
+      startHousekeepingUpdatesPolling();
+      startLocalStaffEventsRecep();
     })();
   </script>
 </body>

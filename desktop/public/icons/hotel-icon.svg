@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Revolution HOTEL">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <rect x="96" y="160" width="320" height="256" rx="24" fill="#1e293b" stroke="#38bdf8" stroke-width="12"/>
+  <rect x="136" y="200" width="56" height="56" rx="8" fill="#38bdf8" opacity="0.9"/>
+  <rect x="228" y="200" width="56" height="56" rx="8" fill="#38bdf8" opacity="0.9"/>
+  <rect x="320" y="200" width="56" height="56" rx="8" fill="#38bdf8" opacity="0.9"/>
+  <rect x="136" y="288" width="56" height="56" rx="8" fill="#94a3b8"/>
+  <rect x="228" y="288" width="56" height="56" rx="8" fill="#94a3b8"/>
+  <rect x="320" y="288" width="56" height="56" rx="8" fill="#94a3b8"/>
+  <path d="M176 160 L256 96 L336 160 Z" fill="#38bdf8"/>
+  <text x="256" y="132" text-anchor="middle" font-family="system-ui,sans-serif" font-size="48" font-weight="800" fill="#0f172a">H</text>
+</svg>

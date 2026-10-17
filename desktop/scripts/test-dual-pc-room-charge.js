@@ -16,6 +16,8 @@ const MASTER_DB = path.join(TMP, "master.db");
 const SEC_DB = path.join(TMP, "secondary.db");
 const STATE = path.join(TMP, "state.json");
 const DEVICE_B = "AABBCCDDEEFF";
+const DEVICE_C = "112233445566";
+const TERT_DB = path.join(TMP, "tertiary.db");
 
 function runPhase(label, dbPath, role, scriptBody) {
   const file = path.join(TMP, `${label}.js`);
@@ -66,6 +68,7 @@ require("fs").writeFileSync(${JSON.stringify(STATE)}, JSON.stringify({
   guest_id: guest.id,
   menu_item_id: mid,
 }), "utf8");
+db.setSetting("max_registers", "3");
 console.log("OK master-setup");
 `,
 );
@@ -229,6 +232,51 @@ const payload = {
 const r = db.importRoomChargesFromTerminal([payload], { device_id: ${JSON.stringify(DEVICE_B)}, register_number: 2 });
 if (!r.rejected.length) throw new Error("Kryesorja duhet refuzuar dhomë pa mysafir");
 console.log("OK master-reject-no-guest: " + r.rejected[0].gabim);
+`,
+);
+
+runPhase(
+  "tertiary-enqueue",
+  TERT_DB,
+  "arka3",
+  `
+db.runSetup({ restaurant_name: "Dual PC Arka3", admin_password: "x", table_count: 5 });
+db.setLanOutboxEnabled(true);
+db.cacheTerminalOccupiedRoomsFromMaster([{
+  room_number: ${JSON.stringify(String(state.room_number))},
+  room_id: ${Number(state.room_id)},
+  guest_name: "Test Mysafir",
+  guest_id: ${Number(state.guest_id)},
+}]);
+db.enqueueRoomChargeToMaster({
+  ref: 9003,
+  room_number: ${JSON.stringify(String(state.room_number))},
+  guest_name: "Test Mysafir",
+  table_number: 3,
+  items: [{ name: "Lunch", price: 10, quantity: 1 }],
+  fallback_total: 10,
+});
+const row = db.getLanOutboxPending(10).find((x) => x.kind === "room_charge" && x.ref === 9003);
+if (!row) throw new Error("Arka 3 room_charge nuk u enqueue");
+require("fs").writeFileSync(${JSON.stringify(path.join(TMP, "payload3.json"))}, JSON.stringify(row.payload), "utf8");
+console.log("OK tertiary-enqueue");
+`,
+);
+
+const payload3 = JSON.parse(fs.readFileSync(path.join(TMP, "payload3.json"), "utf8"));
+
+runPhase(
+  "master-arka3-import",
+  MASTER_DB,
+  "arka1",
+  `
+const payload = ${JSON.stringify(payload3)};
+const src = { device_id: ${JSON.stringify(DEVICE_C)}, register_number: 3 };
+const a = db.importRoomChargesFromTerminal([payload], src);
+if (!a.accepted.length) throw new Error("Arka 3 import: " + JSON.stringify(a.rejected));
+const sum = db.sumRoomChargesForGuest(${Number(state.guest_id)});
+if (Math.abs(sum - 30) > 0.01) throw new Error("Pas Arka 3 duhet 30€, got " + sum);
+console.log("OK master-arka3-import sum=" + sum);
 `,
 );
 

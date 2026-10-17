@@ -372,32 +372,56 @@ function buildStaffPersonalUrl(slug, key, webToken, staffRole) {
   return buildAccessLink(null, s, key, cloudRole, extra);
 }
 
-/** Mysafir — shërbime / room service (cloud; hotel-server duhet t’i servojë statiket). */
+function hotelGuestStaticPath(slug, fileName) {
+  const raw = normalizeSlug(slug);
+  const file = String(fileName || "services.html").trim();
+  if (raw) {
+    return `${HOTEL_WEB_PREFIX}/${encodeURIComponent(raw)}/guest/${file}`;
+  }
+  return `${HOTEL_WEB_PREFIX}/guest/${file}`;
+}
+
+/** Mysafir — shërbime / room service (cloud: /hotel/{slug}/guest/…). */
 function buildHotelGuestPublicUrl(baseUrl, page, roomNumber = "", slug = "", venueOpts = null) {
   const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
-  const room = encodeURIComponent(String(roomNumber || "").trim());
-  const s = encodeURIComponent(String(slug || "").trim());
-  const slugQ = s ? `&slug=${s}` : "";
+  const roomRaw = String(roomNumber || "").trim();
+  const room = encodeURIComponent(roomRaw);
+  const rawSlug = normalizeSlug(slug);
   const opts = venueOpts && typeof venueOpts === "object" ? venueOpts : {};
   const tableNum = Number(opts.tableNumber ?? opts.table_number ?? 0);
   const venueCode = encodeURIComponent(String(opts.venueCode ?? opts.venue_code ?? opts.venue ?? "").trim());
   const p = String(page || "").trim().toLowerCase();
+  const legacySlugQ = rawSlug ? `slug=${encodeURIComponent(rawSlug)}` : "";
+  const appendQuery = (path, params) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v != null && String(v).trim() !== "") q.set(k, String(v).trim());
+    }
+    if (!rawSlug && legacySlugQ) {
+      const legacy = new URLSearchParams(legacySlugQ);
+      for (const [k, v] of legacy) q.set(k, v);
+    }
+    const qs = q.toString();
+    return `${base}${path}${qs ? `?${qs}` : ""}`;
+  };
   if (p === "guest_menu" || p === "menu_public") {
-    return `${base}${HOTEL_WEB_PREFIX}/guest/menu.html${s ? `?slug=${s}` : ""}`;
+    return appendQuery(hotelGuestStaticPath(rawSlug, "menu.html"), {});
   }
   if (p === "services") {
-    if (room) {
-      return `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`;
+    if (roomRaw) {
+      return appendQuery(hotelGuestStaticPath(rawSlug, "services.html"), { room: roomRaw });
     }
     if (tableNum >= 1 && venueCode) {
-      return `${base}${HOTEL_WEB_PREFIX}/guest/services.html?table=${tableNum}&venue=${venueCode}${slugQ}`;
+      return appendQuery(hotelGuestStaticPath(rawSlug, "services.html"), {
+        table: String(tableNum),
+        venue: String(opts.venueCode ?? opts.venue_code ?? opts.venue ?? "").trim(),
+      });
     }
-    const q = s ? `slug=${s}` : "";
-    return `${base}${HOTEL_WEB_PREFIX}/guest/services.html${q ? `?${q}` : ""}`;
+    return appendQuery(hotelGuestStaticPath(rawSlug, "services.html"), {});
   }
   if (p === "room-service" || p === "room_service") {
-    return room
-      ? `${base}${HOTEL_WEB_PREFIX}/guest/services.html?room=${room}${slugQ}`
+    return roomRaw
+      ? appendQuery(hotelGuestStaticPath(rawSlug, "services.html"), { room: roomRaw })
       : buildHotelGuestPublicUrl(baseUrl, "services", "", slug, venueOpts);
   }
   return "";

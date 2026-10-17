@@ -4702,6 +4702,67 @@ function completeHousekeepingRoom(roomId) {
   return getRoomById(roomId);
 }
 
+function insertHousekeepingNotification({ room_id, room_number, old_status, new_status, changed_by }) {
+  sqlite.prepare(`
+    INSERT INTO housekeeping_notifications (room_id, room_number, old_status, new_status, changed_by)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    Number(room_id),
+    String(room_number ?? "").trim(),
+    String(old_status ?? "").trim().toLowerCase(),
+    String(new_status ?? "").trim().toLowerCase(),
+    String(changed_by ?? "").trim(),
+  );
+}
+
+/** Lexon dhe fshin njoftimet e fundit (≤5 min) — poll recepsioni. */
+function drainHousekeepingNotifications() {
+  const rows = sqlite.prepare(`
+    SELECT id, room_id, room_number, old_status, new_status, changed_by, created_at
+    FROM housekeeping_notifications
+    WHERE datetime(created_at) >= datetime('now', '-5 minutes', 'localtime')
+    ORDER BY id ASC
+  `).all();
+  if (rows.length) {
+    const ids = rows.map((r) => r.id);
+    sqlite.prepare(
+      `DELETE FROM housekeeping_notifications WHERE id IN (${ids.map(() => "?").join(",")})`,
+    ).run(...ids);
+  }
+  sqlite.prepare(`
+    DELETE FROM housekeeping_notifications
+    WHERE datetime(created_at) < datetime('now', '-1 day', 'localtime')
+  `).run();
+  return rows;
+}
+
+/** Panel pastrimi stafi — { status: clean | in_progress | dirty } (SQLite lokal). */
+function setSherbimiCleaningStatus(roomId, status) {
+  const st = String(status || "").trim().toLowerCase();
+  if (!["clean", "in_progress", "dirty"].includes(st)) {
+    throw new Error("Statusi i pastrimit është i pavlefshëm.");
+  }
+  const room = getRoomById(roomId);
+  if (!room) throw new Error("Dhoma nuk u gjet.");
+  if (room.status === "occupied") throw new Error("Dhoma është e zënë — nuk ndryshohet pastrimi.");
+  if (room.status === "maintenance" && st !== "clean") {
+    throw new Error("Dhoma është në mirëmbajtje — përdorni recepsionin për «Gati».");
+  }
+  if (st === "in_progress") {
+    return startHousekeepingCleaning(roomId);
+  }
+  if (st === "clean") {
+    completeHousekeepingRoom(roomId);
+    return listHousekeepingBoard().rooms.find((r) => Number(r.room_id) === Number(roomId));
+  }
+  sqlite.prepare("UPDATE rooms SET status = 'dirty' WHERE id = ?").run(Number(roomId));
+  const task = openHousekeepingTaskForRoom(roomId);
+  sqlite.prepare(`
+    UPDATE housekeeping_tasks SET status = 'dirty', completed_at = NULL WHERE id = ?
+  `).run(task.id);
+  return listHousekeepingBoard().rooms.find((r) => Number(r.room_id) === Number(roomId));
+}
+
 function setHousekeepingMaintenance(roomId, notes) {
   const room = getRoomById(roomId);
   if (!room) throw new Error("Dhoma nuk u gjet.");
@@ -14931,6 +14992,9 @@ function getVersionInfo() {
     updateHousekeepingNotes,
     startHousekeepingCleaning,
     completeHousekeepingRoom,
+    setSherbimiCleaningStatus,
+    insertHousekeepingNotification,
+    drainHousekeepingNotifications,
     setHousekeepingMaintenance,
     readyHousekeepingFromMaintenance,
     openHousekeepingTaskForRoom,

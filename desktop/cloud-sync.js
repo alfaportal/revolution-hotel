@@ -748,7 +748,16 @@ function pushSale(db, order, opts = {}) {
 const CLOUD_WAITER_PUSH_TIMEOUT_MS = 4500;
 const CLOUD_CLOSE_PUSH_TIMEOUT_MS = 5000;
 
+function isStaffCloudOutboundBlocked() {
+  try {
+    return require("./cloud-staff-access").isStaffCloudFeaturesDisabled();
+  } catch {
+    return false;
+  }
+}
+
 async function pushSaleSync(db, order, opts = {}) {
+  if (isStaffCloudOutboundBlocked()) return { ok: false, skipped: true, reason: "staff_cloud_off" };
   const built = buildSalePayload(db, order, opts);
   if (!built) return { ok: false, reason: "no_payload" };
   const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 12000;
@@ -945,6 +954,7 @@ async function pushOnlinePickupAcceptToCloud(
 
 /** POS/kamarier — mos blloko UI; kuzhina merr përditësimin sa më shpejt (sync + retry). */
 function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered_at = "" } = {}) {
+  if (isStaffCloudOutboundBlocked()) return;
   if (!order) return;
   const opts = {
     table_number,

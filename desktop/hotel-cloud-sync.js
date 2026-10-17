@@ -719,6 +719,38 @@ async function rejectPublicServiceRequest(db, id, payload = {}) {
   return parseJsonResponse(r);
 }
 
+function getKdsKitchenAccess(db) {
+  const cached = db.getCloudSettings?.() || {};
+  return {
+    slug: String(
+      cached.kitchen_slug || cached.cloud_client_id || db.getSetting("kitchen_slug", "") || "",
+    ).trim(),
+    key: String(cached.kitchen_key || db.getSetting("kitchen_key", "") || "").trim(),
+  };
+}
+
+function kdsPublicPageCloudPath(db) {
+  const { slug, key } = getKdsKitchenAccess(db);
+  if (!slug || !key) {
+    throw new Error("Mungon kitchen_slug ose kitchen_key. Ruani licencën dhe «Testo lidhjen» te Linke stafi.");
+  }
+  const q = `key=${encodeURIComponent(key)}`;
+  return `/api/kds/${encodeURIComponent(slug)}/public-page?${q}`;
+}
+
+/** Faqja publike KDS — admin POS (kitchen_key), i njëjti endpoint si më parë në cloud. */
+async function fetchKdsPublicPage(db) {
+  const path = kdsPublicPageCloudPath(db);
+  const r = await requestJson("GET", path, null);
+  return parseJsonResponse(r);
+}
+
+async function updateKdsPublicPage(db, body = {}) {
+  const path = kdsPublicPageCloudPath(db);
+  const r = await requestJson("PATCH", path, body && typeof body === "object" ? body : {});
+  return parseJsonResponse(r);
+}
+
 module.exports = {
   LAST_SYNC_KEY,
   listPublicBookingRequestsPending,
@@ -729,6 +761,8 @@ module.exports = {
   listPublicServiceRequestsPending,
   acceptPublicServiceRequest,
   rejectPublicServiceRequest,
+  fetchKdsPublicPage,
+  updateKdsPublicPage,
   pushRoomsToCloud,
   pushGuestsToCloud,
   pushGuestStaySnapshotToCloud,

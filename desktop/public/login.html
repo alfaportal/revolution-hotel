@@ -3,14 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/hotel-icon.svg">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/pwa-staff-register.js" defer></script>
+  <script src="/js/staff-auto-connect.js" defer></script>
   <link rel="stylesheet" href="/css/login-modern.css?v=11">
   <link rel="stylesheet" href="/css/login-staff-wifi.css?v=1">
   <script>
     (function () {
       const p = window.location.pathname.replace(/\/+$/, "");
-      const m = p.match(/\/(kamarier|recepsion)(?:\/(\d{3}))?$/i);
+      const m = p.match(/\/(kamarier|recepsion|sherbimi|kuzhina|banaku)(?:\/(\d{3}))?$/i);
       const qs = new URLSearchParams(window.location.search);
       let mode = m ? m[1].toLowerCase() : null;
       if (!mode && qs.get("mode") === "recepsion") mode = "recepsion";
@@ -18,12 +25,14 @@
       if (!mode) return;
       document.documentElement.classList.add(
         "login-mode-staff",
-        mode === "recepsion" ? "login-mode-staff-recepsion" : "login-mode-staff-kamarier",
+        mode === "recepsion" || mode === "sherbimi"
+          ? "login-mode-staff-recepsion"
+          : "login-mode-staff-kamarier",
       );
     })();
     (function () {
       const path = window.location.pathname.replace(/\/+$/, "").toLowerCase();
-      if (path !== "/login.html") return;
+      if (path !== "/login.html" && path !== "/login") return;
       const qs = new URLSearchParams(window.location.search);
       if (qs.get("mode") === "kamarier" || qs.get("mode") === "recepsion") return;
       const host = (window.location.hostname || "").toLowerCase();
@@ -804,17 +813,28 @@
     const staffInjected = window.__STAFF_WIFI_ENTRY__ || {};
     const staffFromPath = (() => {
       const p = window.location.pathname.replace(/\/+$/, "");
-      const m = p.match(/\/(kamarier|recepsion)(?:\/(\d{3}))?$/i);
+      const m = p.match(/\/(kamarier|recepsion|sherbimi|kuzhina|banaku)(?:\/(\d{3}))?$/i);
       if (!m) return null;
       return { mode: m[1].toLowerCase(), waiter_code: m[2] || "" };
     })();
     const urlParams = new URLSearchParams(window.location.search);
     const staffLoginMode = staffInjected.mode === "recepsion" || staffFromPath?.mode === "recepsion"
       ? "recepsion"
-      : (staffInjected.mode === "kamarier" || staffFromPath?.mode === "kamarier" || urlParams.get("mode") === "kamarier"
-        ? "kamarier"
-        : (urlParams.get("mode") === "recepsion" ? "recepsion" : null));
-    const isStaffOnlyLoginMode = staffLoginMode === "kamarier" || staffLoginMode === "recepsion";
+      : staffInjected.mode === "pastrim" || staffFromPath?.mode === "sherbimi"
+        ? "pastrim"
+        : staffInjected.mode === "kuzhina" || staffFromPath?.mode === "kuzhina"
+          ? "kuzhina"
+          : staffInjected.mode === "banaku" || staffFromPath?.mode === "banaku"
+            ? "banaku"
+            : (staffInjected.mode === "kamarier" || staffFromPath?.mode === "kamarier" || urlParams.get("mode") === "kamarier"
+              ? "kamarier"
+              : (urlParams.get("mode") === "recepsion" ? "recepsion" : null));
+    const isStaffOnlyLoginMode =
+      staffLoginMode === "kamarier"
+      || staffLoginMode === "recepsion"
+      || staffLoginMode === "pastrim"
+      || staffLoginMode === "kuzhina"
+      || staffLoginMode === "banaku";
     const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
     const PIN_ZONE_STORAGE_KEY = "hotel_pc_login_pin_zone";
     let selectedPinLoginMode = staffLoginMode || "kamarier";
@@ -838,11 +858,11 @@
     }
 
     function pinDigitsHint() {
-      return selectedPinLoginMode === "recepsion" ? 6 : 4;
+      return selectedPinLoginMode === "recepsion" || selectedPinLoginMode === "pastrim" ? 6 : 4;
     }
 
     function pinSubmitLengths() {
-      return selectedPinLoginMode === "recepsion" ? [6] : [4, 6];
+      return selectedPinLoginMode === "recepsion" || selectedPinLoginMode === "pastrim" ? [6] : [4, 6];
     }
 
     function shouldTryPinLogin() {
@@ -927,20 +947,32 @@
 
     function initHotelStaffMobileUi() {
       if (!isStaffMobileLoginUi()) return;
-      const mode = selectedPinLoginMode === "recepsion" ? "recepsion" : "kamarier";
+      const mode = selectedPinLoginMode === "recepsion"
+        ? "recepsion"
+        : selectedPinLoginMode === "pastrim"
+          ? "pastrim"
+          : "kamarier";
       document.documentElement.classList.add(
         "login-mode-staff",
-        mode === "recepsion" ? "login-mode-staff-recepsion" : "login-mode-staff-kamarier",
+        mode === "recepsion" || mode === "pastrim"
+          ? "login-mode-staff-recepsion"
+          : "login-mode-staff-kamarier",
       );
-      document.title = mode === "recepsion" ? "Recepsion — Revolution HOTEL" : "Restorant — Revolution HOTEL";
+      document.title = mode === "recepsion"
+        ? "Recepsion — Revolution HOTEL"
+        : mode === "pastrim"
+          ? "Pastrim — Revolution HOTEL"
+          : "Restorant — Revolution HOTEL";
       const hint = document.getElementById("pin-hint-login");
       if (hint) {
-        const digits = mode === "recepsion" ? 6 : 4;
+        const digits = mode === "recepsion" || mode === "pastrim" ? 6 : 4;
         hint.textContent = personalStaffName
           ? `Shkruani PIN-in tuaj (${digits} shifra) — ${personalStaffName}`
           : (mode === "recepsion"
             ? "Shkruani PIN-in e recepsionit (6 shifra)"
-            : "Shkruani PIN-in tuaj (4 shifra)");
+            : mode === "pastrim"
+              ? "Shkruani PIN-in e pastrimit (6 shifra)"
+              : "Shkruani PIN-in tuaj (4 shifra)");
       }
       const venueMark = document.getElementById("brand-venue-mark");
       if (venueMark) venueMark.hidden = false;
@@ -1136,7 +1168,15 @@
         staff_id: data.staff_id || null,
       });
       window.location.replace(
-        data.roli === "recepsion" ? "/kasa-recepcion.html" : "/waiter.html",
+        data.roli === "recepsion"
+          ? "/kasa-recepcion.html"
+          : data.roli === "pastrim"
+            ? "/sherbimi.html"
+            : data.roli === "kuzhina"
+              ? "/kitchen.html"
+              : data.roli === "banaku"
+                ? "/bar.html"
+                : "/waiter.html",
       );
     }
 
@@ -1442,54 +1482,8 @@
   <script src="/js/cloud-status.js"></script>
   <script>
     if (typeof window.isStaffMobileLoginUi === "function" && window.isStaffMobileLoginUi()) {
-      const staffLoginIsRecepsion = () =>
-        document.documentElement.classList.contains("login-mode-staff-recepsion");
-      const tickStaffCloudPill = async () => {
-        try {
-          window.applyStaffLoginCloudPillLabel(await fetch("/api/cloud/status").then((r) => r.json()));
-        } catch {
-          window.applyStaffLoginCloudPillLabel({ offline: true });
-        }
-      };
-      tickStaffCloudPill();
-
-      let lastStaffLoginPending = null;
-      let staffLoginAlarmTimer = null;
-      async function pollStaffLoginOrdersAlertOnly() {
-        try {
-          const data = await fetch("/api/login/online-orders").then((r) => r.json());
-          const displayCount = typeof window.countLoginOnlinePending === "function"
-            ? window.countLoginOnlinePending(data)
-            : Number(data?.pending) || 0;
-          const prev = lastStaffLoginPending;
-          const isFirstPoll = prev === null;
-          const isNew = displayCount > 0 && (
-            (prev != null && displayCount > prev)
-            || (isFirstPoll && displayCount > 0)
-          );
-          if (isNew) {
-            const n = displayCount;
-            if (typeof window.staffOrderAlert === "function") {
-              window.staffOrderAlert();
-            }
-            if (!staffLoginAlarmTimer) {
-              staffLoginAlarmTimer = setInterval(() => {
-                if ((lastStaffLoginPending || 0) > 0) window.staffOrderAlertRepeat?.();
-              }, 12000);
-            }
-          } else if (displayCount <= 0 && staffLoginAlarmTimer) {
-            clearInterval(staffLoginAlarmTimer);
-            staffLoginAlarmTimer = null;
-          }
-          lastStaffLoginPending = displayCount;
-        } catch {
-          /* pa cloud */
-        }
-      }
-      if (!staffLoginIsRecepsion()) {
-        setTimeout(pollStaffLoginOrdersAlertOnly, 1500);
-        setInterval(pollStaffLoginOrdersAlertOnly, 12000);
-      }
+      /* Staf — pa cloud UI/poll (riaktivizo: cloud-staff-access.js STAFF_CLOUD_FEATURES_DISABLED). */
+      document.getElementById("cloud-status-pill")?.style.setProperty("display", "none", "important");
     } else {
       initCloudStatusIndicator("cloud-status-pill", { delayMs: 2500 });
     }

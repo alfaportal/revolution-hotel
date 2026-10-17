@@ -713,6 +713,17 @@ function initSchema() {
   CREATE INDEX IF NOT EXISTS idx_hk_tasks_room ON housekeeping_tasks(room_id);
   CREATE INDEX IF NOT EXISTS idx_hk_tasks_status ON housekeeping_tasks(status);
 
+  CREATE TABLE IF NOT EXISTS housekeeping_notifications (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id       INTEGER NOT NULL,
+    room_number   TEXT NOT NULL,
+    old_status    TEXT NOT NULL DEFAULT '',
+    new_status    TEXT NOT NULL,
+    changed_by    TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_hk_notif_created ON housekeeping_notifications(created_at);
+
   CREATE TABLE IF NOT EXISTS guests (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     room_id         INTEGER NOT NULL,
@@ -949,6 +960,37 @@ function initSchema() {
         sqlRun("ALTER TABLE orders ADD COLUMN source_label TEXT NOT NULL DEFAULT ''");
       }
       sqlRun("CREATE INDEX IF NOT EXISTS idx_orders_cloud_id ON orders(cloud_order_id)");
+    },
+  );
+
+  runSchemaMigration(
+    "orders-kds-kitchen-v1",
+    backupCtx,
+    () => {
+      const orderCols = sqlAll("PRAGMA table_info(orders)");
+      return [
+        "kds_kitchen_status",
+        "kds_kitchen_accepted_at",
+        "kds_kitchen_ready_at",
+        "kds_kitchen_accepted_by",
+        "kds_kitchen_refused_at",
+        "kds_kitchen_refuse_reason",
+      ].some((col) => !orderCols.some((c) => c.name === col));
+    },
+    () => {
+      const orderCols = sqlAll("PRAGMA table_info(orders)");
+      const add = (name, ddl) => {
+        if (!orderCols.some((c) => c.name === name)) sqlRun(ddl);
+      };
+      add("kds_kitchen_status", "ALTER TABLE orders ADD COLUMN kds_kitchen_status TEXT");
+      add("kds_kitchen_accepted_at", "ALTER TABLE orders ADD COLUMN kds_kitchen_accepted_at TEXT");
+      add("kds_kitchen_ready_at", "ALTER TABLE orders ADD COLUMN kds_kitchen_ready_at TEXT");
+      add("kds_kitchen_accepted_by", "ALTER TABLE orders ADD COLUMN kds_kitchen_accepted_by TEXT");
+      add("kds_kitchen_refused_at", "ALTER TABLE orders ADD COLUMN kds_kitchen_refused_at TEXT");
+      add(
+        "kds_kitchen_refuse_reason",
+        "ALTER TABLE orders ADD COLUMN kds_kitchen_refuse_reason TEXT",
+      );
     },
   );
 

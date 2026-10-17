@@ -479,6 +479,10 @@ function isOrderEligibleForAutoImport(o, db) {
       console.log("[watcher] SKIP WEB-WAITER import — cloud kamarieri i çaktivizuar");
       return false;
     }
+    // Mos ri-importo WEB-WAITER që është bashkuar tashmë në POS order
+    if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
+      return false;
+    }
     return true;
   }
   if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
@@ -531,11 +535,19 @@ function ssePayloadOrderIds(payload) {
 }
 
 function broadcastInstantPosRefresh(extra = {}) {
+  const e = extra && typeof extra === "object" ? extra : {};
   try {
     const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
-    broadcastWaiterRealtime("tables", { reason: "sse_instant_import", ...extra });
-    broadcastWaiterRealtime("online_orders", { reason: "sse_instant_import", ...extra });
-    broadcastWaiterRealtime("cloud_tables", { reason: "sse_instant_import", ...extra });
+    broadcastWaiterRealtime("tables", { reason: "sse_instant_import", ...e });
+    broadcastWaiterRealtime("online_orders", { reason: "sse_instant_import", ...e });
+    broadcastWaiterRealtime("cloud_tables", { reason: "sse_instant_import", ...e });
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { emit } = require("./lib/local-events-hub");
+    emit("guest-order", { reason: "instant_import", ...e });
+    emit("table-update", { reason: "instant_import", ...e });
   } catch {
     /* ignore */
   }
@@ -633,6 +645,30 @@ async function autoImportOneCloudOrder(db, printBarTicket, rawOrder, opts = {}) 
     const skipSlip = opts.skipSlipPrint || isCloudOrderSlipMarkedPrinted(String(order.id || ""));
     if (!skipSlip) {
       void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
+    }
+    // POS + WEB-WAITER/QR merge: pusho artikujt e bashkuar PARA se të anulosh rreshtin
+    // e vjetër në cloud — përndryshe cloud sheh tavolinën si "free" për ~1-2s
+    // dhe syncLocalCancelledFromCloud e mbyll gabimisht.
+    if (imported?.pos_table_merged && imported?.waiter_cloud_order) {
+      try {
+        const localOrder = db.getActiveOrderForTable(imported.table_id);
+        if (localOrder) {
+          const pushResult = await cloudSync.pushActiveOrderUpdateSync(db, localOrder, {
+            table_number: imported.table_number || 0,
+            ordered_at: localOrder.created_at,
+          });
+          if (pushResult?.ok) {
+            console.log("[watcher] POS merge T" + (imported.table_number || "?") +
+              " — merged items pushed OK, cancelling old cloud row");
+          } else {
+            console.warn("[watcher] POS merge T" + (imported.table_number || "?") +
+              " — push u kthye " + JSON.stringify(pushResult) + ", cancel WEB-WAITER gjithsesi");
+          }
+        }
+        cloudSync.cancelMergedWaiterCloudOrder(db, imported.waiter_cloud_order);
+      } catch (mergeErr) {
+        console.warn("[watcher] POS merge cloud cleanup:", mergeErr.message);
+      }
     }
     return { imported: !!didWrite, result: imported, order, waiterName: wName };
   } catch (err) {
@@ -868,6 +904,13 @@ async function tick(db, printBarTicket) {
       const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
       broadcastWaiterRealtime("online_orders", { pending: lastSnapshot.pending });
       if (lastSnapshot.has_new) broadcastWaiterRealtime("tables", { reason: "online_pending" });
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { emit } = require("./lib/local-events-hub");
+      emit("guest-order", { pending: lastSnapshot.pending, has_new: !!lastSnapshot.has_new });
+      if (lastSnapshot.has_new) emit("table-update", { reason: "online_pending" });
     } catch {
       /* ignore */
     }

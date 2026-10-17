@@ -11,6 +11,22 @@ function lanInterfaceKind(ifName) {
   return "other";
 }
 
+function listLanIPv4Addresses() {
+  const ips = [];
+  const seen = new Set();
+  for (const [, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const net of addrs || []) {
+      if (net.family !== "IPv4" || net.internal) continue;
+      const ip = String(net.address || "").trim();
+      if (!ip || ip.startsWith("169.254.")) continue;
+      if (seen.has(ip)) continue;
+      seen.add(ip);
+      ips.push(ip);
+    }
+  }
+  return ips;
+}
+
 function pickLanIPv4Address() {
   const candidates = [];
   for (const [ifName, addrs] of Object.entries(os.networkInterfaces())) {
@@ -73,7 +89,9 @@ function localStaffPathSuffix(db, role, code) {
   const seg =
     r === "recepsion" ? "recepsion"
       : r === "sherbimi" || r === "pastrim" || r === "housekeeping" ? "sherbimi"
-        : "kamarier";
+        : r === "kuzhina" || r === "kitchen" ? "kuzhina"
+          : r === "banaku" || r === "bar" ? "banaku"
+            : "kamarier";
   let path = `/${tipi}/${slug}/${seg}`;
   const c = String(code ?? "").trim();
   if (c && /^\d{3}$/.test(c)) path += `/${c}`;
@@ -210,5 +228,8 @@ module.exports = {
   storeStaffLocalLinksFingerprint,
   STAFF_LOCAL_LINKS_FP_KEY,
   pickLanIPv4Address,
+  listLanIPv4Addresses,
+  sanitizeLanHostname,
+  getLocalServerPort,
   startStaffLocalLinksLanWatcher,
 };

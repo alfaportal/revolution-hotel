@@ -1,0 +1,33 @@
+/**
+ * UI cloud për staf — fshehur (riaktivizo me staff-cloud-disabled.js / cloud-staff-access).
+ */
+body.staff-cloud-ui-off #cloud-status-pill {
+  display: none !important;
+}
+
+body.staff-cloud-ui-off #waiter-online-pop,
+body.staff-cloud-ui-off #waiter-online-backdrop,
+body.staff-cloud-ui-off #ready-alarm-overlay,
+body.staff-cloud-ui-off #recep-online-pop,
+body.staff-cloud-ui-off #recep-online-backdrop,
+body.staff-cloud-ui-off #recep-web-booking-wrap,
+body.staff-cloud-ui-off #modal-rc-web-booking,
+body.staff-cloud-ui-off #btn-online-orders,
+body.staff-cloud-ui-off .login-feature-online {
+  display: none !important;
+}
+
+body.staff-cloud-ui-off .table-card.cloud-occupied,
+body.staff-cloud-ui-off .table-card.pending-cloud {
+  /* tavolina lokale — pa gjendje cloud */
+}
+
+body.staff-cloud-ui-off .cloud-status-pill,
+body.staff-cloud-ui-off [class*="cloud-"],
+body.staff-cloud-ui-off .waiter-sync-btn[title*="Rifresko"] {
+  /* fshehur — mos fshi HTML */
+}
+
+body.staff-cloud-ui-off .waiter-online-pop-queue {
+  display: none !important;
+}

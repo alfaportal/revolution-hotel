@@ -55,7 +55,9 @@ let hotelGuestStayPushTimer = null;
 let hotelHousekeepingPushTimer = null;
 let hotelReservationsPushTimer = null;
 
-function pushHotelGuestStayToCloudAsync(_reason) {
+function pushHotelGuestStayToCloudAsync(reason) {
+  const cloudStaffAccess = require("./cloud-staff-access");
+  if (!cloudStaffAccess.allowBackgroundCloudPush(reason)) return;
   if (!isHotelPmsCloudMaster()) return;
   if (hotelGuestStayPushTimer) clearTimeout(hotelGuestStayPushTimer);
   hotelGuestStayPushTimer = setTimeout(() => {
@@ -67,7 +69,9 @@ function pushHotelGuestStayToCloudAsync(_reason) {
   }, HOTEL_PMS_PUSH_DEBOUNCE_MS);
 }
 
-function pushHousekeepingToCloudAsync(_reason) {
+function pushHousekeepingToCloudAsync(reason) {
+  const cloudStaffAccess = require("./cloud-staff-access");
+  if (!cloudStaffAccess.allowBackgroundCloudPush(reason)) return;
   if (!isHotelPmsCloudMaster()) return;
   if (hotelHousekeepingPushTimer) clearTimeout(hotelHousekeepingPushTimer);
   hotelHousekeepingPushTimer = setTimeout(() => {
@@ -79,7 +83,9 @@ function pushHousekeepingToCloudAsync(_reason) {
   }, HOTEL_PMS_PUSH_DEBOUNCE_MS);
 }
 
-function pushHotelReservationsToCloudAsync(_reason) {
+function pushHotelReservationsToCloudAsync(reason) {
+  const cloudStaffAccess = require("./cloud-staff-access");
+  if (!cloudStaffAccess.allowBackgroundCloudPush(reason)) return;
   if (!isHotelPmsCloudMaster()) return;
   if (hotelReservationsPushTimer) clearTimeout(hotelReservationsPushTimer);
   hotelReservationsPushTimer = setTimeout(() => {
@@ -407,7 +413,53 @@ function getHotelQrService() {
 const { buildEscPosFromPlainText } = require("./receipt-text");
 const cloudSync = require("./cloud-sync");
 const cloudAutoSync = require("./cloud-auto-sync");
+const cloudStaffAccess = require("./cloud-staff-access");
 const onlineOrdersWatcher = require("./online-orders-watcher");
+
+/** Vetëm admin/pronar — cloud outbound (alias CLOUD_ROLES në cloud-staff-access.js). */
+const CLOUD_ROLES = cloudStaffAccess.CLOUD_ROLES;
+
+function sessionMayTalkToCloud(session) {
+  return cloudStaffAccess.isCloudEnabledForSession(session);
+}
+
+/** Staf: përgjigje lokale (SQLite). Admin: vazhdon te cloud. */
+function rejectStaffCloud(req, res, localOnlyBody) {
+  if (sessionMayTalkToCloud(req.session)) return false;
+  if (localOnlyBody != null) {
+    res.json(localOnlyBody);
+    return true;
+  }
+  cloudStaffAccess.jsonStaffCloudDisabled(res);
+  return true;
+}
+
+/** Recepsion: porosi QR dhomë / shërbime mysafiri — cloud vetëm nga POS (server.js), jo nga browser staf. */
+function recepsionPosGuestCloudMaster(session) {
+  return String(session?.role || "").trim().toLowerCase() === "recepsion";
+}
+
+function allowCloudOutboundForGuestOrderSession(session) {
+  return sessionMayTalkToCloud(session) || recepsionPosGuestCloudMaster(session);
+}
+
+/** Si rejectStaffCloud, por recepsioni mbetet i lirë për proxy POS → hotel-cloud-sync / cloudSync. */
+function rejectStaffCloudExceptRecepsion(req, res, localOnlyBody) {
+  if (recepsionPosGuestCloudMaster(req.session)) return false;
+  return rejectStaffCloud(req, res, localOnlyBody);
+}
+
+const STAFF_LOCAL_EMPTY_ONLINE_ORDERS = {
+  ok: true,
+  orders: [],
+  pending: 0,
+  connected: false,
+  has_pending: false,
+  has_new: false,
+  my_external: 0,
+  my_orders: [],
+  message: "",
+};
 
 /* ── Njoftimet "faturë në dhomë" — recepsioni i lexon me poll ────────── */
 const _roomChargeNotifs = [];
@@ -424,12 +476,39 @@ function drainRoomChargeNotifications() {
   const out = _roomChargeNotifs.splice(0, _roomChargeNotifs.length);
   return out;
 }
+
 const license = require("./license");
 const receiptPrint = require("./receipt-print");
 const { printClosedTableReceipt } = require("./close-table-print");
 const { buildXReportHtml, buildZReportHtml, buildXReportLines, buildZReportLines, buildDailySummaryLines } = require("./shift-report-html");
 const { diffOrderItems } = require("./kitchen-ticket-html");
+const localKdsEvents = require("./lib/local-kds-events");
+const localEventsHub = require("./lib/local-events-hub");
+const localKds = require("./lib/local-kds-service");
 const menuStockPhotos = require("./menu-stock-photos");
+
+function emitLocalStaffEvent(type, data = {}) {
+  try {
+    localEventsHub.emit(type, data);
+  } catch {
+    /* ignore */
+  }
+}
+
+function notifyLocalKdsUpdate(payload = {}) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  try {
+    localKdsEvents.notifyKitchenUpdate(p);
+  } catch {
+    /* ignore */
+  }
+  const st = String(p.status || "").trim().toLowerCase();
+  if (st === "ordered") emitLocalStaffEvent("order-new", p);
+  else if (st === "accepted") emitLocalStaffEvent("order-accepted", p);
+  else if (st === "refused") emitLocalStaffEvent("order-refused", p);
+  else if (st === "ready") emitLocalStaffEvent("order-status", { ...p, status: "ready" });
+  else if (st) emitLocalStaffEvent("order-status", p);
+}
 const {
   getPublicCloudServerUrl,
   buildCloudAccessLinks,
@@ -670,34 +749,39 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   const ackPin = cloudAckPinFromInput(pinTrim);
   const ackMeta = staffCloudAckMeta(staff);
 
-  let cloudResult = { ok: false, message: "", accepted_by: "", acknowledged: 0 };
-  if (!ackPin && !ackMeta.waiterName) {
-    throw Object.assign(
-      new Error("Mungon identifikimi i kamarierit për cloud."),
-      { status: 400 },
-    );
-  }
-  try {
-    cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
-  } catch (e) {
-    cloudResult = { ok: false, message: e.message || "", accepted_by: "", acknowledged: 0 };
-  }
-  const ackCount = Number(cloudResult.acknowledged) || 0;
-  if (!cloudResult.ok || ackCount < 1) {
-    throw Object.assign(
-      new Error(
-        cloudResult.message
-        || "Porosia nuk u shënua në cloud — provoni përsëri ose kontrolloni internetin.",
-      ),
-      { status: 400, cloud_ok: false },
-    );
+  const allowCloudOutbound = options.allowCloudOutbound === true;
+  let cloudResult = { ok: true, message: "", accepted_by: "", acknowledged: ids.length };
+  if (allowCloudOutbound) {
+    if (!ackPin && !ackMeta.waiterName) {
+      throw Object.assign(
+        new Error("Mungon identifikimi i kamarierit për cloud."),
+        { status: 400 },
+      );
+    }
+    try {
+      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
+    } catch (e) {
+      cloudResult = { ok: false, message: e.message || "", accepted_by: "", acknowledged: 0 };
+    }
+    const ackCount = Number(cloudResult.acknowledged) || 0;
+    if (!cloudResult.ok || ackCount < 1) {
+      throw Object.assign(
+        new Error(
+          cloudResult.message
+          || "Porosia nuk u shënua në cloud — provoni përsëri ose kontrolloni internetin.",
+        ),
+        { status: 400, cloud_ok: false },
+      );
+    }
   }
 
   let slotLayout = [];
-  try {
-    slotLayout = await cloudSync.fetchOnlineSlotLayout(db, { unfiltered: true });
-  } catch {
-    /* offline */
+  if (allowCloudOutbound) {
+    try {
+      slotLayout = await cloudSync.fetchOnlineSlotLayout(db, { unfiltered: true });
+    } catch {
+      /* offline */
+    }
   }
   function onlineSlotForOrder(orderId) {
     const id = String(orderId || "").trim();
@@ -796,7 +880,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   db.removePendingCloudOrders(ids);
   onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
 
-  if (tableImports.length) {
+  if (allowCloudOutbound && tableImports.length) {
     for (let i = 0; i < ordersBefore.length; i++) {
       const r = imported[i];
       const cloudOrder = ordersBefore[i];
@@ -868,16 +952,18 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       created_at: cloudOrder.created_at || new Date().toISOString(),
       cloud_order_id: cloudOrder.id,
     };
-    try {
-      await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
-        cloudOrderId: cloudOrder.id,
-        cloudOrder,
-        waiterName,
-        waiterId: ackMeta.waiterId,
-        table_number: 0,
-      });
-    } catch (pushErr) {
-      console.warn("[accept] push QR dhomë → kuzhinë:", pushErr.message || pushErr);
+    if (allowCloudOutbound) {
+      try {
+        await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
+          cloudOrderId: cloudOrder.id,
+          cloudOrder,
+          waiterName,
+          waiterId: ackMeta.waiterId,
+          table_number: 0,
+        });
+      } catch (pushErr) {
+        console.warn("[accept] push QR dhomë → kuzhinë:", pushErr.message || pushErr);
+      }
     }
   }
 
@@ -950,26 +1036,27 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     || (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(pendingLocal))
   );
 
-  let cloudResult = { ok: false, message: "", refused: 0, order_id: orderId };
-  // Si KAFENE: PIN-i dërgohet në cloud vetëm kur punonjësi e ka shtypur tani;
-  // përndryshe identifikimi bëhet me emrin e verifikuar në PC (pos_authenticated).
+  const allowCloudOutbound = options.allowCloudOutbound === true;
+  let cloudResult = { ok: true, message: "", refused: 1, order_id: orderId, refused_by: staff?.name || "" };
   const ackPin = cloudAckPinFromInput(pinTrim);
   const ackMeta = staffCloudAckMeta(staff);
-  try {
-    cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta);
-  } catch (e) {
-    cloudResult = { ok: false, message: e.message || "", refused: 0, order_id: orderId };
+  if (allowCloudOutbound) {
+    try {
+      cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta);
+    } catch (e) {
+      cloudResult = { ok: false, message: e.message || "", refused: 0, order_id: orderId };
+    }
+
+    if (!cloudResult.ok && !isLocalGuestOrder) {
+      cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta).catch(() => {});
+      throw Object.assign(
+        new Error(cloudResult.message || "Nuk u refuzua porosia në cloud — provoni përsëri."),
+        { status: 400 },
+      );
+    }
   }
 
-  if (!cloudResult.ok && !isLocalGuestOrder) {
-    cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta).catch(() => {});
-    throw Object.assign(
-      new Error(cloudResult.message || "Nuk u refuzua porosia në cloud — provoni përsëri."),
-      { status: 400 },
-    );
-  }
-
-  if (isLocalGuestOrder) {
+  if (isLocalGuestOrder || !allowCloudOutbound) {
     onlineOrdersWatcher.persistAcknowledged(db, ids);
     db.removePendingCloudOrders(ids);
     onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
@@ -1000,7 +1087,7 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
   };
 }
 
-async function cancelPendingOnlineOrdersFlow(orderIds) {
+async function cancelPendingOnlineOrdersFlow(orderIds, options = {}) {
   const ids = [...new Set((orderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
   if (!ids.length) {
     throw Object.assign(new Error("Zgjidhni porosinë."), { status: 400 });
@@ -1012,15 +1099,18 @@ async function cancelPendingOnlineOrdersFlow(orderIds) {
   db.removePendingCloudOrders(ids);
   onlineOrdersWatcher.markOrdersPrinted(db, ids);
 
-  let cloudResult = { ok: false, message: "", cancelled: 0, order_ids: [] };
-  try {
-    cloudResult = await cloudSync.cancelOnlineOrders(db, ids);
-  } catch (e) {
-    cloudResult = { ok: false, message: e.message || "", cancelled: 0, order_ids: [] };
-  }
+  const allowCloudOutbound = options.allowCloudOutbound === true;
+  let cloudResult = { ok: true, message: "", cancelled: ids.length, order_ids: ids };
+  if (allowCloudOutbound) {
+    try {
+      cloudResult = await cloudSync.cancelOnlineOrders(db, ids);
+    } catch (e) {
+      cloudResult = { ok: false, message: e.message || "", cancelled: 0, order_ids: [] };
+    }
 
-  if (!cloudResult.ok) {
-    cloudSync.cancelOnlineOrders(db, ids).catch(() => {});
+    if (!cloudResult.ok) {
+      cloudSync.cancelOnlineOrders(db, ids).catch(() => {});
+    }
   }
 
   onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
@@ -1565,6 +1655,69 @@ function pickLanIPv4Address() {
   return candidates[0]?.ip || null;
 }
 
+/** Të gjitha IPv4 LAN (jo loopback / link-local) — për /api/server-info. */
+function listLanIPv4Addresses() {
+  const ips = [];
+  const seen = new Set();
+  for (const [, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const net of addrs || []) {
+      if (net.family !== "IPv4" || net.internal) continue;
+      const ip = String(net.address || "").trim();
+      if (!ip || ip.startsWith("169.254.")) continue;
+      if (seen.has(ip)) continue;
+      seen.add(ip);
+      ips.push(ip);
+    }
+  }
+  return ips;
+}
+
+function buildServerInfoPayload() {
+  const port = getLocalServerPort();
+  const ips = listLanIPv4Addresses();
+  const primary = pickLanIPv4Address() || ips[0] || "";
+  const base = primary ? `http://${primary}:${port}`.replace(/\/+$/, "") : "";
+  const link = (path) => (base ? `${base}${path}` : "");
+  const lan = buildLocalWaiterLanLinkPayload();
+  const venue = resolveLocalVenueSegments();
+  const slug = String(venue.slug || "").trim();
+  const mdnsServiceName = slug
+    ? `Revolution-HOTEL-${slug}`.slice(0, 63)
+    : "Revolution-HOTEL";
+  const pcHost = sanitizeLanHostname(os.hostname());
+  const hostnames = ["revolution-hotel.local"];
+  if (pcHost) hostnames.push(`${pcHost}.local`);
+  const kamarierUrl = lan.local_waiter_url || link("/waiter");
+  const recepsionUrl = lan.local_recepsion_url || link("/recepcion");
+  return {
+    ok: true,
+    ips,
+    port,
+    primary_ip: primary,
+    local_lan_ip: primary,
+    local_server_port: port,
+    mdns: {
+      service_type: "_http._tcp",
+      service_name: mdnsServiceName,
+      hostname: "revolution-hotel.local",
+    },
+    discovery: {
+      port,
+      slug,
+      tipi: venue.tipi,
+      hostnames,
+    },
+    links: {
+      login: link("/login.html?mode=kamarier"),
+      waiter: kamarierUrl,
+      kamarier: kamarierUrl,
+      recepcion: recepsionUrl,
+      sherbimi: lan.local_sherbimi_url || "",
+    },
+    ...lan,
+  };
+}
+
 function getLocalServerPort() {
   return Number(process.env.ACTUAL_PORT || process.env.PORT || 3001) || 3001;
 }
@@ -1661,7 +1814,9 @@ function localStaffPathSuffix(role, code) {
   const seg =
     r === "recepsion" ? "recepsion"
       : r === "sherbimi" || r === "pastrim" || r === "housekeeping" ? "sherbimi"
-        : "kamarier";
+        : r === "kuzhina" || r === "kitchen" ? "kuzhina"
+          : r === "banaku" || r === "bar" ? "banaku"
+            : "kamarier";
   let path = `/${tipi}/${slug}/${seg}`;
   const c = String(code ?? "").trim();
   if (c && /^\d{3}$/.test(c)) path += `/${c}`;
@@ -1705,15 +1860,43 @@ function buildLocalStaffCodeUrl(role, code) {
 
 function isLocalStaffEntryPath(pathname) {
   const p = String(pathname || "").toLowerCase().replace(/\/+$/, "");
-  return /^\/[a-z0-9-]+\/[a-z0-9-]+\/(kamarier|recepsion|sherbimi)(?:\/\d{3})?$/.test(p);
+  return /^\/[a-z0-9-]+\/[a-z0-9-]+\/(kamarier|recepsion|sherbimi|kuzhina|banaku)(?:\/\d{3})?$/.test(p);
 }
 
 /** Statikë + API minimale për faqen e hyrjes stafi në WiFi (telefon). */
 function isLocalStaffLoginAsset(pathname) {
   const p = String(pathname || "").toLowerCase();
-  if (p.startsWith("/css/") || p.startsWith("/js/") || p.startsWith("/img/")) return true;
+  if (p.startsWith("/css/") || p.startsWith("/js/") || p.startsWith("/img/") || p.startsWith("/icons/")) {
+    return true;
+  }
+  if (
+    p === "/manifest.json"
+    || p === "/manifest-kamarier.json"
+    || p === "/manifest-recepsion.json"
+    || p === "/manifest-sherbimi.json"
+    || p === "/manifest-kuzhina.json"
+    || p === "/manifest-banaku.json"
+    || p === "/sw.js"
+    || p === "/sw-staff.js"
+    || p === "/icon-192.png"
+    || p === "/login.html"
+    || p === "/waiter.html"
+    || p === "/recepcion.html"
+    || p === "/sherbimi.html"
+    || p === "/kitchen.html"
+    || p === "/bar.html"
+    || p === "/kasa-recepcion.html"
+    || p.startsWith("/api/sherbimi/")
+    || p.startsWith("/api/kds/")
+    || p === "/api/local-events"
+    || p === "/login"
+    || p === "/waiter"
+    || p === "/recepcion"
+  ) {
+    return true;
+  }
   if (p === "/api/venue-logo" || p === "/api/locale" || p === "/api/setup/status") return true;
-  if (p === "/api/login/staff-wifi-links") return true;
+  if (p === "/api/login/staff-wifi-links" || p === "/api/server-info") return true;
   if (p.startsWith("/api/login/") || p.startsWith("/api/cloud/")) return true;
   return false;
 }
@@ -1724,6 +1907,79 @@ function renderWaiterCodeErrorPage(message) {
 }
 
 const LOGIN_HTML_PATH = joinContent("public", "login.html");
+
+const STAFF_PWA_MANIFEST_FILES = {
+  kamarier: joinContent("public", "manifest-kamarier.json"),
+  recepsion: joinContent("public", "manifest-recepsion.json"),
+  sherbimi: joinContent("public", "manifest-sherbimi.json"),
+  kuzhina: joinContent("public", "manifest-kuzhina.json"),
+  banaku: joinContent("public", "manifest-banaku.json"),
+};
+
+function staffPwaStartPath(roleKey) {
+  const { tipi, slug } = resolveLocalVenueSegments();
+  const role = String(roleKey || "kamarier").trim().toLowerCase();
+  if (!slug) return null;
+  const tip = normalizeVenuePathSegment(tipi) || "hotel";
+  const sl = normalizeVenuePathSegment(slug);
+  if (!sl) return null;
+  return `/${tip}/${sl}/${role}`;
+}
+
+function sendStaffRoleManifest(res, roleKey) {
+  const filePath = STAFF_PWA_MANIFEST_FILES[roleKey];
+  if (!filePath) return res.status(404).end();
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return res.status(404).end();
+  }
+  const startPath = staffPwaStartPath(roleKey);
+  if (startPath) {
+    manifest.start_url = startPath;
+    const scopeBase = startPath.replace(/\/[^/]+\/?$/, "/");
+    manifest.scope = scopeBase;
+    manifest.id = startPath;
+  }
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.type("application/manifest+json").send(JSON.stringify(manifest));
+}
+
+function stripGenericPwaFromLoginHtml(html) {
+  return String(html || "")
+    .replace(/<link rel="manifest"[^>]*>\s*/gi, "")
+    .replace(/<meta name="theme-color"[^>]*>\s*/gi, "")
+    .replace(/<meta name="apple-mobile-web-app-capable"[^>]*>\s*/gi, "")
+    .replace(/<meta name="apple-mobile-web-app-status-bar-style"[^>]*>\s*/gi, "")
+    .replace(/<link rel="apple-touch-icon"[^>]*>\s*/gi, "")
+    .replace(/<script src="\/js\/pwa-staff-register.js"[^>]*><\/script>\s*/gi, "")
+    .replace(
+      /<meta name="viewport"[^>]*>/i,
+      '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">',
+    );
+}
+
+function buildStaffPwaHeadHtml(manifestRole) {
+  const role = manifestRole === "recepsion"
+    ? "recepsion"
+    : manifestRole === "sherbimi"
+      ? "sherbimi"
+      : manifestRole === "kuzhina"
+        ? "kuzhina"
+        : manifestRole === "banaku"
+          ? "banaku"
+          : "kamarier";
+  return [
+    `<link rel="manifest" href="/manifest-${role}.json">`,
+    '<meta name="apple-mobile-web-app-capable" content="yes">',
+    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+    '<meta name="theme-color" content="#0f172a">',
+    '<link rel="apple-touch-icon" href="/icon-192.png">',
+    '<script src="/js/pwa-staff-register.js" defer></script>',
+  ].join("\n");
+}
+
 function adminHtmlPathForRequest() {
   const fp = resolvePublicFile("admin.html");
   if (fp && fs.existsSync(fp)) return fp;
@@ -1739,14 +1995,34 @@ function serveStaffLoginPage(res, mode, entry = {}) {
   } catch {
     return res.status(500).send("login.html mungon.");
   }
-  const loginMode = mode === "recepsion" ? "recepsion" : "kamarier";
+  html = stripGenericPwaFromLoginHtml(html);
+  const loginMode = mode === "recepsion"
+    ? "recepsion"
+    : mode === "sherbimi" || mode === "pastrim"
+      ? "pastrim"
+      : mode === "kuzhina" || mode === "kitchen"
+        ? "kuzhina"
+        : mode === "banaku" || mode === "bar"
+          ? "banaku"
+          : "kamarier";
+  const manifestRole = loginMode === "recepsion"
+    ? "recepsion"
+    : loginMode === "pastrim"
+      ? "sherbimi"
+      : loginMode === "kuzhina"
+        ? "kuzhina"
+        : loginMode === "banaku"
+          ? "banaku"
+          : "kamarier";
   const payload = {
     mode: loginMode,
     waiter_code: entry.waiter_code != null ? String(entry.waiter_code) : "",
     staff_id: entry.staff_id != null ? String(entry.staff_id) : "",
     waiter_hint: entry.waiter_hint != null ? String(entry.waiter_hint) : "",
   };
-  const staffUiClass = loginMode === "recepsion" ? "login-mode-staff-recepsion" : "login-mode-staff-kamarier";
+  const staffUiClass = loginMode === "recepsion" || loginMode === "pastrim"
+    ? "login-mode-staff-recepsion"
+    : "login-mode-staff-kamarier";
   let staffCssInline = "";
   try {
     staffCssInline = fs.readFileSync(joinContent("public", "css", "login-staff-wifi.css"), "utf8");
@@ -1754,7 +2030,9 @@ function serveStaffLoginPage(res, mode, entry = {}) {
     /* fallback: link /css/login-staff-wifi.css */
   }
   const headInject = [
+    buildStaffPwaHeadHtml(manifestRole),
     `<script>window.__STAFF_WIFI_ENTRY__=${JSON.stringify(payload)};(function(){document.documentElement.classList.add("login-mode-staff","${staffUiClass}");})();</script>`,
+    '<style>html,body{background:#0f172a}</style>',
     staffCssInline ? `<style id="hotel-staff-login-critical">${staffCssInline}</style>` : "",
   ].filter(Boolean).join("\n");
   html = html.replace("</head>", `${headInject}\n</head>`);
@@ -1952,6 +2230,25 @@ function staffOrAdmin(req, res, next) {
   next();
 }
 
+/** SSE lokal — çdo rol stafi (kamarier, recepsion, kuzhinë, banak, pastrim, admin). */
+function anyStaffSessionAuth(req, res, next) {
+  const role = String(req.session?.role || "").trim().toLowerCase();
+  const ok = [
+    "kamarier",
+    "recepsion",
+    "admin",
+    "kuzhina",
+    "banaku",
+    "pastrim",
+    "sherbimi",
+    "housekeeping",
+  ].includes(role);
+  if (!ok) {
+    return res.status(403).json({ gabim: "Nuk keni akses." });
+  }
+  next();
+}
+
 /** Ndërrimi stafi — kamarier ose recepsion (i njëjti staff_id / daily_log). */
 function waiterOrRecepsion(req, res, next) {
   const role = req.session?.role;
@@ -1959,6 +2256,62 @@ function waiterOrRecepsion(req, res, next) {
     return res.status(403).json({ gabim: "Nuk keni akses." });
   }
   next();
+}
+
+function normalizePinLoginMode(raw) {
+  const r = String(raw || "kamarier").trim().toLowerCase();
+  if (r === "recepsion") return "recepsion";
+  if (r === "sherbimi" || r === "pastrim" || r === "pastrimi" || r === "housekeeping") return "pastrim";
+  if (r === "kuzhina" || r === "kitchen" || r === "kuzhine") return "kuzhina";
+  if (r === "banaku" || r === "bar" || r === "banak") return "banaku";
+  return "kamarier";
+}
+
+function sessionRoleFromLoginMode(loginMode) {
+  if (loginMode === "recepsion") return "recepsion";
+  if (loginMode === "pastrim") return "pastrim";
+  if (loginMode === "kuzhina") return "kuzhina";
+  if (loginMode === "banaku") return "banaku";
+  return "kamarier";
+}
+
+function staffPinAllowedForLoginMode(staff, loginMode) {
+  const raw = String(staff?.staff_role || "kamarier").trim().toLowerCase();
+  if (loginMode === "kuzhina") {
+    return (
+      raw === "kitchen"
+      || raw === "kuzhina"
+      || raw === "kuzhine"
+      || raw === "kamarier"
+      || raw === "waiter"
+    );
+  }
+  if (loginMode === "banaku") {
+    return (
+      raw === "bar"
+      || raw === "banak"
+      || raw === "banaku"
+      || raw === "kamarier"
+      || raw === "waiter"
+    );
+  }
+  return db.normalizeStaffRole(staff.staff_role) === loginMode;
+}
+
+/** Pastrim / shërbimi — vetëm rol pastrim ose admin. */
+function sherbimiStaffAuth(req, res, next) {
+  const role = String(req.session?.role || "").trim().toLowerCase();
+  if (role === "admin" || role === "pastrim" || role === "sherbimi" || role === "housekeeping") {
+    return next();
+  }
+  return res.status(403).json({ gabim: "Vetëm stafi i pastrimit ka akses." });
+}
+
+/** Kuzhinë / banak — sesion PIN stafi (WiFi POS). */
+function kdsPanelStaffAuth(req, res, next) {
+  const role = String(req.session?.role || "").trim().toLowerCase();
+  if (role === "admin" || role === "kuzhina" || role === "banaku") return next();
+  return res.status(403).json({ gabim: "Vetëm kuzhina/banaku ka akses." });
 }
 
 function auditActivity(userName, userRole, action, detail = "") {
@@ -2243,6 +2596,20 @@ app.use((req, res, next) => {
   const pathLower = String(req.path || "").toLowerCase();
   if (isLocalStaffEntryPath(pathLower)) return next();
   if (isLocalStaffLoginAsset(pathLower)) return next();
+  if (pathLower === "/login") {
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    return res.redirect(302, `/login.html${qs || "?mode=kamarier"}`);
+  }
+  if (pathLower === "/waiter") {
+    const suffix = localStaffPathSuffix("kamarier");
+    if (suffix) return res.redirect(302, suffix);
+    return res.redirect(302, "/login.html?mode=kamarier");
+  }
+  if (pathLower === "/recepcion") {
+    const suffix = localStaffPathSuffix("recepsion");
+    if (suffix) return res.redirect(302, suffix);
+    return res.redirect(302, "/login.html?mode=recepsion");
+  }
   if (pathLower === "/login.html") {
     const mode = String(req.query.mode || "").toLowerCase();
     if (mode === "kamarier" || mode === "recepsion") return next();
@@ -2281,39 +2648,104 @@ function handleStaffWifiEntry(req, res, mode) {
     return res.status(404).send("404 — lokali nuk u gjet.");
   }
   const kodRaw = req.params.kod != null ? String(req.params.kod).trim() : "";
+  const codeRole = mode === "sherbimi"
+    ? "pastrim"
+    : (mode === "kuzhina" || mode === "banaku" ? "kamarier" : mode);
   if (kodRaw) {
     if (!/^\d{3}$/.test(kodRaw)) {
       return res.status(404).type("html").send(renderWaiterCodeErrorPage("Kodi nuk ekziston."));
     }
-    const row = db.findActiveWaiterCode(kodRaw, mode);
+    const row = db.findActiveWaiterCode(kodRaw, codeRole);
     if (!row) {
       return res.status(404).type("html").send(renderWaiterCodeErrorPage("Kodi nuk ekziston."));
     }
-    return serveStaffLoginPage(res, mode, {
+    return serveStaffLoginPage(res, mode === "sherbimi" ? "sherbimi" : mode, {
       waiter_code: kodRaw,
       staff_id: row.waiter_id,
       waiter_hint: row.waiter_name || "",
     });
   }
-  return serveStaffLoginPage(res, mode, {});
+  return serveStaffLoginPage(res, mode === "sherbimi" ? "sherbimi" : mode, {});
 }
 
 app.get("/:tipi/:slug/kamarier/:kod?", (req, res) => handleStaffWifiEntry(req, res, "kamarier"));
 app.get("/:tipi/:slug/recepsion/:kod?", (req, res) => handleStaffWifiEntry(req, res, "recepsion"));
-app.get("/:tipi/:slug/sherbimi", (req, res) => {
-  const expected = resolveLocalVenueSegments();
-  const reqTipi = normalizeVenuePathSegment(req.params.tipi);
-  const reqSlug = normalizeVenuePathSegment(req.params.slug);
-  const expTipi = normalizeVenuePathSegment(expected.tipi);
-  const expSlug = normalizeVenuePathSegment(expected.slug);
-  if (!expSlug || reqTipi !== expTipi || reqSlug !== expSlug) {
-    return res.status(404).send("404 — lokali nuk u gjet.");
+app.get("/:tipi/:slug/sherbimi/:kod?", (req, res) => handleStaffWifiEntry(req, res, "sherbimi"));
+app.get("/:tipi/:slug/kuzhina/:kod?", (req, res) => handleStaffWifiEntry(req, res, "kuzhina"));
+app.get("/:tipi/:slug/banaku/:kod?", (req, res) => handleStaffWifiEntry(req, res, "banaku"));
+
+app.get("/manifest-kuzhina.json", (_req, res) => sendStaffRoleManifest(res, "kuzhina"));
+app.get("/manifest-banaku.json", (_req, res) => sendStaffRoleManifest(res, "banaku"));
+
+app.get("/api/kds/events", auth, kdsPanelStaffAuth, (req, res) => {
+  localKdsEvents.subscribe(res);
+});
+
+app.get("/api/local-events", auth, anyStaffSessionAuth, (req, res) => {
+  localEventsHub.subscribe(res);
+});
+
+app.get("/api/kds/orders", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const orders = localKds.listKitchenOrders(db);
+    const cancelled = localKds.listKitchenCancelledOrders(db);
+    const venue =
+      db.getBusinessName?.()
+      || db.getSetting?.("restaurant_name", "")
+      || "Restorant";
+    res.json({
+      ok: true,
+      client_name: venue,
+      restaurant_name: venue,
+      orders,
+      cancelled,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
   }
-  const cloud = buildHotelStaffLinks(db).housekeeping_url || "";
-  if (cloud) return res.redirect(302, cloud);
-  return res.status(503).type("html").send(
-    "<p>Pastrimi cloud nuk është gati. Vendosni çelësin e licencës te Admin → Cloud.</p>",
-  );
+});
+
+app.post("/api/kds/orders/:orderId/accept", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const acceptedBy = req.session?.emri || "Kuzhina";
+    localKds.acceptKitchenOrder(db, req.params.orderId, acceptedBy);
+    notifyLocalKdsUpdate({ order_id: req.params.orderId, status: "accepted" });
+    res.json({ ok: true, accepted_by: acceptedBy });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/kds/orders/:orderId/refuse", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const reason = String(req.body?.reason || req.body?.refuse_reason || "").trim();
+    localKds.refuseKitchenOrder(db, req.params.orderId, reason);
+    notifyLocalKdsUpdate({ order_id: req.params.orderId, status: "refused" });
+    res.json({ ok: true, refuse_reason: reason });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/kds/orders/:orderId/ready", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const row = localKds.markKitchenOrderReady(db, req.params.orderId);
+    notifyLocalKdsUpdate({ order_id: req.params.orderId, status: "ready" });
+    notifyWaitersRealtime("ready", { order_id: req.params.orderId, local: true });
+    const mapped = localKds.mapOrderRow(row, row.table_number, db);
+    res.json({ ok: true, order: mapped || { id: String(row.id) } });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/kds/bar/tables/live", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const live = localKds.listBarTablesLive(db);
+    res.json({ ok: true, ...live });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
 });
 
 app.get("/api/venue-logo", (_req, res) => {
@@ -2322,6 +2754,17 @@ app.get("/api/venue-logo", (_req, res) => {
   if (venue) return res.json({ ok: true, logo: venue });
   return res.json({ ok: true, logo: null });
 });
+
+/** IP LAN + linke PWA stafi — pa auth (vetëm LAN / Electron). */
+app.get("/api/server-info", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.json(buildServerInfoPayload());
+});
+
+/** Manifest PWA stafi — start_url / scope sipas slug lokal (pa ndryshuar URL-të e rrugëve). */
+app.get("/manifest-kamarier.json", (_req, res) => sendStaffRoleManifest(res, "kamarier"));
+app.get("/manifest-recepsion.json", (_req, res) => sendStaffRoleManifest(res, "recepsion"));
+app.get("/manifest-sherbimi.json", (_req, res) => sendStaffRoleManifest(res, "sherbimi"));
 
 /** Linket WiFi për restorant (kamarier) dhe recepsion — pa auth (vetëm LAN). */
 app.get("/api/login/staff-wifi-links", (_req, res) => {
@@ -2822,10 +3265,10 @@ app.post("/api/login/pin", async (req, res) => {
   const pin = String(req.body.pin ?? "").trim();
   const staffId = req.body.staff_id != null ? Number(req.body.staff_id) : null;
   const webToken = String(req.body.web_token || req.body.w || "").trim();
-  const loginMode = db.normalizeStaffRole(req.body.login_mode || req.body.mode || "kamarier");
+  const loginMode = normalizePinLoginMode(req.body.login_mode || req.body.mode || "kamarier");
   if (!staffPinPolicy.acceptsLoginPin(pin, loginMode)) {
     return res.status(400).json({
-      gabim: loginMode === "recepsion"
+      gabim: loginMode === "recepsion" || loginMode === "pastrim"
         ? "PIN duhet të jetë 6 shifra"
         : "PIN duhet 4 shifra (ose 6 për PIN të vjetër restoranti)",
     });
@@ -2835,8 +3278,7 @@ app.post("/api/login/pin", async (req, res) => {
     if (!staff) {
       return res.status(401).json({ gabim: "PIN i gabuar!" });
     }
-    const staffRole = db.normalizeStaffRole(staff.staff_role);
-    if (staffRole !== loginMode) {
+    if (!staffPinAllowedForLoginMode(staff, loginMode)) {
       const zoneMsg = staffPinPolicy.wrongZoneMessage(staff.staff_role, loginMode);
       return res.status(401).json({
         gabim: zoneMsg || "Ky PIN nuk lejohet për këtë panel",
@@ -2853,7 +3295,7 @@ app.post("/api/login/pin", async (req, res) => {
       return res.status(401).json({ gabim: "PIN i gabuar për këtë kamarier!" });
     }
 
-    const sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
+    const sessionRole = sessionRoleFromLoginMode(loginMode);
     const sess = createSession(sessionRole, staff.name, staff.id);
     auditActivity(staff.name, sessionRole, "Hyrje PIN", `${pin.length} shifra`);
     logFiscalLoginAudit(req, staff.name, staff.id);
@@ -2950,17 +3392,17 @@ app.post("/api/login/card", async (req, res) => {
       return res.status(401).json({ gabim: "Kjo kartelë nuk i takon këtij punonjësi!" });
     }
     const staffRole = db.normalizeStaffRole(staff.staff_role);
-    let sessionRole = staffRole === "recepsion" ? "recepsion" : "kamarier";
+    let sessionRole = sessionRoleFromLoginMode(staffRole);
     if (loginModeRaw) {
-      const loginMode = db.normalizeStaffRole(loginModeRaw);
-      if (staffRole !== loginMode) {
+      const loginMode = normalizePinLoginMode(loginModeRaw);
+      if (!staffPinAllowedForLoginMode(staff, loginMode)) {
         const zoneMsg = staffPinPolicy.wrongZoneMessage(staff.staff_role, loginMode);
         return res.status(401).json({
           gabim: zoneMsg || "Ky PIN nuk lejohet për këtë panel",
           wrong_zone: true,
         });
       }
-      sessionRole = loginMode === "recepsion" ? "recepsion" : "kamarier";
+      sessionRole = sessionRoleFromLoginMode(loginMode);
     }
     const sess = createSession(sessionRole, staff.name, staff.id);
     auditActivity(staff.name, sessionRole, "Hyrje kartelë RFID", "RFID");
@@ -2986,6 +3428,7 @@ app.post("/api/logout", auth, (req, res) => {
 
 /* ─── Kamarier (i mbrojtur) ─── */
 app.get("/api/waiter/cloud-tables", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, tables: [], updated_at: null, local_only: true })) return;
   try {
     const live = await cloudSync.fetchLiveCloudTables(db);
     res.json({ ok: true, tables: live?.tables || [], updated_at: live?.updated_at || null });
@@ -3003,7 +3446,29 @@ app.get("/api/admin/cloud-tables", auth, adminOnly, async (req, res) => {
   }
 });
 
+/** Faqja publike KDS — proxy përmes POS (admin tab → server → hotel-cloud-sync → cloud). */
+app.get("/api/admin/kds-public-page", auth, adminOnly, async (_req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const data = await hotelCloudSync.fetchKdsPublicPage(db);
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/admin/kds-public-page", auth, adminOnly, async (req, res) => {
+  try {
+    const hotelCloudSync = require("./hotel-cloud-sync");
+    const data = await hotelCloudSync.updateKdsPublicPage(db, req.body || {});
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/cloud-table/dismiss", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, skipped: true, local_only: true })) return;
   try {
     let tableNum = Number(req.body?.table_number);
     const tableId = Number(req.body?.table_id);
@@ -3035,6 +3500,7 @@ app.post("/api/waiter/cloud-table/dismiss", auth, waiterOnly, async (req, res) =
 });
 
 app.post("/api/waiter/trigger-sync", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, pending: 0, local_only: true })) return;
   try {
     ensureOnlineOrdersWatcher();
     const pbt = opts => autoPrintKitchenTicket(db, opts);
@@ -3046,6 +3512,7 @@ app.post("/api/waiter/trigger-sync", auth, waiterOnly, async (req, res) => {
 });
 
 app.post("/api/waiter/import-cloud-table-order", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     let { order, waiter_name } = req.body || {};
     if (!order) return res.json({ ok: false, gabim: "Mungon porosia cloud" });
@@ -3078,8 +3545,17 @@ app.post("/api/waiter/import-cloud-table-order", auth, waiterOnly, async (req, r
 
 /** Njoftim WS te kamarierët (polling mbetet fallback) — si KAFENE. */
 function notifyWaitersRealtime(type, extra) {
+  const e = extra && typeof extra === "object" ? extra : {};
   try {
     broadcastWaiterRealtime(type, extra);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const t = String(type || "").trim();
+    if (t === "online_orders") emitLocalStaffEvent("guest-order", e);
+    else if (t === "tables" || t === "cloud_tables") emitLocalStaffEvent("table-update", e);
+    else if (t === "ready") emitLocalStaffEvent("order-status", { ...e, status: "ready" });
   } catch {
     /* ignore */
   }
@@ -3157,7 +3633,8 @@ function filterReadyOrdersForWaiterAlarm(orders) {
   return out;
 }
 
-app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (_req, res) => {
+app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, orders: [], has_ready: false, local_only: true })) return;
   try {
     const orders = await cloudSync.fetchReadyTableOrders(db);
     const unseen = filterReadyOrdersForWaiterAlarm(orders);
@@ -3172,7 +3649,7 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) 
   ids.forEach(id => _seenReadyOrderIds.add(String(id)));
   persistWaiterReadyDismissedIds(_seenReadyOrderIds);
   try {
-    if (cloudSync.isCloudConfigured(db) && ids.length) {
+    if (sessionMayTalkToCloud(req.session) && cloudSync.isCloudConfigured(db) && ids.length) {
       await cloudSync.acknowledgeReadyOrdersPicked(db, ids);
     }
   } catch (err) {
@@ -3182,7 +3659,31 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) 
 });
 
 app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req, res) => {
+  const allowCloud = sessionMayTalkToCloud(req.session);
+  const recepGuestMaster = recepsionPosGuestCloudMaster(req.session);
   try {
+    if (!allowCloud && !recepGuestMaster) {
+      const staffId = resolveWaiterStaffId(req.session);
+      const localPending = (db.listPendingCloudOrders() || []).filter((o) => {
+        const isAcceptPending = (x) => x?.id && (
+          db.isAnyStaffAcceptPendingOrder(x) || db.isCloudOnlinePickupOrder(x)
+        );
+        return isAcceptPending(o) && !cloudSync.isCloudOrderAccepted(o);
+      });
+      let orders = filterOnlineOrdersForStaffRole(localPending, req.session);
+      if (staffId) {
+        orders = orders.filter((o) => !onlineOrdersWatcher.isStaffRefusedOrder(db, staffId, o.id));
+      }
+      const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
+      return res.json({
+        ...STAFF_LOCAL_EMPTY_ONLINE_ORDERS,
+        orders,
+        pending: orders.length,
+        has_pending: orders.length > 0,
+        my_external: myOrders.length,
+        my_orders: myOrders,
+      });
+    }
     ensureOnlineOrdersWatcher();
     const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
     let data;
@@ -3200,7 +3701,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
     if (!orders.length && !data.connected) {
       orders = (db.listPendingCloudOrders() || []).filter(isStillPendingForPos);
     }
-    if (!orders.length && data.connected && typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
+    if (allowCloud && !orders.length && data.connected && typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
       try {
         const cloud = await cloudSync.fetchOnlineOrders(db);
         // Vetëm "orders" (ende në pritje sipas cloud) — kurrë "all_orders", pasi ai
@@ -3239,6 +3740,11 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
 });
 
 app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, {
+    ok: true,
+    local_only: true,
+    online_slots: Array.from({ length: 6 }, (_, i) => ({ slot: i + 1, status: "free", order: null })),
+  })) return;
   try {
     const who = resolveStaffCloudWaiterIdentity(req.session);
     const rawSlots = await cloudSync.fetchOnlineSlotLayout(db, who);
@@ -3281,6 +3787,7 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
 });
 
 app.post("/api/waiter/online-orders/open-slot", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, skipped: true, local_only: true })) return;
   try {
     const orderId = String(req.body?.order_id || "").trim();
     const slotNum = Number(req.body?.online_slot) || 0;
@@ -3315,13 +3822,16 @@ app.post("/api/waiter/online-orders/close", auth, waiterOnly, async (req, res) =
     if (!orderId) return res.status(400).json({ ok: false, gabim: "Mungon order_id." });
     const items = db.parseOrderItems(req.body?.items || []);
     const staff = db.findStaffByName?.(req.session.emri) || null;
-    const cloud = await cloudSync.closeCloudOnlineOrderById(db, {
-      order_id: orderId,
-      payment_method: req.body?.payment_method || "cash",
-      waiter_name: req.session.emri,
-      waiter_id: staff?.cloud_waiter_id || staff?.id,
-      items,
-    });
+    let cloud = { ok: true, local_only: true };
+    if (sessionMayTalkToCloud(req.session)) {
+      cloud = await cloudSync.closeCloudOnlineOrderById(db, {
+        order_id: orderId,
+        payment_method: req.body?.payment_method || "cash",
+        waiter_name: req.session.emri,
+        waiter_id: staff?.cloud_waiter_id || staff?.id,
+        items,
+      });
+    }
     const active = db.getActiveOrderByCloudId(orderId);
     if (active) {
       try {
@@ -3362,7 +3872,12 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
     const flow = await acceptOnlineOrdersFlow(
       ids,
       pin,
-      { fallbackOrders, trustedStaff, sessionRole: req.session.role },
+      {
+        fallbackOrders,
+        trustedStaff,
+        sessionRole: req.session.role,
+        allowCloudOutbound: allowCloudOutboundForGuestOrderSession(req.session),
+      },
     );
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
@@ -3391,6 +3906,7 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
 
 /** Rikthen në cloud porositë takeaway aktive (PC → telefon / revolution-pos.com). */
 app.post("/api/waiter/online-orders/resync-cloud", auth, waiterOnly, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, pushed: 0, skipped: true, local_only: true })) return;
   try {
     const staff = db.findStaffByName(req.session.emri)
       || db.findStaffByNameInsensitive(req.session.emri);
@@ -3441,7 +3957,12 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
     const staffId = resolveWaiterStaffId(req.session);
 
     const reason = String(req.body?.reason || req.body?.refuse_reason || "").trim();
-    const flow = await refusePendingOnlineOrdersFlow(ids, { pin, trustedStaff, reason });
+    const flow = await refusePendingOnlineOrdersFlow(ids, {
+      pin,
+      trustedStaff,
+      reason,
+      allowCloudOutbound: allowCloudOutboundForGuestOrderSession(req.session),
+    });
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
     notifyWaitersRealtime("online_orders", { reason: "refuse" });
@@ -3468,6 +3989,7 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
 });
 
 app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: true, requests: [], local_only: true })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -3478,6 +4000,7 @@ app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, 
 });
 
 app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.respondPublicBookingRequest(db, req.params.id, {
@@ -3492,6 +4015,7 @@ app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrReceps
 });
 
 app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: true, rooms: [], local_only: true })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -3522,7 +4046,8 @@ app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterO
 });
 
 /** Kërkesa publike bazen/spa — POS recepsion (burimi kryesor i pranimit). */
-app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, async (_req, res) => {
+app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: true, requests: [], local_only: true })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.listPublicServiceRequestsPending(db, { status: "open" });
@@ -3533,6 +4058,7 @@ app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, 
 });
 
 app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
@@ -3548,6 +4074,7 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
 });
 
 app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
@@ -3563,6 +4090,7 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
 });
 
 app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
+  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -3619,7 +4147,9 @@ app.post("/api/waiter/online-orders/cancel", auth, waiterOnly, async (req, res) 
         });
       }
     }
-    const flow = await cancelPendingOnlineOrdersFlow(ids);
+    const flow = await cancelPendingOnlineOrdersFlow(ids, {
+      allowCloudOutbound: sessionMayTalkToCloud(req.session),
+    });
     const staffId = resolveWaiterStaffId(req.session);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterQrOrdersForWaiterName(flow.snapshot?.orders || [], req.session?.emri);
@@ -4545,6 +5075,12 @@ app.post("/api/waiter/housekeeping/:roomId/assign", auth, staffOrAdmin, (req, re
     const row = db.assignHousekeepingStaff(req.params.roomId, req.body?.staff_id);
     auditReq(req, "Caktim pastruesi", `Dhoma ${row?.room_number} · ${row?.assigned_name || "—"}`);
     pushHousekeepingToCloudAsync("hk-assign");
+    emitLocalStaffEvent("room-assigned", {
+      room_id: row?.room_id,
+      room_number: row?.room_number,
+      assigned_to: row?.assigned_to,
+      assigned_name: row?.assigned_name,
+    });
     res.json({ ok: true, room: row });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4566,6 +5102,13 @@ app.post("/api/waiter/housekeeping/:roomId/start", auth, staffOrAdmin, (req, res
     const row = db.startHousekeepingCleaning(req.params.roomId);
     auditReq(req, "Fillim pastrimi", `Dhoma ${row?.room_number}`);
     pushHousekeepingToCloudAsync("hk-start");
+    emitLocalStaffEvent("room-status", {
+      room_id: row?.room_id,
+      room_number: row?.room_number,
+      status: "in_progress",
+      status_label: housekeepingStatusLabel("in_progress"),
+      changed_by: String(req.session?.emri || "").trim(),
+    });
     res.json({ ok: true, room: row });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4577,6 +5120,13 @@ app.post("/api/waiter/housekeeping/:roomId/complete", auth, staffOrAdmin, (req, 
     const room = db.completeHousekeepingRoom(req.params.roomId);
     auditReq(req, "Përfundim pastrimi", room.room_number);
     pushHousekeepingToCloudAsync("hk-complete");
+    emitLocalStaffEvent("room-status", {
+      room_id: room?.id,
+      room_number: room?.room_number,
+      status: "clean",
+      status_label: housekeepingStatusLabel("clean"),
+      changed_by: String(req.session?.emri || "").trim(),
+    });
     res.json({ ok: true, room });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -4602,6 +5152,101 @@ app.post("/api/waiter/housekeeping/:roomId/ready", auth, staffOrAdmin, (req, res
     res.json({ ok: true, room });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
+  }
+});
+
+function housekeepingStatusLabel(status) {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "clean") return "Pastër";
+  if (s === "in_progress") return "Në pastrim";
+  if (s === "occupied") return "E zënë";
+  if (s === "dirty") return "E papastër";
+  return s || "—";
+}
+
+function mapSherbimiRoomRow(row) {
+  if (!row) return null;
+  let status = "clean";
+  const hk = String(row.hk_status || "").toLowerCase();
+  if (hk === "occupied") status = "occupied";
+  else if (hk === "in_progress") status = "in_progress";
+  else if (hk === "dirty" || hk === "maintenance") status = "dirty";
+  else status = "clean";
+  return {
+    id: row.room_id,
+    room_number: row.room_number,
+    floor: row.floor,
+    type: row.type,
+    status,
+    hk_status: row.hk_status,
+    room_status: row.room_status,
+  };
+}
+
+/** Pastrim stafi — vetëm SQLite lokal (pa cloud). */
+app.get("/api/sherbimi/rooms", auth, sherbimiStaffAuth, (_req, res) => {
+  try {
+    const board = db.listHousekeepingBoard();
+    res.json({
+      ok: true,
+      rooms: (board.rooms || []).map(mapSherbimiRoomRow),
+      counts: board.counts,
+    });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/sherbimi/rooms/:id/status", auth, sherbimiStaffAuth, (req, res) => {
+  try {
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    const roomId = Number(req.params.id);
+    const boardBefore = db.listHousekeepingBoard();
+    const prev = (boardBefore.rooms || []).find((r) => Number(r.room_id) === roomId);
+    const oldStatus = prev ? (mapSherbimiRoomRow(prev)?.status || "") : "";
+    const row = db.setSherbimiCleaningStatus(req.params.id, status);
+    auditReq(req, "Status pastrimi", `Dhoma ${row?.room_number || req.params.id} → ${status}`);
+    if (status && status !== oldStatus) {
+      const changedBy = String(req.session?.emri || "").trim();
+      db.insertHousekeepingNotification({
+        room_id: roomId,
+        room_number: row?.room_number ?? prev?.room_number,
+        old_status: oldStatus,
+        new_status: status,
+        changed_by: changedBy,
+      });
+      emitLocalStaffEvent("room-status", {
+        room_id: roomId,
+        room_number: row?.room_number ?? prev?.room_number,
+        status,
+        status_label: housekeepingStatusLabel(status),
+        changed_by: changedBy,
+      });
+    }
+    res.json({ ok: true, room: mapSherbimiRoomRow(row) });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+/** Ndryshime statusi pastrimi (poll recepsioni — SQLite lokal). */
+app.get("/api/waiter/housekeeping-updates", auth, staffOrAdmin, (_req, res) => {
+  try {
+    const rows = db.drainHousekeepingNotifications();
+    res.json({
+      ok: true,
+      updates: rows.map((r) => ({
+        room_id: r.room_id,
+        room_number: r.room_number,
+        status: r.new_status,
+        status_label: housekeepingStatusLabel(r.new_status),
+        old_status: r.old_status,
+        changed_by: r.changed_by,
+        timestamp: r.created_at,
+      })),
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, updates: [] });
   }
 });
 
@@ -4836,6 +5481,7 @@ app.post("/api/admin/room-reservations/:id/check-in", auth, adminOnly, (req, res
 
 /** Rezervime / dhoma nga cloud (telefon recepsion) → SQLite para listës në POS. */
 app.post("/api/waiter/hotel-pms/pull-cloud", auth, staffOrAdmin, async (req, res) => {
+  if (rejectStaffCloud(req, res, { ok: true, skipped: true, local_only: true, message: "Të dhënat lokale (POS)." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const forceFull =
@@ -5184,6 +5830,12 @@ app.post("/api/orders", auth, async (req, res) => {
         order,
         closedAt: slipAt,
       });
+      localKds.touchOrderAfterSend(db, order.id);
+      notifyLocalKdsUpdate({
+        order_id: String(order.id),
+        table_number: t?.number || 0,
+        status: "ordered",
+      });
     }
     res.json({ ok: true, id, batch_no: batchNo, printed_items: deltaItems.length, items: deltaItems });
   } catch (e) {
@@ -5264,6 +5916,11 @@ app.post("/api/orders/close", auth, async (req, res) => {
       });
     }
 
+    emitLocalStaffEvent("table-update", {
+      table_id: tableId,
+      action: "closed",
+      room_number: tableRow?.number,
+    });
     res.json({ ok: true, order, fiscal: fiscalResult, fiscal_skipped: fiscalSkip });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -5286,6 +5943,11 @@ app.post("/api/orders/cancel", auth, (req, res) => {
     db.cancelActiveOrder(tableId);
     if (t?.number) cloudSync.pushTableFree(db, t.number);
     if (cloudIds2.length) cloudSync.cancelOnlineOrders(db, cloudIds2).catch(() => {});
+    emitLocalStaffEvent("table-update", {
+      table_id: tableId,
+      table_number: t?.number,
+      action: "cancelled",
+    });
     res.json({ ok: true, message: "Porosia u anullua" });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -11330,6 +11992,28 @@ function onServerListening(server, port) {
       startStaffLocalLinksLanWatcher(db);
     } catch (e) {
       console.warn("[lan-staff-links] watcher:", e.message);
+    }
+    try {
+      const { NetworkMonitor } = require("./lib/network-monitor");
+      const { startLocalDiscovery, restartLocalDiscovery } = require("./lib/local-discovery");
+      const bootVenue = resolveLocalVenueSegments();
+      const bootPort = getLocalServerPort();
+      const mdnsOpts = () => ({
+        port: getLocalServerPort(),
+        slug: resolveLocalVenueSegments().slug,
+        hostname: "revolution-hotel",
+      });
+      startLocalDiscovery(mdnsOpts());
+      const lanNetworkMonitor = new NetworkMonitor(30000);
+      lanNetworkMonitor.on("change", ({ previous, current }) => {
+        const fromIp = previous?.primary_ip || "—";
+        const toIp = current?.primary_ip || "—";
+        console.log(`[lan] IP LAN ndryshoi: ${fromIp} → ${toIp} (port ${current?.port || bootPort})`);
+        restartLocalDiscovery(mdnsOpts());
+      });
+      lanNetworkMonitor.start();
+    } catch (e) {
+      console.warn("[lan] discovery/monitor:", e.message);
     }
     setTimeout(() => {
       cloudSync.syncRestaurantIdentityFromCloud(db).catch(() => {});

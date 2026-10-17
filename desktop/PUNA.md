@@ -1704,3 +1704,74 @@ LAN/IP: `local-staff-links.js` + sync cloud — **pa shkrim manual IP**; QR/hint
 
 ### Provë
 - `node tests/protected-functions.test.js` → 15 passed.
+
+---
+
+## 16 tetor 2026 — Feature 2: Alarm recepsioni kur tavolina faturohet në dhomë
+
+### Çfarë u shtua
+Kur kamarieri (POS ose telefon) mbyll tavolinë me `payment_method = "room"`, recepsioni merr **toast njoftim** amber me detajet (tavolina, dhoma, mysafiri, totali).
+
+### Skedarë të ndryshuar
+
+| Skedar | Ndryshimi |
+|--------|----------|
+| `server.js` | +`pushRoomChargeNotification` / `drainRoomChargeNotifications` (in-memory queue, TTL 90s). Pas charge-to-room: push notification. +endpoint GET `/api/waiter/room-charge-notifications` |
+| `public/recepcion.html` | +toast container `#room-charge-toast` + CSS. +`showRoomChargeToast`, `pollRoomChargeNotifications`, `startRoomChargePolling` (poll 8s). |
+
+### Nuk u prek
+- closeTable logjika (vetëm u shtua 1 rresht pushRoomChargeNotification pas auditReq)
+- cloud-sync.js, hotel-cloud-sync.js — i paprekur
+- admin.html, waiter.js (desktop) — i paprekur (feature 2)
+
+---
+
+## 17 tetor 2026 — PWA stafi + /api/server-info (LAN)
+
+### Çfarë u shtua
+- `public/manifest.json`, `public/sw.js`, `public/icons/hotel-icon.svg`, `public/js/pwa-staff-register.js`
+- PWA meta + manifest në `login.html`, `waiter.html`, `recepcion.html`
+- `server.js`: `GET /api/server-info`, `listLanIPv4Addresses`, `/login` `/waiter` `/recepcion` (LAN), whitelist PWA në `isLocalStaffLoginAsset`
+- `admin.html`: seksion **Staff Links** (linke + QR nga `/api/server-info`)
+
+### Nuk u prek
+- `cloud-staff-access.js`, `cloud-server-url.js`, licencë, KDS proxy, cloud sync
+
+### Provë
+- `node --check server.js` OK
+- `node tests/protected-functions.test.js` → 15 passed
+- `/api/server-info` live: pas **restart** app (Setup i ri ose dev) — jo build automatik
+
+---
+
+## 17 tetor 2026 (2) — PWA sipas rolit (/hotel/{slug}/…)
+
+- `manifest-kamarier.json`, `manifest-recepsion.json`, `manifest-sherbimi.json`, `sw-staff.js`, `icon-192.png`
+- `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/te-naseri-2/kamarier`
+- `serveStaffLoginPage` injekton PWA; pas PIN: `waiter.html` / `kasa-recepcion.html` me manifest rol
+
+---
+
+## 17 tetor 2026 — PWA stafi + /api/server-info (LAN)
+
+### Çfarë u shtua
+- `public/manifest.json`, `public/sw.js`, `public/icons/hotel-icon.svg`, `public/js/pwa-staff-register.js`
+- PWA meta + manifest në `login.html`, `waiter.html`, `recepcion.html`
+- `server.js`: `GET /api/server-info`, `listLanIPv4Addresses`, `/login` `/waiter` `/recepcion` (LAN), whitelist PWA në `isLocalStaffLoginAsset`
+- `admin.html`: seksion **Staff Links** (linke + QR nga `/api/server-info`)
+
+### Nuk u prek
+- `cloud-staff-access.js`, `cloud-server-url.js`, licencë, KDS proxy, cloud sync
+
+### Provë
+- `node --check server.js` OK
+- `node tests/protected-functions.test.js` → 15 passed
+- `/api/server-info` live: pas **restart** app (Setup i ri ose dev) — jo build automatik
+
+---
+
+## 17 tetor 2026 (2) — PWA sipas rolit (/hotel/{slug}/…)
+
+- `manifest-kamarier.json`, `manifest-recepsion.json`, `manifest-sherbimi.json`, `sw-staff.js`, `icon-192.png`
+- `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/te-naseri-2/kamarier`
+- `serveStaffLoginPage` injekton PWA; pas PIN: `waiter.html` / `kasa-recepcion.html` me manifest rol

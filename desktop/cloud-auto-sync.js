@@ -13,6 +13,11 @@ const cloudHealth = require("./cloud-health");
 const registerMode = require("./register-mode");
 const hotelCloudSync = require("./hotel-cloud-sync");
 const license = require("./license");
+const cloudStaffAccess = require("./cloud-staff-access");
+
+function staffCloudAutoJobsPaused() {
+  return cloudStaffAccess.isStaffCloudFeaturesDisabled();
+}
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
 const CLOSED_WAITER_SALES_MS = 30 * 1000;
@@ -218,6 +223,7 @@ async function runLicenseCheck(db) {
 }
 
 async function runClosedWaiterSalesSync(db) {
+  if (staffCloudAutoJobsPaused()) return;
   if (!canRunCloudSideJobs(db) || isCloudWaiterDisabled(db)) return;
   if (waiterClosedSyncInFlight) return;
   waiterClosedSyncInFlight = true;
@@ -247,6 +253,7 @@ async function runOwnerAdminPasswordSync(db) {
 }
 
 async function runStaffPushSync(db) {
+  if (staffCloudAutoJobsPaused()) return;
   if (!canRunCloudSideJobs(db) || isCloudWaiterDisabled(db)) return;
   if (staffPushInFlight) return;
   staffPushInFlight = true;
@@ -260,6 +267,7 @@ async function runStaffPushSync(db) {
 }
 
 async function runRegisterModeSync(db) {
+  if (staffCloudAutoJobsPaused()) return;
   if (!canRunCloudSideJobs(db)) return;
   if (registerModeFetchInFlight) return;
   registerModeFetchInFlight = true;
@@ -274,8 +282,9 @@ async function runRegisterModeSync(db) {
 }
 
 function runAllSideSyncJobs(db) {
-  runClosedWaiterSalesSync(db).catch(() => {});
   runOwnerAdminPasswordSync(db).catch(() => {});
+  if (staffCloudAutoJobsPaused()) return;
+  runClosedWaiterSalesSync(db).catch(() => {});
   runStaffPushSync(db).catch(() => {});
   runRegisterModeSync(db).catch(() => {});
 }
@@ -371,10 +380,12 @@ function pushCatalogDebounced(db) {
 
 function armCloudPeriodicJobs(db) {
   connectionTimer = startPeriodicJob(db, runConnectionCheck, CONNECTION_CHECK_MS);
-  closedWaiterTimer = startPeriodicJob(db, runClosedWaiterSalesSync, CLOSED_WAITER_SALES_MS);
   ownerPasswordTimer = startPeriodicJob(db, runOwnerAdminPasswordSync, OWNER_ADMIN_PASSWORD_MS);
-  staffPushTimer = startPeriodicJob(db, runStaffPushSync, STAFF_PUSH_INTERVAL_MS);
-  registerModeTimer = startPeriodicJob(db, runRegisterModeSync, REGISTER_MODE_MS);
+  if (!staffCloudAutoJobsPaused()) {
+    closedWaiterTimer = startPeriodicJob(db, runClosedWaiterSalesSync, CLOSED_WAITER_SALES_MS);
+    staffPushTimer = startPeriodicJob(db, runStaffPushSync, STAFF_PUSH_INTERVAL_MS);
+    registerModeTimer = startPeriodicJob(db, runRegisterModeSync, REGISTER_MODE_MS);
+  }
 }
 
 function runStartupBurst(db) {
@@ -414,6 +425,7 @@ function startCloudAutoSync(db) {
 
   cloudHealth.onReconnect(() => {
     runReconnectBurst(db);
+    if (staffCloudAutoJobsPaused()) return;
     try {
       cloudSync.reconcileAllTablesWithCloud(db);
     } catch {

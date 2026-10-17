@@ -1,6 +1,6 @@
 /**
  * QR për hotel — Room Service / Menyja / Shërbime (vetëm cloud).
- * Publik (cloud): https://revolution-pos.com/hotel/guest/services.html?room=… (një faqe: restorant + shërbime)
+ * Publik (cloud): https://revolution-pos.com/hotel/{slug}/guest/services.html?room=…
  */
 const QRCode = require("qrcode");
 const {
