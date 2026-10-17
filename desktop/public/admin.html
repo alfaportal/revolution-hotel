@@ -5356,7 +5356,7 @@
               <button type="button" class="btn btn-ghost btn-sm" id="btn-open-owner-url">Hap</button>
             </div>
             <p class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">
-              Hapni në telefon — hyni me email-in e pronarit.
+              Admin POS — i njëjti WiFi si PC (http://IP:port/admin.html).
             </p>
           </div>
           <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
@@ -5393,6 +5393,40 @@
             </div>
             <p id="cloud-local-recepsion-hint" class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)"></p>
           </div>
+          <div class="fiscal-field-row" id="staff-pwa-links-block" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px dashed var(--ngjyr-border)">
+            <label>Staff Links</label>
+            <p class="links-hint" style="margin:0 0 0.5rem;font-size:0.8rem;color:var(--ngjyr-muted)">
+              Linke LAN për stafin (PWA) — skanoni QR, «Shto në ekranin kryesor». IP: <span id="staff-pwa-ips" style="font-family:monospace">—</span>
+            </p>
+            <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-staff-pwa-links">Rifresko IP / linke</button>
+            </div>
+            <div class="fiscal-field-row" style="margin:0 0 0.65rem">
+              <label style="font-size:0.8rem">Hyrje (login)</label>
+              <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
+                <input type="text" id="staff-pwa-login-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-login-url">Kopjo</button>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:flex-start">
+              <div style="min-width:10rem">
+                <label style="font-size:0.8rem;display:block;margin-bottom:0.35rem">Kamarier</label>
+                <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
+                  <input type="text" id="staff-pwa-waiter-url" readonly style="font-family:monospace;font-size:0.72rem;flex:1;min-width:160px">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-waiter-url">Kopjo</button>
+                </div>
+                <img id="staff-pwa-waiter-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR kamarier PWA" hidden>
+              </div>
+              <div style="min-width:10rem">
+                <label style="font-size:0.8rem;display:block;margin-bottom:0.35rem">Recepsion</label>
+                <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
+                  <input type="text" id="staff-pwa-recepsion-url" readonly style="font-family:monospace;font-size:0.72rem;flex:1;min-width:160px">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-recepsion-url">Kopjo</button>
+                </div>
+                <img id="staff-pwa-recepsion-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR recepsion PWA" hidden>
+              </div>
+            </div>
+          </div>
           <div class="fiscal-field-row" id="cloud-row-local-sherbimi">
             <label id="cloud-local-sherbimi-label">Pastrim — WiFi i hotelit</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
@@ -5402,14 +5436,16 @@
             </div>
             <p id="cloud-local-sherbimi-hint" class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">Punon vetëm në Wi‑Fi të hotelit.</p>
           </div>
-          <div class="fiscal-field-row" id="cloud-row-kitchen">
+          <!-- CLOUD DISABLED — waiting for local implementation -->
+          <div class="fiscal-field-row" id="cloud-row-kitchen" hidden>
             <label>Kuzhina (ekran porosish)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-kitchen-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/kuzhina?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kitchen-url">Kopjo</button>
             </div>
           </div>
-          <div class="fiscal-field-row" id="cloud-row-bar">
+          <!-- CLOUD DISABLED — waiting for local implementation -->
+          <div class="fiscal-field-row" id="cloud-row-bar" hidden>
             <label>Bar (pije)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
               <input type="text" id="cloud-bar-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/bar?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
@@ -15845,41 +15881,9 @@
       if (genBtn) genBtn.hidden = true;
     }
 
-    function refreshStaffModalCloudWaiterUi(staff) {
+    function refreshStaffModalCloudWaiterUi(_staff) {
       const block = document.getElementById("staff-modal-cloud-waiter-block");
-      const input = document.getElementById("staff-modal-cloud-waiter-url");
-      const copyBtn = document.getElementById("staff-modal-copy-cloud-waiter");
-      const regenBtn = document.getElementById("staff-modal-regenerate-cloud");
-      const label = document.getElementById("staff-modal-cloud-waiter-label");
-      const hint = document.getElementById("staff-modal-cloud-waiter-hint");
-      if (!block || !staff) {
-        if (block) block.hidden = true;
-        return;
-      }
-      const isRecepsion = staff.staff_role === "recepsion";
-      const showCloud = !cloudWaiterDisabled;
-      block.hidden = !showCloud;
-      if (!showCloud) return;
-      if (label) {
-        label.textContent = isRecepsion
-          ? "Link recepsion (cloud — revolution-pos.com)"
-          : "Link kamarier (cloud — revolution-pos.com)";
-      }
-      const cloudUrl = String(staff.staff_cloud_url || staff.waiter_url || "").trim();
-      if (input) input.value = cloudUrl;
-      if (copyBtn) copyBtn.disabled = !cloudUrl;
-      if (regenBtn) regenBtn.disabled = false;
-      if (hint) {
-        if (!cloudUrl) {
-          hint.hidden = false;
-          hint.textContent = isRecepsion
-            ? "Vendosni PIN 6-shifror, pastaj Cloud → Sinkronizo gjithçka. Linku hap panelin e recepsionit në cloud."
-            : "Vendosni PIN 6-shifror, pastaj Cloud → Sinkronizo gjithçka. Linku hap tabletin e kamarierit.";
-        } else {
-          hint.hidden = true;
-          hint.textContent = "";
-        }
-      }
+      if (block) block.hidden = true;
     }
 
     function mbyllModalStafit() {
@@ -18563,6 +18567,7 @@
 
     let localWaiterLanPollTimer = null;
     let localWaiterQrCache = { url: "", data_url: "" };
+    const staffPwaQrCache = { waiter: { url: "", data_url: "" }, recepsion: { url: "", data_url: "" } };
 
     function stopLocalWaiterLanPoll() {
       if (localWaiterLanPollTimer) {
@@ -18579,10 +18584,68 @@
         try {
           const s = await api("/api/admin/local-waiter-links");
           applyLocalWaiterLanPayload(s);
+          void loadStaffPwaServerInfo();
         } catch {
           /* ignore */
         }
       }, 15000);
+    }
+
+    function refreshStaffPwaQrUi(imgId, cacheKey, url) {
+      const img = document.getElementById(imgId);
+      const u = String(url || "").trim();
+      if (!img) return;
+      if (!u) {
+        img.hidden = true;
+        return;
+      }
+      const cache = staffPwaQrCache[cacheKey] || { url: "", data_url: "" };
+      if (cache.url === u && cache.data_url) {
+        img.src = cache.data_url;
+        img.hidden = false;
+        return;
+      }
+      const dataUrl = typeof adminMakeQrDataUrl === "function" ? adminMakeQrDataUrl(u, 160) : "";
+      staffPwaQrCache[cacheKey] = { url: u, data_url: dataUrl };
+      if (dataUrl) {
+        img.src = dataUrl;
+        img.hidden = false;
+      } else {
+        img.hidden = true;
+      }
+    }
+
+    async function loadStaffPwaServerInfo() {
+      const block = document.getElementById("staff-pwa-links-block");
+      if (!block) return;
+      try {
+        const r = await fetch("/api/server-info", { cache: "no-store", credentials: "same-origin" });
+        if (!r.ok) return;
+        const d = await r.json();
+        const links = d.links || {};
+        const waiterUrl =
+          String(d.local_waiter_url || links.kamarier || links.waiter || "").trim();
+        const recepsionUrl =
+          String(d.local_recepsion_url || links.recepsion || "").trim();
+        const loginUrl = String(links.login || "").trim()
+          || (waiterUrl ? waiterUrl.replace(/\/[^/]+\/[^/]+\/kamarier.*$/i, "/login.html?mode=kamarier") : "");
+        const setVal = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && val) el.value = val;
+        };
+        setVal("staff-pwa-login-url", loginUrl);
+        setVal("staff-pwa-waiter-url", waiterUrl);
+        setVal("staff-pwa-recepsion-url", recepsionUrl);
+        const ipsEl = document.getElementById("staff-pwa-ips");
+        if (ipsEl) {
+          const ips = Array.isArray(d.ips) ? d.ips : [];
+          ipsEl.textContent = ips.length ? ips.join(", ") : "—";
+        }
+        refreshStaffPwaQrUi("staff-pwa-waiter-qr-img", "waiter", waiterUrl);
+        refreshStaffPwaQrUi("staff-pwa-recepsion-qr-img", "recepsion", recepsionUrl);
+      } catch {
+        /* ignore */
+      }
     }
 
     function refreshLocalWaiterQrUi(url) {
@@ -18723,6 +18786,67 @@
       return base.length >= 3 ? base : s;
     }
 
+    /** Linke stafi / admin — LAN POS (jo cloud në UI). */
+    function resolveLocalStaffLinksFromSync(s) {
+      const src = s && typeof s === "object" ? s : {};
+      const base = String(src.local_base_url || "").replace(/\/+$/, "")
+        || (src.local_lan_ip && src.local_server_port
+          ? `http://${String(src.local_lan_ip).trim()}:${Number(src.local_server_port) || 3001}`
+          : "");
+      const slugRaw = stripLegacyKitchenSlugSuffix(
+        src.kitchen_slug || src.client_id || src.hotel_slug || src.local_waiter_slug || "",
+      );
+      const tipi = String(src.client_tipi || "hotel").trim().toLowerCase() || "hotel";
+      let localWaiterUrl =
+        src.local_waiter_url
+        || src.local_staff_wifi?.kamarier
+        || "";
+      if (!localWaiterUrl && base && slugRaw) {
+        localWaiterUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/kamarier`;
+      }
+      let localRecepsionUrl = src.local_recepsion_url || src.local_staff_wifi?.recepsion || "";
+      if (!localRecepsionUrl && localWaiterUrl) {
+        localRecepsionUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/recepsion$1");
+      } else if (!localRecepsionUrl && base && slugRaw) {
+        localRecepsionUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/recepsion`;
+      }
+      let localSherbimiUrl = src.local_sherbimi_url || src.local_staff_wifi?.sherbimi || "";
+      if (!localSherbimiUrl && localRecepsionUrl) {
+        localSherbimiUrl = localRecepsionUrl.replace(/\/recepsion(\/\d{3})?\/?$/i, "/sherbimi$1");
+      } else if (!localSherbimiUrl && localWaiterUrl) {
+        localSherbimiUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/sherbimi$1");
+      } else if (!localSherbimiUrl && base && slugRaw) {
+        localSherbimiUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/sherbimi`;
+      }
+      let localKuzhinaUrl = src.local_kuzhina_url || "";
+      if (!localKuzhinaUrl && localWaiterUrl) {
+        localKuzhinaUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/kuzhina$1");
+      } else if (!localKuzhinaUrl && base && slugRaw) {
+        localKuzhinaUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/kuzhina`;
+      }
+      let localBanakuUrl = src.local_banaku_url || "";
+      if (!localBanakuUrl && localWaiterUrl) {
+        localBanakuUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/banaku$1");
+      } else if (!localBanakuUrl && base && slugRaw) {
+        localBanakuUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/banaku`;
+      }
+      const adminUrl = base ? `${base}/admin.html` : "";
+      const localMenuUrl = base && slugRaw
+        ? `${base}/menu/${encodeURIComponent(slugRaw)}/1`
+        : "";
+      return {
+        base,
+        slug: slugRaw,
+        localWaiterUrl,
+        localRecepsionUrl,
+        localSherbimiUrl,
+        localKuzhinaUrl,
+        localBanakuUrl,
+        adminUrl,
+        localMenuUrl,
+      };
+    }
+
     /** I njëjti format si «Linqet e lokalit tuaj» te paneli i pronarit (telefon). */
     function buildOwnerPanelHotelLink(slug, key, segment, { withKey = true } = {}) {
       const s = stripLegacyKitchenSlugSuffix(slug);
@@ -18745,131 +18869,134 @@
         || "";
       const key = String(src.kitchen_key || "").trim();
       const sl = stripLegacyKitchenSlugSuffix(slug);
-      if (!sl) return src;
-      if (!key) {
-        return {
-          ...src,
-          kitchen_slug: sl,
-          client_tipi: "hotel",
-          public_page_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}`,
-          takeaway_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/takeaway`,
-          public_order_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/takeaway`,
-        };
+      let merged = { ...src };
+      if (sl) {
+        merged.kitchen_slug = sl;
+        merged.client_tipi = merged.client_tipi || "hotel";
+        if (!key) {
+          merged = {
+            ...merged,
+            public_page_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}`,
+            takeaway_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/takeaway`,
+            public_order_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/takeaway`,
+          };
+        } else {
+          merged = {
+            ...merged,
+            owner_panel_url: "https://revolution-pos.com/owner/panel",
+            owner_url: "https://revolution-pos.com/owner/panel",
+            waiter_url: buildOwnerPanelHotelLink(sl, key, "kamarier"),
+            reception_url: buildOwnerPanelHotelLink(sl, key, "recepsion"),
+            bar_url: buildOwnerPanelHotelLink(sl, key, "bar"),
+            kitchen_url: buildOwnerPanelHotelLink(sl, key, "kuzhina"),
+            kiosk_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/menu/1`,
+            public_page_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}`,
+            takeaway_url: buildOwnerPanelHotelLink(sl, key, "takeaway", { withKey: false }),
+            public_order_url: buildOwnerPanelHotelLink(sl, key, "takeaway", { withKey: false }),
+            housekeeping_url: buildOwnerPanelHotelLink(sl, key, "sherbimi"),
+          };
+        }
       }
+      const loc = resolveLocalStaffLinksFromSync(merged);
       return {
-        ...src,
-        kitchen_slug: sl,
-        client_tipi: "hotel",
-        owner_panel_url: "https://revolution-pos.com/owner/panel",
-        owner_url: "https://revolution-pos.com/owner/panel",
-        waiter_url: buildOwnerPanelHotelLink(sl, key, "kamarier"),
-        reception_url: buildOwnerPanelHotelLink(sl, key, "recepsion"),
-        bar_url: buildOwnerPanelHotelLink(sl, key, "bar"),
-        kitchen_url: buildOwnerPanelHotelLink(sl, key, "kuzhina"),
-        kiosk_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}/menu/1`,
-        public_page_url: `${HOTEL_CLOUD_ORIGIN}/hotel/${encodeURIComponent(sl)}`,
-        takeaway_url: buildOwnerPanelHotelLink(sl, key, "takeaway", { withKey: false }),
-        public_order_url: buildOwnerPanelHotelLink(sl, key, "takeaway", { withKey: false }),
-        housekeeping_url: buildOwnerPanelHotelLink(sl, key, "sherbimi"),
+        ...merged,
+        local_panel_waiter_url: loc.localWaiterUrl,
+        local_panel_recepsion_url: loc.localRecepsionUrl,
+        local_panel_sherbimi_url: loc.localSherbimiUrl,
+        local_panel_menu_url: loc.localMenuUrl,
       };
     }
 
     function vendosLinketCloud(s) {
       s = applyOwnerPanelHotelLinks(s);
+      const loc = resolveLocalStaffLinksFromSync(s);
       const links = document.getElementById("web-app-links");
       const hint = document.getElementById("cloud-links-hint");
       if (links) links.hidden = false;
 
-      const setVal = (id, val) => {
+      const setVal = (id, val, { cloudNormalize = false } = {}) => {
         const el = document.getElementById(id);
-        if (el) el.value = normalizeHotelCloudUrl(val || "");
+        if (!el) return;
+        const raw = String(val || "").trim();
+        el.value = cloudNormalize ? normalizeHotelCloudUrl(raw) : raw;
       };
       const toggleRow = (rowId, show) => {
         const row = document.getElementById(rowId);
         if (row) row.hidden = !show;
       };
-      const cloudDisabled = !!s.cloud_waiter_disabled;
-      let cloudWaiterDisplay = cloudDisabled ? "" : (s.waiter_url || "");
-      if (!cloudWaiterDisplay && !cloudDisabled && s.bar_url) {
-        cloudWaiterDisplay = String(s.bar_url).replace(/\/bar(\?|$)/i, "/kamarier$1");
-      }
-      const ownerUrl = s.owner_panel_url || s.owner_url || "https://revolution-pos.com/owner/panel";
-      setVal("cloud-owner-url", ownerUrl);
-      toggleRow("cloud-row-owner", !!ownerUrl);
-      setVal("cloud-waiter-url", cloudWaiterDisplay);
-      setVal("cloud-kitchen-url", s.kitchen_url);
-      setVal("cloud-bar-url", s.bar_url);
-      setVal("cloud-kiosk-url", s.kiosk_url || s.public_menu);
-      setVal("cloud-public-url", s.public_page_url);
-      const takeawayUrl = s.takeaway_url || s.public_order_url || "";
-      const takeawayEl = document.getElementById("cloud-takeaway-url");
-      if (takeawayEl) setVal("cloud-takeaway-url", takeawayUrl);
-      toggleRow("cloud-row-takeaway", !!(takeawayUrl || s.kitchen_slug || s.kitchen_key));
-      setVal("cloud-hk-url", s.housekeeping_url || "");
-      setVal("cloud-reception-url", cloudDisabled ? "" : (s.reception_url || ""));
-      toggleRow(
-        "cloud-row-waiter",
-        !cloudDisabled && !!(cloudWaiterDisplay || s.kitchen_slug || s.hotel_slug || s.bar_url),
-      );
-      toggleRow("cloud-row-reception", !cloudDisabled && !!(s.reception_url || normalizeHotelCloudUrl(s.reception_url)));
-      if (!cloudDisabled && s.reception_url) {
-        const recLbl = document.querySelector("#cloud-row-reception label");
-        if (recLbl) recLbl.textContent = "Recepsion — internet";
-      }
 
-      const localWaiterUrl =
-        s.local_waiter_url
-        || s.local_staff_wifi?.kamarier
-        || s.local_waiter_panel_url
-        || (s.local_base_url ? `${String(s.local_base_url).replace(/\/+$/, "")}/waiter.html` : "")
-        || "";
-      let localRecepsionUrl = s.local_recepsion_url || s.local_staff_wifi?.recepsion || "";
-      if (!localRecepsionUrl && localWaiterUrl) {
-        localRecepsionUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/recepsion$1");
-      }
-      let localSherbimiUrl = s.local_sherbimi_url || s.local_staff_wifi?.sherbimi || "";
-      if (!localSherbimiUrl && localRecepsionUrl) {
-        localSherbimiUrl = localRecepsionUrl.replace(/\/recepsion(\/\d{3})?\/?$/i, "/sherbimi$1");
-      } else if (!localSherbimiUrl && localWaiterUrl) {
-        localSherbimiUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/sherbimi$1");
-      }
+      const localWaiterUrl = loc.localWaiterUrl || s.local_panel_waiter_url || "";
+      const localRecepsionUrl = loc.localRecepsionUrl || s.local_panel_recepsion_url || "";
+      const localSherbimiUrl = loc.localSherbimiUrl || s.local_panel_sherbimi_url || "";
+      const ownerUrl =
+        s.owner_panel_url
+        || s.owner_url
+        || "https://revolution-pos.com/owner/panel";
+      const localMenuUrl = loc.localMenuUrl || s.local_panel_menu_url || "";
+
+      setVal("cloud-owner-url", ownerUrl, { cloudNormalize: true });
+      toggleRow("cloud-row-owner", !!ownerUrl);
+
       setVal("cloud-local-waiter-url", localWaiterUrl);
       setVal("cloud-local-recepsion-url", localRecepsionUrl);
       setVal("cloud-local-sherbimi-url", localSherbimiUrl);
-      toggleRow("cloud-row-local-waiter", true);
+      toggleRow("cloud-row-local-waiter", !!localWaiterUrl);
       toggleRow("cloud-row-local-recepsion", !!(localRecepsionUrl || localWaiterUrl));
       toggleRow("cloud-row-local-sherbimi", !!(localSherbimiUrl || localRecepsionUrl || localWaiterUrl));
+
+      setVal("cloud-waiter-url", localWaiterUrl);
+      setVal("cloud-reception-url", localRecepsionUrl);
+      setVal("cloud-hk-url", localSherbimiUrl);
+      toggleRow("cloud-row-waiter", false);
+      toggleRow("cloud-row-reception", false);
+      toggleRow("cloud-row-housekeeping", false);
+
+      setVal("cloud-kiosk-url", localMenuUrl);
+      toggleRow("cloud-row-kiosk", !!localMenuUrl);
+
+      const takeawayUrl = s.takeaway_url || s.public_order_url || "";
+      setVal("cloud-takeaway-url", takeawayUrl, { cloudNormalize: true });
+      toggleRow("cloud-row-takeaway", !!(takeawayUrl || s.kitchen_slug || s.kitchen_key));
+
+      setVal("cloud-public-url", s.public_page_url, { cloudNormalize: true });
+      toggleRow("cloud-row-public", !!s.public_page_url);
+
+      const localKuzhinaUrl = loc.localKuzhinaUrl || "";
+      const localBanakuUrl = loc.localBanakuUrl || "";
+      setVal("cloud-kitchen-url", localKuzhinaUrl);
+      setVal("cloud-bar-url", localBanakuUrl);
+      toggleRow("cloud-row-kitchen", !!localKuzhinaUrl);
+      toggleRow("cloud-row-bar", !!localBanakuUrl);
+
       const recepHint = document.getElementById("cloud-local-recepsion-hint");
       if (recepHint) {
         recepHint.textContent = localRecepsionUrl
-          ? "Tablet recepsioni — i njëjti WiFi si PC; hyrje me PIN recepsioni (roli Recepsion te Stafi)."
+          ? "Recepsion POS — i njëjti WiFi si PC; hyrje me PIN (roli Recepsion te Stafi)."
           : "";
+      }
+      const sherbHint = document.getElementById("cloud-local-sherbimi-hint");
+      if (sherbHint && localSherbimiUrl) {
+        sherbHint.textContent = "Pastrim POS — i njëjti WiFi si PC; hyrje me PIN pastrimi.";
       }
       const venue = String(emriRestorantit || s.client_name || "").trim();
       const wLbl = document.getElementById("cloud-local-waiter-label");
       const rLbl = document.getElementById("cloud-local-recepsion-label");
-      if (wLbl) wLbl.textContent = venue ? `Kamarier — ${venue}` : "Kamarier — WiFi i hotelit";
-      if (rLbl) rLbl.textContent = venue ? `Recepsion — ${venue}` : "Recepsion — WiFi i hotelit";
+      const shLbl = document.getElementById("cloud-local-sherbimi-label");
+      if (wLbl) wLbl.textContent = venue ? `Kamarier — ${venue} (POS lokal)` : "Kamarier — POS lokal";
+      if (rLbl) rLbl.textContent = venue ? `Recepsion — ${venue} (POS lokal)` : "Recepsion — POS lokal";
+      if (shLbl) shLbl.textContent = venue ? `Pastrim — ${venue} (POS lokal)` : "Pastrim — POS lokal";
       void provoLidhjenLokalTeKamarierit(localWaiterUrl);
       refreshLocalWaiterQrUi(localWaiterUrl);
       renderLocalWaiterHostnameAlternatives(s.local_waiter_hostname_urls);
       if (localWaiterUrl) localWifiBaseKamarier = localWaiterUrl;
       if (localRecepsionUrl) localWifiBaseRecepsion = localRecepsionUrl;
 
-      toggleRow("cloud-row-kitchen", s.kitchen_url);
-      toggleRow("cloud-row-bar", s.bar_url);
-      toggleRow("cloud-row-kiosk", s.kiosk_url);
-      toggleRow("cloud-row-public", s.public_page_url);
-      toggleRow("cloud-row-housekeeping", s.housekeeping_url);
-
       if (hint) {
         hint.hidden = false;
-        if (localWaiterUrl && !cloudDisabled && s.waiter_url) {
-          hint.textContent = "WiFi i hotelit dhe internet — hyrje me PIN. Link personal te Stafi → Ndrysho.";
-        } else if (localWaiterUrl || localRecepsionUrl) {
-          hint.textContent = "Kopjoni linkun për stafin. Link personal te Stafi → Ndrysho.";
+        if (localWaiterUrl || localRecepsionUrl || localSherbimiUrl) {
+          hint.textContent = "Të gjitha linket e stafit drejtohen te POS lokal (WiFi i hotelit). QR / kopjo → telefon.";
         } else if (s.links_ready) {
-          hint.textContent = "Kopjoni linket dhe dërgojini stafit.";
+          hint.textContent = "Vendosni licencën dhe emrin e hotelit për linke LAN.";
         } else {
           hint.textContent = "Vendosni emrin e hotelit dhe çelësin e licencës.";
         }
@@ -18892,6 +19019,7 @@
           cloudWaiterDisabled = s.cloud_waiter_disabled;
         }
         vendosLinketCloud(s);
+        void loadStaffPwaServerInfo();
         startLocalWaiterLanPoll();
       } catch (err) {
         vendosStatusinCloud(false, err.message || "Nuk u lexuan linket.", true);
@@ -18912,6 +19040,19 @@
         document.execCommand("copy");
       }
     }
+
+    document.getElementById("btn-refresh-staff-pwa-links")?.addEventListener("click", () => {
+      void loadStaffPwaServerInfo();
+    });
+    document.getElementById("btn-copy-staff-pwa-login-url")?.addEventListener("click", function () {
+      kopjoLinkun("staff-pwa-login-url", this);
+    });
+    document.getElementById("btn-copy-staff-pwa-waiter-url")?.addEventListener("click", function () {
+      kopjoLinkun("staff-pwa-waiter-url", this);
+    });
+    document.getElementById("btn-copy-staff-pwa-recepsion-url")?.addEventListener("click", function () {
+      kopjoLinkun("staff-pwa-recepsion-url", this);
+    });
 
     document.getElementById("btn-copy-local-waiter-url")?.addEventListener("click", function () {
       kopjoLinkun("cloud-local-waiter-url", this);
@@ -19077,16 +19218,17 @@
       return adminPublicCloud;
     }
 
-    function adminPublicPageApiUrl() {
-      const { server, slug, key } = adminPublicCloud;
-      const q = new URLSearchParams({ key });
-      return `${server}/hotel/api/kds/${encodeURIComponent(slug)}/public-page?${q}`;
-    }
-
     async function adminPublicPageApi(method, body) {
-      const opts = { method, headers: { "Content-Type": "application/json" } };
-      if (body != null) opts.body = JSON.stringify(body);
-      const res = await fetch(adminPublicPageApiUrl(), opts);
+      const isWrite = String(method || "GET").toUpperCase() !== "GET";
+      const opts = {
+        method: isWrite ? "POST" : "GET",
+        credentials: "same-origin",
+      };
+      if (isWrite) {
+        opts.headers = { "Content-Type": "application/json" };
+        if (body != null) opts.body = JSON.stringify(body);
+      }
+      const res = await fetch("/api/admin/kds-public-page", opts);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.gabim || data.error || `HTTP ${res.status}`);
       return data;
