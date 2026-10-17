@@ -693,6 +693,7 @@
     if (!window.LocalStaffEvents) return;
     window.LocalStaffEvents.on("order-new", () => fetchOrders());
     window.LocalStaffEvents.on("order-status", () => fetchOrders());
+    window.LocalStaffEvents.on("order-accepted", () => fetchOrders());
     window.LocalStaffEvents.connect(() => fetchOrders());
   }
 

@@ -2120,14 +2120,13 @@
     }
 
     async function ngarkoPorosiGati() {
-      if (window.STAFF_CLOUD_FEATURES_OFF) return;
       try {
         if (_readyAlarmActive) return;
         const data = await api("/api/waiter/orders/ready-check");
         if (data.has_ready && (data.orders?.length ?? 0) > 0) {
           showReadyAlarm(data.orders);
         }
-      } catch { /* cloud offline */ }
+      } catch { /* offline */ }
     }
     // ─────────────────────────────────────────────────────────────────────
 
@@ -4814,7 +4813,7 @@
       window.LocalStaffEvents.on("order-status", (env) => {
         const st = String(env?.data?.status || "").toLowerCase();
         if (st === "ready") ngarkoPorosiGati().catch(() => {});
-        else ngarkoTavolinat(true).catch(() => {});
+        else if (st !== "ready") ngarkoTavolinat(true).catch(() => {});
       });
       window.LocalStaffEvents.on("order-accepted", () => ngarkoPorosiOnlineWaiter(true).catch(() => {}));
       window.LocalStaffEvents.on("order-refused", () => ngarkoPorosiOnlineWaiter(true).catch(() => {}));

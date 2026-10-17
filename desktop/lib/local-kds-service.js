@@ -30,6 +30,7 @@ function mapOrderRow(order, tableNumber, db) {
   const kitchenItems = filterKitchenItems(allItems, db);
   if (!kitchenItems.length) return null;
   const st = String(order.kds_kitchen_status || "ordered").trim().toLowerCase();
+  // Pas «Gati» porosia hiqet nga lista e kuzhinës (kamarieri njoftohet).
   if (st === "ready") return null;
   return {
     id: String(order.id),
@@ -41,6 +42,7 @@ function mapOrderRow(order, tableNumber, db) {
     ordered_at: order.created_at || new Date().toISOString(),
     accepted_at: order.kds_kitchen_accepted_at || null,
     accepted_by_waiter_name: order.kds_kitchen_accepted_by || "",
+    ready_at: order.kds_kitchen_ready_at || null,
     device_id: order.cloud_order_id ? "WEB-WAITER" : "POS",
     status: st === "refused" ? "ordered" : st || "ordered",
     refused_at: st === "refused" ? order.kds_kitchen_refused_at || null : null,
@@ -48,20 +50,68 @@ function mapOrderRow(order, tableNumber, db) {
   };
 }
 
+/** Porosi me artikuj kuzhine që duhen parë në KDS (pa «ready»). */
+function orderEligibleForKitchenQueue(order, db) {
+  if (!order || String(order.status || "") !== "active") return false;
+  const kitchenItems = filterKitchenItems(parseItems(order.items_json), db);
+  if (!kitchenItems.length) return false;
+  const st = String(order.kds_kitchen_status || "").trim().toLowerCase();
+  if (st === "ready") return false;
+  if (st === "ordered" || st === "accepted" || st === "refused") return true;
+  return (Number(order.batch_count) || 0) > 0;
+}
+
 function listKitchenOrders(db) {
   const rows = db.db.prepare(`
     SELECT o.*, t.number AS table_number
     FROM orders o
     JOIN tables t ON t.id = o.table_id
-    WHERE o.status = 'active' AND COALESCE(o.batch_count, 0) > 0
+    WHERE o.status = 'active'
+      AND (
+        COALESCE(o.batch_count, 0) > 0
+        OR LOWER(COALESCE(o.kds_kitchen_status, '')) IN ('ordered', 'accepted', 'refused')
+      )
     ORDER BY o.created_at ASC
   `).all();
   const orders = [];
   for (const row of rows) {
+    if (!orderEligibleForKitchenQueue(row, db)) continue;
     const mapped = mapOrderRow(row, row.table_number, db);
     if (mapped) orders.push(mapped);
   }
   return orders;
+}
+
+/** Porosi «Gati» lokale — alarm te kamarieri (pa cloud). */
+function listWaiterReadyKitchenOrders(db, dismissedSet) {
+  const dismissed = dismissedSet instanceof Set ? dismissedSet : new Set();
+  const rows = db.db.prepare(`
+    SELECT o.*, t.number AS table_number
+    FROM orders o
+    JOIN tables t ON t.id = o.table_id
+    WHERE o.status = 'active'
+      AND LOWER(COALESCE(o.kds_kitchen_status, '')) = 'ready'
+    ORDER BY o.kds_kitchen_ready_at ASC, o.id ASC
+  `).all();
+  const out = [];
+  for (const row of rows) {
+    const id = String(row.id);
+    if (dismissed.has(id)) continue;
+    const kitchenItems = filterKitchenItems(parseItems(row.items_json), db);
+    if (!kitchenItems.length) continue;
+    out.push({
+      id,
+      local_order_id: id,
+      table_number: Number(row.table_number) || 0,
+      waiter_name: row.waiter_name || "",
+      items_json: kitchenItems,
+      total: itemsTotal(kitchenItems),
+      status: "ready",
+      ready_at: row.kds_kitchen_ready_at || null,
+      device_id: row.cloud_order_id ? "WEB-WAITER" : "POS",
+    });
+  }
+  return out;
 }
 
 function listKitchenCancelledOrders(_db) {
@@ -87,7 +137,15 @@ function touchOrderAfterSend(db, orderId) {
   const kitchenItems = filterKitchenItems(parseItems(order.items_json), db);
   if (!kitchenItems.length) return;
   const st = String(order.kds_kitchen_status || "").trim().toLowerCase();
-  if (st === "ready") return;
+  if (st === "ready") {
+    db.db.prepare(`
+      UPDATE orders SET
+        kds_kitchen_status = 'ordered',
+        kds_kitchen_ready_at = NULL
+      WHERE id = ? AND status = 'active'
+    `).run(id);
+    return;
+  }
   db.db.prepare(`
     UPDATE orders SET kds_kitchen_status = 'ordered'
     WHERE id = ? AND status = 'active'
@@ -182,10 +240,12 @@ function listBarTablesLive(db) {
 module.exports = {
   listKitchenOrders,
   listKitchenCancelledOrders,
+  listWaiterReadyKitchenOrders,
   listBarTablesLive,
   touchOrderAfterSend,
   acceptKitchenOrder,
   refuseKitchenOrder,
   markKitchenOrderReady,
   mapOrderRow,
+  orderEligibleForKitchenQueue,
 };

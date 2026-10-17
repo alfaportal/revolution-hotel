@@ -80,17 +80,40 @@ function isOnlinePickupTableNumber(db, tableNumber) {
   }
 }
 
-/** Porosi takeaway/web publike në slot Online — vetëm mbyllje stafi (POS / telefon / SSE). */
+/**
+ * Porosi mysafir (QR / takeaway / public) pas PRANO në POS — mos i mbyll sync-i
+ * vetë kur UUID nuk shfaqet më te poll-i cloud; vetëm pagesa manuale / SSE closed.
+ */
 function isProtectedOnlinePickupLocalOrder(db, order) {
   if (!order) return false;
+  if (String(order.status || "active").toLowerCase() !== "active") return false;
   if (isOnlinePickupTableNumber(db, order.table_number)) return true;
+
   const src = String(order.source_label || "").toLowerCase();
-  if (!src) return false;
-  if (/qr\s·\s*t\d|tavolin/i.test(src)) return false;
-  return (
-    /\b(takeaway|delivery|online)\b/.test(src)
-    || /web-public|qr\s*meny|takeaway\s·/i.test(String(order.source_label || ""))
-  );
+  const cid = String(order.cloud_order_id || "").trim();
+
+  if (src) {
+    if (
+      /qr|kiosk|tavolin|takeaway|delivery|online|web-public|web-kiosk|public/.test(src)
+      || /qr\s*meny|takeaway\s·/i.test(String(order.source_label || ""))
+    ) {
+      return true;
+    }
+  }
+
+  if (cid) {
+    const tableNum = Number(order.table_number) || 0;
+    if (tableNum >= 1 && typeof db.getTableByNumber === "function" && typeof db.isPhysicalVenueTable === "function") {
+      try {
+        const t = db.getTableByNumber(tableNum);
+        if (t && db.isPhysicalVenueTable(t)) return true;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  return false;
 }
 
 async function collectActiveCloudOrderIdsForSync(db, cloudData) {
@@ -114,12 +137,24 @@ async function collectActiveCloudOrderIdsForSync(db, cloudData) {
     const online = await fetchOnlineOrders(db);
     for (const o of [...(online.all_orders || []), ...(online.orders || [])]) {
       const st = String(o?.status || "ordered").toLowerCase();
-      if (st !== "ordered" && st !== "ready") continue;
+      if (st !== "ordered" && st !== "ready" && st !== "accepted") continue;
       const id = String(o?.id || "").trim();
       if (id) ids.add(id);
     }
   } catch {
     /* offline */
+  }
+  try {
+    for (const row of db.listLocalActiveOrders?.() || []) {
+      if (typeof db.getLinkedCloudOrderIds !== "function") break;
+      for (const linked of db.getLinkedCloudOrderIds(row.id)) {
+        if (linked) ids.add(String(linked).trim());
+      }
+      const direct = String(row.cloud_order_id || "").trim();
+      if (direct) ids.add(direct);
+    }
+  } catch {
+    /* ignore */
   }
   try {
     const barByTable = await fetchActiveBarOrdersByTable(db);
@@ -757,7 +792,6 @@ function isStaffCloudOutboundBlocked() {
 }
 
 async function pushSaleSync(db, order, opts = {}) {
-  if (isStaffCloudOutboundBlocked()) return { ok: false, skipped: true, reason: "staff_cloud_off" };
   const built = buildSalePayload(db, order, opts);
   if (!built) return { ok: false, reason: "no_payload" };
   const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 12000;
@@ -798,6 +832,9 @@ async function pushQrWaiterAcceptToCloudKitchen(
     batch_items = null,
   } = {},
 ) {
+  if (isStaffCloudOutboundBlocked()) {
+    return { ok: false, skipped: true, reason: "staff_cloud_off" };
+  }
   const built = buildSalePayload(db, order, {
     table_number,
     status: "ordered",
@@ -969,6 +1006,7 @@ function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered
 }
 
 function pushActiveOrderUpdate(db, order, { table_number = 0, ordered_at = "" } = {}) {
+  if (isStaffCloudOutboundBlocked()) return;
   const built = buildSalePayload(db, order, {
     table_number,
     status: "ordered",
@@ -2691,6 +2729,30 @@ async function syncClosedWebWaiterSales(db) {
           ? db.isCloudWaiterSaleImported(cloudId)
           : false;
 
+      if (cloudId && typeof db.getActiveOrderByCloudId === "function") {
+        const activeLocal = db.getActiveOrderByCloudId(cloudId);
+        if (activeLocal) {
+          let tableNumLocal = tableNum;
+          try {
+            const t = db.getTableById?.(activeLocal.table_id);
+            if (t?.number) tableNumLocal = Number(t.number) || tableNum;
+          } catch {
+            /* ignore */
+          }
+          if (isProtectedOnlinePickupLocalOrder(db, {
+            ...activeLocal,
+            table_number: tableNumLocal,
+            status: "active",
+          })) {
+            console.log(
+              `[cloud/sync] SKIP closed import — porosi aktive mysafir (pagesë vetëm në POS) cloudId=${cloudId.slice(0, 8)} T${tableNumLocal || "?"}`,
+            );
+            skipped += 1;
+            continue;
+          }
+        }
+      }
+
       // SSE po printon faturën e mbylljes — mos finalizo/importo tani (përndryshe
       // porosia kompletohet pa print → already_in_daily_log / no_active).
       if (tableNum >= 1 && !already && pendingClosePrintTables.has(tableNum)) {
@@ -2968,6 +3030,12 @@ async function syncLocalCancelledFromCloud(db) {
     for (const order of activeOrders) {
       const tableNum = Number(order.table_number);
       if (!tableNum) continue;
+      if (isStaffCloudOutboundBlocked()) {
+        console.log(
+          `[sync] T${tableNum} SKIP auto-mbyllje — staf vetëm lokal (order#${order.id})`,
+        );
+        continue;
+      }
       if (isProtectedOnlinePickupLocalOrder(db, order)) {
         console.log(
           `[sync] T${tableNum} SKIP auto-mbyllje — Online/takeaway (vetëm stafi / SSE closed) order#${order.id}`,

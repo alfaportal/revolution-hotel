@@ -434,19 +434,9 @@ function rejectStaffCloud(req, res, localOnlyBody) {
   return true;
 }
 
-/** Recepsion: porosi QR dhomë / shërbime mysafiri — cloud vetëm nga POS (server.js), jo nga browser staf. */
-function recepsionPosGuestCloudMaster(session) {
-  return String(session?.role || "").trim().toLowerCase() === "recepsion";
-}
-
+/** Porosi online (PRANO/refuzo) — cloud outbound vetëm admin; stafi/recepsioni = SQLite. */
 function allowCloudOutboundForGuestOrderSession(session) {
-  return sessionMayTalkToCloud(session) || recepsionPosGuestCloudMaster(session);
-}
-
-/** Si rejectStaffCloud, por recepsioni mbetet i lirë për proxy POS → hotel-cloud-sync / cloudSync. */
-function rejectStaffCloudExceptRecepsion(req, res, localOnlyBody) {
-  if (recepsionPosGuestCloudMaster(req.session)) return false;
-  return rejectStaffCloud(req, res, localOnlyBody);
+  return sessionMayTalkToCloud(session);
 }
 
 const STAFF_LOCAL_EMPTY_ONLINE_ORDERS = {
@@ -1166,7 +1156,8 @@ async function closeCloudLinkedSale(tableId, cloudOrderIds, opts = {}) {
   return { closed };
 }
 
-async function ensureCloudTableImportedForCheckout(dbRef, tableNumber, waiterName) {
+async function ensureCloudTableImportedForCheckout(dbRef, tableNumber, waiterName, session) {
+  if (session && !sessionMayTalkToCloud(session)) return null;
   const t = Number(tableNumber);
   if (!t) return null;
   try {
@@ -1191,7 +1182,9 @@ function scheduleCloudAfterTableClose(db, {
   cloudOrderIds,
   logTag = "close",
   cloudFiscalOpts = {},
+  skipCloud = false,
 } = {}) {
+  if (skipCloud) return;
   void (async () => {
     const ids = [...new Set((cloudOrderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
     try {
@@ -3578,14 +3571,21 @@ function broadcastWaiterReadyIfChanged(orders) {
 
 /** «Gati» nga kuzhina → njofto kamarierët çdo 8s (si KAFENE pollWaiterReadyOrdersBroadcast). */
 async function pollWaiterReadyOrdersBroadcast() {
-  if (!cloudSync.isCloudConfigured(db)) return;
-  try {
-    const raw = await cloudSync.fetchReadyTableOrders(db);
-    const orders = filterReadyOrdersForWaiterAlarm(raw);
-    broadcastWaiterReadyIfChanged(orders);
-  } catch {
-    /* ignore */
+  const localReady = collectLocalWaiterReadyOrders();
+  let orders = localReady;
+  if (
+    !cloudStaffAccess.isStaffCloudFeaturesDisabled()
+    && cloudSync.isCloudConfigured(db)
+  ) {
+    try {
+      const raw = await cloudSync.fetchReadyTableOrders(db);
+      orders = mergeReadyOrdersForWaiterAlarm([localReady, filterReadyOrdersForWaiterAlarm(raw)]);
+    } catch {
+      orders = localReady;
+    }
   }
+  if (!orders.length) return;
+  broadcastWaiterReadyIfChanged(orders);
 }
 
 function ensureWaiterReadyPoller() {
@@ -3615,13 +3615,25 @@ function persistWaiterReadyDismissedIds(set) {
 
 const _seenReadyOrderIds = loadWaiterReadyDismissedIds();
 
+function resolveOrderForWaiterReadyAlarm(alarmOrderId) {
+  const id = String(alarmOrderId || "").trim();
+  if (!id) return null;
+  if (/^\d+$/.test(id)) {
+    return db.db.prepare("SELECT * FROM orders WHERE id = ?").get(Number(id));
+  }
+  if (typeof db.getOrderByCloudId === "function") {
+    return db.getOrderByCloudId(id);
+  }
+  return null;
+}
+
 function filterReadyOrdersForWaiterAlarm(orders) {
   const out = [];
   let mutated = false;
   for (const o of orders || []) {
     const id = String(o?.id || "").trim();
     if (!id || _seenReadyOrderIds.has(id)) continue;
-    const local = typeof db.getOrderByCloudId === "function" ? db.getOrderByCloudId(id) : null;
+    const local = resolveOrderForWaiterReadyAlarm(id);
     if (local && String(local.status || "") !== "active") {
       _seenReadyOrderIds.add(id);
       mutated = true;
@@ -3633,36 +3645,70 @@ function filterReadyOrdersForWaiterAlarm(orders) {
   return out;
 }
 
+function mergeReadyOrdersForWaiterAlarm(lists) {
+  const byId = new Map();
+  for (const list of lists) {
+    for (const o of list || []) {
+      const id = String(o?.id || "").trim();
+      if (!id || _seenReadyOrderIds.has(id)) continue;
+      if (!byId.has(id)) byId.set(id, o);
+    }
+  }
+  return [...byId.values()];
+}
+
+function collectLocalWaiterReadyOrders() {
+  return filterReadyOrdersForWaiterAlarm(
+    localKds.listWaiterReadyKitchenOrders(db, _seenReadyOrderIds),
+  );
+}
+
 app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: true, orders: [], has_ready: false, local_only: true })) return;
+  const localOnly = !sessionMayTalkToCloud(req.session);
+  const localReady = collectLocalWaiterReadyOrders();
+  if (localOnly || !cloudSync.isCloudConfigured(db)) {
+    return res.json({
+      ok: true,
+      orders: localReady,
+      has_ready: localReady.length > 0,
+      local_only: localOnly,
+    });
+  }
   try {
-    const orders = await cloudSync.fetchReadyTableOrders(db);
-    const unseen = filterReadyOrdersForWaiterAlarm(orders);
-    res.json({ ok: true, orders: unseen, has_ready: unseen.length > 0 });
+    const cloudOrders = await cloudSync.fetchReadyTableOrders(db);
+    const cloudUnseen = filterReadyOrdersForWaiterAlarm(cloudOrders);
+    const merged = mergeReadyOrdersForWaiterAlarm([localReady, cloudUnseen]);
+    res.json({ ok: true, orders: merged, has_ready: merged.length > 0 });
   } catch {
-    res.json({ ok: true, orders: [], has_ready: false });
+    res.json({
+      ok: true,
+      orders: localReady,
+      has_ready: localReady.length > 0,
+    });
   }
 });
 
 app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) => {
-  const ids = Array.isArray(req.body?.order_ids) ? req.body.order_ids : [];
-  ids.forEach(id => _seenReadyOrderIds.add(String(id)));
+  const ids = (Array.isArray(req.body?.order_ids) ? req.body.order_ids : [])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  ids.forEach((id) => _seenReadyOrderIds.add(id));
   persistWaiterReadyDismissedIds(_seenReadyOrderIds);
+  const cloudIds = ids.filter((id) => CLOUD_ORDER_UUID_RE.test(id));
   try {
-    if (sessionMayTalkToCloud(req.session) && cloudSync.isCloudConfigured(db) && ids.length) {
-      await cloudSync.acknowledgeReadyOrdersPicked(db, ids);
+    if (sessionMayTalkToCloud(req.session) && cloudSync.isCloudConfigured(db) && cloudIds.length) {
+      await cloudSync.acknowledgeReadyOrdersPicked(db, cloudIds);
     }
   } catch (err) {
     console.warn("[ready-dismiss] cloud ack:", err?.message || err);
   }
-  res.json({ ok: true, dismissed: ids.length });
+  res.json({ ok: true, dismissed: ids.length, local_only: ids.length - cloudIds.length });
 });
 
 app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req, res) => {
   const allowCloud = sessionMayTalkToCloud(req.session);
-  const recepGuestMaster = recepsionPosGuestCloudMaster(req.session);
   try {
-    if (!allowCloud && !recepGuestMaster) {
+    if (!allowCloud) {
       const staffId = resolveWaiterStaffId(req.session);
       const localPending = (db.listPendingCloudOrders() || []).filter((o) => {
         const isAcceptPending = (x) => x?.id && (
@@ -3989,7 +4035,7 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
 });
 
 app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: true, requests: [], local_only: true })) return;
+  if (rejectStaffCloud(req, res, { ok: true, requests: [], local_only: true })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -4000,7 +4046,7 @@ app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, 
 });
 
 app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
+  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.respondPublicBookingRequest(db, req.params.id, {
@@ -4015,7 +4061,7 @@ app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrReceps
 });
 
 app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: true, rooms: [], local_only: true })) return;
+  if (rejectStaffCloud(req, res, { ok: true, rooms: [], local_only: true })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -4047,7 +4093,7 @@ app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterO
 
 /** Kërkesa publike bazen/spa — POS recepsion (burimi kryesor i pranimit). */
 app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: true, requests: [], local_only: true })) return;
+  if (rejectStaffCloud(req, res, { ok: true, requests: [], local_only: true })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.listPublicServiceRequestsPending(db, { status: "open" });
@@ -4058,7 +4104,7 @@ app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, 
 });
 
 app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
+  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
@@ -4074,7 +4120,7 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
 });
 
 app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
+  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
@@ -4090,7 +4136,7 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
 });
 
 app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloudExceptRecepsion(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
+  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -5631,7 +5677,7 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     if (!db.getActiveOrderForTable(tableId) && tableRow?.number) {
-      await ensureCloudTableImportedForCheckout(db, tableRow.number, waiterName);
+      await ensureCloudTableImportedForCheckout(db, tableRow.number, waiterName, req.session);
     }
     if (items?.length) {
       const existing = db.getActiveOrderForTable(tableId);
@@ -5735,6 +5781,7 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       mirrorsCloud,
       cloudOrderIds: cloudIds3,
       logTag: "charge-to-room",
+      skipCloud: !sessionMayTalkToCloud(req.session),
     });
 
     auditReq(
@@ -5861,7 +5908,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
     const tableId = Number(table_id);
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     if (!db.getActiveOrderForTable(tableId) && tableRow?.number) {
-      await ensureCloudTableImportedForCheckout(db, tableRow.number, name);
+      await ensureCloudTableImportedForCheckout(db, tableRow.number, name, req.session);
     }
     const orderBefore = db.getActiveOrderForTable(tableId);
     const closeItems = db.parseOrderItems(orderBefore?.items_json);
@@ -5913,6 +5960,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
         cloudOrderIds: cloudIdsClose,
         logTag: "orders/close",
         cloudFiscalOpts,
+        skipCloud: !sessionMayTalkToCloud(req.session),
       });
     }
 
@@ -6001,7 +6049,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   try {
     const tableRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     if (!db.getActiveOrderForTable(tableId) && tableRow?.number) {
-      await ensureCloudTableImportedForCheckout(db, tableRow.number, waiterName);
+      await ensureCloudTableImportedForCheckout(db, tableRow.number, waiterName, req.session);
     }
     if (items?.length) {
       const existing = db.getActiveOrderForTable(tableId);
@@ -6094,6 +6142,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       cloudOrderIds: cloudIds3,
       logTag: "close-and-print",
       cloudFiscalOpts,
+      skipCloud: !sessionMayTalkToCloud(req.session),
     });
 
     checkout.markClosed();
@@ -6136,7 +6185,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
   try {
     const tableRowSplit = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     if (!db.getActiveOrderForTable(tableId) && tableRowSplit?.number) {
-      await ensureCloudTableImportedForCheckout(db, tableRowSplit.number, waiterName);
+      await ensureCloudTableImportedForCheckout(db, tableRowSplit.number, waiterName, req.session);
     }
     if (req.body?.pending_items?.length) {
       const existing = db.getActiveOrderForTable(tableId);
@@ -6258,6 +6307,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
         cloudOrderIds: cloudIds4,
         logTag: "split-close",
         cloudFiscalOpts,
+        skipCloud: !sessionMayTalkToCloud(req.session),
       });
     }
 
