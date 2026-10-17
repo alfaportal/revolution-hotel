@@ -88,6 +88,29 @@
       flex: 1 1 auto;
       min-width: 7rem;
     }
+    .recep-main-tabs .recep-nav-pending-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.15rem;
+      height: 1.15rem;
+      margin-left: 0.35rem;
+      padding: 0 0.3rem;
+      border-radius: 999px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 900;
+      line-height: 1;
+      vertical-align: middle;
+    }
+    .recep-main-tabs .waiter-nav-btn.recep-nav-pending-pulse .recep-nav-pending-badge {
+      animation: recep-nav-badge-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes recep-nav-badge-pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+      50% { transform: scale(1.08); box-shadow: 0 0 0 4px rgba(220, 38, 38, 0); }
+    }
     .waiter-rooms-legend {
       display: flex; flex-wrap: wrap; gap: 0.55rem 1.1rem;
       margin: 0 0 0.9rem; padding: 0.55rem 0.75rem;
@@ -382,8 +405,46 @@
     body.recep-embed-kasa #recep-online-backdrop { z-index: 12000; }
     #recep-rez-msg, #recep-hk-msg, #recep-orders-msg { font-size: 0.88rem; font-weight: 600; min-height: 1.25rem; margin-bottom: 0.5rem; }
 
-    /* Brenda kasës (iframe) — pamje e plotë recepsion, pa DIL / pa link kasa */
+    /* Brenda kasës (iframe) — vetëm përmbajtja e tab-it aktiv, jo header/nav i dyfishtë */
     body.recep-embed-kasa a[href="/kasa-recepcion.html"] { display: none !important; }
+    body.recep-embed-kasa .waiter-sidebar,
+    body.recep-embed-kasa .waiter-topbar,
+    body.recep-embed-kasa .waiter-kpi-row,
+    body.recep-embed-kasa .recep-main-tabs,
+    body.recep-embed-kasa .waiter-table-toolbar {
+      display: none !important;
+    }
+    body.recep-embed-kasa.waiter-screen,
+    body.recep-embed-kasa .waiter-shell.recepcion-shell,
+    body.recep-embed-kasa .waiter-main {
+      min-height: 100%;
+      height: 100%;
+      max-height: 100%;
+    }
+    body.recep-embed-kasa .waiter-shell.recepcion-shell {
+      display: flex;
+      flex-direction: row;
+      padding: 0;
+      min-height: 0;
+    }
+    body.recep-embed-kasa .waiter-main {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0.5rem 0.65rem 0.65rem;
+      overflow: hidden;
+    }
+    body.recep-embed-kasa #recep-rooms-panel:not([hidden]),
+    body.recep-embed-kasa #recep-services-panel:not([hidden]),
+    body.recep-embed-kasa #recep-reservations-panel:not([hidden]),
+    body.recep-embed-kasa #recep-housekeeping-panel:not([hidden]),
+    body.recep-embed-kasa #recep-orders-panel:not([hidden]) {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+    }
 
     .waiter-sidebar-z-warn {
       display: flex;
@@ -974,9 +1035,14 @@
         window.addEventListener("message", (ev) => {
           if (ev.origin !== window.location.origin) return;
           const d = ev.data;
-          if (d?.type !== "recep-embed-session" || !d.user?.token) return;
-          if (String(d.user.roli || "").toLowerCase() !== "recepsion") return;
-          ruajSesionin(d.user);
+          if (d?.type === "recep-embed-session" && d.user?.token) {
+            if (String(d.user.roli || "").toLowerCase() !== "recepsion") return;
+            ruajSesionin(d.user);
+            return;
+          }
+          if (d?.type === "recep-set-view" && typeof setRecepView === "function") {
+            setRecepView(String(d.view || "").trim());
+          }
         });
         window.dil = function recepEmbedNoWaiterLogin() {
           try {
@@ -1158,6 +1224,37 @@
       }
     }
 
+    function updateRecepPendingNavBadge(pending) {
+      const btn = document.getElementById("btn-tab-orders");
+      if (!btn) return;
+      const n = Math.max(0, Number(pending) || 0);
+      const label = "Porositë";
+      let badge = btn.querySelector(".recep-nav-pending-badge");
+      if (n <= 0) {
+        btn.classList.remove("recep-nav-pending-pulse");
+        if (badge) badge.remove();
+        btn.textContent = label;
+        return;
+      }
+      btn.classList.add("recep-nav-pending-pulse");
+      if (!badge) {
+        btn.textContent = `${label} `;
+        badge = document.createElement("span");
+        badge.className = "recep-nav-pending-badge";
+        btn.appendChild(badge);
+      }
+      badge.textContent = String(n);
+      badge.setAttribute("aria-label", `${n} në pritje`);
+    }
+
+    function triggerRecepPendingAlert(pending, embedKasa, repeatOnly) {
+      if (embedKasa) {
+        postRecepPendingToKasaParent({ pending, playBell: true });
+        return;
+      }
+      luajTingullPorosiRecep(repeatOnly);
+    }
+
     function mbyllRecepOnlinePop() {
       recepOnlinePopOpen = false;
       document.getElementById("recep-online-pop")?.classList.add("hidden");
@@ -1286,7 +1383,7 @@
       });
     }
 
-    async function ngarkoPorosiSherbimiRecep() {
+    async function ngarkoPorosiSherbimiRecep(forceNotify) {
       try {
         const [data, svcData] = await Promise.all([
           api("/api/waiter/online-orders/pending"),
@@ -1299,6 +1396,7 @@
         recepGuestServiceOrders = [...publicSvc, ...cloudOrders];
         const pending = recepGuestServiceOrders.length;
         const prevPending = lastRecepGuestSvcPending;
+        updateRecepPendingNavBadge(pending);
         if (pending <= 0) {
           mbyllRecepOnlinePop();
         } else if (recepOnlinePopOpen) {
@@ -1309,19 +1407,21 @@
         const isFirstPoll = prevPending === null;
         const embedKasa = document.body.classList.contains("recep-embed-kasa");
         const isNew = pending > 0 && (
-          (prevPending != null && pending > prevPending)
-          || (isFirstPoll && pending > 0 && !embedKasa)
+          forceNotify === true
+          || (prevPending != null && pending > prevPending)
+          || (isFirstPoll && pending > 0)
         );
         if (isNew) {
-          luajTingullPorosiRecep();
-          postRecepPendingToKasaParent({ pending, playBell: true });
+          triggerRecepPendingAlert(pending, embedKasa, false);
           if (!recepOnlinePopOpen) hapRecepGuestServicePop();
           if (!recepOnlineAlarmTimer) {
             recepOnlineAlarmTimer = setInterval(() => {
-              if (recepGuestServiceOrders.length) {
-                luajTingullPorosiRecep(true);
-                postRecepPendingToKasaParent({ pending: recepGuestServiceOrders.length, playBell: true });
-              }
+              if (!recepGuestServiceOrders.length) return;
+              triggerRecepPendingAlert(
+                recepGuestServiceOrders.length,
+                document.body.classList.contains("recep-embed-kasa"),
+                true,
+              );
             }, 12000);
           }
         } else if (pending <= 0 && recepOnlineAlarmTimer) {
@@ -1442,7 +1542,7 @@
 
     function startRecepGuestServicePolling() {
       ngarkoPorosiSherbimiRecep().catch(() => {});
-      setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 30_000);
+      setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 6_000);
     }
 
     /* ── Njoftim "faturë në dhomë" — toast recepsionit ─────────────────── */
@@ -1537,8 +1637,10 @@
         }
       };
       window.LocalStaffEvents.on("room-status", refreshFromHk);
-      window.LocalStaffEvents.on("guest-order", () => {
-        ngarkoPorosiSherbimiRecep().catch(() => {});
+      window.LocalStaffEvents.on("guest-order", (payload) => {
+        const d = payload?.data || payload || {};
+        const force = !!(d.has_new || d.reason === "instant_import");
+        ngarkoPorosiSherbimiRecep(force).catch(() => {});
       });
       window.LocalStaffEvents.connect(() => {
         ngarkoDhomat().catch(() => {});

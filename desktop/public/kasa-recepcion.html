@@ -317,41 +317,16 @@
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.08); }
     }
-    .recep-module-overlay {
-      position: absolute;
-      inset: 0;
-      z-index: 11;
-      background: #eef2f7;
+    .recep-module-pane {
+      flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      background: #eef2f7;
       border-radius: var(--radius);
-      border: 1px solid var(--border);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
     }
-    .recep-module-overlay[hidden] { display: none !important; }
-    .recep-module-toolbar {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: .5rem;
-      padding: .35rem .5rem;
-      background: #fff;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .recep-module-close {
-      min-height: 40px;
-      padding: .4rem .85rem;
-      background: var(--danger);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-weight: 800;
-      font-size: .82rem;
-      cursor: pointer;
-      font-family: inherit;
-    }
+    .recep-module-pane[hidden] { display: none !important; }
     .recep-module-frame {
       flex: 1;
       min-height: 0;
@@ -842,10 +817,7 @@
           </div>
         </div>
 
-        <div id="recep-module-overlay" class="recep-module-overlay" hidden>
-          <div class="recep-module-toolbar">
-            <button type="button" class="recep-module-close" id="recep-module-close">× Mbyll</button>
-          </div>
+        <div id="recep-module-pane" class="recep-module-pane" hidden>
           <iframe
             id="recep-module-frame"
             class="recep-module-frame"
@@ -940,6 +912,7 @@
 
     const user = window.__recepUser;
     const RECEP_MODULES = [
+      { id: "kasa", label: "Arka" },
       { id: "rooms", label: "Dhomat" },
       { id: "reservations", label: "Rezervimet" },
       { id: "services", label: "Shërbimet" },
@@ -1040,30 +1013,50 @@
       }
     }
 
+    function frameHasRecepModuleLoaded(frame) {
+      try {
+        const src = String(frame?.src || "");
+        return src.includes("/recepcion.html") && src.includes("embed=kasa");
+      } catch {
+        return false;
+      }
+    }
+
     function openRecepModule(view) {
-      if (!RECEP_MODULES.some((m) => m.id === view)) view = "rooms";
+      if (view === "kasa") {
+        closeRecepModule();
+        return;
+      }
+      if (!RECEP_MODULES.some((m) => m.id === view) || view === "kasa") view = "rooms";
       activeRecepView = view;
       renderCategoryNav();
       const col = document.getElementById("col-cart");
-      const overlay = document.getElementById("recep-module-overlay");
+      const pane = document.getElementById("recep-module-pane");
       const frame = document.getElementById("recep-module-frame");
+      col?.classList.add("is-module-open");
+      pane.hidden = false;
+      if (frameHasRecepModuleLoaded(frame)) {
+        pushRecepSessionIntoFrame();
+        try {
+          frame.contentWindow?.postMessage({ type: "recep-set-view", view }, window.location.origin);
+        } catch {
+          /* iframe */
+        }
+        return;
+      }
       const onFrameReady = () => {
         pushRecepSessionIntoFrame();
         frame.removeEventListener("load", onFrameReady);
       };
       frame.addEventListener("load", onFrameReady);
       frame.src = recepModuleUrl(view) + "&_=" + Date.now();
-      overlay.hidden = false;
-      col?.classList.add("is-module-open");
     }
 
     function closeRecepModule() {
-      document.getElementById("recep-module-overlay").hidden = true;
+      document.getElementById("recep-module-pane").hidden = true;
       document.getElementById("col-cart")?.classList.remove("is-module-open");
       activeRecepView = null;
       renderCategoryNav();
-      const frame = document.getElementById("recep-module-frame");
-      frame.src = "about:blank";
     }
 
     function servicePhotoFallback(name) {
@@ -1205,7 +1198,14 @@
     function renderCategoryNav() {
       const nav = document.getElementById("main-cat-bar");
       nav.innerHTML = RECEP_MODULES.map((m) => {
-        const on = activeRecepView === m.id ? " on" : "";
+        const on =
+          m.id === "kasa"
+            ? !activeRecepView
+              ? " on"
+              : ""
+            : activeRecepView === m.id
+              ? " on"
+              : "";
         const badge =
           m.id === "orders" && recepPendingOrderCount > 0
             ? `<span class="recep-pending-badge" aria-label="${recepPendingOrderCount} në pritje">${recepPendingOrderCount}</span>`
@@ -1407,8 +1407,6 @@
       if (!btn) return;
       openRecepModule(btn.dataset.recepView);
     });
-
-    document.getElementById("recep-module-close").addEventListener("click", closeRecepModule);
 
     document.querySelectorAll("[data-pay-toggle]").forEach((card) => {
       card.addEventListener("click", (e) => {
