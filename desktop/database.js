@@ -7868,7 +7868,7 @@ function isCloudOnlinePickupOrder(cloudOrder) {
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
   if (isGuestHotelServiceOrder(cloudOrder)) return true;
   const device = orderDeviceId(cloudOrder);
-  if (device === "WEB-PUBLIC") return true;
+  if (device === "WEB-PUBLIC" || device === "WEB-PUBLIC-LOCAL") return true;
   const blob = orderTextBlob(cloudOrder);
   if (/\btakeaway\b|\bdelivery\b/.test(blob)) return true;
   const src = String(cloudOrder?.source || cloudOrder?.source_label || "").toLowerCase();

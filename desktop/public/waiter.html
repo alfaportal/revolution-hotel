@@ -2030,7 +2030,8 @@
     function perditesoKpiTavolinaQr(tables, apiCount, pending) {
       const accepted = numriPorosiveQrPublike(tables, apiCount);
       const qrPending = (waiterOnlineOrders || []).filter(eshtePorosiQrTavoline).length;
-      const p = qrPending || Number(pending) || 0;
+      const takePending = (waiterOnlineOrders || []).filter(eshtePorosiOnlineTakeaway).length;
+      const p = (waiterOnlineOrders || []).length || Number(pending) || 0;
       const display = p > 0 ? p : accepted;
       lastQrPublicCount = accepted;
       document.getElementById("kpi-re").textContent = String(display);
@@ -2039,13 +2040,14 @@
       kpiReWrap?.setAttribute(
         "aria-label",
         p > 0
-          ? `${p} porosi në pritje`
-          : (accepted > 0 ? `${accepted} porosi QR tavolinë` : "QR tavolinë lokale"),
+          ? takePending && !qrPending
+            ? `${p} takeaway/web në pritje`
+            : `${p} porosi në pritje (QR / takeaway)`
+          : (accepted > 0 ? `${accepted} porosi QR tavolinë` : "QR / takeaway — pa pritje"),
       );
     }
 
     async function ngarkoPorosiOnlineWaiter(skipLayoutFetch = false) {
-      if (window.STAFF_CLOUD_FEATURES_OFF) return;
       try {
         const data = await api("/api/waiter/online-orders/pending");
         waiterOnlineOrders = filtroPorosiOnlineRestorant(data.orders || []);
@@ -3745,10 +3747,10 @@
       }, 6000, 120000);
       guardedPoll(ngarkoMenu, 30000, 180000);
       guardedPoll(ngarkoPazarin, 8000, 120000);
+      guardedPoll(ngarkoPorosiOnlineWaiter, 6000, 120000);
+      guardedPoll(ngarkoPorosiGati, 8000, 120000);
       if (!window.STAFF_CLOUD_FEATURES_OFF) {
-        guardedPoll(ngarkoPorosiOnlineWaiter, 6000, 120000);
         guardedPoll(ngarkoCloudTavolinat, 8000, 150000);
-        guardedPoll(ngarkoPorosiGati, 8000, 120000);
       }
       guardedPoll(refreshRegisterMode, 10000, 180000);
       if (typeof setWaiterPollingRescheduleAll === "function") {

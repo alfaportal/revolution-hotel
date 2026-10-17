@@ -2791,9 +2791,6 @@ app.get("/menu/:slug/:tableNumber", (req, res) => {
   const extra = req.url.includes("?") ? req.url.slice(req.url.indexOf("?") + 1) : "";
   const qs = new URLSearchParams(extra);
   if (!qs.has("table") && !qs.has("t")) qs.set("table", table);
-  if (!qs.has("room") && Number(table) > 1 && Number(table) <= 9999) {
-    qs.set("room", table);
-  }
   res.redirect(302, `/guest/menu.html?${qs.toString()}`);
 });
 
@@ -3573,10 +3570,7 @@ function broadcastWaiterReadyIfChanged(orders) {
 async function pollWaiterReadyOrdersBroadcast() {
   const localReady = collectLocalWaiterReadyOrders();
   let orders = localReady;
-  if (
-    !cloudStaffAccess.isStaffCloudFeaturesDisabled()
-    && cloudSync.isCloudConfigured(db)
-  ) {
+  if (cloudSync.isCloudConfigured(db)) {
     try {
       const raw = await cloudSync.fetchReadyTableOrders(db);
       orders = mergeReadyOrdersForWaiterAlarm([localReady, filterReadyOrdersForWaiterAlarm(raw)]);
@@ -3664,28 +3658,23 @@ function collectLocalWaiterReadyOrders() {
 }
 
 app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (req, res) => {
-  const localOnly = !sessionMayTalkToCloud(req.session);
   const localReady = collectLocalWaiterReadyOrders();
-  if (localOnly || !cloudSync.isCloudConfigured(db)) {
-    return res.json({
-      ok: true,
-      orders: localReady,
-      has_ready: localReady.length > 0,
-      local_only: localOnly,
-    });
+  let merged = localReady;
+  if (cloudSync.isCloudConfigured(db)) {
+    try {
+      const cloudOrders = await cloudSync.fetchReadyTableOrders(db);
+      const cloudUnseen = filterReadyOrdersForWaiterAlarm(cloudOrders);
+      merged = mergeReadyOrdersForWaiterAlarm([localReady, cloudUnseen]);
+    } catch {
+      merged = localReady;
+    }
   }
-  try {
-    const cloudOrders = await cloudSync.fetchReadyTableOrders(db);
-    const cloudUnseen = filterReadyOrdersForWaiterAlarm(cloudOrders);
-    const merged = mergeReadyOrdersForWaiterAlarm([localReady, cloudUnseen]);
-    res.json({ ok: true, orders: merged, has_ready: merged.length > 0 });
-  } catch {
-    res.json({
-      ok: true,
-      orders: localReady,
-      has_ready: localReady.length > 0,
-    });
-  }
+  res.json({
+    ok: true,
+    orders: merged,
+    has_ready: merged.length > 0,
+    local_only: !sessionMayTalkToCloud(req.session),
+  });
 });
 
 app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) => {
@@ -3696,7 +3685,7 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) 
   persistWaiterReadyDismissedIds(_seenReadyOrderIds);
   const cloudIds = ids.filter((id) => CLOUD_ORDER_UUID_RE.test(id));
   try {
-    if (sessionMayTalkToCloud(req.session) && cloudSync.isCloudConfigured(db) && cloudIds.length) {
+    if (cloudSync.isCloudConfigured(db) && cloudIds.length) {
       await cloudSync.acknowledgeReadyOrdersPicked(db, cloudIds);
     }
   } catch (err) {
@@ -3708,28 +3697,6 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) 
 app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req, res) => {
   const allowCloud = sessionMayTalkToCloud(req.session);
   try {
-    if (!allowCloud) {
-      const staffId = resolveWaiterStaffId(req.session);
-      const localPending = (db.listPendingCloudOrders() || []).filter((o) => {
-        const isAcceptPending = (x) => x?.id && (
-          db.isAnyStaffAcceptPendingOrder(x) || db.isCloudOnlinePickupOrder(x)
-        );
-        return isAcceptPending(o) && !cloudSync.isCloudOrderAccepted(o);
-      });
-      let orders = filterOnlineOrdersForStaffRole(localPending, req.session);
-      if (staffId) {
-        orders = orders.filter((o) => !onlineOrdersWatcher.isStaffRefusedOrder(db, staffId, o.id));
-      }
-      const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
-      return res.json({
-        ...STAFF_LOCAL_EMPTY_ONLINE_ORDERS,
-        orders,
-        pending: orders.length,
-        has_pending: orders.length > 0,
-        my_external: myOrders.length,
-        my_orders: myOrders,
-      });
-    }
     ensureOnlineOrdersWatcher();
     const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
     let data;
@@ -3747,7 +3714,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
     if (!orders.length && !data.connected) {
       orders = (db.listPendingCloudOrders() || []).filter(isStillPendingForPos);
     }
-    if (allowCloud && !orders.length && data.connected && typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
+    if (!orders.length && data.connected && typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
       try {
         const cloud = await cloudSync.fetchOnlineOrders(db);
         // Vetëm "orders" (ende në pritje sipas cloud) — kurrë "all_orders", pasi ai
@@ -8637,6 +8604,7 @@ app.post("/api/guest/menu-order", (req, res) => {
       customer_name: req.body?.customer_name || req.body?.name,
       customer_phone: req.body?.customer_phone || req.body?.phone,
     });
+    notifyWaitersRealtime("online_orders", { reason: "guest_menu" });
     res.status(201).json(result);
   } catch (e) {
     res.status(400).json({ gabim: e.message });

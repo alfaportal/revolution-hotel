@@ -151,4 +151,11 @@ function applyMissing(db, { forceAllStock = false, replaceRemote = false } = {})
   return n;
 }
 
-module.exports = { applyMissing, stockPhotoForName, normName, isStockPhoto, seedPhotoMap };
+module.exports = {
+  applyMissing,
+  stockPhotoForName,
+  normName,
+  isRemotePhoto,
+  isStockPhoto,
+  seedPhotoMap,
+};

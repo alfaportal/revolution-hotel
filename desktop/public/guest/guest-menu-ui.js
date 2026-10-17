@@ -103,14 +103,64 @@
     bar.addEventListener("pointercancel", endDrag);
   }
 
+  function escModal(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function closeGuestMenuItemDetailModal() {
+    document.getElementById("menu-item-detail-modal")?.remove();
+  }
+
+  function itemDescriptionText(item) {
+    return String(item?.description || "").trim();
+  }
+
+  function openGuestMenuIngredientsInfoModal(item) {
+    const desc = itemDescriptionText(item);
+    if (!desc) return;
+    closeGuestMenuItemDetailModal();
+    const root = document.createElement("div");
+    root.id = "menu-item-detail-modal";
+    root.className = "menu-item-detail-modal is-dark menu-item-info-only";
+    root.innerHTML = `
+      <div class="menu-item-detail-backdrop" data-close="1"></div>
+      <div class="menu-item-detail-card" role="dialog" aria-modal="true">
+        <button type="button" class="menu-item-detail-close" data-close="1" aria-label="Mbyll">×</button>
+        <h3 class="menu-item-detail-name">${escModal(item.name)}</h3>
+        <p class="menu-item-detail-desc">${escModal(desc)}</p>
+      </div>`;
+    document.body.appendChild(root);
+    const close = () => closeGuestMenuItemDetailModal();
+    root.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", close));
+  }
+
+  function appendGuestIngredientsInfoButton(cell, item) {
+    if (!itemDescriptionText(item)) return;
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "menu-item-ingredients-info";
+    info.setAttribute("aria-label", "Shiko përbërësit");
+    info.title = "Përbërësit";
+    info.textContent = "ℹ";
+    info.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openGuestMenuIngredientsInfoModal(item);
+    });
+    cell.appendChild(info);
+  }
+
   function renderGuestMenu({ barEl, gridEl, items, categories, onSelect, formatEuro }) {
-    if (!gridEl) return;
+    if (!barEl || !gridEl) return;
     const fmt = typeof formatEuro === "function" ? formatEuro : (n) => Number(n || 0).toFixed(2) + " €";
     const list = Array.isArray(items) ? items.slice() : [];
     const cats = orderedCategories(list, categories);
     if (!cats.length) {
-      if (barEl) barEl.innerHTML = "";
-      gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj në menu restoranti.</p>';
+      barEl.innerHTML = "";
+      gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj në menu.</p>';
       return;
     }
 
@@ -120,39 +170,46 @@
     function renderGrid() {
       const filtered = list
         .filter((it) => it.category === active)
-        .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || (Number(a.id) || 0) - (Number(b.id) || 0));
-
+        .sort(
+          (a, b) =>
+            (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
+            (Number(a.id) || 0) - (Number(b.id) || 0),
+        );
       gridEl.innerHTML = "";
       if (!filtered.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj për këtë kategori.</p>';
         return;
       }
-
       const grid = document.createElement("div");
       grid.className = "menu-photo-grid-inner menu-text-grid-inner";
       for (const it of filtered) {
+        const cell = document.createElement("div");
+        cell.className = "menu-item-cell";
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "menu-item-btn has-photo";
         const photo = guestPhotoUrl(it);
+        const vatPct = Number(it.vat_percent ?? it.vat_rate ?? 18);
         btn.innerHTML =
           `<div class="menu-item-card has-photo">` +
           photoImgHtml(photo, it.name) +
           `<div class="menu-item-meta">` +
           `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
-          `<span class="cmimi cmimi-badge">${fmt(it.price)}</span>` +
+          `<span class="cmimi">${fmt(it.price)}</span>` +
+          `<span class="menu-item-vat-flag">${vatPct}%</span>` +
           `</div></div>`;
         btn.addEventListener("click", () => {
           onSelect?.(it, btn);
           global.MenuPosUI?.flashButton?.(btn);
         });
-        grid.appendChild(btn);
+        cell.appendChild(btn);
+        appendGuestIngredientsInfoButton(cell, it);
+        grid.appendChild(cell);
       }
       gridEl.appendChild(grid);
     }
 
     function buildBar() {
-      if (!barEl) return;
       barEl.innerHTML = "";
       for (const cat of cats) {
         const btn = document.createElement("button");
@@ -166,7 +223,6 @@
             b.classList.toggle("active", b.dataset.group === cat);
           });
           renderGrid();
-          btn.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
         });
         barEl.appendChild(btn);
       }
