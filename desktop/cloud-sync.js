@@ -1747,7 +1747,7 @@ async function pushCatalogAsync(db) {
       cfg.serverUrl,
       "/api/v1/pos/catalog/sync",
       payload,
-      { timeoutMs: 45000 },
+      { timeoutMs: 120000 },
     );
     let parsed = {};
     try { parsed = JSON.parse(r.data || "{}"); } catch { /* */ }
