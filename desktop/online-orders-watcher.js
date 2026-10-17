@@ -1036,4 +1036,5 @@ module.exports = {
   markOrdersPrinted,
   isCloudOrderSlipMarkedPrinted,
   normalizePendingOrder,
+  isLocallyAcked,
 };

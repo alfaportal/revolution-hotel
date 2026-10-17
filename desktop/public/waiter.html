@@ -1697,6 +1697,39 @@
     const kpiReWrap = document.getElementById("kpi-re-wrap");
     const waiterOnlinePop = document.getElementById("waiter-online-pop");
     let waiterTableKpiFilter = null;
+    const WAITER_ACK_CLOUD_KEY = "waiter-accepted-cloud-ids-v1";
+
+    function loadWaiterAcceptedCloudIds() {
+      try {
+        const raw = sessionStorage.getItem(WAITER_ACK_CLOUD_KEY);
+        if (!raw) return new Set();
+        return new Set(JSON.parse(raw).map(String));
+      } catch {
+        return new Set();
+      }
+    }
+
+    let waiterAcceptedCloudIds = loadWaiterAcceptedCloudIds();
+
+    function rememberWaiterAcceptedCloudIds(ids) {
+      for (const id of ids || []) {
+        const s = String(id || "").trim();
+        if (s) waiterAcceptedCloudIds.add(s);
+      }
+      try {
+        sessionStorage.setItem(
+          WAITER_ACK_CLOUD_KEY,
+          JSON.stringify([...waiterAcceptedCloudIds].slice(-400)),
+        );
+      } catch {
+        /* storage */
+      }
+    }
+
+    function isWaiterPosPanelOpen() {
+      const el = document.getElementById("ekrani-porosia");
+      return !!(el && el.classList.contains("active") && !el.classList.contains("hidden"));
+    }
 
     function mbyllWaiterOnlinePop() {
       waiterOnlinePopOpen = false;
@@ -2007,9 +2040,17 @@
           msg.textContent = data.cloud_message;
           msg.hidden = false;
         }
+        const acceptedIds = (data.imported || [])
+          .filter((r) => r?.ok && r?.cloud_id)
+          .map((r) => String(r.cloud_id));
+        if (!acceptedIds.length && waiterOnlineOrders[0]?.id) {
+          acceptedIds.push(String(waiterOnlineOrders[0].id));
+        }
+        heqPorosiNgaPritjeLokale(acceptedIds);
+        aplikoListenPendingPasPranimit(data);
         mbyllWaiterOnlinePop();
-        await ngarkoPorosiOnlineWaiter(true);
         await ngarkoTavolinat(true);
+        await ngarkoPorosiOnlineWaiter(true);
         if (lastImp?.table_id) {
           const t = lastTablesFlat.find(x => x.id === lastImp.table_id);
           if (t) klikoTavoline(t);
@@ -2092,9 +2133,11 @@
           msg.textContent = data.cloud_message;
           msg.hidden = false;
         }
+        heqPorosiNgaPritjeLokale([String(first.id)]);
+        aplikoListenPendingPasPranimit(data);
         mbyllWaiterOnlinePop();
-        await ngarkoPorosiOnlineWaiter(true);
         await ngarkoTavolinat(true);
+        await ngarkoPorosiOnlineWaiter(true);
       } catch (err) {
         if (msg) {
           msg.textContent = err.message || "Nuk u refuzua.";
@@ -2214,8 +2257,9 @@
     async function ngarkoPorosiOnlineWaiter(skipLayoutFetch = false) {
       try {
         const data = await api("/api/waiter/online-orders/pending");
-        waiterOnlineOrders = filtroPorosiOnlineRestorant(data.orders || []);
         lastMyExternalOrders = data.my_orders || [];
+        waiterOnlineOrders = filtroPorosiOnlineRestorant(data.orders || [])
+          .filter((o) => !porosiEshteImportuarLokal(o));
         const pending = waiterOnlineOrders.length;
         const myExternal = Number(data.my_external) || lastMyExternalOrders.length;
         const prevPending = lastOnlinePendingWaiter;
@@ -2229,7 +2273,7 @@
           (prevPending != null && pending > prevPending)
           || (isFirstPoll && pending > 0)
         );
-        if (isNew) {
+        if (isNew && !isWaiterPosPanelOpen()) {
           luajTingullPorosieWaiter();
           if (!waiterOnlinePopOpen) hapWaiterOnlinePop();
           if (!waiterOnlineAlarmTimer) {
@@ -4447,13 +4491,62 @@
       return card;
     }
 
+    function porosiEshteImportuarLokal(o) {
+      const id = String(o?.id || o?.cloud_order_id || "").trim();
+      if (!id) return false;
+      if (waiterAcceptedCloudIds.has(id)) return true;
+      if ((lastMyExternalOrders || []).some((m) => String(m.cloud_order_id || "") === id)) return true;
+      return (lastTablesFlat || []).some((t) => {
+        const cid = String(t?.order?.cloud_order_id || "").trim();
+        return cid && cid === id;
+      });
+    }
+
+    function heqPorosiNgaPritjeLokale(ids) {
+      const set = new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean));
+      if (!set.size) return;
+      rememberWaiterAcceptedCloudIds([...set]);
+      waiterOnlineOrders = (waiterOnlineOrders || []).filter((o) => !set.has(String(o.id || "")));
+      lastOnlinePendingWaiter = waiterOnlineOrders.length;
+      if (waiterOnlineOrders.length <= 0) {
+        mbyllWaiterOnlinePop();
+        if (waiterOnlineAlarmTimer) {
+          clearInterval(waiterOnlineAlarmTimer);
+          waiterOnlineAlarmTimer = null;
+        }
+      } else if (waiterOnlinePopOpen) {
+        renderWaiterOnlinePreview(waiterOnlineOrders);
+      }
+      syncWaiterSidebarPorosiActions();
+      perditesoKpiTavolinaQr(lastTablesFlat, lastMyExternalOrders.length, waiterOnlineOrders.length);
+      ndertoRjetenTavolinave._sig = "";
+      ndertoRjetenTavolinave();
+    }
+
+    function aplikoListenPendingPasPranimit(data) {
+      if (Array.isArray(data?.my_orders)) lastMyExternalOrders = data.my_orders;
+      if (Array.isArray(data?.orders)) {
+        waiterOnlineOrders = filtroPorosiOnlineRestorant(data.orders).filter((o) => !porosiEshteImportuarLokal(o));
+      }
+      lastOnlinePendingWaiter = waiterOnlineOrders.length;
+      if (waiterOnlineOrders.length <= 0 && waiterOnlineAlarmTimer) {
+        clearInterval(waiterOnlineAlarmTimer);
+        waiterOnlineAlarmTimer = null;
+      }
+      syncWaiterSidebarPorosiActions();
+      ndertoRjetenTavolinave._sig = "";
+      ndertoRjetenTavolinave();
+    }
+
     function porosiTakeawayNePritje() {
-      return (waiterOnlineOrders || []).filter(eshtePorosiOnlineTakeaway);
+      return (waiterOnlineOrders || []).filter(
+        (o) => o?.id && eshtePorosiOnlineTakeaway(o) && !porosiEshteImportuarLokal(o),
+      );
     }
 
     /** Takeaway + QR tavolinë — të gjitha në pritje (jo në arkë deri PRANO). Si KAFENE. */
     function porosiOnlineNePritje() {
-      return (waiterOnlineOrders || []).filter(o => o?.id);
+      return (waiterOnlineOrders || []).filter((o) => o?.id && !porosiEshteImportuarLokal(o));
     }
 
     function ndertoKartelenPorosiTakeaway(o) {
@@ -4477,6 +4570,16 @@
         ${items ? `<div class="table-card-hint">${items}</div>` : ""}
         <div class="table-card-accept-cta">${tt("Kliko — hap PRANO")}</div>`;
       card.addEventListener("click", () => {
+        if (porosiEshteImportuarLokal(o)) {
+          const tbl = (lastTablesFlat || []).find((row) => {
+            const cid = String(row?.order?.cloud_order_id || "").trim();
+            return cid && cid === String(o.id || "");
+          });
+          if (tbl) {
+            klikoTavoline(tbl);
+            return;
+          }
+        }
         vendosPorosiOnlinePrioritet(o);
         hapWaiterOnlinePop();
       });
@@ -5449,6 +5552,11 @@
 
     async function hapPorosine(t) {
       if (!t || t.id == null) throw new Error("Tavolina nuk është e vlefshme.");
+      const cloudOnTable = String(t?.order?.cloud_order_id || "").trim();
+      if (cloudOnTable) {
+        heqPorosiNgaPritjeLokale([cloudOnTable]);
+        mbyllWaiterOnlinePop();
+      }
       tavolinaAktive = t;
       tavolinaId = t.id;
       const eHuaj = t.order && t.order.waiter_name !== user.emri;

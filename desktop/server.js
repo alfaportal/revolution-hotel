@@ -3724,8 +3724,15 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
     const isAcceptPending = (o) => o?.id && (
       db.isAnyStaffAcceptPendingOrder(o) || db.isCloudOnlinePickupOrder(o)
     );
-    const isStillPendingForPos = (o) => isAcceptPending(o)
-      && !cloudSync.isCloudOrderAccepted(o);
+    const isStillPendingForPos = (o) => {
+      if (!isAcceptPending(o)) return false;
+      const id = String(o?.id || "").trim();
+      if (id && typeof onlineOrdersWatcher.isLocallyAcked === "function"
+        && onlineOrdersWatcher.isLocallyAcked(db, id)) {
+        return false;
+      }
+      return !cloudSync.isCloudOrderAccepted(o);
+    };
     let orders = (data.orders || []).filter(isStillPendingForPos);
     if (!orders.length && !data.connected) {
       orders = (db.listPendingCloudOrders() || []).filter(isStillPendingForPos);
@@ -3743,6 +3750,14 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
       } catch { /* offline */ }
     }
     orders = orders.map(o => db.enrichCloudOrderForWaiter(o));
+    orders = orders.filter((o) => {
+      const id = String(o?.id || "").trim();
+      if (!id) return false;
+      const localActive = typeof db.getActiveOrderByCloudId === "function"
+        ? db.getActiveOrderByCloudId(id)
+        : null;
+      return !localActive;
+    });
     const layoutChanged = db.ensureTablesForPendingCloudOrders(orders);
     const staffId = resolveWaiterStaffId(req.session);
     if (staffId) {
