@@ -15147,6 +15147,130 @@ function exportDitariText(opts = {}) {
   return txt;
 }
 
+/** Tabela transaksionale — factory reset (Rivendos) fshin vetëm këto; konfigurimi mbetet. */
+const FACTORY_RESET_TRANSACTIONAL_TABLES = [
+  "receipts",
+  "pending_txn",
+  "fiscal_receipts",
+  "fiscal_audit_log",
+  "paper_block_receipts",
+  "room_charges",
+  "reservation_services",
+  "reservation_qr_pending",
+  "guests",
+  "housekeeping_notifications",
+  "housekeeping_tasks",
+  "reservations",
+  "reservations_local",
+  "stock_count_lines",
+  "stock_count_sessions",
+  "shift_handovers",
+  "waiter_shifts",
+  "lan_outbox",
+  "remote_shifts",
+  "orders",
+  "daily_log",
+  "activity_log",
+];
+
+function factoryResetTableExists(tableName) {
+  const row = sqlite
+    .prepare(
+      "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+    )
+    .get(String(tableName || ""));
+  return !!row;
+}
+
+/**
+ * Rivendos shitjet/porositë — konfigurimi (menu, staf, dhoma, settings) mbetet.
+ * @param {{ _testFailAt?: string }} [opts] — vetëm teste (simulon dështim në DELETE).
+ */
+function wipeSalesDataOnly(opts = {}) {
+  if (!dbReady) {
+    throw new Error("Database not ready — await whenReady() before factory reset wipe");
+  }
+  const failAt = opts._testFailAt ? String(opts._testFailAt) : "";
+  const deleted = {};
+
+  sqlite.transaction(() => {
+    sqlite.exec("DROP TRIGGER IF EXISTS trg_fiscal_receipts_block_delete");
+    sqlite.exec("DROP TRIGGER IF EXISTS trg_fiscal_audit_block_delete");
+    sqlite.exec("DROP TRIGGER IF EXISTS trg_paper_block_block_delete");
+
+    for (const table of FACTORY_RESET_TRANSACTIONAL_TABLES) {
+      if (failAt && failAt === table) {
+        throw new Error(`factory-reset test inject fail at ${table}`);
+      }
+      if (!factoryResetTableExists(table)) {
+        deleted[table] = 0;
+        continue;
+      }
+      const r = sqlite.prepare(`DELETE FROM ${table}`).run();
+      deleted[table] = Number(r.changes) || 0;
+    }
+
+    if (factoryResetTableExists("fiscal_settings")) {
+      sqlite
+        .prepare(
+          `UPDATE fiscal_settings
+           SET daily_receipt_counter = 0,
+               total_receipt_counter = 0,
+               updated_at = datetime('now','localtime')
+           WHERE id = 1`,
+        )
+        .run();
+    }
+
+    if (factoryResetTableExists("tables")) {
+      sqlite.prepare("UPDATE tables SET status = 'free'").run();
+    }
+    if (factoryResetTableExists("rooms")) {
+      sqlite
+        .prepare(
+          `UPDATE rooms SET status = 'free'
+           WHERE status IN ('occupied', 'dirty', 'reserved', 'maintenance')`,
+        )
+        .run();
+    }
+
+    const seqNames = FACTORY_RESET_TRANSACTIONAL_TABLES.filter((t) =>
+      factoryResetTableExists(t),
+    );
+    if (seqNames.length && factoryResetTableExists("sqlite_sequence")) {
+      const placeholders = seqNames.map(() => "?").join(",");
+      sqlite
+        .prepare(`DELETE FROM sqlite_sequence WHERE name IN (${placeholders})`)
+        .run(...seqNames);
+    }
+  })();
+
+  try {
+    const { initFiscalDB } = require("./fiscal/fiscal-db");
+    initFiscalDB(db);
+  } catch (e) {
+    console.warn("[factory-reset] initFiscalDB:", e.message || e);
+  }
+
+  try {
+    sqlite.exec("VACUUM");
+  } catch (e) {
+    console.warn("[factory-reset] VACUUM:", e.message || e);
+  }
+  try {
+    sqlite.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch (e) {
+    console.warn("[factory-reset] wal_checkpoint:", e.message || e);
+  }
+  try {
+    flushDatabase();
+  } catch (e) {
+    console.warn("[factory-reset] flush:", e.message || e);
+  }
+
+  return { ok: true, deleted };
+}
+
 function getVersionInfo() {
   let appBrand = "Revolution HOTEL";
   try {
@@ -15171,6 +15295,7 @@ function getVersionInfo() {
     },
     whenReady,
     flushDatabase,
+    wipeSalesDataOnly,
     isSetupDone,
     getSettings,
     getAdminTabOrder,

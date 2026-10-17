@@ -4699,19 +4699,21 @@
           </div>
           <div class="sef-audit-box" style="margin-top:1rem">
             <div class="sef-audit-title">Regjistrimet e fundit</div>
-            <p class="settings-field-hint" id="admin-audit-log-status" style="margin:0 0 0.5rem">Përdorni datat Nga/Deri sipër; lista rifreskohet kur hapet tab-i.</p>
+            <p class="settings-field-hint" id="admin-audit-log-status" style="margin:0 0 0.5rem">Vetëm kuponët fiskalë (print / storno) — për inspektimin ATK.</p>
             <div style="overflow-x:auto;max-height:420px;border:1px solid var(--ngjyr-border,#2e2e45);border-radius:8px">
               <table class="inv-lines" id="admin-audit-log-table" style="width:100%;font-size:0.85rem;margin:0">
                 <thead>
                   <tr>
-                    <th>Data</th>
+                    <th>Data/Ora</th>
+                    <th>Nr. Kuponit</th>
+                    <th>Shuma</th>
+                    <th>Pagesa</th>
+                    <th>Kodi Fiskal</th>
                     <th>Veprimi</th>
-                    <th>Përdoruesi</th>
-                    <th>Detaje</th>
                   </tr>
                 </thead>
                 <tbody id="admin-audit-log-body">
-                  <tr><td colspan="4" style="color:var(--ngjyr-muted)">Hapni tab-in Audit për të ngarkuar…</td></tr>
+                  <tr><td colspan="6" style="color:var(--ngjyr-muted)">Hapni tab-in Audit për të ngarkuar…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -17174,7 +17176,7 @@
       const status = document.getElementById("admin-audit-log-status");
       if (!body) return;
       if (status) status.textContent = "Duke ngarkuar regjistrimet…";
-      body.innerHTML = '<tr><td colspan="4">Duke ngarkuar…</td></tr>';
+      body.innerHTML = '<tr><td colspan="6">Duke ngarkuar…</td></tr>';
       try {
         const from = document.getElementById("sef-audit-from")?.value || "";
         const to = document.getElementById("sef-audit-to")?.value || "";
@@ -17184,27 +17186,31 @@
         const data = await api(`/api/admin/audit-log?${q.toString()}`);
         const entries = Array.isArray(data.entries) ? data.entries : [];
         if (!entries.length) {
-          body.innerHTML = '<tr><td colspan="4" style="color:var(--ngjyr-muted)">Nuk ka regjistrime për këtë periudhë.</td></tr>';
+          body.innerHTML = '<tr><td colspan="6" style="color:var(--ngjyr-muted)">Nuk ka kuponë fiskal për këtë periudhë.</td></tr>';
           if (status) status.textContent = "Lista e zbrazët për intervalin e zgjedhur.";
           return;
         }
         body.innerHTML = entries.map((e) => {
           const dtRaw = e.created_at ? String(e.created_at).replace("T", " ") : "";
           const dt = dtRaw ? escHtml(dtRaw.slice(0, 19)) : "—";
+          const amt = Number(e.total_amount);
+          const shuma = Number.isFinite(amt) ? `${amt.toFixed(2)} €` : "—";
           return (
             `<tr>`
             + `<td>${dt}</td>`
-            + `<td>${escHtml(e.action || "—")}</td>`
-            + `<td>${escHtml(e.user || "—")}</td>`
-            + `<td style="max-width:320px;word-break:break-word">${escHtml(e.details || "")}</td>`
+            + `<td>${escHtml(e.receipt_number || "—")}</td>`
+            + `<td>${escHtml(shuma)}</td>`
+            + `<td>${escHtml(e.payment_label || e.payment_method || "—")}</td>`
+            + `<td style="max-width:200px;word-break:break-word">${escHtml(e.fiscal_code || "—")}</td>`
+            + `<td>${escHtml(e.veprim || "Print")}</td>`
             + `</tr>`
           );
         }).join("");
         if (status) {
-          status.textContent = `${entries.length} regjistrime (deri në 250 më të fundit në interval).`;
+          status.textContent = `${entries.length} kuponë fiskal (deri në 250 në interval).`;
         }
       } catch (err) {
-        body.innerHTML = `<tr><td colspan="4" style="color:var(--ngjyr-danger)">${escHtml(err.message || "Gabim gjatë ngarkimit")}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="6" style="color:var(--ngjyr-danger)">${escHtml(err.message || "Gabim gjatë ngarkimit")}</td></tr>`;
         if (status) status.textContent = "";
       }
     }

@@ -640,6 +640,7 @@ if (!gotTheLock) {
       );
 
       const FACTORY_RESET_DONE_FLAG = ".factory-reset-done";
+      const FACTORY_RESET_DATA_DONE_FLAG = ".factory-reset-data-done";
 
       const clearFactoryResetFlags = () => {
         try {
@@ -650,6 +651,24 @@ if (!gotTheLock) {
         }
         try {
           if (fs.existsSync(resetFlag)) fs.unlinkSync(resetFlag);
+        } catch {
+          /* ignore */
+        }
+        try {
+          const dataDone = path.join(userData, FACTORY_RESET_DATA_DONE_FLAG);
+          if (fs.existsSync(dataDone)) fs.unlinkSync(dataDone);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const markFactoryResetDataDone = () => {
+        try {
+          fs.writeFileSync(
+            path.join(userData, FACTORY_RESET_DATA_DONE_FLAG),
+            new Date().toISOString(),
+            "utf8",
+          );
         } catch {
           /* ignore */
         }
@@ -743,35 +762,36 @@ if (!gotTheLock) {
 
       const factoryResetRequested =
         fs.existsSync(resetFlag) || fs.existsSync(resetFlagExternal);
+      const factoryResetDataAlreadyDone = fs.existsSync(
+        path.join(userData, FACTORY_RESET_DATA_DONE_FLAG),
+      );
+      let pendingFactoryResetWipe =
+        factoryResetRequested && !factoryResetDataAlreadyDone;
 
       if (factoryResetRequested) {
         process.env.HOTEL_FACTORY_RESET_AT = readFactoryResetPendingAt();
         markFactoryResetSkipBackupRestore();
-        const wiped = wipeClientDataForFactoryReset();
-        clearFactoryResetFlags();
-        global.__hotelJustFactoryReset = true;
-        console.log(
-          "[factory-reset] startup wipe:",
-          wiped?.deleted?.length ? wiped.deleted.join(", ") : "asnjë skedar",
-        );
       }
 
       process.env.DB_PATH = path.join(userData, "hotel.db");
 
-      global["__scheduleFactoryResetRelaunch"] = () => {
+      global["__scheduleFactoryResetRelaunch"] = (opts = {}) => {
         try {
           dialog.showMessageBoxSync({
             type: "warning",
             title: APP_NAME,
             message: "Rivendosje nga administratori",
             detail:
-              "Të dhënat lokale (DB) fshihen pas mbylljes së programit. Licenca mbetet — programi riniset si i ri.",
+              "Shitjet dhe porositë fshihen; menuja, stafi dhe cilësimet mbeten. Licenca mbetet — programi riniset.",
             buttons: ["OK"],
           });
         } catch {
           /* ignore */
         }
         markFactoryResetSkipBackupRestore();
+        if (opts.skipDbWipe) {
+          markFactoryResetDataDone();
+        }
         writeFactoryResetPendingFlags();
         shutdownServerBeforeFactoryResetExit();
         const execPath = String(process.execPath || "");
@@ -893,6 +913,34 @@ if (!gotTheLock) {
         );
         app.quit();
         return;
+      }
+
+      if (pendingFactoryResetWipe) {
+        try {
+          const wipeResult = database.wipeSalesDataOnly();
+          const fsWipe = wipeClientDataForFactoryReset();
+          markFactoryResetDataDone();
+          clearFactoryResetFlags();
+          pendingFactoryResetWipe = false;
+          global.__hotelJustFactoryReset = true;
+          console.log(
+            "[factory-reset] startup data wipe:",
+            wipeResult?.deleted
+              ? Object.keys(wipeResult.deleted).length + " tabela"
+              : "ok",
+            fsWipe?.deleted?.length ? fsWipe.deleted.join(", ") : "",
+          );
+        } catch (e) {
+          closeSplash();
+          dialog.showErrorBox(
+            `${APP_NAME} — Rivendosja`,
+            `Fshirja e shitjeve dështoi.\n\n${e.message || e}`,
+          );
+          app.quit();
+          return;
+        }
+      } else if (factoryResetRequested) {
+        clearFactoryResetFlags();
       }
 
       try {

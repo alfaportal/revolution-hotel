@@ -604,13 +604,8 @@ function unlinkIfExists(filePath) {
   }
 }
 
-const FACTORY_RESET_CLIENT_DB_FILES = [
-  "hotel.db",
-  "restaurant.db",
-  ".db-master.dpapi",
-  ".db-install-salt",
-  ".db-master.scrypt",
-];
+/** Skedarët e DB nuk fshihen — rivendosja fshin vetëm të dhëna transaksionale brenda hotel.db. */
+const FACTORY_RESET_CLIENT_DB_FILES = [];
 
 const FACTORY_RESET_CLIENT_DATA_DIRS = ["fiscal-keys"];
 
@@ -634,7 +629,7 @@ function wipeFactoryResetDbSidecarFiles(userDataRoot) {
   }
 }
 
-/** Rivendos si të re — DB + sidecar enkriptimi + fiscal-keys; licenca mbetet. Thirret në boot (DB e mbyllur). */
+/** Rivendos — fiscal-keys + sidecar corrupt/load-fail; hotel.db mbetet (wipeSalesDataOnly në database.js). */
 function wipeAllClientData(app, userDataDir) {
   const ea = app || _electronApp;
   const root =

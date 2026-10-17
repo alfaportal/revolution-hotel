@@ -6184,6 +6184,43 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   }
 });
 
+async function handleWaiterPrintThermalReceipt(req, res) {
+  const orderId = Number(req.body?.order_id);
+  if (!orderId) return res.status(400).json({ gabim: "Porosia mungon" });
+  try {
+    const order = db.db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
+    if (!order) return res.status(404).json({ gabim: "Porosia nuk u gjet" });
+    if (order.status === "active") {
+      return res.status(400).json({
+        gabim: "Tavolina ende e hapur — zgjidhni llojin e kuponit para pagesës.",
+      });
+    }
+    const receipt = db.createReceipt(orderId);
+    const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(order.table_id);
+    const printResult = await printClosedTableReceipt(db, {
+      order,
+      receipt,
+      tableNumber: table?.number || 0,
+      couponType: "thermal",
+      closedBy: req.session.emri,
+    });
+    res.json({
+      ok: true,
+      order_id: orderId,
+      coupon_type: "thermal",
+      html: printResult.html || null,
+      printed: !!printResult.printed,
+      printMessage: printResult.printMessage || "",
+    });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+}
+
+/** Riprint kupon termik për porosi të mbyllur (pa fiskal). */
+app.post("/api/waiter/print-thermal-receipt", auth, waiterOnly, handleWaiterPrintThermalReceipt);
+app.post("/api/print/thermal-receipt", auth, waiterOnly, handleWaiterPrintThermalReceipt);
+
 app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res) => {
   const { table_id, items, coupon_type } = req.body;
   const waiterName = req.session.emri;
@@ -6602,7 +6639,7 @@ app.delete("/api/menu/:id/purge", auth, adminOnly, (req, res) => {
   }
 });
 
-/* Rivendos si të re — fshin DB + sidecar, licenca mbetet, rinis Electron. */
+/* Rivendos — fshin shitjet/porositë (konfigurimi mbetet), fiscal-keys, rinis Electron. */
 app.post("/api/admin/factory-reset", auth, adminOnly, (req, res) => {
   try {
     const confirm = String(req.body?.confirm || "").trim();
@@ -6614,11 +6651,34 @@ app.post("/api/admin/factory-reset", auth, adminOnly, (req, res) => {
         gabim: "Rivendosja është e disponueshme vetëm në aplikacionin desktop (Electron).",
       });
     }
+    const wipe = db.wipeSalesDataOnly();
+    try {
+      const licenseMod = require("./license");
+      const eapp = electronApp();
+      const userData =
+        eapp?.getPath?.("userData") ||
+        path.join(require("os").homedir(), "AppData", "Roaming", "Revolution HOTEL");
+      if (typeof licenseMod.wipeAllClientData === "function") {
+        licenseMod.registerInstallContext(eapp);
+        licenseMod.wipeAllClientData(eapp, userData);
+      }
+    } catch (e) {
+      console.warn("[factory-reset] fiscal-keys wipe:", e.message || e);
+    }
+    try {
+      db.flushDatabase();
+    } catch {
+      /* ignore */
+    }
     auditReq(req, "Rivendos si të re", "factory-reset");
-    res.json({ ok: true, message: "Programi po riniset si i ri..." });
+    res.json({
+      ok: true,
+      message: "Shitjet u fshinë. Programi po riniset…",
+      wipe,
+    });
     setTimeout(() => {
       try {
-        global["__scheduleFactoryResetRelaunch"]();
+        global["__scheduleFactoryResetRelaunch"]({ skipDbWipe: true });
       } catch (e) {
         console.error("factory-reset relaunch:", e.message);
       }
@@ -10259,34 +10319,17 @@ app.get("/api/fiscal-audit", auth, adminOnly, (req, res) => {
   }
 });
 
-/** Lista audit për tab-in Admin (lexim WRITE-ONCE, edhe kur fiskalizimi është off). */
+/** Lista kuponësh fiskalë për tab-in Audit (ATK) — vetëm fiscal_receipts. */
 app.get("/api/admin/audit-log", auth, adminOnly, (req, res) => {
   try {
     const from = req.query.from || req.query.fromDate || null;
     const to = req.query.to || req.query.toDate || null;
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 250));
-    const rows = fiscalAudit.getAuditLog(from, to, { includeWhenDisabled: true }) || [];
-    const recent = rows.slice(-limit).reverse();
-    const entries = recent.map((r) => {
-      let details = "";
-      if (r.details && typeof r.details === "object") {
-        try {
-          details = JSON.stringify(r.details);
-        } catch {
-          details = String(r.details_json || "");
-        }
-      } else {
-        details = String(r.details_json || "");
-      }
-      if (details.length > 240) details = `${details.slice(0, 237)}…`;
-      return {
-        id: r.id,
-        created_at: r.created_at,
-        action: r.action,
-        user: r.operator_name || r.operator_id || "—",
-        details,
-      };
-    });
+    const entries =
+      fiscalAudit.getAdminFiscalReceiptEntries(from, to, {
+        includeWhenDisabled: true,
+        limit,
+      }) || [];
     res.json({ ok: true, entries, count: entries.length });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
