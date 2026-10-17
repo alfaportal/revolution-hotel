@@ -25,6 +25,17 @@
     return {};
   }
 
+  function redirectBarLogin() {
+    const ret = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.replace(`/login.html?mode=banaku&next=${ret}`);
+  }
+
+  function ensureBarSession() {
+    if (apiHeaders()["X-Session-Token"]) return true;
+    redirectBarLogin();
+    return false;
+  }
+
   function fetchOpts(extra) {
     return { credentials: "include", ...extra };
   }
@@ -94,12 +105,17 @@
 
   async function fetchLiveTables() {
     if (!tablesGridEl) return;
+    if (!ensureBarSession()) return;
     try {
       const res = await fetch(
         apiUrl(`/api/kds/bar/tables/live${apiQuery()}`),
         fetchOpts({ headers: apiHeaders() }),
       );
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        redirectBarLogin();
+        return;
+      }
       if (!res.ok || !data.ok) return;
       hideError();
       applyVenueName(data.restaurant_name || data.client_name);

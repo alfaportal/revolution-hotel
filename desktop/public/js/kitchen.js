@@ -38,6 +38,17 @@
     return {};
   }
 
+  function redirectKitchenLogin() {
+    const ret = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.replace(`/login.html?mode=kuzhina&next=${ret}`);
+  }
+
+  function ensureKitchenSession() {
+    if (apiHeaders()["X-Session-Token"]) return true;
+    redirectKitchenLogin();
+    return false;
+  }
+
   function fetchOpts(extra) {
     return { credentials: "include", ...extra };
   }
@@ -384,12 +395,17 @@
   }
 
   async function fetchOrders() {
+    if (!ensureKitchenSession()) return;
     try {
       const res = await fetch(
         apiUrl(`/api/kds/orders${apiQuery()}`),
         fetchOpts({ headers: apiHeaders() }),
       );
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        redirectKitchenLogin();
+        return;
+      }
       if (!res.ok || !data.ok) {
         showError(data.gabim || "Nuk u ngarkuan porositë.");
         return;

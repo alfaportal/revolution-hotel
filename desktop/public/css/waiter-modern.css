@@ -2171,6 +2171,23 @@ button.waiter-kpi-loss .waiter-kpi-label {
   font-size: 0.95rem;
 }
 
+.table-card-accept-cta {
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #b45309;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+}
+
+.table-card.pending-needs-accept {
+  border: 2px solid #fff;
+}
+
 /* (pin/numpad styles moved above near .waiter-online-pop) */
 
 /* ─── Kalkulatorë (modal modern) ─── */

@@ -69,16 +69,52 @@ function menuPhotoUrl(item) {
   return `/api/menu/${item.id}/photo${q}`;
 }
 
+const RECEP_SESSION_BRIDGE_KEY = "rh_recep_session_bridge";
+
+function syncRecepSessionBridge(s) {
+  try {
+    if (s?.token && String(s.roli || "").toLowerCase() === "recepsion") {
+      localStorage.setItem(RECEP_SESSION_BRIDGE_KEY, JSON.stringify(s));
+    } else if (s?.roli && String(s.roli).toLowerCase() !== "recepsion") {
+      localStorage.removeItem(RECEP_SESSION_BRIDGE_KEY);
+    }
+  } catch {
+    /* storage blocked */
+  }
+}
+
+function lexoRecepSessionBridge() {
+  try {
+    const raw = localStorage.getItem(RECEP_SESSION_BRIDGE_KEY);
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    if (u?.token && String(u.roli || "").toLowerCase() === "recepsion") return u;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function loginUrlForRole(roli) {
+  const r = String(roli || "").toLowerCase();
+  if (r === "recepsion") return "/login.html?mode=recepsion";
+  if (r === "kamarier") return "/login.html?mode=kamarier";
+  return "/login.html";
+}
+
 function ruajSesionin(s) {
   sessionStorage.setItem("rh_user", JSON.stringify(s));
+  syncRecepSessionBridge(s);
 }
 
 function lexoSesionin() {
   try {
-    return JSON.parse(sessionStorage.getItem("rh_user") || "null");
+    const ss = JSON.parse(sessionStorage.getItem("rh_user") || "null");
+    if (ss?.token) return ss;
   } catch {
-    return null;
+    /* ignore */
   }
+  return lexoRecepSessionBridge();
 }
 
 function dil() {
@@ -90,13 +126,18 @@ function dil() {
     }).catch(() => {});
   }
   sessionStorage.removeItem("rh_user");
-  window.location.href = "/login.html";
+  try {
+    localStorage.removeItem(RECEP_SESSION_BRIDGE_KEY);
+  } catch {
+    /* ignore */
+  }
+  window.location.href = loginUrlForRole(u?.roli);
 }
 
 function kerkonHyrje(roliKerkuar) {
   const u = lexoSesionin();
   if (!u || u.roli !== roliKerkuar || !u.token) {
-    window.location.href = "/login.html";
+    window.location.href = loginUrlForRole(roliKerkuar || u?.roli);
     return null;
   }
   if (u.login_time) {

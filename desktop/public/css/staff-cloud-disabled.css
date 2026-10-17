@@ -5,11 +5,7 @@ body.staff-cloud-ui-off #cloud-status-pill {
   display: none !important;
 }
 
-body.staff-cloud-ui-off #waiter-online-pop,
-body.staff-cloud-ui-off #waiter-online-backdrop,
-body.staff-cloud-ui-off #ready-alarm-overlay,
-body.staff-cloud-ui-off #recep-online-pop,
-body.staff-cloud-ui-off #recep-online-backdrop,
+/* PRANO / alarm / recepsion popup — duhen edhe pa cloud outbound (porosi QR lokale). */
 body.staff-cloud-ui-off #recep-web-booking-wrap,
 body.staff-cloud-ui-off #modal-rc-web-booking,
 body.staff-cloud-ui-off #btn-online-orders,
@@ -28,6 +24,3 @@ body.staff-cloud-ui-off .waiter-sync-btn[title*="Rifresko"] {
   /* fshehur — mos fshi HTML */
 }
 
-body.staff-cloud-ui-off .waiter-online-pop-queue {
-  display: none !important;
-}

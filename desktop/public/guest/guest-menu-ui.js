@@ -189,14 +189,12 @@
         btn.type = "button";
         btn.className = "menu-item-btn has-photo";
         const photo = guestPhotoUrl(it);
-        const vatPct = Number(it.vat_percent ?? it.vat_rate ?? 18);
         btn.innerHTML =
           `<div class="menu-item-card has-photo">` +
           photoImgHtml(photo, it.name) +
           `<div class="menu-item-meta">` +
           `<span class="emri">${String(it.name || "").replace(/</g, "&lt;")}</span>` +
           `<span class="cmimi">${fmt(it.price)}</span>` +
-          `<span class="menu-item-vat-flag">${vatPct}%</span>` +
           `</div></div>`;
         btn.addEventListener("click", () => {
           onSelect?.(it, btn);

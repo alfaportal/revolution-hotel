@@ -935,7 +935,7 @@
     @keyframes rcToastIn { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
   </style>
 
-  <script src="/js/app.js?v=8"></script>
+  <script src="/js/app.js?v=9"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
@@ -949,20 +949,39 @@
   <script src="/js/fiscal-mixed-payment.js?v=1"></script>
   <script>
     (function guardRecepsionSession() {
-      try {
-        const embedKasa = new URLSearchParams(window.location.search).get("embed") === "kasa";
-        if (embedKasa && window.parent !== window) {
+      const embedKasa = new URLSearchParams(window.location.search).get("embed") === "kasa";
+      function syncRecepSessionFromParent() {
+        try {
+          if (!embedKasa || window.parent === window) return;
           const local = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+          if (local?.token && local.roli === "recepsion") return;
           const fromParent =
             (typeof window.parent.lexoSesionin === "function" && window.parent.lexoSesionin())
             || window.parent.__recepUser
             || null;
-          if (fromParent?.token && fromParent.roli === "recepsion" && !local?.token) {
+          if (fromParent?.token && fromParent.roli === "recepsion") {
             ruajSesionin(fromParent);
           }
+        } catch {
+          /* iframe / parent */
         }
-      } catch {
-        /* iframe / parent */
+      }
+      syncRecepSessionFromParent();
+      if (embedKasa && window.parent !== window) {
+        window.addEventListener("message", (ev) => {
+          if (ev.origin !== window.location.origin) return;
+          const d = ev.data;
+          if (d?.type !== "recep-embed-session" || !d.user?.token) return;
+          if (String(d.user.roli || "").toLowerCase() !== "recepsion") return;
+          ruajSesionin(d.user);
+        });
+        window.dil = function recepEmbedNoWaiterLogin() {
+          try {
+            window.parent.postMessage({ type: "recep-embed-session-lost" }, window.location.origin);
+          } catch {
+            /* ignore */
+          }
+        };
       }
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
       if (!u || u.roli !== "recepsion" || !u.token) {

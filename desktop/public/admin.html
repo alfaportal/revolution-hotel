@@ -544,12 +544,37 @@
     #panel-fiskale .settings-field input:disabled,
     #panel-fiskale .settings-field select:disabled,
     #panel-fiskale .sef-readonly,
-    #panel-cloud input[readonly],
+    #panel-cloud input.cloud-sys-readonly[readonly],
     #panel-licenca input[readonly] {
       background: #252538 !important;
       color: #7a7a90 !important;
       border-color: #33334a !important;
       cursor: not-allowed;
+    }
+
+    #panel-cloud input.cloud-link-input,
+    #panel-cloud textarea.cloud-link-input,
+    .admin-public-page-card input.cloud-link-input,
+    .staff-modal-content input.cloud-link-input,
+    input.table-qr-url-input {
+      background: #1a1a28 !important;
+      color: #f1f5f9 !important;
+      border: 1px solid #4a4a62 !important;
+      cursor: text;
+      -webkit-user-select: text;
+      user-select: text;
+      pointer-events: auto;
+    }
+    input.table-qr-url-input {
+      font-family: monospace;
+      font-size: 0.72rem;
+      display: block;
+      width: 100%;
+      max-width: 28rem;
+      margin-bottom: 0.25rem;
+      box-sizing: border-box;
+      padding: 0.25rem 0.4rem;
+      border-radius: 4px;
     }
 
     #panel-lokal .settings-checkbox-label,
@@ -5361,7 +5386,7 @@
         <div class="fiscal-field-row">
           <label>Lidhja online</label>
           <div class="fiscal-field-actions">
-            <input type="text" id="cloud-server-fixed" readonly value="" placeholder="" style="font-family:monospace;background:var(--ngjyr-bg-soft,#f1f5f9)">
+            <input type="text" id="cloud-server-fixed" class="cloud-sys-readonly" readonly value="" placeholder="" style="font-family:monospace;background:var(--ngjyr-bg-soft,#f1f5f9)">
           </div>
         </div>
         <div class="fiscal-field-row">
@@ -5373,7 +5398,7 @@
         <div class="fiscal-field-row">
           <label>ID e pajisjes</label>
           <div class="fiscal-field-actions">
-            <input type="text" id="cloud-device-id" readonly style="font-family:monospace">
+            <input type="text" id="cloud-device-id" class="cloud-sys-readonly" readonly style="font-family:monospace">
           </div>
         </div>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.25rem">
@@ -5387,7 +5412,7 @@
           <div class="fiscal-field-row" id="cloud-row-owner">
             <label>Pronari — telefon / tablet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-owner-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/owner?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-owner-url" class="cloud-link-input" placeholder="https://revolution-pos.com/hotel/emri-hotelit/owner?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-owner-url">Kopjo</button>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-open-owner-url">Hap</button>
             </div>
@@ -5398,14 +5423,14 @@
           <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
             <label>Kamarier — internet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-waiter-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-waiter-url" class="cloud-link-input" placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-waiter-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-local-waiter">
             <label id="cloud-local-waiter-label">Kamarier — WiFi i hotelit</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-local-waiter-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-local-waiter-url" class="cloud-link-input" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-waiter-url">Kopjo</button>
             </div>
             <p id="cloud-local-waiter-reach-hint" class="links-hint hidden" style="margin:0.35rem 0 0;color:var(--ngjyr-danger)"></p>
@@ -5423,7 +5448,7 @@
           <div class="fiscal-field-row" id="cloud-row-local-recepsion">
             <label id="cloud-local-recepsion-label">Recepsion — WiFi i hotelit</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-local-recepsion-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-local-recepsion-url" class="cloud-link-input" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-recepsion-url">Kopjo</button>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-open-local-recepsion-url">Hap</button>
             </div>
@@ -5440,7 +5465,7 @@
             <div class="fiscal-field-row" style="margin:0 0 0.65rem">
               <label style="font-size:0.8rem">Hyrje (login)</label>
               <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-                <input type="text" id="staff-pwa-login-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+                <input type="text" id="staff-pwa-login-url" class="cloud-link-input" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
                 <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-login-url">Kopjo</button>
               </div>
             </div>
@@ -5448,7 +5473,7 @@
               <div style="min-width:10rem">
                 <label style="font-size:0.8rem;display:block;margin-bottom:0.35rem">Kamarier</label>
                 <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
-                  <input type="text" id="staff-pwa-waiter-url" readonly style="font-family:monospace;font-size:0.72rem;flex:1;min-width:160px">
+                  <input type="text" id="staff-pwa-waiter-url" class="cloud-link-input" style="font-family:monospace;font-size:0.72rem;flex:1;min-width:160px">
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-waiter-url">Kopjo</button>
                 </div>
                 <img id="staff-pwa-waiter-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR kamarier PWA" hidden>
@@ -5456,7 +5481,7 @@
               <div style="min-width:10rem">
                 <label style="font-size:0.8rem;display:block;margin-bottom:0.35rem">Recepsion</label>
                 <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
-                  <input type="text" id="staff-pwa-recepsion-url" readonly style="font-family:monospace;font-size:0.72rem;flex:1;min-width:160px">
+                  <input type="text" id="staff-pwa-recepsion-url" class="cloud-link-input" style="font-family:monospace;font-size:0.72rem;flex:1;min-width:160px">
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-recepsion-url">Kopjo</button>
                 </div>
                 <img id="staff-pwa-recepsion-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR recepsion PWA" hidden>
@@ -5466,7 +5491,7 @@
           <div class="fiscal-field-row" id="cloud-row-local-sherbimi">
             <label id="cloud-local-sherbimi-label">Pastrim — WiFi i hotelit</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-local-sherbimi-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-local-sherbimi-url" class="cloud-link-input" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-local-sherbimi-url">Kopjo</button>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-open-local-sherbimi-url">Hap</button>
             </div>
@@ -5476,7 +5501,7 @@
           <div class="fiscal-field-row" id="cloud-row-kitchen" hidden>
             <label>Kuzhina (ekran porosish)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-kitchen-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/kuzhina?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-kitchen-url" class="cloud-link-input" placeholder="https://revolution-pos.com/hotel/emri-hotelit/kuzhina?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kitchen-url">Kopjo</button>
             </div>
           </div>
@@ -5484,42 +5509,42 @@
           <div class="fiscal-field-row" id="cloud-row-bar" hidden>
             <label>Bar (pije)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-bar-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/bar?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-bar-url" class="cloud-link-input" placeholder="https://revolution-pos.com/hotel/emri-hotelit/bar?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-bar-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-kiosk">
             <label>Tavolinë (QR menu)</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-kiosk-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/menu/1" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-kiosk-url" class="cloud-link-input" placeholder="https://revolution-pos.com/hotel/emri-hotelit/menu/1" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-kiosk-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-takeaway" hidden>
             <label>Takeaway / porosi online</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-takeaway-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit/takeaway" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-takeaway-url" class="cloud-link-input" placeholder="https://revolution-pos.com/hotel/emri-hotelit/takeaway" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-takeaway-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-public">
             <label>Faqja publike</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-public-url" readonly placeholder="https://revolution-pos.com/hotel/emri-hotelit" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-public-url" class="cloud-link-input" placeholder="https://revolution-pos.com/hotel/emri-hotelit" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-public-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-housekeeping">
             <label>Pastrim — internet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-hk-url" readonly placeholder="https://revolution-pos.com/housekeeping/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-hk-url" class="cloud-link-input" placeholder="https://revolution-pos.com/housekeeping/emri-i-hotelit?key=..." style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-hk-url">Kopjo</button>
             </div>
           </div>
           <div class="fiscal-field-row" id="cloud-row-reception" hidden>
             <label>Recepsion — internet</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem">
-              <input type="text" id="cloud-reception-url" readonly placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="cloud-reception-url" class="cloud-link-input" placeholder="" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-reception-url">Kopjo</button>
             </div>
           </div>
@@ -5635,7 +5660,7 @@
           <div class="fiscal-field-row">
             <label>URL publike</label>
             <div class="fiscal-field-actions" style="flex-wrap:wrap">
-              <input type="text" id="public-page-url" readonly style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
+              <input type="text" id="public-page-url" class="cloud-link-input" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:200px">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-public-copy-url">Kopjo</button>
             </div>
           </div>
@@ -5723,8 +5748,7 @@
         <input
           type="text"
           id="staff-modal-cloud-waiter-url"
-          class="staff-rfid-input"
-          readonly
+          class="staff-rfid-input cloud-link-input"
           style="font-family:monospace;font-size:0.72rem;margin-top:0.35rem;width:100%;box-sizing:border-box"
         >
         <div class="staff-rfid-actions" style="margin-top:0.35rem;flex-wrap:wrap">
@@ -5738,8 +5762,7 @@
         <input
           type="text"
           id="staff-modal-local-wifi-url"
-          class="staff-rfid-input"
-          readonly
+          class="staff-rfid-input cloud-link-input"
           style="font-family:monospace;font-size:0.72rem;margin-top:0.35rem;width:100%;box-sizing:border-box"
         >
         <div class="staff-rfid-actions" style="margin-top:0.35rem">
@@ -10402,11 +10425,19 @@
       msg.style.color = text ? (ok ? "var(--ngjyr-success)" : "var(--ngjyr-danger)") : "";
     }
 
+    function adminQrUrlFromCopyBtn(btn, datasetKey) {
+      const cell = btn.closest("td, .hotel-qr-card");
+      const inp = cell?.querySelector("input.table-qr-url-input, input.cloud-link-input");
+      const fromInput = (inp?.value || "").trim();
+      return fromInput || btn.dataset[datasetKey] || "";
+    }
+
     function bindHotelQrActions() {
       document.querySelectorAll("[data-copy-qr-url]").forEach((btn) => {
         btn.addEventListener("click", async () => {
+          const text = adminQrUrlFromCopyBtn(btn, "copyQrUrl");
           try {
-            await navigator.clipboard.writeText(btn.dataset.copyQrUrl || "");
+            await navigator.clipboard.writeText(text);
             setTableQrMsg("URL u kopjua.", true);
           } catch {
             setTableQrMsg("Kopjimi dështoi.", false);
@@ -10474,7 +10505,7 @@
                 <td><strong>${escHtml(v.label || v.name)}</strong></td>
                 <td>${escHtml(String(v.table_number))}</td>
                 <td>
-                  <code class="table-qr-url">${escHtml(qr.url || "")}</code>
+                  <input type="text" class="cloud-link-input table-qr-url-input" value="${escAttr(qr.url || "")}">
                   <button type="button" class="btn btn-ghost btn-sm" data-copy-qr-url="${escAttr(qr.url || "")}">Kopjo</button>
                 </td>
                 <td><img src="${escHtml(qr.data_url || "")}" alt="" class="table-qr-preview-img" width="72" height="72"></td>
@@ -10493,7 +10524,7 @@
             <tr>
               <td><strong>${escHtml(r.room_number)}</strong><div style="font-size:0.75rem;color:var(--ngjyr-muted)">${escHtml(r.type || "")} · Kati ${escHtml(r.floor)}</div></td>
               <td>
-                <code class="table-qr-url">${escHtml((r.room_service && r.room_service.url) || "")}</code>
+                <input type="text" class="cloud-link-input table-qr-url-input" value="${escAttr((r.room_service && r.room_service.url) || "")}">
                 <button type="button" class="btn btn-ghost btn-sm" data-copy-qr-url="${escAttr((r.room_service && r.room_service.url) || "")}">Kopjo</button>
               </td>
               <td>
@@ -18815,7 +18846,7 @@
         + rows.map((e, i) => (
           `<div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.35rem">`
           + `<span style="font-size:0.75rem;color:var(--ngjyr-muted);min-width:10rem">${escHtml(e.label || "Link")}</span>`
-          + `<input type="text" readonly id="cloud-local-host-${i}" value="${escAttr(e.url)}" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:160px">`
+          + `<input type="text" class="cloud-link-input" id="cloud-local-host-${i}" value="${escAttr(e.url)}" style="font-family:monospace;font-size:0.75rem;flex:1;min-width:160px">`
           + `<button type="button" class="btn btn-ghost btn-sm" data-copy-local-host="${i}">Kopjo</button>`
           + `</div>`
         )).join("");
@@ -19568,7 +19599,7 @@
     function bindPublicPageAutoQrActions() {
       document.querySelectorAll("[data-public-copy-qr-url]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const url = btn.dataset.publicCopyQrUrl;
+          const url = adminQrUrlFromCopyBtn(btn, "publicCopyQrUrl");
           if (!url) return;
           try {
             await navigator.clipboard.writeText(url);
@@ -19638,7 +19669,7 @@
       return `<tr data-public-qr-kind="${escAttr(kind)}">
         <td><strong>${escHtml(label)}</strong></td>
         <td>
-          <code class="table-qr-url">${escHtml(url)}</code>
+          <input type="text" class="cloud-link-input table-qr-url-input" value="${escAttr(url)}">
           <button type="button" class="btn btn-ghost btn-sm" data-public-copy-qr-url="${escAttr(url)}">Kopjo</button>
         </td>
         <td>${qrCell}</td>

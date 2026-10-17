@@ -1775,13 +1775,43 @@ function displayNameFromKitchenSlug(slugRaw) {
     .join(" ");
 }
 
-/** Emri zyrtar për UI — slug (te-naseri-2) para cloud_client_name të licencës së gabuar. */
+function getLicensedClientNameFromDisk() {
+  try {
+    const lic = require("./license");
+    let app = null;
+    try {
+      app = require("electron").app;
+    } catch {
+      /* server/test pa Electron */
+    }
+    if (typeof lic.getLicensedClientName === "function") {
+      const name = String(lic.getLicensedClientName(app) || "").trim();
+      if (name) return name;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
+/** Emri zyrtar për UI — si në licencë; jo emër i vjetër cloud / slug tjetër. */
 function getBusinessDisplayName() {
+  const fromLic = getLicensedClientNameFromDisk();
+  if (fromLic) return fromLic;
+
+  const rest = String(getSetting("restaurant_name", "") || "").trim();
+  if (rest) return rest;
+
+  const biz = String(getSetting("biz_name", "") || "").trim();
+  if (biz) return biz;
+
   const fromSlug = displayNameFromKitchenSlug(getSetting("kitchen_slug", ""));
   if (fromSlug) return fromSlug;
+
   const fromCloud = String(getSetting("cloud_client_name", "") || "").trim();
   if (fromCloud) return fromCloud;
-  return getBusinessName();
+
+  return getBusinessName() || "";
 }
 
 /** Titulli i dritares / UI: p.sh. "Revolution HOTEL — Hotel Marini" */

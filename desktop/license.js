@@ -1291,6 +1291,12 @@ function formatLicenseDate(iso) {
   }
 }
 
+function getLicensedClientName(app) {
+  registerInstallContext(app);
+  const record = readActivationRecord(app) || {};
+  return String(record.client_name || "").trim();
+}
+
 function getLoginLicenseDisplay(app) {
   registerInstallContext(app);
   const key = readStoredLicense(app);
@@ -2020,6 +2026,7 @@ module.exports = {
   getLicenseStatus,
   getLicenseStatusForApp,
   getLoginLicenseDisplay,
+  getLicensedClientName,
   activateWithKey,
   fetchWaitersList,
   reportHardwareIdToCloud,

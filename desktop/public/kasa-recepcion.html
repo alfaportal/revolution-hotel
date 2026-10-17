@@ -923,7 +923,7 @@
     </section>
   </div>
 
-  <script src="/js/app.js?v=8"></script>
+  <script src="/js/app.js?v=9"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
   <script>
@@ -933,6 +933,7 @@
         window.location.replace("/login.html?mode=recepsion");
         throw new Error("no session");
       }
+      if (typeof ruajSesionin === "function") ruajSesionin(u);
       window.__recepUser = u;
     })();
 
@@ -1025,6 +1026,19 @@
       return `/recepcion.html?view=${encodeURIComponent(v)}&embed=kasa`;
     }
 
+    function pushRecepSessionIntoFrame() {
+      const frame = document.getElementById("recep-module-frame");
+      if (!frame?.contentWindow || !user?.token) return;
+      try {
+        frame.contentWindow.postMessage(
+          { type: "recep-embed-session", user },
+          window.location.origin,
+        );
+      } catch {
+        /* cross-origin / not ready */
+      }
+    }
+
     function openRecepModule(view) {
       if (!RECEP_MODULES.some((m) => m.id === view)) view = "rooms";
       activeRecepView = view;
@@ -1032,6 +1046,11 @@
       const col = document.getElementById("col-cart");
       const overlay = document.getElementById("recep-module-overlay");
       const frame = document.getElementById("recep-module-frame");
+      const onFrameReady = () => {
+        pushRecepSessionIntoFrame();
+        frame.removeEventListener("load", onFrameReady);
+      };
+      frame.addEventListener("load", onFrameReady);
       frame.src = recepModuleUrl(view) + "&_=" + Date.now();
       overlay.hidden = false;
       col?.classList.add("is-module-open");
@@ -1207,10 +1226,23 @@
     window.addEventListener("message", (ev) => {
       if (ev.origin !== window.location.origin) return;
       const d = ev.data;
-      if (!d || d.type !== "hotel-recep-pending-orders") return;
-      recepPendingOrderCount = Math.max(0, Number(d.pending) || 0);
-      renderCategoryNav();
-      if (d.playBell) playKasaRecepOrderBell();
+      if (!d) return;
+      if (d.type === "hotel-recep-pending-orders") {
+        recepPendingOrderCount = Math.max(0, Number(d.pending) || 0);
+        renderCategoryNav();
+        if (d.playBell) playKasaRecepOrderBell();
+        return;
+      }
+      if (d.type === "recep-embed-session-lost") {
+        if (user?.token && typeof ruajSesionin === "function") ruajSesionin(user);
+        if (activeRecepView) {
+          pushRecepSessionIntoFrame();
+          const frame = document.getElementById("recep-module-frame");
+          if (frame?.src && frame.src !== "about:blank") {
+            frame.src = recepModuleUrl(activeRecepView) + "&_=" + Date.now();
+          }
+        }
+      }
     });
 
     async function loadShift() {

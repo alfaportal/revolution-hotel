@@ -163,6 +163,10 @@
 }
 
 .guest-menu-shell .menu-item-vat-flag {
+  display: none !important;
+}
+
+.guest-menu-shell .menu-item-vat-flag--legacy {
   font-size: 0.68rem;
   color: var(--guest-muted);
   align-self: flex-start;

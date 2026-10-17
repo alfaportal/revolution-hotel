@@ -14,7 +14,7 @@
   <script src="/js/staff-auto-connect.js" defer></script>
   <link rel="stylesheet" href="/css/waiter-modern.css?v=13">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
-  <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=1">
+  <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=2">
   <script src="/js/staff-cloud-disabled.js"></script>
   <style>
     #ekrani-tavolina.hidden { display: none !important; }
@@ -4294,16 +4294,23 @@
     function ndertoKartelenPorosiTakeaway(o) {
       const card = document.createElement("button");
       card.type = "button";
-      card.className = "table-card pending-cloud pending-takeaway";
-      const src = o.source_label || "Takeaway";
+      card.className = "table-card pending-cloud pending-takeaway pending-needs-accept";
+      const qrRoom = eshtePorosiQrDhome(o);
+      const src = qrRoom
+        ? tt("QR dhomë")
+        : (o.source_label || "Takeaway");
       const customer = o.customer_label || o.waiter_name || "Klient";
+      const roomLine = qrRoom && o.room_number
+        ? `${tt("Dhoma")} ${String(o.room_number).trim()}`
+        : "";
       const items = (o.items || []).slice(0, 2).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
       card.innerHTML = `<div class="table-card-name">${src}</div>
         <div class="table-card-status">${tt("Në pritje")}</div>
         <div class="table-card-meta">${formatEuro(o.total || 0)}</div>
-        <div class="table-card-hint">${customer}</div>
+        <div class="table-card-hint">${roomLine || customer}</div>
+        ${roomLine && customer ? `<div class="table-card-hint">${customer}</div>` : ""}
         ${items ? `<div class="table-card-hint">${items}</div>` : ""}
-        <div class="table-card-hint">${tt("Kliko → prano")}</div>`;
+        <div class="table-card-accept-cta">${tt("Kliko — hap PRANO")}</div>`;
       card.addEventListener("click", () => {
         vendosPorosiOnlinePrioritet(o);
         hapWaiterOnlinePop();

@@ -1521,10 +1521,21 @@ function ensureServicesCatalogReady() {
 function buildMenuCatalogPayload(activeOnly = true) {
   ensureMenuCatalogReady();
   const items = (db.getMenuItems(activeOnly) || []).map(toMenuItemDto);
-  const present = new Set(items.map((it) => it.category));
-  const categories = (db.getCategories() || []).filter((c) => present.has(c));
-  for (const c of present) {
-    if (!categories.includes(c)) categories.push(c);
+  const present = new Set(items.map((it) => it.category).filter(Boolean));
+  const categories = [];
+  const seen = new Set();
+  for (const row of db.getCategories() || []) {
+    const name = String(row?.name ?? row ?? "").trim();
+    if (!name || !present.has(name) || seen.has(name)) continue;
+    seen.add(name);
+    categories.push(name);
+  }
+  for (const name of present) {
+    const n = String(name || "").trim();
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      categories.push(n);
+    }
   }
   return { items, categories };
 }
@@ -2683,7 +2694,8 @@ app.get("/api/kds/orders", auth, kdsPanelStaffAuth, (req, res) => {
     const orders = localKds.listKitchenOrders(db);
     const cancelled = localKds.listKitchenCancelledOrders(db);
     const venue =
-      db.getBusinessName?.()
+      db.getBusinessDisplayName?.()
+      || db.getBusinessName?.()
       || db.getSetting?.("restaurant_name", "")
       || "Restorant";
     res.json({
@@ -8527,10 +8539,16 @@ app.get("/api/guest/menu", (req, res) => {
       if (!categories.length && items.length) categories = [categoryFilter];
     }
     const settings = db.getSettings();
+    const hotelName =
+      db.getBusinessDisplayName?.()
+      || settings.business_display_name
+      || settings.business_name
+      || settings.restaurant_name
+      || "Hotel";
     res.json({
       ok: true,
       source: "restaurant_menu",
-      hotel_name: settings.business_name || settings.restaurant_name || "Hotel",
+      hotel_name: hotelName,
       categories,
       items: items.map(toGuestMenuItemDto),
     });

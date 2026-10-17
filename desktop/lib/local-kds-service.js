@@ -197,7 +197,8 @@ function markKitchenOrderReady(db, orderId) {
 
 function listBarTablesLive(db) {
   const venue =
-    db.getBusinessName?.()
+    db.getBusinessDisplayName?.()
+    || db.getBusinessName?.()
     || db.getSetting?.("restaurant_name", "")
     || "Restorant";
   const tables = db.getTablesWithOrders();

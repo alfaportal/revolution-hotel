@@ -22,6 +22,8 @@
       let mode = m ? m[1].toLowerCase() : null;
       if (!mode && qs.get("mode") === "recepsion") mode = "recepsion";
       if (!mode && qs.get("mode") === "kamarier") mode = "kamarier";
+      if (!mode && qs.get("mode") === "kuzhina") mode = "kuzhina";
+      if (!mode && qs.get("mode") === "banaku") mode = "banaku";
       if (!mode) return;
       document.documentElement.classList.add(
         "login-mode-staff",
@@ -33,6 +35,8 @@
     (function () {
       const path = window.location.pathname.replace(/\/+$/, "").toLowerCase();
       if (path !== "/login.html" && path !== "/login") return;
+      /* Në iframe (p.sh. kasa recepsion) — mos ridrejto te kamarieri. */
+      if (window.parent !== window) return;
       const qs = new URLSearchParams(window.location.search);
       if (qs.get("mode") === "kamarier" || qs.get("mode") === "recepsion") return;
       const host = (window.location.hostname || "").toLowerCase();
@@ -818,17 +822,18 @@
       return { mode: m[1].toLowerCase(), waiter_code: m[2] || "" };
     })();
     const urlParams = new URLSearchParams(window.location.search);
+    const urlMode = String(urlParams.get("mode") || "").toLowerCase();
     const staffLoginMode = staffInjected.mode === "recepsion" || staffFromPath?.mode === "recepsion"
       ? "recepsion"
       : staffInjected.mode === "pastrim" || staffFromPath?.mode === "sherbimi"
         ? "pastrim"
-        : staffInjected.mode === "kuzhina" || staffFromPath?.mode === "kuzhina"
+        : staffInjected.mode === "kuzhina" || staffFromPath?.mode === "kuzhina" || urlMode === "kuzhina"
           ? "kuzhina"
-          : staffInjected.mode === "banaku" || staffFromPath?.mode === "banaku"
+          : staffInjected.mode === "banaku" || staffFromPath?.mode === "banaku" || urlMode === "banaku"
             ? "banaku"
-            : (staffInjected.mode === "kamarier" || staffFromPath?.mode === "kamarier" || urlParams.get("mode") === "kamarier"
+            : (staffInjected.mode === "kamarier" || staffFromPath?.mode === "kamarier" || urlMode === "kamarier"
               ? "kamarier"
-              : (urlParams.get("mode") === "recepsion" ? "recepsion" : null));
+              : (urlMode === "recepsion" ? "recepsion" : null));
     const isStaffOnlyLoginMode =
       staffLoginMode === "kamarier"
       || staffLoginMode === "recepsion"
