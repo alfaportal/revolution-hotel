@@ -1793,14 +1793,38 @@
 
     function orderItemsList(o) {
       let items = o?.items;
-      if (!items?.length && o?.items_json) {
-        try {
-          items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
-        } catch {
-          items = [];
+      if (items && typeof items === "object" && !Array.isArray(items) && Array.isArray(items.items)) {
+        items = items.items;
+      }
+      if (!Array.isArray(items) || !items.length) {
+        if (o?.items_json != null) {
+          try {
+            const parsed = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+            if (Array.isArray(parsed)) items = parsed;
+            else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
+              items = parsed.items;
+            }
+          } catch {
+            items = [];
+          }
         }
       }
-      return Array.isArray(items) ? items : [];
+      if (!Array.isArray(items)) items = [];
+      return items.map((it) => ({
+        ...it,
+        name: String(it?.name || it?.emri || it?.item_name || it?.title || "").trim(),
+        quantity: Math.max(1, Number(it?.quantity ?? it?.qty ?? it?.sasia ?? 1) || 1),
+      })).filter((it) => it.name);
+    }
+
+    function cloudOrderKindLabel(o) {
+      if (o?.is_guest_room_menu || String(o?.order_kind || "").includes("guest_room")) {
+        return tt("Ushqim / pije — QR dhomë");
+      }
+      if (o?.is_guest_hotel_service || o?.is_recepcion_qr) return tt("Shërbim hoteli");
+      if (o?.is_qr_table) return tt("QR tavolinë");
+      if (o?.is_online_pickup) return tt("Takeaway / online");
+      return tt("Porosi");
     }
 
     function renderWaiterOnlinePreview(orders) {
@@ -1811,11 +1835,16 @@
         return;
       }
       const o = orders[0];
-      const itemRows = orderItemsList(o).map(it => {
+      const lineItems = orderItemsList(o);
+      const itemRows = lineItems.map(it => {
         const qty = Number(it.quantity) || 1;
         const name = String(it.name || "—").trim();
-        return `<li><span class="waiter-online-pop-qty">${qty}×</span> ${name}</li>`;
+        const price = Number(it.price);
+        const priceBit = Number.isFinite(price) && price > 0 ? ` · ${formatEuro(price)}` : "";
+        return `<li><span class="waiter-online-pop-qty">${qty}×</span> ${name}${priceBit}</li>`;
       }).join("");
+      const summaryFallback = String(o?.order_lines_summary || "").trim();
+      const notes = String(o?.notes || o?.order_note || "").trim();
       const tn = parseTableNumFromCloudOrder(o);
       const qr = eshtePorosiQrTavoline(o);
       const qrRoom = eshtePorosiQrDhome(o);
@@ -1828,13 +1857,24 @@
         ? `${tt("Dhoma")} ${roomNum || "?"}`
         : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway"));
       const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} ${tt("tjetër në radhë")}</p>` : "";
+      const kindLabel = cloudOrderKindLabel(o);
+      const itemsBlock = itemRows
+        ? `<ul class="waiter-online-pop-items">${itemRows}</ul>`
+        : (summaryFallback
+          ? `<p class="waiter-online-pop-items-summary">${summaryFallback}</p>`
+          : `<p class="waiter-online-pop-items-summary waiter-online-pop-items-empty">${tt("Artikujt nuk u lexuan — rifreskoni ose pritni sync.")}</p>`);
+      const notesBlock = notes
+        ? `<p class="waiter-online-pop-notes"><strong>${tt("Shënim")}:</strong> ${notes}</p>`
+        : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <div class="waiter-online-pop-meta">
           <strong>${src}</strong>
+          <span class="waiter-online-pop-kind">${kindLabel}</span>
           <span class="waiter-online-pop-customer">${customer}</span>
           <span class="waiter-online-pop-total">${table} · ${formatEuro(o.total || 0)}</span>
         </div>
-        <ul class="waiter-online-pop-items">${itemRows || `<li>—</li>`}</ul>
+        ${itemsBlock}
+        ${notesBlock}
         ${extra}
       </div>`;
     }

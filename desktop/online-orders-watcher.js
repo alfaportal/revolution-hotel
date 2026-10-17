@@ -252,14 +252,27 @@ function purgeCloudResolvedOrders(db, orderIds) {
 function normalizePendingOrder(o) {
   if (!o?.id) return null;
   let items = o.items;
-  if (!items?.length && o.items_json) {
-    try {
-      items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
-    } catch {
+  if (items && typeof items === "object" && !Array.isArray(items) && Array.isArray(items.items)) {
+    items = items.items;
+  }
+  if (!Array.isArray(items) || !items.length) {
+    if (o.items_json != null) {
+      try {
+        const parsed = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+        if (Array.isArray(parsed)) items = parsed;
+        else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
+          items = parsed.items;
+        } else {
+          items = [];
+        }
+      } catch {
+        items = [];
+      }
+    } else {
       items = [];
     }
   }
-  return { ...o, items: items || [] };
+  return { ...o, items: Array.isArray(items) ? items : [] };
 }
 
 function orderSortKey(o) {

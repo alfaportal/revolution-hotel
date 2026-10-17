@@ -7662,6 +7662,14 @@ function isCloudStaffWaiterOrder(cloudOrder) {
   return orderDeviceId(cloudOrder) === "WEB-WAITER";
 }
 
+function nestedLineItemsFromCloudField(itemsField) {
+  if (Array.isArray(itemsField) && itemsField.length) return itemsField;
+  if (itemsField && typeof itemsField === "object" && Array.isArray(itemsField.items)) {
+    return itemsField.items;
+  }
+  return [];
+}
+
 function parseGuestOrderMetaFromCloud(cloudOrder) {
   if (!cloudOrder) return {};
   if (cloudOrder.order_kind || cloudOrder.folio_pre_applied != null) {
@@ -7673,7 +7681,7 @@ function parseGuestOrderMetaFromCloud(cloudOrder) {
       venue_qr: !!cloudOrder.venue_qr,
       venue_label: String(cloudOrder.venue_label || "").trim(),
       service_lines: Array.isArray(cloudOrder.service_lines) ? cloudOrder.service_lines : [],
-      nested_items: Array.isArray(cloudOrder.items) ? cloudOrder.items : [],
+      nested_items: nestedLineItemsFromCloudField(cloudOrder.items),
     };
   }
   let raw = cloudOrder.items_json ?? cloudOrder.items;
@@ -8037,7 +8045,22 @@ function expandGuestOrderLineItems(cloudOrder) {
       service_id: sl.service_id,
     }));
   }
+  if (items.length) {
+    items = mapCloudItemsToLocal(items);
+  }
   return items.filter((it) => String(it?.name || "").trim());
+}
+
+function formatCloudOrderLineItemsSummary(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return "";
+  return list
+    .map((it) => {
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const name = String(it.name || "—").trim();
+      return `${qty}× ${name}`;
+    })
+    .join(" · ");
 }
 
 function enrichCloudOrderForWaiter(cloudOrder) {
@@ -8052,9 +8075,11 @@ function enrichCloudOrderForWaiter(cloudOrder) {
   const service_lines = Array.isArray(cloudOrder.service_lines) && cloudOrder.service_lines.length
     ? cloudOrder.service_lines
     : meta.service_lines;
+  const order_lines_summary = formatCloudOrderLineItemsSummary(displayItems);
   return {
     ...cloudOrder,
-    items: displayItems.length ? displayItems : (cloudOrder.items || []),
+    items: displayItems.length ? displayItems : [],
+    order_lines_summary,
     service_lines,
     is_staff_waiter: staff,
     is_guest_hotel_service: guestSvc,

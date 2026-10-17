@@ -1060,11 +1060,20 @@
 
     function recepOrderItemsList(o) {
       let items = o?.items;
-      if (!items?.length && o?.items_json) {
-        try {
-          items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
-        } catch {
-          items = [];
+      if (items && typeof items === "object" && !Array.isArray(items) && Array.isArray(items.items)) {
+        items = items.items;
+      }
+      if (!Array.isArray(items) || !items.length) {
+        if (o?.items_json != null) {
+          try {
+            const parsed = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+            if (Array.isArray(parsed)) items = parsed;
+            else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
+              items = parsed.items;
+            }
+          } catch {
+            items = [];
+          }
         }
       }
       if (!Array.isArray(items)) items = [];

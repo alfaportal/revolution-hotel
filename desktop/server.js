@@ -1517,27 +1517,31 @@ function ensureServicesCatalogReady() {
   }
 }
 
+/** Si paneli kamarierit (KATEGORITE / sort_order) — QR, takeaway, guest lokal. */
+function categoriesWithMenuItems(categoryNames, menuItems) {
+  const present = new Set(
+    (menuItems || []).map((m) => String(m.category || "").trim()).filter(Boolean),
+  );
+  return (categoryNames || []).filter((c) => present.has(String(c).trim()));
+}
+
 /** I njëjti katalog si paneli pronarit / kamarierit — menu restoranti. */
 function buildMenuCatalogPayload(activeOnly = true) {
   ensureMenuCatalogReady();
   const items = (db.getMenuItems(activeOnly) || []).map(toMenuItemDto);
-  const present = new Set(items.map((it) => it.category).filter(Boolean));
-  const categories = [];
+  const present = new Set(items.map((it) => String(it.category || "").trim()).filter(Boolean));
+  const merged = [];
   const seen = new Set();
   for (const row of db.getCategories() || []) {
     const name = String(row?.name ?? row ?? "").trim();
     if (!name || !present.has(name) || seen.has(name)) continue;
     seen.add(name);
-    categories.push(name);
+    merged.push(name);
   }
-  for (const name of present) {
-    const n = String(name || "").trim();
-    if (n && !seen.has(n)) {
-      seen.add(n);
-      categories.push(n);
-    }
-  }
-  return { items, categories };
+  const orphans = [...present].filter((n) => !seen.has(n));
+  orphans.sort((a, b) => a.localeCompare(b, "sq"));
+  merged.push(...orphans);
+  return { items, categories: categoriesWithMenuItems(merged, items) };
 }
 
 function buildGuestServicesGroups(catalog) {
