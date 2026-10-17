@@ -145,6 +145,35 @@
     .waiter-sidebar-nav-bottom .waiter-nav-btn {
       width: 100%;
     }
+    .waiter-sidebar-z-warn {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      width: 100%;
+      margin-bottom: 0.45rem;
+      padding: 0.55rem 0.45rem;
+      border-radius: 10px;
+      border: 1px solid rgba(251, 146, 60, 0.85);
+      background: linear-gradient(180deg, #ea580c 0%, #c2410c 100%);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(234, 88, 12, 0.35);
+      line-height: 1.25;
+      text-align: center;
+    }
+    .waiter-sidebar-z-warn[hidden] {
+      display: none !important;
+    }
+    .waiter-sidebar-z-warn-title {
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .waiter-sidebar-z-warn-sub {
+      font-size: 0.62rem;
+      font-weight: 700;
+      opacity: 0.95;
+    }
     .waiter-rooms-legend {
       display: flex; flex-wrap: wrap; gap: 0.55rem 1.1rem;
       margin: 0 0 0.9rem; padding: 0.55rem 0.75rem;
@@ -841,6 +870,10 @@
       </div>
       <div class="waiter-sidebar-spacer"></div>
       <nav class="waiter-sidebar-nav waiter-sidebar-nav-bottom" aria-label="Veprime">
+        <div id="sidebar-z-report-warn" class="waiter-sidebar-z-warn" hidden role="status" aria-live="polite">
+          <strong class="waiter-sidebar-z-warn-title">Raporti Z nuk është shtypur!</strong>
+          <span class="waiter-sidebar-z-warn-sub">Duhet Raporti Z para ndërrimit të ri</span>
+        </div>
         <button type="button" class="waiter-nav-btn waiter-nav-calc" data-open-calc title="Kalkulatorë" aria-label="Kalkulatorë">Kalkulatorë</button>
         <button type="button" class="waiter-nav-btn waiter-nav-exit" onclick="dil()">DIL</button>
       </nav>
@@ -2058,7 +2091,20 @@
     let _readyAlarmRepeatTimer = null;
     let _readyLastDismissMs = 0;
 
-    function playReadyBeep() {
+    function playReadyBeep(repeatOnly) {
+      if (typeof window.staffOrderAlert === "function") {
+        if (repeatOnly) {
+          window.staffOrderAlertRepeat?.();
+          return;
+        }
+        window.staffOrderAlert({
+          kind: "waiter-ready",
+          title: "Porosia është gati!",
+          body: "Shko te banaku dhe merr porosinë.",
+          tag: "waiter-order-ready",
+        });
+        return;
+      }
       dridhPorosieWaiter();
       if (typeof window.playOrderAlarmSound === "function") {
         window.playOrderAlarmSound();
@@ -2084,7 +2130,7 @@
       // Zëri ripërsëritet çdo 8s derisa kamarieri ta konfirmojë
       clearInterval(_readyAlarmRepeatTimer);
       _readyAlarmRepeatTimer = setInterval(() => {
-        if (_readyAlarmActive) playReadyBeep();
+        if (_readyAlarmActive) playReadyBeep(true);
         else clearInterval(_readyAlarmRepeatTimer);
       }, 8000);
     }
@@ -3846,10 +3892,30 @@
       zgjidhHandoverPeer(btn.dataset.handoverId || "");
     });
 
-    function showShiftOpenModal() {
+    const Z_SHIFT_BLOCK_MSG =
+      "Duhet të shtypni Raportin Z para se të filloni ndërrimin e ri";
+
+    function syncSidebarZReportWarn(shiftSummary) {
+      const el = document.getElementById("sidebar-z-report-warn");
+      if (!el) return;
+      el.hidden = !(shiftSummary && shiftSummary.blocks_new_shift);
+    }
+
+    function showShiftOpenModal(blockedByZ) {
       document.getElementById("shift-open-waiter-name").textContent = user.emri;
+      const msg = document.getElementById("shift-open-msg");
+      const btn = document.getElementById("btn-shift-open-start");
+      if (blockedByZ) {
+        msg.textContent = blockedByZ.z_report_required_message || Z_SHIFT_BLOCK_MSG;
+        msg.hidden = false;
+        if (btn) btn.disabled = true;
+      } else {
+        msg.hidden = true;
+        msg.textContent = "";
+        if (btn) btn.disabled = false;
+      }
       document.getElementById("modal-shift-open").hidden = false;
-      shiftOpenPad.setValue(50);
+      if (!blockedByZ) shiftOpenPad.setValue(50);
     }
 
     function hideShiftOpenModal() {
@@ -3952,6 +4018,11 @@
       const msg = document.getElementById("shift-open-msg");
       msg.hidden = true;
       const btn = document.getElementById("btn-shift-open-start");
+      if (lastShiftSummary?.blocks_new_shift) {
+        msg.textContent = lastShiftSummary.z_report_required_message || Z_SHIFT_BLOCK_MSG;
+        msg.hidden = false;
+        return;
+      }
       btn.disabled = true;
       try {
         const res = await api("/api/waiter/shift/open", {
@@ -3961,6 +4032,7 @@
         shiftReady = true;
         shiftOpen = true;
         lastShiftSummary = res;
+        syncSidebarZReportWarn(res);
         hideShiftOpenModal();
         await ngarkoPazarin();
         await ngarkoTavolinat();
@@ -3979,6 +4051,7 @@
     async function kontrolloNderrimin() {
       const s = await api("/api/waiter/shift");
       lastShiftSummary = s;
+      syncSidebarZReportWarn(s);
       if (s.shift_ended) {
         shiftReady = false;
         shiftOpen = false;
@@ -3994,7 +4067,7 @@
       if (s.needs_opening_cash) {
         shiftReady = false;
         shiftOpen = false;
-        showShiftOpenModal();
+        showShiftOpenModal(s.blocks_new_shift ? s : null);
         return false;
       }
       shiftReady = true;
@@ -4628,6 +4701,11 @@
         shiftOpen = false;
         shiftReady = false;
         showShiftDoneModal(res);
+        try {
+          const snap = await api("/api/waiter/shift");
+          lastShiftSummary = snap;
+          syncSidebarZReportWarn(snap);
+        } catch { /* */ }
         const btnClose = document.getElementById("btn-mbyll-nderrimin");
         btnClose.disabled = true;
         btnClose.textContent = "Nderrimi u mbyll";
@@ -5448,6 +5526,7 @@
             table_id: tavolinaId,
             items: toPay,
             pending_items: pendingItems,
+            checkout_token: generateCheckoutToken(),
             payment_method: payInfo.payment_method,
             coupon_type: effectiveCouponType(),
             fiscal_skip: effectiveCouponType() === "thermal",
@@ -5577,7 +5656,19 @@
       }
     });
 
+    function generateCheckoutToken() {
+      try {
+        if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+          return crypto.randomUUID();
+        }
+      } catch {
+        /* ignore */
+      }
+      return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+
     async function mbyllMePagese(paymentMethod, opts = {}) {
+      const checkout_token = generateCheckoutToken();
       const payInfo = paymentMethod && typeof paymentMethod === "object" && paymentMethod.payment_method
         ? paymentMethod
         : null;
@@ -5613,6 +5704,7 @@
         const closeBody = {
           table_id: tavolinaId,
           items: itemsToClose,
+          checkout_token,
           coupon_type: couponTypeOpt,
           fiscal_skip: couponTypeOpt === "thermal",
           promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,

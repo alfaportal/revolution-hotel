@@ -1242,10 +1242,14 @@ function importRemoteRoomCharge(deviceId, registerNumber, entry) {
   if (!dev || !ref) throw new Error("Mungon device_id ose ref.");
   const rn = String(entry?.room_number || "").trim();
   if (!rn) throw new Error("Mungon room_number.");
-  const existing = sqlite
-    .prepare("SELECT id FROM room_charges WHERE source_device_id = ? AND source_ref = ?")
-    .get(dev, ref);
-  if (existing) return { ok: true, duplicate: true, charge_ids: [Number(existing.id)] };
+  const existingRows = listRoomChargesByDeviceRefRange(dev, ref);
+  if (existingRows.length) {
+    return {
+      ok: true,
+      duplicate: true,
+      charge_ids: existingRows.map((c) => Number(c.id)),
+    };
+  }
 
   const room = sqlite
     .prepare("SELECT * FROM rooms WHERE trim(room_number) = ? OR room_number = ? LIMIT 1")
@@ -1263,13 +1267,9 @@ function importRemoteRoomCharge(deviceId, registerNumber, entry) {
       created = addRoomChargesFromOrderItems(guest.id, room.id, items, {
         table_number: entry?.table_number,
         decrement_stock: false,
+        source_device_id: dev,
+        relay_order_ref: ref,
       });
-      if (created[0]?.id) {
-        sqlite.prepare(`
-          UPDATE room_charges SET source_device_id = ?, source_ref = ?
-          WHERE id = ?
-        `).run(dev, ref, Number(created[0].id));
-      }
     } else {
       const amt = Number(entry?.fallback_total);
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Nuk ka artikuj ose shumë për faturën në dhomë.");
@@ -3615,17 +3615,14 @@ function addRoomCharge({
     } catch { /* */ }
   }
   if (vat == null) vat = "18";
-  const srcDev = source_device_id != null && String(source_device_id).trim()
-    ? String(source_device_id).trim().toUpperCase()
-    : null;
-  const srcRef = srcDev && source_ref != null ? Math.floor(Number(source_ref) || 0) : null;
-  if (srcDev && srcRef) {
-    const dup = sqlite
-      .prepare("SELECT id FROM room_charges WHERE source_device_id = ? AND source_ref = ?")
-      .get(srcDev, srcRef);
-    if (dup) {
-      return sqlite.prepare("SELECT * FROM room_charges WHERE id = ?").get(Number(dup.id));
-    }
+  const srcDev = String(source_device_id || "").trim().toUpperCase() || getRoomChargeLocalDeviceId();
+  let srcRef = Math.floor(Number(source_ref) || 0);
+  if (!srcRef) srcRef = nextManualRoomChargeRef();
+  const dup = sqlite
+    .prepare("SELECT id FROM room_charges WHERE source_device_id = ? AND source_ref = ?")
+    .get(srcDev, srcRef);
+  if (dup) {
+    return sqlite.prepare("SELECT * FROM room_charges WHERE id = ?").get(Number(dup.id));
   }
   const r = sqlite.prepare(`
     INSERT INTO room_charges (guest_id, room_id, description, amount, service_id, menu_item_id, vat_category, source_device_id, source_ref)
@@ -3639,7 +3636,7 @@ function addRoomCharge({
     mid != null && Number.isFinite(mid) ? mid : null,
     vat,
     srcDev,
-    srcRef && srcRef > 0 ? srcRef : null,
+    srcRef,
   );
   return sqlite.prepare("SELECT * FROM room_charges WHERE id = ?").get(r.lastInsertRowid);
 }
@@ -3650,6 +3647,58 @@ function addRoomCharge({
  * source="room_service" → etiketa (RS) + zbret stokun (default).
  * charge-to-room (tavolinë) → pass decrement_stock:false (stoku zbret te closeTable).
  */
+const POS_TABLE_CHARGE_DEVICE = "POS-CHARGE-ROOM";
+const ROOM_CHARGE_DEVICE_CHECKOUT_EXTRA = "HOTEL-CO-EXTRA";
+const ROOM_CHARGE_DEVICE_RES_SVC = "HOTEL-RES-SVC";
+const ROOM_CHARGE_DEVICE_RES_QR = "HOTEL-RES-QR";
+const ROOM_CHARGE_LOCAL_REF_SEQ_KEY = "room_charge_local_ref_seq";
+
+function getRoomChargeLocalDeviceId() {
+  try {
+    const id = require("./license").getMachineId();
+    const s = String(id || "").trim().toUpperCase();
+    if (s) return s;
+  } catch {
+    /* license optional in tests */
+  }
+  return "LOCAL-HOTEL";
+}
+
+function nextManualRoomChargeRef() {
+  sqlite
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '0')")
+    .run(ROOM_CHARGE_LOCAL_REF_SEQ_KEY);
+  sqlite
+    .prepare(`
+      UPDATE settings
+      SET value = CAST(CAST(COALESCE(value, '0') AS INTEGER) + 1 AS TEXT)
+      WHERE key = ?
+    `)
+    .run(ROOM_CHARGE_LOCAL_REF_SEQ_KEY);
+  const row = sqlite
+    .prepare("SELECT CAST(COALESCE(value, '0') AS INTEGER) AS n FROM settings WHERE key = ?")
+    .get(ROOM_CHARGE_LOCAL_REF_SEQ_KEY);
+  const n = Math.floor(Number(row?.n) || 0);
+  if (n > 0) return n;
+  return Math.floor(Date.now() % 2147483647) || 1;
+}
+
+function listRoomChargesByDeviceRefRange(deviceId, orderRef) {
+  const dev = String(deviceId || "").trim().toUpperCase();
+  const ref = Math.floor(Number(orderRef) || 0);
+  if (!dev || !ref) return [];
+  return sqlite.prepare(`
+    SELECT * FROM room_charges
+    WHERE source_device_id = ?
+      AND (source_ref = ? OR (source_ref > ? AND source_ref < ?))
+    ORDER BY id ASC
+  `).all(dev, ref, ref * 1000, ref * 1000 + 1000);
+}
+
+function listRoomChargesForPosTableOrder(orderId) {
+  return listRoomChargesByDeviceRefRange(POS_TABLE_CHARGE_DEVICE, orderId);
+}
+
 function addRoomChargesFromOrderItems(guestId, roomId, items, {
   table_number,
   source,
@@ -3657,6 +3706,8 @@ function addRoomChargesFromOrderItems(guestId, roomId, items, {
   cloud_order_id,
   source_device_id,
   source_ref,
+  pos_order_id,
+  relay_order_ref,
 } = {}) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) throw new Error("Nuk ka artikuj për t'i faturuar në dhomë.");
@@ -3668,12 +3719,29 @@ function addRoomChargesFromOrderItems(guestId, roomId, items, {
     throw new Error("Mysafiri nuk është në këtë dhomë.");
   }
 
+  const posOrderId = Math.floor(Number(pos_order_id || 0));
+  if (posOrderId > 0) {
+    const existing = listRoomChargesForPosTableOrder(posOrderId);
+    if (existing.length) return existing;
+  }
+
+  const relayRef = Math.floor(Number(relay_order_ref || 0));
+  const relayDev = String(source_device_id || "").trim().toUpperCase();
+  if (relayRef > 0 && relayDev) {
+    const existingRelay = listRoomChargesByDeviceRefRange(relayDev, relayRef);
+    if (existingRelay.length) return existingRelay;
+  }
+
   const src = String(source || "").trim().toLowerCase();
   const isRoomService = src === "room_service" || src === "rs";
   const tableLabel = isRoomService
     ? "RS"
     : (table_number != null && table_number !== "" ? `T${table_number}` : "POS");
   const cloudId = String(cloud_order_id || "").trim();
+  const posDev = String(source_device_id || POS_TABLE_CHARGE_DEVICE).trim().toUpperCase();
+  const lineDev = cloudId
+    ? cloudId.toUpperCase()
+    : (posOrderId > 0 ? posDev : (relayDev || getRoomChargeLocalDeviceId()));
   const enriched = enrichOrderItemsWithVat(list);
   const created = [];
   for (let idx = 0; idx < enriched.length; idx += 1) {
@@ -3684,6 +3752,14 @@ function addRoomChargesFromOrderItems(guestId, roomId, items, {
     const lineTotal = Math.round(qty * price * 100) / 100;
     if (lineTotal < 0) continue;
     const mid = it.menu_item_id != null ? Number(it.menu_item_id) : null;
+    let lineSourceRef = cloudId
+      ? idx + 1
+      : (posOrderId > 0
+        ? posOrderId * 1000 + (idx + 1)
+        : (relayRef > 0 ? relayRef * 1000 + (idx + 1) : Math.floor(Number(source_ref) || 0)));
+    if (!lineSourceRef) {
+      throw new Error("Mungon source_ref për rreshtin e faturës së dhomës.");
+    }
     created.push(addRoomCharge({
       guest_id: guestId,
       room_id: roomId,
@@ -3691,8 +3767,8 @@ function addRoomChargesFromOrderItems(guestId, roomId, items, {
       amount: lineTotal,
       menu_item_id: mid,
       vat_category: it.vat_category || "18",
-      source_device_id: cloudId || source_device_id,
-      source_ref: cloudId ? idx + 1 : source_ref,
+      source_device_id: lineDev,
+      source_ref: lineSourceRef,
     }));
   }
   if (!created.length) throw new Error("Nuk ka artikuj për t'i faturuar në dhomë.");
@@ -3937,7 +4013,7 @@ function resolveHotelServiceForGuestCloudLine(raw, hint) {
 }
 
 /** Kur ID cloud ≠ katalog lokal — shto charge nga emri/çmimi i porosisë QR. */
-function applyGuestServiceChargeFallback(roomId, raw, hint) {
+function applyGuestServiceChargeFallback(roomId, raw, hint, { source_device_id, source_ref } = {}) {
   const room = getRoomById(roomId);
   if (!room) throw new Error("Dhoma nuk u gjet.");
   if (room.status !== "occupied") {
@@ -3962,6 +4038,8 @@ function applyGuestServiceChargeFallback(roomId, raw, hint) {
     description,
     amount: lineTotal,
     vat_category: String(hint?.vat_category || "18"),
+    source_device_id,
+    source_ref,
   });
   return {
     charge,
@@ -4275,7 +4353,7 @@ function deleteHotelService(id) {
 
 /** Shto shërbim katalogu te room_charges e mysafirit aktiv. */
 function addServiceChargeToRoom(roomId, serviceId, {
-  quantity, notes, amount,
+  quantity, notes, amount, source_device_id, source_ref,
 } = {}) {
   const room = getRoomById(roomId);
   if (!room) throw new Error("Dhoma nuk u gjet.");
@@ -4318,6 +4396,8 @@ function addServiceChargeToRoom(roomId, serviceId, {
     amount: lineTotal,
     service_id: svc.id,
     vat_category: svc.vat_category || "18",
+    source_device_id,
+    source_ref,
   });
   return { charge, guest, room, service: svc, quantity: qty, unit_price: unit };
 }
@@ -4431,6 +4511,7 @@ function checkOutGuest(roomId, {
   payment_method = "cash",
   payment_splits = null,
   waiter_name = "Recepcion",
+  checkout_token = null,
 } = {}) {
   const preview = getCheckoutPreview(roomId, {
     check_out_date,
@@ -4456,6 +4537,8 @@ function checkOutGuest(roomId, {
         description: "Shërbime ekstra (check-out)",
         amount: extra,
         vat_category: "18",
+        source_device_id: ROOM_CHARGE_DEVICE_CHECKOUT_EXTRA,
+        source_ref: Number(guest.id),
       });
     }
     try {
@@ -4483,6 +4566,7 @@ function checkOutGuest(roomId, {
       payment_splits,
       staff_id: logMeta.staff_id,
       shift_id: logMeta.shift_id,
+      checkout_token,
     });
     return {
       guest: getGuestById(guest.id),
@@ -5023,6 +5107,8 @@ function applyReservationServicesOnCheckIn(reservationId, guestId, roomId) {
       amount: line.amount,
       service_id: line.service_id,
       vat_category: line.vat_category || "18",
+      source_device_id: ROOM_CHARGE_DEVICE_RES_SVC,
+      source_ref: Number(line.id),
     });
     applied.push(charge);
   }
@@ -5049,6 +5135,8 @@ function applyReservationQrPendingOnCheckIn(reservationId, guestId, roomId) {
       service_id: line.service_id || null,
       menu_item_id: line.menu_item_id || null,
       vat_category: "18",
+      source_device_id: ROOM_CHARGE_DEVICE_RES_QR,
+      source_ref: Number(line.id),
     });
     applied.push(charge);
   }
@@ -5302,13 +5390,17 @@ function submitGuestRoomMenuOrder(roomNumber, items) {
   if (!list.length) throw new Error("Zgjidhni të paktën një artikull.");
 
   if (target.mode === "occupied") {
+    const menuPending = buildGuestRoomMenuPendingPayload(target, list, { folio_pre_applied: true });
     const created = addRoomChargesFromOrderItems(
       target.guest.id,
       target.room.id,
       list,
-      { source: "room_service", decrement_stock: true },
+      {
+        source: "room_service",
+        decrement_stock: true,
+        cloud_order_id: menuPending.id,
+      },
     );
-    const menuPending = buildGuestRoomMenuPendingPayload(target, list, { folio_pre_applied: true });
     upsertPendingCloudOrders([menuPending]);
     return {
       ok: true,
@@ -5427,18 +5519,32 @@ function applyGuestHotelServiceOrder(order) {
 
   const hints = guestServiceHintsById(order);
   const applied = [];
+  const cloudOrderDev = String(order?.id || "").trim().toUpperCase();
   if (target.mode === "occupied") {
-    for (const raw of rawLines) {
+    if (cloudOrderDev && guestHasRoomChargeFromCloudOrder(target.guest.id, order.id)) {
+      return {
+        ok: true,
+        mode: "occupied",
+        count: rawLines.length,
+        room_number: target.room.room_number,
+        guest_name: target.guest.guest_name,
+        duplicate: true,
+      };
+    }
+    for (let lineIdx = 0; lineIdx < rawLines.length; lineIdx += 1) {
+      const raw = rawLines[lineIdx];
       const hint = hints.get(Number(raw.service_id)) || raw;
+      const lineSource = { source_device_id: cloudOrderDev, source_ref: lineIdx + 1 };
       const svc = resolveHotelServiceForGuestCloudLine(raw, hint);
       if (svc) {
         applied.push(addServiceChargeToRoom(target.room.id, svc.id, {
           quantity: raw.quantity,
           amount: raw.amount ?? hint?.price,
           notes: raw.notes,
+          ...lineSource,
         }));
       } else {
-        applied.push(applyGuestServiceChargeFallback(target.room.id, raw, hint));
+        applied.push(applyGuestServiceChargeFallback(target.room.id, raw, hint, lineSource));
       }
     }
     return {
@@ -8516,52 +8622,11 @@ function paymentMethodLabel(method) {
   return labels[m] || "Cash";
 }
 
-function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash", pricing = null, opts = {}) {
-  const order = getActiveOrderForTable(tableId);
-  if (!order) {
-    console.log(`[STATUS-CHANGE][closeTable] tableId=${tableId} nuk ka porosi aktive -> vetëm tables.status='free'`);
-    sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tableId);
-    return null;
-  }
-  const allowAnyWaiter = !!opts.allowAnyWaiter;
-  if (!isAdmin && !allowAnyWaiter && order.waiter_name !== waiterName) {
-    throw new Error("Vetëm " + order.waiter_name + " ose admini mund ta mbyllë këtë tavolinë");
-  }
-  const method = normalizePaymentMethod(paymentMethod);
-  const table = sqlite.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
-  const closingStaff = String(waiterName || order.waiter_name || "").trim();
-  const logMeta = shiftMetaForWaiter(closingStaff);
+function buildClosedTableResult(order, method, finalTotal, pricing, closingStaff) {
   const subtotal = pricing?.subtotal != null ? Number(pricing.subtotal) : Number(order.total);
   const discountTotal = pricing?.discount_total != null ? Number(pricing.discount_total) : 0;
-  const finalTotal = pricing?.total != null ? Number(pricing.total) : Number(order.total);
   const promotionId = pricing?.promotion_id ?? null;
   const promotionName = pricing?.promotion_name || "";
-
-  console.log(`[STATUS-CHANGE][closeTable] order#${order.id} T${table?.number} waiter=${order.waiter_name} total=${finalTotal} -> orders.status='completed', tables.status='free'`);
-  sqlite.transaction(() => {
-    sqlite.prepare(`
-      UPDATE orders SET status = 'completed', payment_method = ?, total = ? WHERE id = ?
-    `).run(method, finalTotal, order.id);
-    sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tableId);
-    addDailyLogEntry({
-      table_number:  table.number,
-      waiter_name:   closingStaff,
-      items_json:    order.items_json,
-      total:         finalTotal,
-      receipt_number: null,
-      payment_method: method,
-      payment_splits: opts.payment_splits,
-      staff_id: logMeta.staff_id,
-      shift_id: logMeta.shift_id,
-      subtotal,
-      discount_total: discountTotal,
-      promotion_id: promotionId,
-      promotion_name: promotionName,
-      cloud_sale_id: order.cloud_order_id || null,
-      order_id: order.id,
-    });
-    decrementMenuItemStock(parseOrderItems(order.items_json));
-  })();
   return {
     ...order,
     status: "completed",
@@ -8573,6 +8638,120 @@ function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash"
     promotion_name: promotionName,
     closed_by: closingStaff,
   };
+}
+
+function applyCloseTableCore(tableId, waiterName, isAdmin, paymentMethod, pricing, opts, order) {
+  const method = normalizePaymentMethod(paymentMethod);
+  const table = sqlite.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
+  const closingStaff = String(waiterName || order.waiter_name || "").trim();
+  const logMeta = shiftMetaForWaiter(closingStaff);
+  const subtotal = pricing?.subtotal != null ? Number(pricing.subtotal) : Number(order.total);
+  const discountTotal = pricing?.discount_total != null ? Number(pricing.discount_total) : 0;
+  const finalTotal = pricing?.total != null ? Number(pricing.total) : Number(order.total);
+  const promotionId = pricing?.promotion_id ?? null;
+  const promotionName = pricing?.promotion_name || "";
+
+  console.log(`[STATUS-CHANGE][closeTable] order#${order.id} T${table?.number} waiter=${order.waiter_name} total=${finalTotal} -> orders.status='completed', tables.status='free'`);
+  sqlite.prepare(`
+    UPDATE orders SET status = 'completed', payment_method = ?, total = ? WHERE id = ?
+  `).run(method, finalTotal, order.id);
+  sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tableId);
+  addDailyLogEntry({
+    table_number: table.number,
+    waiter_name: closingStaff,
+    items_json: order.items_json,
+    total: finalTotal,
+    receipt_number: null,
+    payment_method: method,
+    payment_splits: opts.payment_splits,
+    staff_id: logMeta.staff_id,
+    shift_id: logMeta.shift_id,
+    subtotal,
+    discount_total: discountTotal,
+    promotion_id: promotionId,
+    promotion_name: promotionName,
+    cloud_sale_id: order.cloud_order_id || null,
+    order_id: order.id,
+    checkout_token: opts.checkout_token,
+  });
+  decrementMenuItemStock(parseOrderItems(order.items_json));
+  return buildClosedTableResult(order, method, finalTotal, pricing, closingStaff);
+}
+
+function closeTable(tableId, waiterName, isAdmin = false, paymentMethod = "cash", pricing = null, opts = {}) {
+  const order = getActiveOrderForTable(tableId);
+  if (!order) {
+    console.log(`[STATUS-CHANGE][closeTable] tableId=${tableId} nuk ka porosi aktive -> vetëm tables.status='free'`);
+    sqlite.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(tableId);
+    return null;
+  }
+  const allowAnyWaiter = !!opts.allowAnyWaiter;
+  if (!isAdmin && !allowAnyWaiter && order.waiter_name !== waiterName) {
+    throw new Error("Vetëm " + order.waiter_name + " ose admini mund ta mbyllë këtë tavolinë");
+  }
+  const run = () => applyCloseTableCore(tableId, waiterName, isAdmin, paymentMethod, pricing, opts, order);
+  if (opts.withinTransaction) {
+    return run();
+  }
+  return sqlite.transaction(run)();
+}
+
+/**
+ * Mbyll tavolinën (pagesë në dhomë) + room_charges në një transaksion SQLite.
+ * Rollback nëse charges dështojn — daily_log / order completed nuk mbeten pa folio.
+ */
+function chargeTableToRoomAtomic({
+  tableId,
+  waiterName,
+  pricing = null,
+  guestId,
+  roomId,
+  tableNumber,
+  queueToMaster = false,
+  masterQueue = null,
+} = {}) {
+  return sqlite.transaction(() => {
+    const order = closeTable(tableId, waiterName, false, "room", pricing, {
+      allowAnyWaiter: true,
+      withinTransaction: true,
+    });
+    if (!order) {
+      throw new Error("Nuk ka porosi aktive për këtë tavolinë.");
+    }
+
+    let charges;
+    if (queueToMaster) {
+      enqueueRoomChargeToMaster(masterQueue || {});
+      charges = [{ queued_to_master: true, ref: Number(order.id) }];
+    } else {
+      const chargeItems = parseOrderItems(order.items_json);
+      const existing = listRoomChargesForPosTableOrder(order.id);
+      if (existing.length) {
+        charges = existing;
+      } else {
+        try {
+          charges = addRoomChargesFromOrderItems(guestId, roomId, chargeItems, {
+            table_number: tableNumber,
+            decrement_stock: false,
+            pos_order_id: Number(order.id),
+          });
+        } catch (chargeErr) {
+          console.warn("[charge-to-room] itemize failed:", chargeErr.message);
+          charges = [
+            addRoomCharge({
+              guest_id: guestId,
+              room_id: roomId,
+              description: `Porosi T${tableNumber || "?"} (faturë dhome)`,
+              amount: Number(order.total) || 0,
+              source_device_id: POS_TABLE_CHARGE_DEVICE,
+              source_ref: Number(order.id),
+            }),
+          ];
+        }
+      }
+    }
+    return { order, charges };
+  })();
 }
 
 /** Mbyll një porosi specifike sipas ID-së lokale të porosisë (order.id) —
@@ -8747,6 +8926,7 @@ function closeTablePartial(tableId, waiterName, paymentMethod, itemsToClose, pri
       cloud_sale_id: order.cloud_order_id || null,
       order_id: fiscalOrderId,
       payment_splits: opts.payment_splits,
+      checkout_token: opts.checkout_token,
     });
     decrementMenuItemStock(removed);
 
@@ -9946,11 +10126,46 @@ function buildXReportData() {
   };
 }
 
+const Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG =
+  "Duhet të shtypni Raportin Z para se të filloni ndërrimin e ri";
+
+/** Ndërrim i mbyllur pa Raport Z të printuar — bllokon hapjen e ndërrimit të ri. */
+function getUnprintedClosedZShift() {
+  return sqlite.prepare(`
+    SELECT id, staff_id, waiter_name, closed_at
+    FROM waiter_shifts
+    WHERE closed_at IS NOT NULL
+      AND (z_report_printed_at IS NULL OR TRIM(z_report_printed_at) = '')
+    ORDER BY closed_at ASC
+    LIMIT 1
+  `).get();
+}
+
+function assertZReportPrintedBeforeNewShift() {
+  const pending = getUnprintedClosedZShift();
+  if (pending) {
+    throw new Error(Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG);
+  }
+}
+
+function markShiftZReportPrinted(shiftId) {
+  const sid = Number(shiftId);
+  if (!sid) return null;
+  const now = new Date().toISOString();
+  sqlite.prepare(`
+    UPDATE waiter_shifts
+    SET z_report_printed_at = ?
+    WHERE id = ? AND closed_at IS NOT NULL
+  `).run(now, sid);
+  return sqlite.prepare("SELECT z_report_printed_at FROM waiter_shifts WHERE id = ?").get(sid);
+}
+
 /** Nderrime të mbyllura, më të fundit së pari — për zgjedhësin e Raportit Z. */
 function listRecentClosedShifts(limit = 30) {
   return sqlite.prepare(`
     SELECT id, staff_id, waiter_name, opened_at, closed_at, opening_cash,
-           closing_cash_actual, expected_closing_cash, cash_difference, closing_reason
+           closing_cash_actual, expected_closing_cash, cash_difference, closing_reason,
+           z_report_printed_at
     FROM waiter_shifts
     WHERE closed_at IS NOT NULL
     ORDER BY closed_at DESC
@@ -10145,6 +10360,18 @@ function enrichShiftSummary(shift, totals, staff, extra = {}) {
     cash_total: cashSales,
     room_total: Number(totals?.room_total) || 0,
     discount_total: Number(totals?.discount_total) || 0,
+    blocks_new_shift: !!extra.blocks_new_shift,
+    pending_z_shift: extra.pending_z_shift || null,
+    z_report_required_message: extra.z_report_required_message || null,
+  };
+}
+
+function shiftOpenZReportMeta() {
+  const pending = getUnprintedClosedZShift();
+  return {
+    blocks_new_shift: !!pending,
+    pending_z_shift: pending || null,
+    z_report_required_message: pending ? Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG : null,
   };
 }
 
@@ -10164,6 +10391,7 @@ function openWaiterShiftWithCash(staffId, openingCash) {
     if (existing.opening_cash != null) {
       throw new Error("Nderrimi është hapur tashmë.");
     }
+    assertZReportPrintedBeforeNewShift();
     sqlite.prepare("UPDATE waiter_shifts SET opening_cash = ? WHERE id = ?").run(amount, existing.id);
     const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(existing.id);
     insertLanOutbox("shift_open", { ref: shift.id });
@@ -10172,9 +10400,11 @@ function openWaiterShiftWithCash(staffId, openingCash) {
     return enrichShiftSummary(shift, { ...totals, active_tables: activeLabels.length }, staff, {
       active_table_labels: activeLabels,
       handover_peers_count: listHandoverPeers(id, sessionRole).length,
+      ...shiftOpenZReportMeta(),
     });
   }
 
+  assertZReportPrintedBeforeNewShift();
   const now = new Date().toISOString();
   const r = sqlite.prepare(`
     INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash)
@@ -10193,6 +10423,7 @@ function openWaiterShiftWithCash(staffId, openingCash) {
   }, staff, {
     active_table_labels: [],
     handover_peers_count: listHandoverPeers(id, sessionRole).length,
+    ...shiftOpenZReportMeta(),
   });
 }
 
@@ -10229,6 +10460,7 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
       `).run(newOpening, openShift.id);
       targetShiftId = openShift.id;
     } else {
+      assertZReportPrintedBeforeNewShift();
       const r = sqlite.prepare(`
         INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash, handover_id)
         VALUES (?, ?, ?, ?, ?)
@@ -10259,6 +10491,7 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
         opening_discrepancy: openingDiscrepancy,
         merged_into_open_shift: !!openShift,
       },
+      ...shiftOpenZReportMeta(),
     });
   })();
 }
@@ -10271,6 +10504,7 @@ function getWaiterShiftSummary(staffId, opts = {}) {
 
   const pendingHandover = getPendingHandoverForStaff(id);
   const shift = getOpenShift(id);
+  const zMeta = shiftOpenZReportMeta();
   const shiftOpts = { sessionRole: opts.sessionRole || "" };
   const peersCount = listHandoverPeers(id, shiftOpts.sessionRole).length;
   const activeLabels = activeTableLabelsForWaiter(staff.name, shiftOpts);
@@ -10314,6 +10548,7 @@ function getWaiterShiftSummary(staffId, opts = {}) {
       active_table_labels: activeLabels,
       active_table_details: activeDetails,
       handover_peers_count: peersCount,
+      ...zMeta,
     });
     console.log(
       "[shift/api] getWaiterShiftSummary (pa nderrim) staff=", staff.name,
@@ -10335,6 +10570,7 @@ function getWaiterShiftSummary(staffId, opts = {}) {
     active_table_labels: activeLabels,
     active_table_details: activeDetails,
     handover_peers_count: peersCount,
+    ...zMeta,
   });
   console.log(
     "[shift/api] getWaiterShiftSummary staff=", staff.name,
@@ -13934,6 +14170,19 @@ function findExistingDailyLogForPayment({ cloudSaleId, orderId, tableNum, total,
   return findExistingDailyLogForCloudImport({ cloudId: cloudSaleId, tableNum, total, date, time });
 }
 
+function findDailyLogIdByCheckoutToken(token) {
+  const t = String(token || "").trim().slice(0, 80);
+  if (!t) return null;
+  try {
+    const row = sqlite.prepare(
+      "SELECT id FROM daily_log WHERE checkout_token = ? LIMIT 1",
+    ).get(t);
+    return row?.id != null ? Number(row.id) : null;
+  } catch {
+    return null;
+  }
+}
+
 function addDailyLogEntry({
   table_number,
   waiter_name,
@@ -13953,6 +14202,7 @@ function addDailyLogEntry({
   promotion_name = "",
   cloud_sale_id = null,
   order_id = null,
+  checkout_token = null,
   date = null,
   time = null,
 }) {
@@ -13998,13 +14248,17 @@ function addDailyLogEntry({
   });
   const cashAmt = split.cash_amount;
   const cardAmt = split.card_amount;
+  const checkoutTok =
+    checkout_token != null && String(checkout_token).trim()
+      ? String(checkout_token).trim().slice(0, 80)
+      : null;
   const ins = sqlite.prepare(`
     INSERT INTO daily_log (
       date, time, table_number, waiter_name, items_json, total, receipt_number, status,
       payment_method, staff_id, shift_id, subtotal, discount_total, promotion_id, promotion_name,
-      cloud_sale_id, order_id, cash_amount, card_amount, source
+      cloud_sale_id, order_id, cash_amount, card_amount, source, checkout_token
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ts.d,
     ts.t,
@@ -14026,6 +14280,7 @@ function addDailyLogEntry({
     cashAmt,
     cardAmt,
     src,
+    checkoutTok,
   );
   const logId = Number(ins?.lastInsertRowid) || 0;
   if (lanOutboxEnabled && logId) {
@@ -15093,6 +15348,7 @@ function getVersionInfo() {
     enrichCloudOrderForWaiter,
     importClosedWebWaiterSaleFromCloud,
     backfillDailyLogReceiptForOrder,
+    findDailyLogIdByCheckoutToken,
     rebuildDailyLogFromCloudSales,
     countDailyLogEntries,
     getCloudWaiterClosedSyncSince,
@@ -15111,6 +15367,7 @@ function getVersionInfo() {
     syncSlipSnapshot,
     getOrderSlipDelta,
     closeTable,
+    chargeTableToRoomAtomic,
     closeOrderById,
     closeTablePartial,
     subtractOrderItems,
@@ -15164,6 +15421,9 @@ function getVersionInfo() {
     buildXReportData,
     listRecentClosedShifts,
     buildZReportData,
+    markShiftZReportPrinted,
+    getUnprintedClosedZShift,
+    Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG,
     listOpenShiftsForReports,
     getOpenShiftReportData,
     updateShiftClosingReason,

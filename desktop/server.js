@@ -4955,6 +4955,10 @@ app.get("/api/waiter/rooms/:id/checkout-preview", auth, staffOrAdmin, (req, res)
 app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res) => {
   try {
     const body = req.body || {};
+    const checkout = beginCheckoutToken(req, res);
+    if (checkout.blocked) return;
+    if (respondIfWaiterCheckoutAlreadyProcessed(req, res, checkout)) return;
+    const checkoutToken = String(body.checkout_token || "").trim().slice(0, 80);
     const preview = db.getCheckoutPreview(req.params.id, {
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
@@ -4964,6 +4968,7 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       && !body.confirm_pending_room_charges
       && !body.force_checkout_pending_room_charges
     ) {
+      releaseInMemoryCheckoutToken(checkoutToken);
       return res.status(409).json({
         ok: false,
         code: "PENDING_ROOM_CHARGES_FROM_TERMINAL",
@@ -4989,6 +4994,7 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       payment_method: payInfo.payment_method,
       payment_splits: payInfo.payment_splits,
       waiter_name: req.session.emri || "Recepcion",
+      checkout_token: checkoutToken || undefined,
     });
     let folio = null;
     try {
@@ -5033,6 +5039,7 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
         /* ignore */
       }
     });
+    checkout.markClosed();
     res.json({
       ok: true,
       ...result,
@@ -5641,8 +5648,7 @@ app.post("/api/waiter/room-reservations/:id/check-in", auth, staffOrAdmin, (req,
 });
 
 /**
- * Faturë në dhomë: mbyll porosinë e tavolinës (closeTable një herë) dhe
- * shto charges te mysafiri aktiv. Nuk ndryshon closeTable.
+ * Faturë në dhomë: closeTable + room_charges (ose queue master) në një transaksion SQLite.
  */
 app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
   const { table_id, room_id, items, coupon_type } = req.body || {};
@@ -5707,43 +5713,33 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
     }
     const pricing = promotionService.resolvePromotionDiscount(db, closeItems, req.body.promotion_id);
 
-    const order = db.closeTable(tableId, waiterName, false, "room", pricing, {
-      allowAnyWaiter: true,
-    });
-    if (!order) {
-      return res.status(400).json({ gabim: "Nuk ka porosi aktive për këtë tavolinë." });
-    }
-
-    const chargeItems = db.parseOrderItems(order.items_json);
-    let charges = [];
     const onSecondaryRegister = terminalRegisterNumberLocal() >= 2;
-    if (onSecondaryRegister) {
-      db.enqueueRoomChargeToMaster({
-        ref: Number(order.id),
-        room_number: room.room_number,
-        guest_name: guest.guest_name,
-        table_number: tableRow?.number,
-        items: chargeItems,
-        fallback_total: Number(order.total) || 0,
+    let order;
+    let charges;
+    try {
+      const atomic = db.chargeTableToRoomAtomic({
+        tableId,
+        waiterName,
+        pricing,
+        guestId: guest.id,
+        roomId,
+        tableNumber: tableRow?.number,
+        queueToMaster: onSecondaryRegister,
+        masterQueue: onSecondaryRegister
+          ? {
+              ref: Number(orderBefore.id),
+              room_number: room.room_number,
+              guest_name: guest.guest_name,
+              table_number: tableRow?.number,
+              items: closeItems,
+              fallback_total: Number(orderBefore.total) || 0,
+            }
+          : null,
       });
-      charges = [{ queued_to_master: true, ref: Number(order.id) }];
-    } else {
-      try {
-        charges = db.addRoomChargesFromOrderItems(guest.id, roomId, chargeItems, {
-          table_number: tableRow?.number,
-          decrement_stock: false, /* stoku zbret te closeTable */
-        });
-      } catch (chargeErr) {
-        console.warn("[charge-to-room] itemize failed:", chargeErr.message);
-        charges = [
-          db.addRoomCharge({
-            guest_id: guest.id,
-            room_id: roomId,
-            description: `Porosi T${tableRow?.number || "?"} (faturë dhome)`,
-            amount: Number(order.total) || 0,
-          }),
-        ];
-      }
+      order = atomic.order;
+      charges = atomic.charges;
+    } catch (atomicErr) {
+      return res.status(400).json({ gabim: atomicErr.message || "Faturë në dhomë dështoi." });
     }
 
     const receipt = db.createReceipt(order.id);
@@ -6005,6 +6001,23 @@ app.post("/api/orders/cancel", auth, (req, res) => {
 const CHECKOUT_TOKEN_TTL_MS = 15 * 60 * 1000;
 const checkoutTokens = new Map();
 
+function releaseInMemoryCheckoutToken(token) {
+  const t = String(token || "").trim().slice(0, 80);
+  if (t) checkoutTokens.delete(t);
+}
+
+/** Idempotency DB — token i ruajtur në daily_log.checkout_token pas pagesës së suksesshme. */
+function respondIfWaiterCheckoutAlreadyProcessed(req, res, checkout) {
+  const token = String(req.body?.checkout_token || "").trim().slice(0, 80);
+  if (!token) return false;
+  const dailyLogId = db.findDailyLogIdByCheckoutToken(token);
+  if (!dailyLogId) return false;
+  releaseInMemoryCheckoutToken(token);
+  checkout?.markClosed?.();
+  res.json({ ok: true, already_processed: true, daily_log_id: dailyLogId });
+  return true;
+}
+
 function beginCheckoutToken(req, res) {
   const token = String(req.body?.checkout_token || "").trim().slice(0, 80);
   if (!token) return { blocked: false, markClosed() {} };
@@ -6037,6 +6050,8 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   const checkout = beginCheckoutToken(req, res);
   if (checkout.blocked) return;
+  if (respondIfWaiterCheckoutAlreadyProcessed(req, res, checkout)) return;
+  const checkoutToken = String(req.body?.checkout_token || "").trim().slice(0, 80);
   const requestedCoupon = coupon_type
     ? String(coupon_type).trim().toLowerCase()
     : null;
@@ -6056,6 +6071,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       const prev = db.parseOrderItems(existing?.items_json);
       const delta = diffOrderItems(prev, items);
       if (delta.length > 0) {
+        releaseInMemoryCheckoutToken(checkoutToken);
         return res.status(409).json({
           gabim:
             "Keni artikuj të padërguar — përdorni «Dërgo porosinë» para pagesës që t'i shohë kuzhina.",
@@ -6072,6 +6088,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
     const order = db.closeTable(tableId, waiterName, false, payInfo.payment_method, pricing, {
       allowAnyWaiter: true,
       payment_splits: payInfo.payment_splits,
+      checkout_token: checkoutToken || undefined,
     });
     if (!order) {
       return res.status(400).json({ gabim: "Nuk ka porosi aktive për këtë tavolinë." });
@@ -6173,6 +6190,10 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
   const tableId = Number(table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   if (!items?.length) return res.status(400).json({ gabim: "Zgjidhni artikuj për pagesë" });
+  const checkout = beginCheckoutToken(req, res);
+  if (checkout.blocked) return;
+  if (respondIfWaiterCheckoutAlreadyProcessed(req, res, checkout)) return;
+  const checkoutToken = String(req.body?.checkout_token || "").trim().slice(0, 80);
   const requestedCoupon = coupon_type
     ? String(coupon_type).trim().toLowerCase()
     : null;
@@ -6228,6 +6249,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
     const result = db.closeTablePartial(tableId, waiterName, payInfo.payment_method, items, pricing, {
       allowAnyWaiter: true,
       payment_splits: payInfo.payment_splits,
+      checkout_token: checkoutToken || undefined,
     });
     const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     const fiscalOrderId = result.fiscalOrderId;
@@ -6321,6 +6343,7 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       }
     }
 
+    checkout.markClosed();
     res.json({
       ok: true,
       receipt,
@@ -7449,6 +7472,7 @@ app.post("/api/admin/reports/z/:shiftId/print", auth, adminOnly, async (req, res
       const text = buildZReportLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
+    db.markShiftZReportPrinted(data.shift_id);
     auditReq(req, "Raporti Z — print", `Nderrim #${data.shift_id} (${data.waiter_name}) · ${Number(data.total_sales).toFixed(2)} €`);
     res.json({ ok: true, ...result, html, data });
   } catch (e) {
@@ -10232,6 +10256,40 @@ app.get("/api/fiscal-audit", auth, adminOnly, (req, res) => {
     res.json({ ok: true, rows, count: rows.length });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
+  }
+});
+
+/** Lista audit për tab-in Admin (lexim WRITE-ONCE, edhe kur fiskalizimi është off). */
+app.get("/api/admin/audit-log", auth, adminOnly, (req, res) => {
+  try {
+    const from = req.query.from || req.query.fromDate || null;
+    const to = req.query.to || req.query.toDate || null;
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 250));
+    const rows = fiscalAudit.getAuditLog(from, to, { includeWhenDisabled: true }) || [];
+    const recent = rows.slice(-limit).reverse();
+    const entries = recent.map((r) => {
+      let details = "";
+      if (r.details && typeof r.details === "object") {
+        try {
+          details = JSON.stringify(r.details);
+        } catch {
+          details = String(r.details_json || "");
+        }
+      } else {
+        details = String(r.details_json || "");
+      }
+      if (details.length > 240) details = `${details.slice(0, 237)}…`;
+      return {
+        id: r.id,
+        created_at: r.created_at,
+        action: r.action,
+        user: r.operator_name || r.operator_id || "—",
+        details,
+      };
+    });
+    res.json({ ok: true, entries, count: entries.length });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
   }
 });
 

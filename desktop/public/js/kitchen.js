@@ -159,7 +159,20 @@
     </li>`;
   }
 
-  function playNewOrderSound() {
+  function playNewOrderSound(repeatOnly) {
+    if (typeof window.staffOrderAlert === "function") {
+      if (repeatOnly) {
+        window.staffOrderAlertRepeat?.();
+        return;
+      }
+      window.staffOrderAlert({
+        kind: "kitchen-new",
+        title: "Porosi e re!",
+        body: "Pranoni ose refuzoni porosinë në kuzhinë.",
+        tag: "kitchen-order-new",
+      });
+      return;
+    }
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -188,7 +201,7 @@
     headerEl?.classList.toggle("alarm-pulse", active);
     if (active && !alarmTimer) {
       playNewOrderSound();
-      alarmTimer = setInterval(() => playNewOrderSound(), 8000);
+      alarmTimer = setInterval(() => playNewOrderSound(true), 8000);
     } else if (!active && alarmTimer) {
       clearInterval(alarmTimer);
       alarmTimer = null;

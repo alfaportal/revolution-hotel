@@ -384,6 +384,36 @@
 
     /* Brenda kasës (iframe) — pamje e plotë recepsion, pa DIL / pa link kasa */
     body.recep-embed-kasa a[href="/kasa-recepcion.html"] { display: none !important; }
+
+    .waiter-sidebar-z-warn {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      width: 100%;
+      margin-bottom: 0.45rem;
+      padding: 0.55rem 0.45rem;
+      border-radius: 10px;
+      border: 1px solid rgba(251, 146, 60, 0.85);
+      background: linear-gradient(180deg, #ea580c 0%, #c2410c 100%);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(234, 88, 12, 0.35);
+      line-height: 1.25;
+      text-align: center;
+    }
+    .waiter-sidebar-z-warn[hidden] {
+      display: none !important;
+    }
+    .waiter-sidebar-z-warn-title {
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .waiter-sidebar-z-warn-sub {
+      font-size: 0.62rem;
+      font-weight: 700;
+      opacity: 0.95;
+    }
   </style>
 </head>
 <body class="waiter-screen staff-cloud-ui-off">
@@ -395,6 +425,10 @@
       </div>
       <div class="waiter-sidebar-spacer"></div>
       <nav class="waiter-sidebar-nav waiter-sidebar-nav-bottom" aria-label="Veprime">
+        <div id="sidebar-z-report-warn" class="waiter-sidebar-z-warn" hidden role="status" aria-live="polite">
+          <strong class="waiter-sidebar-z-warn-title">Raporti Z nuk është shtypur!</strong>
+          <span class="waiter-sidebar-z-warn-sub">Duhet Raporti Z para ndërrimit të ri</span>
+        </div>
         <button type="button" class="waiter-nav-btn waiter-nav-exit" onclick="dil()">DIL</button>
       </nav>
     </aside>
@@ -955,6 +989,18 @@
     let lastRooms = [];
     let recepCheckoutPreview = null;
     let checkoutCouponType = "thermal";
+    let rcCheckoutSessionToken = "";
+
+    function generateCheckoutToken() {
+      try {
+        if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+          return crypto.randomUUID();
+        }
+      } catch {
+        /* ignore */
+      }
+      return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    }
     let registerModeForced = "auto";
     let lastSvcCatalog = { groups: [], services: [] };
     let rcAddSvcRoom = null;
@@ -2408,11 +2454,13 @@
 
     function mbyllRcCheckOut() {
       document.getElementById("modal-rc-checkout").hidden = true;
+      rcCheckoutSessionToken = "";
       const msg = document.getElementById("rc-checkout-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
     }
 
     async function hapModalCheckOut(room) {
+      rcCheckoutSessionToken = generateCheckoutToken();
       document.getElementById("rc-checkout-room-id").value = String(room.id);
       document.getElementById("rc-checkout-title").textContent = `Check-out — ${room.room_number}`;
       document.getElementById("rc-checkout-out").value =
@@ -2925,20 +2973,41 @@
         const s = await api("/api/waiter/shift");
         recepShiftOpen = !!s.open;
         syncRcShiftCloseButton();
+        syncSidebarZReportWarn(s);
         return s;
       } catch {
         recepShiftOpen = false;
         syncRcShiftCloseButton();
+        syncSidebarZReportWarn(null);
         return null;
       }
     }
 
-    function showRcShiftOpenModal() {
+    const RC_Z_SHIFT_BLOCK_MSG =
+      "Duhet të shtypni Raportin Z para se të filloni ndërrimin e ri";
+
+    function syncSidebarZReportWarn(shiftSummary) {
+      const el = document.getElementById("sidebar-z-report-warn");
+      if (!el) return;
+      el.hidden = !(shiftSummary && shiftSummary.blocks_new_shift);
+    }
+
+    function showRcShiftOpenModal(blockedByZ) {
       const nameEl = document.getElementById("rc-shift-open-staff-name");
       if (nameEl) nameEl.textContent = user?.emri || "Recepsion";
       const msg = document.getElementById("rc-shift-open-msg");
-      if (msg) { msg.hidden = true; msg.textContent = ""; }
-      rcShiftOpenPad.setValue(50);
+      const btn = document.getElementById("btn-rc-shift-open-start");
+      if (blockedByZ) {
+        if (msg) {
+          msg.textContent = blockedByZ.z_report_required_message || RC_Z_SHIFT_BLOCK_MSG;
+          msg.hidden = false;
+        }
+        if (btn) btn.disabled = true;
+      } else {
+        if (msg) { msg.hidden = true; msg.textContent = ""; }
+        if (btn) btn.disabled = false;
+        rcShiftOpenPad.setValue(50);
+      }
       document.getElementById("modal-rc-shift-open").hidden = false;
     }
 
@@ -2965,6 +3034,17 @@
     async function filloNderriminRecep() {
       const msg = document.getElementById("rc-shift-open-msg");
       const btn = document.getElementById("btn-rc-shift-open-start");
+      let shiftSnap = null;
+      try {
+        shiftSnap = await api("/api/waiter/shift");
+      } catch { /* server do ta kthejë te POST */ }
+      if (shiftSnap?.blocks_new_shift) {
+        if (msg) {
+          msg.textContent = shiftSnap.z_report_required_message || RC_Z_SHIFT_BLOCK_MSG;
+          msg.hidden = false;
+        }
+        return;
+      }
       if (msg) msg.hidden = true;
       if (btn) btn.disabled = true;
       try {
@@ -3026,8 +3106,11 @@
         recepShiftOpen = false;
         syncRcShiftCloseButton();
         showMsg("recep-rooms-msg", err.message || "Ndërrimi nuk u lexua.", false);
+        syncSidebarZReportWarn(null);
         return;
       }
+
+      syncSidebarZReportWarn(s);
 
       if (s.shift_ended) {
         recepShiftOpen = !!s.open;
@@ -3045,7 +3128,7 @@
       if (s.needs_opening_cash) {
         recepShiftOpen = false;
         syncRcShiftCloseButton();
-        showRcShiftOpenModal();
+        showRcShiftOpenModal(s.blocks_new_shift ? s : null);
         return;
       }
 
@@ -3124,6 +3207,7 @@
     document.getElementById("btn-tab-housekeeping")?.addEventListener("click", () => setRecepView("housekeeping"));
     document.getElementById("btn-tab-orders")?.addEventListener("click", () => setRecepView("orders"));
     document.getElementById("btn-rifresko")?.addEventListener("click", () => {
+      ngarkoShiftRecep().catch(() => {});
       if (recepView === "services") ngarkoSherbimet().catch((e) => showMsg("recep-svc-msg", e.message, false));
       else if (recepView === "reservations") ngarkoRezervimetRecep().catch((e) => showMsg("recep-rez-msg", e.message, false));
       else if (recepView === "housekeeping") ngarkoHousekeepingRecep().catch((e) => showMsg("recep-hk-msg", e.message, false));
@@ -3267,12 +3351,14 @@
       const roomId = document.getElementById("rc-checkout-room-id")?.value;
       const payInfo = await resolveCheckoutPayment();
       if (!payInfo) return;
+      if (!rcCheckoutSessionToken) rcCheckoutSessionToken = generateCheckoutToken();
       const body = {
         check_out_date: document.getElementById("rc-checkout-out")?.value || "",
         services_total: Number(document.getElementById("rc-checkout-services")?.value) || 0,
         payment_method: payInfo.payment_method,
         coupon_type: effectiveCheckoutCouponType(),
         fiscal_skip: effectiveCheckoutCouponType() === "thermal",
+        checkout_token: rcCheckoutSessionToken,
       };
       if (payInfo.payment_splits) body.payment_splits = payInfo.payment_splits;
       if (btn) btn.disabled = true;

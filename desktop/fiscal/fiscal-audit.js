@@ -326,8 +326,9 @@ function purgeLegacyAuditNoise() {
 /**
  * Lista e veprimeve brenda datave (YYYY-MM-DD ose datetime).
  */
-function getAuditLog(fromDate, toDate) {
-  if (!isFiscalEnabled()) return null;
+function getAuditLog(fromDate, toDate, opts = {}) {
+  const includeWhenDisabled = !!opts.includeWhenDisabled;
+  if (!includeWhenDisabled && !isFiscalEnabled()) return null;
 
   if (isFiscalMemoryOnly()) {
     return filterFiscalExportRows(memGetAuditLog(fromDate, toDate));

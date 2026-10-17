@@ -174,6 +174,64 @@ function snapshotFingerprint(body) {
   return crypto.createHash("sha256").update(JSON.stringify(clone)).digest("hex");
 }
 
+function countTablesServedForDay(db, date) {
+  const sqlite = db.db;
+  if (!sqlite) return 0;
+  try {
+    const row = sqlite
+      .prepare(
+        `
+    SELECT COUNT(DISTINCT table_number) AS c FROM daily_log
+    WHERE status = 'completed'
+      AND date(date) = date(?)
+      AND table_number IS NOT NULL
+      AND CAST(table_number AS INTEGER) > 0
+      AND NOT (
+        UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
+        OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+      )
+  `,
+      )
+      .get(date);
+    return Number(row?.c) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function countRoomsOccupiedForDay(db, date) {
+  const sqlite = db.db;
+  if (!sqlite) return 0;
+  try {
+    if (date === businessYmd() && typeof db.getDashboardOverview === "function") {
+      return Number(db.getDashboardOverview().occupied) || 0;
+    }
+    const row = sqlite
+      .prepare(
+        `
+    SELECT COUNT(DISTINCT g.room_id) AS c
+    FROM guests g
+    WHERE g.room_id IS NOT NULL
+      AND date(g.check_in_date) <= date(?)
+      AND date(g.check_out_date) > date(?)
+  `,
+      )
+      .get(date, date);
+    return Number(row?.c) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function buildDailyKpis(db, date, rep, totalSales) {
+  return {
+    total_sales: fixRound(totalSales),
+    order_count: Number(rep.orderCount) || 0,
+    tables_served: countTablesServedForDay(db, date),
+    rooms_occupied: countRoomsOccupiedForDay(db, date),
+  };
+}
+
 function buildOwnerDailySnapshot(db, reportDate) {
   const date = String(reportDate || businessYmd()).slice(0, 10);
   const rep = db.getReports(date, date);
@@ -188,8 +246,11 @@ function buildOwnerDailySnapshot(db, reportDate) {
   const b2b = fixRound(bilanc.sales_b2b || 0);
   const totalDept = fixRound(dhome + restorant + sherbime + b2b);
 
+  const totalSales = fixRound(rep.totalSales ?? totalDept);
+
   const payloadCore = {
     report_date: date,
+    kpis: buildDailyKpis(db, date, rep, totalSales),
     revenue_by_department: {
       dhome,
       restorant,

@@ -1852,20 +1852,27 @@
     Rifreskohet nga /api/license (heartbeat) + license:package-updated.
   -->
   <style id="tier-gating">
-    /* Pako 1 — Bazik: fsheh Shërbimet, Promocione, Kontabilisti, AI */
+    /* Pako 1 — Bazik: fsheh Shërbimet, Promocione, QR, Kontabilisti, AI */
     body.tier-rank-1 [data-panel="sherbimet"], body.tier-rank-1 #panel-sherbimet,
     body.tier-rank-1 [data-panel="promocione"], body.tier-rank-1 #panel-promocione,
+    body.tier-rank-1 [data-panel="qr-tavolinat"], body.tier-rank-1 #panel-qr-tavolinat,
     body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
     body.tier-rank-1 [data-panel="ai"], body.tier-rank-1 #panel-ai {
       display: none !important;
     }
-    /* Pako 2 — Standard: fsheh Kontabilisti, AI */
+    /* Pako 2 — Standard: fsheh QR, Kontabilisti, AI */
+    body.tier-rank-2 [data-panel="qr-tavolinat"], body.tier-rank-2 #panel-qr-tavolinat,
     body.tier-rank-2 [data-panel="kontabilisti"], body.tier-rank-2 #panel-kontabilisti,
     body.tier-rank-2 [data-panel="ai"], body.tier-rank-2 #panel-ai {
       display: none !important;
     }
     /* Pako 3 — Premium: krejt tab-et (AI edhe ai-package-tier) */
 
+    /* Tab QR Kodet — pako_3 / features.qrTables */
+    body:not(.qr-package-tier) [data-panel="qr-tavolinat"],
+    body:not(.qr-package-tier) #panel-qr-tavolinat {
+      display: none !important;
+    }
     /* Tab AI — pako_3 / features.ai */
     body:not(.ai-package-tier) [data-panel="ai"],
     body:not(.ai-package-tier) #panel-ai {
@@ -2592,6 +2599,13 @@
           <div class="dashboard-kpi-val" id="dash-revenue">0.00 €</div>
           <div class="dashboard-kpi-sub dash-revenue-sub-lines" id="dash-revenue-sub">Restoranti · Recepsioni · Netët + Shërbimet</div>
         </div>
+      </div>
+
+      <div id="low-stock-banner" class="card low-stock-banner" hidden style="margin-bottom:1rem">
+        <div class="card-title">Stok i ulët</div>
+        <p class="settings-field-hint" style="margin:0 0 0.35rem">Produktet nën pragun e stokut ose me sasi zero.</p>
+        <ul id="low-stock-list" style="margin:0;padding-left:1.25rem"></ul>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-low-stock-goto" style="margin-top:0.5rem">Shiko tab-in Stoku</button>
       </div>
 
       <div class="card settings-card" id="dash-register-status-card" style="margin-bottom:1rem">
@@ -4683,6 +4697,26 @@
             <button type="button" class="btn btn-sm btn-warning" id="btn-repair-wizard-open-settings" style="min-width:220px">Riparim SEF (48h)</button>
             <div class="fiscal-save-msg" id="msg-fiscal-audit"></div>
           </div>
+          <div class="sef-audit-box" style="margin-top:1rem">
+            <div class="sef-audit-title">Regjistrimet e fundit</div>
+            <p class="settings-field-hint" id="admin-audit-log-status" style="margin:0 0 0.5rem">Përdorni datat Nga/Deri sipër; lista rifreskohet kur hapet tab-i.</p>
+            <div style="overflow-x:auto;max-height:420px;border:1px solid var(--ngjyr-border,#2e2e45);border-radius:8px">
+              <table class="inv-lines" id="admin-audit-log-table" style="width:100%;font-size:0.85rem;margin:0">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Veprimi</th>
+                    <th>Përdoruesi</th>
+                    <th>Detaje</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-audit-log-body">
+                  <tr><td colspan="4" style="color:var(--ngjyr-muted)">Hapni tab-in Audit për të ngarkuar…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-admin-audit-log-refresh" style="margin-top:0.5rem">Rifresko listën</button>
+          </div>
         </div>
         <div class="sef-audit-box" id="sef-fiscal-reports-box">
           <div class="sef-audit-title">Raportet X / Z (SEF direkt)</div>
@@ -6505,10 +6539,15 @@
       if (t === "pako_3" || (features && features.accountant === true)) rank = Math.max(rank, 3);
       document.body.classList.remove("tier-rank-1", "tier-rank-2", "tier-rank-3");
       document.body.classList.add("tier-rank-" + rank);
+      const hasQrTier =
+        typeof features?.qrTables === "boolean"
+          ? features.qrTables
+          : rank >= 3;
+      document.body.classList.toggle("qr-package-tier", !!hasQrTier);
       const hasAiTier = t === "pako_3" || (features && features.ai === true);
       document.body.classList.toggle("ai-package-tier", !!hasAiTier);
       if (t && t !== _lastAppliedPackageTier) {
-        console.log("[admin] Pako:", t || "(bosh)", "→ tier-rank-" + rank, "accountant=", features?.accountant);
+        console.log("[admin] Pako:", t || "(bosh)", "→ tier-rank-" + rank, "accountant=", features?.accountant, "qrTables=", hasQrTier);
         _lastAppliedPackageTier = t;
       }
     }
@@ -6873,6 +6912,7 @@
         document.getElementById(cfg.btnId)?.addEventListener("click", () => {
           if (!tryUnlockHotelTab(panelName)) return;
           if (panelName === "fiskalizimi") ngarkoFiscalizimin().catch(() => {});
+          if (panelName === "audit") ngarkoAdminAuditLog().catch(() => {});
         });
         document.getElementById(cfg.inputId)?.addEventListener("keydown", (e) => {
           if (e.key === "Enter") document.getElementById(cfg.btnId)?.click();
@@ -7060,7 +7100,9 @@
       if (name === "faturat") window.initAdminSalesInvoices?.();
       applyHotelTabGateUi(name);
       if (name === "fiskalizimi" && isHotelTabGateUnlocked("fiskalizimi")) ngarkoFiscalizimin();
-      if (name === "audit" && isHotelTabGateUnlocked("audit")) { /* audit log */ }
+      if (name === "audit" && isHotelTabGateUnlocked("audit")) {
+        ngarkoAdminAuditLog().catch(() => {});
+      }
       if (name === "paper-block") window.initHotelPaperBlockTab?.();
       if (name === "kuponet-fiskale") window.initKuponetFiskaleTab?.();
       if (name === "licenca") {
@@ -7917,6 +7959,12 @@
       renderHotelDashDepartures(d.departures || []);
       renderHotelDashDirty(d.dirty_rooms || []);
       try { localStorage.setItem("hotel_cache_dashboard", JSON.stringify(d)); } catch { /* ignore */ }
+      try {
+        const lowStock = await api("/api/admin/low-stock");
+        renderLowStockBanner(Array.isArray(lowStock.items) ? lowStock.items : []);
+      } catch {
+        renderLowStockBanner([]);
+      }
       await ngarkoRegisterStatusPasqyra();
       } finally {
         ngarkoPasqyra._inFlight = false;
@@ -17105,6 +17153,70 @@
         }
         await applyFiscalI18n(lang);
       }
+    });
+
+    function ensureSefAuditDateDefaults() {
+      const fromEl = document.getElementById("sef-audit-from");
+      const toEl = document.getElementById("sef-audit-to");
+      if (!fromEl || !toEl || (fromEl.value && toEl.value)) return;
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const today = `${y}-${m}-${String(now.getDate()).padStart(2, "0")}`;
+      fromEl.value = `${y}-${m}-01`;
+      toEl.value = today;
+    }
+
+    async function ngarkoAdminAuditLog() {
+      if (!isHotelTabGateUnlocked("audit")) return;
+      ensureSefAuditDateDefaults();
+      const body = document.getElementById("admin-audit-log-body");
+      const status = document.getElementById("admin-audit-log-status");
+      if (!body) return;
+      if (status) status.textContent = "Duke ngarkuar regjistrimet…";
+      body.innerHTML = '<tr><td colspan="4">Duke ngarkuar…</td></tr>';
+      try {
+        const from = document.getElementById("sef-audit-from")?.value || "";
+        const to = document.getElementById("sef-audit-to")?.value || "";
+        const q = new URLSearchParams({ limit: "250" });
+        if (from) q.set("from", from);
+        if (to) q.set("to", to);
+        const data = await api(`/api/admin/audit-log?${q.toString()}`);
+        const entries = Array.isArray(data.entries) ? data.entries : [];
+        if (!entries.length) {
+          body.innerHTML = '<tr><td colspan="4" style="color:var(--ngjyr-muted)">Nuk ka regjistrime për këtë periudhë.</td></tr>';
+          if (status) status.textContent = "Lista e zbrazët për intervalin e zgjedhur.";
+          return;
+        }
+        body.innerHTML = entries.map((e) => {
+          const dtRaw = e.created_at ? String(e.created_at).replace("T", " ") : "";
+          const dt = dtRaw ? escHtml(dtRaw.slice(0, 19)) : "—";
+          return (
+            `<tr>`
+            + `<td>${dt}</td>`
+            + `<td>${escHtml(e.action || "—")}</td>`
+            + `<td>${escHtml(e.user || "—")}</td>`
+            + `<td style="max-width:320px;word-break:break-word">${escHtml(e.details || "")}</td>`
+            + `</tr>`
+          );
+        }).join("");
+        if (status) {
+          status.textContent = `${entries.length} regjistrime (deri në 250 më të fundit në interval).`;
+        }
+      } catch (err) {
+        body.innerHTML = `<tr><td colspan="4" style="color:var(--ngjyr-danger)">${escHtml(err.message || "Gabim gjatë ngarkimit")}</td></tr>`;
+        if (status) status.textContent = "";
+      }
+    }
+
+    document.getElementById("btn-admin-audit-log-refresh")?.addEventListener("click", () => {
+      ngarkoAdminAuditLog().catch(() => {});
+    });
+    document.getElementById("sef-audit-from")?.addEventListener("change", () => {
+      if (isHotelTabGateUnlocked("audit")) ngarkoAdminAuditLog().catch(() => {});
+    });
+    document.getElementById("sef-audit-to")?.addEventListener("change", () => {
+      if (isHotelTabGateUnlocked("audit")) ngarkoAdminAuditLog().catch(() => {});
     });
 
     async function exportFiscalAudit(format) {

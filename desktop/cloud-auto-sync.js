@@ -29,6 +29,7 @@ const CATALOG_DEBOUNCE_MS = 5000;
 const HOTEL_PMS_SYNC_MS = 120000;
 const VENUE_LOGO_SYNC_MS = 86400000;
 const STARTUP_BURST_MS = 4000;
+const { OWNER_REPORT_SYNC_MS } = require("./owner-report-sync");
 
 let lastStatus = {
   connected: false,
@@ -48,6 +49,7 @@ let closedWaiterTimer = null;
 let ownerPasswordTimer = null;
 let staffPushTimer = null;
 let registerModeTimer = null;
+let ownerReportTimer = null;
 let catalogTimer = null;
 let catalogDebounceTimer = null;
 let catalogPushInFlight = false;
@@ -281,8 +283,20 @@ async function runRegisterModeSync(db) {
   }
 }
 
+async function runOwnerReportSyncJob(db) {
+  if (!db || !cloudSync.isCloudConfigured(db)) return;
+  if (!isHotelPmsMainRegister()) return;
+  try {
+    const ownerReportSync = require("./owner-report-sync");
+    await ownerReportSync.runOwnerReportSync(db);
+  } catch {
+    /* ignore */
+  }
+}
+
 function runAllSideSyncJobs(db) {
   runOwnerAdminPasswordSync(db).catch(() => {});
+  runOwnerReportSyncJob(db).catch(() => {});
   if (staffCloudAutoJobsPaused()) return;
   runClosedWaiterSalesSync(db).catch(() => {});
   runStaffPushSync(db).catch(() => {});
@@ -381,6 +395,7 @@ function pushCatalogDebounced(db) {
 function armCloudPeriodicJobs(db) {
   connectionTimer = startPeriodicJob(db, runConnectionCheck, CONNECTION_CHECK_MS);
   ownerPasswordTimer = startPeriodicJob(db, runOwnerAdminPasswordSync, OWNER_ADMIN_PASSWORD_MS);
+  ownerReportTimer = startPeriodicJob(db, runOwnerReportSyncJob, OWNER_REPORT_SYNC_MS);
   if (!staffCloudAutoJobsPaused()) {
     closedWaiterTimer = startPeriodicJob(db, runClosedWaiterSalesSync, CLOSED_WAITER_SALES_MS);
     staffPushTimer = startPeriodicJob(db, runStaffPushSync, STAFF_PUSH_INTERVAL_MS);
@@ -468,6 +483,7 @@ module.exports = {
   CATALOG_AUTO_MS,
   CATALOG_DEBOUNCE_MS,
   HOTEL_PMS_SYNC_MS,
+  OWNER_REPORT_SYNC_MS,
   getStatus,
   runFullSync,
   runLicenseCheck,

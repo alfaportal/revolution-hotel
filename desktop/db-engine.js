@@ -1092,8 +1092,14 @@ function initSchema() {
       if (!logColsLan.some((c) => c.name === "source_ref")) {
         sqlRun("ALTER TABLE daily_log ADD COLUMN source_ref INTEGER");
       }
+      if (!logColsLan.some((c) => c.name === "checkout_token")) {
+        sqlRun("ALTER TABLE daily_log ADD COLUMN checkout_token TEXT");
+      }
       sqlRun(
         "CREATE INDEX IF NOT EXISTS idx_daily_log_source_ref ON daily_log(source_device_id, source_ref)",
+      );
+      sqlRun(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_log_checkout_token_unique ON daily_log(checkout_token) WHERE checkout_token IS NOT NULL AND TRIM(checkout_token) <> ''",
       );
       sqlRun(`
         CREATE TABLE IF NOT EXISTS lan_outbox (
@@ -1943,6 +1949,24 @@ function initSchema() {
       sqlRun(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_room_charges_terminal_source ON room_charges(source_device_id, source_ref) WHERE source_device_id IS NOT NULL AND source_ref IS NOT NULL",
       );
+    },
+  );
+
+  runSchemaMigration(
+    "waiter-shifts-z-printed-v1",
+    backupCtx,
+    () => {
+      const cols = sqlAll("PRAGMA table_info(waiter_shifts)");
+      return !cols.some((c) => c.name === "z_report_printed_at");
+    },
+    () => {
+      sqlRun("ALTER TABLE waiter_shifts ADD COLUMN z_report_printed_at TEXT");
+      sqlRun(`
+        UPDATE waiter_shifts
+        SET z_report_printed_at = closed_at
+        WHERE closed_at IS NOT NULL
+          AND (z_report_printed_at IS NULL OR TRIM(z_report_printed_at) = '')
+      `);
     },
   );
   try {
