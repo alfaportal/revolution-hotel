@@ -516,6 +516,20 @@
         </div>
       </div>
 
+      <div id="recep-pay-on-site-backdrop" class="waiter-online-backdrop hidden" aria-hidden="true"></div>
+      <div id="recep-pay-on-site-pop" class="waiter-online-pop hidden" role="dialog" aria-modal="true" aria-label="Pagesë shërbim në vend">
+        <div class="waiter-online-pop-head">
+          <strong>Pagesë në vend</strong>
+          <button type="button" class="waiter-online-pop-close" id="btn-recep-pay-on-site-close" aria-label="Mbyll">×</button>
+        </div>
+        <div id="recep-pay-on-site-preview" class="waiter-online-pop-preview"></div>
+        <div id="recep-pay-on-site-msg" class="alert alert-error" hidden></div>
+        <div class="waiter-online-pop-actions">
+          <button type="button" class="btn btn-primary" id="btn-recep-pay-cash">Paguar Cash</button>
+          <button type="button" class="btn btn-primary" id="btn-recep-pay-card">Paguar Kartë</button>
+        </div>
+      </div>
+
       <header class="waiter-topbar">
         <div class="waiter-topbar-start">
           <button type="button" class="btn btn-raporti-z btn-sm" id="btn-rc-raporti-z" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
@@ -1018,6 +1032,31 @@
       font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 14px rgba(0,0,0,0.3);
       animation: rcToastIn 0.35s ease;
     }
+    .rc-toast-item.rc-toast-room-charge {
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.45rem;
+      max-width: min(360px, calc(100vw - 2rem));
+    }
+    .rc-toast-room-charge .rc-toast-confirm-btn {
+      align-self: flex-end;
+      min-height: 36px;
+      padding: 0.35rem 0.85rem;
+      border: none;
+      border-radius: 8px;
+      background: #fff;
+      color: #92400e;
+      font-weight: 800;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .rc-toast-room-charge .rc-toast-confirm-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
     .rc-toast-item.hk-toast-item {
       background: linear-gradient(135deg, #065f46 0%, #22c55e 100%);
     }
@@ -1126,6 +1165,8 @@
     let recepOnlineAcceptBusy = false;
     let recepOnlineAlarmTimer = null;
     let lastRecepGuestSvcPending = null;
+    let recepPayOnSiteOrderId = null;
+    let recepPayOnSiteBusy = false;
 
     function eshtePorosiSherbimiHoteliQr(o) {
       return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
@@ -1304,6 +1345,103 @@
       document.getElementById("recep-online-backdrop")?.classList.add("hidden");
       const msg = document.getElementById("recep-online-accept-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    function mbyllRecepPayOnSitePop() {
+      recepPayOnSiteOrderId = null;
+      document.getElementById("recep-pay-on-site-pop")?.classList.add("hidden");
+      document.getElementById("recep-pay-on-site-backdrop")?.classList.add("hidden");
+      const msg = document.getElementById("recep-pay-on-site-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+    }
+
+    function renderRecepPayOnSitePreview(entry) {
+      const body = document.getElementById("recep-pay-on-site-preview");
+      if (!body || !entry) return;
+      const items = Array.isArray(entry.items) ? entry.items : recepOrderItemsList(entry);
+      const itemRows = items.map((it) => {
+        const qty = Number(it.quantity) || 1;
+        const name = String(it.name || "—").trim();
+        const price = Number(it.price) || 0;
+        return `<li><span class="waiter-online-pop-qty">${qty}×</span> ${escHtml(name)} · ${formatEuro(price * qty)}</li>`;
+      }).join("");
+      const guest = String(entry.guest_name || entry.customer_name || "Mysafir").trim();
+      const phone = String(entry.guest_phone || "").trim();
+      const email = String(entry.guest_email || "").trim();
+      const venue = String(entry.venue_label || entry.source_label || "Shërbim në vend").trim();
+      const total = Number(entry.total) || 0;
+      body.innerHTML = `<div class="waiter-online-pop-order">
+        <div class="waiter-online-pop-meta">
+          <strong>${escHtml(venue)}</strong>
+          <span class="waiter-online-pop-customer">${escHtml(guest)}${phone ? " · " + escHtml(phone) : ""}${email ? " · " + escHtml(email) : ""}</span>
+          <span class="waiter-online-pop-total">Totali: ${formatEuro(total)}</span>
+        </div>
+        <ul class="waiter-online-pop-items">${itemRows || "<li>—</li>"}</ul>
+        <small>Merr pagesën nga mysafiri, pastaj zgjidh Cash ose Kartë.</small>
+      </div>`;
+    }
+
+    function hapRecepPayOnSitePop(entry) {
+      const id = String(entry?.order_id || entry?.cloud_order_id || "").trim();
+      if (!id) return;
+      recepPayOnSiteOrderId = id;
+      renderRecepPayOnSitePreview(entry);
+      document.getElementById("recep-pay-on-site-backdrop")?.classList.remove("hidden");
+      document.getElementById("recep-pay-on-site-pop")?.classList.remove("hidden");
+    }
+
+    async function paguajSherbimNeVend(paymentMethod) {
+      if (recepPayOnSiteBusy || !recepPayOnSiteOrderId) return;
+      recepPayOnSiteBusy = true;
+      const msg = document.getElementById("recep-pay-on-site-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      const cashBtn = document.getElementById("btn-recep-pay-cash");
+      const cardBtn = document.getElementById("btn-recep-pay-card");
+      if (cashBtn) cashBtn.disabled = true;
+      if (cardBtn) cardBtn.disabled = true;
+      try {
+        const data = await api("/api/waiter/service-payment", {
+          method: "POST",
+          body: JSON.stringify({
+            order_id: recepPayOnSiteOrderId,
+            payment_method: paymentMethod,
+          }),
+        });
+        mbyllRecepPayOnSitePop();
+        mbyllRecepOnlinePop();
+        showMsg(
+          "recep-orders-msg",
+          `U regjistrua pagesa (${data.receipt_number || "SVC"}) · ${formatEuro(data.total || 0)}`,
+          true,
+        );
+        await ngarkoPorosiSherbimiRecep();
+        if (recepView === "orders") await ngarkoPorositeRecep();
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Pagesa nuk u regjistrua.";
+          msg.hidden = false;
+        }
+      } finally {
+        recepPayOnSiteBusy = false;
+        if (cashBtn) cashBtn.disabled = false;
+        if (cardBtn) cardBtn.disabled = false;
+      }
+    }
+
+    async function maybeOpenPayOnSiteAfterAccept(importedRows, cloudId) {
+      const hit = (importedRows || []).find(
+        (r) => r?.ok && r.pay_on_site && (!cloudId || String(r.cloud_id) === String(cloudId)),
+      );
+      if (!hit) return;
+      try {
+        const data = await api("/api/waiter/pay-on-site-services/pending");
+        const list = data.pending || [];
+        const match = list.find((p) => String(p.order_id) === String(hit.cloud_id || cloudId))
+          || list[0];
+        if (match) hapRecepPayOnSitePop(match);
+      } catch {
+        /* offline */
+      }
     }
 
     function mapPublicServiceRequestToRecepQueue(r) {
@@ -1518,7 +1656,10 @@
             msg.hidden = true;
             msg.textContent = "";
           }
-          mbyllRecepOnlinePop();
+          await maybeOpenPayOnSiteAfterAccept(data.imported, first.id);
+          if (!(data.imported || []).some((r) => r?.ok && r.pay_on_site)) {
+            mbyllRecepOnlinePop();
+          }
         }
         await ngarkoPorosiSherbimiRecep();
         if (recepView === "orders") {
@@ -1590,28 +1731,62 @@
       setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 6_000);
     }
 
-    /* ── Njoftim "faturë në dhomë" — toast recepsionit ─────────────────── */
-    function showRoomChargeToast(n) {
+    /* ── Njoftim "faturë në dhomë" — SQLite, mbetet derisa recepsioni konfirmon ── */
+    const roomChargeAlertPlayed = new Set();
+
+    function syncRoomChargeNotificationToasts(notifications) {
       const wrap = document.getElementById("room-charge-toast");
       if (!wrap) return;
-      const div = document.createElement("div");
-      div.className = "rc-toast-item";
-      div.textContent = `🏨 T${n.table_number || "?"} → Dhoma ${n.room_number} · ${n.guest_name} · ${Number(n.total || 0).toFixed(2)} €`;
-      wrap.classList.remove("hidden");
-      wrap.appendChild(div);
-      setTimeout(() => {
-        div.remove();
-        if (!wrap.children.length) wrap.classList.add("hidden");
-      }, 8000);
+      const unseenIds = new Set((notifications || []).map((n) => String(n.id)));
+      wrap.querySelectorAll("[data-room-charge-notif-id]").forEach((el) => {
+        if (!unseenIds.has(el.dataset.roomChargeNotifId)) el.remove();
+      });
+      for (const n of notifications || []) {
+        const id = String(n.id);
+        if (wrap.querySelector(`[data-room-charge-notif-id="${id}"]`)) continue;
+        if (!roomChargeAlertPlayed.has(id)) {
+          roomChargeAlertPlayed.add(id);
+          if (typeof window.staffOrderAlert === "function") window.staffOrderAlert("charge");
+        }
+        const div = document.createElement("div");
+        div.className = "rc-toast-item rc-toast-room-charge";
+        div.dataset.roomChargeNotifId = id;
+        const line = document.createElement("span");
+        line.textContent =
+          `🏨 T${n.table_number || "?"} → Dhoma ${n.room_number} · ${n.guest_name} · ${Number(n.total || 0).toFixed(2)} €`
+          + (n.waiter_name ? ` (${n.waiter_name})` : "");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "rc-toast-confirm-btn";
+        btn.textContent = "Konfirmo";
+        btn.addEventListener("click", () => confirmRoomChargeNotification(id, div, btn));
+        div.appendChild(line);
+        div.appendChild(btn);
+        wrap.classList.remove("hidden");
+        wrap.appendChild(div);
+      }
+      if (!wrap.querySelector(".rc-toast-item")) wrap.classList.add("hidden");
+    }
+
+    async function confirmRoomChargeNotification(id, el, btn) {
+      if (btn) btn.disabled = true;
+      try {
+        await api(`/api/waiter/room-charge-notifications/${encodeURIComponent(id)}/seen`, {
+          method: "POST",
+        });
+        el?.remove();
+        const wrap = document.getElementById("room-charge-toast");
+        if (wrap && !wrap.querySelector(".rc-toast-item")) wrap.classList.add("hidden");
+      } catch (e) {
+        if (btn) btn.disabled = false;
+        window.alert(e.message || "Konfirmimi dështoi");
+      }
     }
 
     async function pollRoomChargeNotifications() {
       try {
         const data = await api("/api/waiter/room-charge-notifications");
-        for (const n of data.notifications || []) {
-          showRoomChargeToast(n);
-          if (typeof window.staffOrderAlert === "function") window.staffOrderAlert("charge");
-        }
+        syncRoomChargeNotificationToasts(data.notifications || []);
       } catch { /* offline */ }
     }
 
@@ -1698,6 +1873,10 @@
     document.getElementById("recep-online-backdrop")?.addEventListener("click", mbyllRecepOnlinePop);
     document.getElementById("btn-recep-online-accept")?.addEventListener("click", pranoPorosiSherbimiRecep);
     document.getElementById("btn-recep-online-cancel")?.addEventListener("click", refuzoPorosiSherbimiRecep);
+    document.getElementById("btn-recep-pay-on-site-close")?.addEventListener("click", mbyllRecepPayOnSitePop);
+    document.getElementById("recep-pay-on-site-backdrop")?.addEventListener("click", mbyllRecepPayOnSitePop);
+    document.getElementById("btn-recep-pay-cash")?.addEventListener("click", () => paguajSherbimNeVend("cash"));
+    document.getElementById("btn-recep-pay-card")?.addEventListener("click", () => paguajSherbimNeVend("karte"));
 
     function escHtml(s) {
       return String(s ?? "")
@@ -2420,11 +2599,13 @@
       const tbody = document.getElementById("rc-orders-tbody");
       const empty = document.getElementById("rc-orders-empty");
       showMsg("recep-orders-msg", "", true);
-      const [activeData, pendingData, svcPendingData] = await Promise.all([
+      const [activeData, pendingData, svcPendingData, payOnSiteData] = await Promise.all([
         api("/api/waiter/active-orders"),
         api("/api/waiter/online-orders/pending").catch(() => ({ orders: [] })),
         api("/api/waiter/public-service-requests/pending").catch(() => ({ requests: [] })),
+        api("/api/waiter/pay-on-site-services/pending").catch(() => ({ pending: [] })),
       ]);
+      const payOnSiteRows = payOnSiteData.pending || [];
       const publicSvcRows = (svcPendingData.requests || [])
         .filter((r) => String(r.status || "").toLowerCase() === "pending")
         .map(mapPublicServiceRequestToRecepQueue);
@@ -2432,7 +2613,7 @@
       const rows = (activeData.orders || []).filter((o) => o.kind !== "table");
       if (!tbody) return;
       tbody.innerHTML = "";
-      if (!pendingRows.length && !rows.length) {
+      if (!pendingRows.length && !rows.length && !payOnSiteRows.length) {
         if (empty) {
           empty.hidden = false;
           empty.textContent =
@@ -2442,6 +2623,44 @@
       }
       if (empty) empty.hidden = true;
       let nr = 0;
+      for (const p of payOnSiteRows) {
+        nr += 1;
+        const tr = document.createElement("tr");
+        tr.className = "ord-pending-row ord-pay-on-site-row";
+        const guest = String(p.guest_name || "Mysafir").trim();
+        const venue = String(p.venue_label || "Shërbim në vend").trim();
+        tr.innerHTML =
+          `<td>${nr}</td>` +
+          `<td><strong>${escHtml(venue)}</strong><br><small>${escHtml(guest)}</small></td>` +
+          `<td style="max-width:16rem">${escHtml(formatRecepOrderProducts(p))}</td>` +
+          `<td>${formatEuro(p.total || 0)}</td>` +
+          `<td><span class="ord-status pending">Pranuar — prit pagesë</span></td>` +
+          `<td><button type="button" class="btn btn-primary btn-sm rc-pay-cash" data-order-id="${escHtml(p.order_id)}">Cash</button> ` +
+          `<button type="button" class="btn btn-ghost btn-sm rc-pay-card" data-order-id="${escHtml(p.order_id)}">Kartë</button></td>`;
+        tbody.appendChild(tr);
+      }
+      tbody.querySelectorAll(".rc-pay-cash").forEach((btn) => {
+        btn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const id = btn.getAttribute("data-order-id");
+          const entry = payOnSiteRows.find((x) => String(x.order_id) === String(id));
+          if (entry) {
+            recepPayOnSiteOrderId = id;
+            await paguajSherbimNeVend("cash");
+          }
+        });
+      });
+      tbody.querySelectorAll(".rc-pay-card").forEach((btn) => {
+        btn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const id = btn.getAttribute("data-order-id");
+          const entry = payOnSiteRows.find((x) => String(x.order_id) === String(id));
+          if (entry) {
+            recepPayOnSiteOrderId = id;
+            await paguajSherbimNeVend("karte");
+          }
+        });
+      });
       for (const o of pendingRows) {
         nr += 1;
         const tr = document.createElement("tr");

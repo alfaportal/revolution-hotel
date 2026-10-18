@@ -8,6 +8,14 @@ const {
   paperChars,
 } = require("./receipt-text");
 
+function unifiedPrintBusinessName() {
+  try {
+    return require("./database").getUnifiedBusinessName();
+  } catch {
+    return "";
+  }
+}
+
 function money(n) {
   return `${formatMoney(n)} EUR`;
 }
@@ -23,18 +31,46 @@ function escHtml(s) {
     .replace(/>/g, "&gt;");
 }
 
+function folioTaxpayerNui(fiscal) {
+  const f = fiscal || {};
+  const fromFiscal = String(f.biz_nui || f.taxpayer_nui || "").trim();
+  if (fromFiscal) return fromFiscal;
+  try {
+    return String(require("./fiscal/fiscal-config").getFiscalSettings().taxpayer_nui || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function folioDepositAndDue(bill) {
+  const deposit = Math.round((Number(bill?.deposit) || 0) * 100) / 100;
+  if (deposit <= 0) return { deposit: 0, totalDue: null };
+  let totalDue = Number(bill?.total_due);
+  if (!Number.isFinite(totalDue)) {
+    totalDue = Math.round(((Number(bill?.total) || 0) - deposit) * 100) / 100;
+  }
+  return { deposit, totalDue };
+}
+
 function receiptBizBlock(fiscal, restaurantName) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const addr = [f.biz_address, f.biz_city].filter(Boolean).join(", ");
+  const nf = String(f.biz_fiscal_number || "").trim();
+  const vat = String(f.biz_vat_number || "").trim();
+  const nui = folioTaxpayerNui(f);
+  const fiscalLines = [
+    nf ? `<div class="receipt-meta">NF: ${escHtml(nf)}</div>` : "",
+    vat ? `<div class="receipt-meta">TVSh Nr.: ${escHtml(vat)}</div>` : "",
+    nui ? `<div class="receipt-meta">NUI: ${escHtml(nui)}</div>` : "",
+  ].filter(Boolean).join("");
   return `
     <div class="receipt-rule">================================</div>
     <div class="receipt-name">${escHtml(bizName)}</div>
     ${addr ? `<div class="receipt-meta">${escHtml(addr)}</div>` : ""}
     ${f.biz_phone ? `<div class="receipt-meta">Tel: ${escHtml(f.biz_phone)}</div>` : ""}
     <div class="receipt-rule">================================</div>
-    <div class="receipt-meta">NF: ${escHtml(f.biz_fiscal_number || "—")}</div>
-    <div class="receipt-meta">TVSh Nr.: ${escHtml(f.biz_vat_number || "—")}</div>`;
+    ${fiscalLines}`;
 }
 
 function buildMenuPrintHtml(categories, items, fiscal, restaurantName, versionLabel) {
@@ -102,7 +138,7 @@ function buildReportPrintHtml(report, fiscal, restaurantName) {
 function buildReportPrintLines(report, fiscal, restaurantName, paper = "80mm") {
   const rep = report || {};
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
   const gen = formatReceiptDateTime(new Date().toISOString());
   const periodLabel = rep.dateFrom === rep.dateTo
@@ -147,7 +183,7 @@ function buildGuestFolioPrintHtml(folio, fiscal, restaurantName) {
   const guest = data.guest || {};
   const room = data.room || {};
   const bill = data.bill || {};
-  const bizName = data.hotel_name || f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const gen = formatReceiptDateTime(data.printed_at || new Date().toISOString());
 
   const serviceLines = (data.service_lines || []).map((it) =>
@@ -156,6 +192,12 @@ function buildGuestFolioPrintHtml(folio, fiscal, restaurantName) {
   const foodLines = (data.food_lines || []).map((it) =>
     `<div class="receipt-item"><span>${escHtml(it.description)}</span><span>${formatEuro(it.amount)}</span></div>`,
   ).join("");
+  const { deposit, totalDue } = folioDepositAndDue(bill);
+  const depositHtml =
+    deposit > 0
+      ? `<div class="receipt-item"><span>Depozita</span><span>-${deposit.toFixed(2)} EUR</span></div>
+      <div class="receipt-total"><span>PËR PAGESË</span><span>${formatEuro(totalDue)}</span></div>`
+      : "";
 
   return `
     <div class="receipt-body">
@@ -181,6 +223,7 @@ function buildGuestFolioPrintHtml(folio, fiscal, restaurantName) {
       ${foodLines || `<div class="receipt-meta">Pa porosi</div>`}
       <div class="receipt-rule">================================</div>
       <div class="receipt-total"><span>TOTALI</span><span>${formatEuro(bill.total)}</span></div>
+      ${depositHtml}
       <div class="receipt-rule">================================</div>
       <div class="receipt-meta">Printuar: ${gen.date} ${gen.time}</div>
       <div class="receipt-thanks">${escHtml(f.biz_footer || "Faleminderit!")}</div>
@@ -195,7 +238,7 @@ function buildGuestFolioPrintLines(folio, fiscal, restaurantName, paper = "80mm"
   const guest = data.guest || {};
   const room = data.room || {};
   const bill = data.bill || {};
-  const bizName = data.hotel_name || f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
   const gen = formatReceiptDateTime(data.printed_at || new Date().toISOString());
 
@@ -204,8 +247,12 @@ function buildGuestFolioPrintLines(folio, fiscal, restaurantName, paper = "80mm"
   if (addr) lines.push(pad(addr, w, "center"));
   if (f.biz_phone) lines.push(pad(`Tel: ${f.biz_phone}`, w, "center"));
   lines.push(divider(w));
-  if (f.biz_fiscal_number) lines.push(`NF: ${f.biz_fiscal_number}`);
-  if (f.biz_vat_number) lines.push(`TVSh Nr.: ${f.biz_vat_number}`);
+  const nf = String(f.biz_fiscal_number || "").trim();
+  const vat = String(f.biz_vat_number || "").trim();
+  const nui = folioTaxpayerNui(f);
+  if (nf) lines.push(`NF: ${nf}`);
+  if (vat) lines.push(`TVSh Nr.: ${vat}`);
+  if (nui) lines.push(`NUI: ${nui}`);
   lines.push(divider(w));
   lines.push(pad("FATURË QËNDRIMI", w, "center"));
   lines.push(divider(w, "-"));
@@ -249,6 +296,11 @@ function buildGuestFolioPrintLines(folio, fiscal, restaurantName, paper = "80mm"
   }
   lines.push(divider(w));
   lines.push(labelValueLine("TOTALI", money(bill.total), w));
+  const { deposit, totalDue } = folioDepositAndDue(bill);
+  if (deposit > 0) {
+    lines.push(labelValueLine("Depozita", `-${formatMoney(deposit)} EUR`, w));
+    lines.push(labelValueLine("PËR PAGESË", money(totalDue), w));
+  }
   lines.push(divider(w));
   lines.push(`Printuar: ${gen.date} ${gen.time}`);
   lines.push(pad(f.biz_footer || "Faleminderit!", w, "center"));

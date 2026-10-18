@@ -9,6 +9,14 @@ const {
   paperChars,
 } = require("./receipt-text");
 
+function unifiedPrintBusinessName() {
+  try {
+    return require("./database").getUnifiedBusinessName();
+  } catch {
+    return "";
+  }
+}
+
 function dt(iso) {
   return formatReceiptDateTime(iso);
 }
@@ -52,7 +60,7 @@ function totalsBlock(data) {
 /** Raporti X — gjendja e tashme e nderrimeve hapur, pa mbyllur asgjë (i printueshëm në çdo kohë). */
 function buildXReportHtml({ fiscal = {}, restaurantName = "", data = {} }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
 
   const waiterBlock = (data.by_waiter || []).length
     ? `
@@ -88,7 +96,7 @@ function buildXReportHtml({ fiscal = {}, restaurantName = "", data = {} }) {
 /** Raporti Z — pamja përfundimtare e një nderrimi tashmë të mbyllur, me barazimin e arkës. */
 function buildZReportHtml({ fiscal = {}, restaurantName = "", data = {} }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const opened = dt(data.opened_at);
   const closed = dt(data.closed_at);
 
@@ -187,7 +195,7 @@ function totalsLines(data, w) {
 /** Raporti X si rreshta tekst — për printer termik (ESC/POS raw, njësoj si faturat). */
 function buildXReportLines({ fiscal = {}, restaurantName = "", data = {}, paper = "80mm" }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
 
   const lines = textHeader({ f, bizName, title: "RAPORTI X", w });
@@ -225,7 +233,7 @@ function buildXReportLines({ fiscal = {}, restaurantName = "", data = {}, paper 
 /** Raporti Z si rreshta tekst — për printer termik (ESC/POS raw, njësoj si faturat). */
 function buildZReportLines({ fiscal = {}, restaurantName = "", data = {}, paper = "80mm" }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
   const opened = dt(data.opened_at);
   const closed = dt(data.closed_at);
@@ -285,7 +293,7 @@ function formatSummaryItemLine(name, qty, total, width) {
  * kamarier apo rreshta transaksionesh, siç kërkohet për një raport të shkurtër. */
 function buildDailySummaryLines({ fiscal = {}, restaurantName = "", data = {}, paper = "80mm" }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
   const day = dt(`${data.date || new Date().toISOString().slice(0, 10)}T12:00:00`).date;
 

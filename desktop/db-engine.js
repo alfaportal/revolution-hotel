@@ -724,6 +724,18 @@ function initSchema() {
   );
   CREATE INDEX IF NOT EXISTS idx_hk_notif_created ON housekeeping_notifications(created_at);
 
+  CREATE TABLE IF NOT EXISTS room_charge_notifications (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_number   TEXT NOT NULL,
+    table_number  INTEGER NOT NULL DEFAULT 0,
+    guest_name    TEXT NOT NULL DEFAULT '',
+    total         REAL NOT NULL DEFAULT 0,
+    waiter_name   TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    seen_at       TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_room_charge_notif_unseen ON room_charge_notifications(seen_at);
+
   CREATE TABLE IF NOT EXISTS guests (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     room_id         INTEGER NOT NULL,
@@ -1072,6 +1084,26 @@ function initSchema() {
     } catch {
       /* index ekziston ose skema e paplotë */
     }
+    try {
+      sqlExec("ALTER TABLE daily_log ADD COLUMN cash_amount REAL DEFAULT 0");
+    } catch {
+      /* kolona ekziston */
+    }
+    try {
+      sqlExec("ALTER TABLE daily_log ADD COLUMN card_amount REAL DEFAULT 0");
+    } catch {
+      /* kolona ekziston */
+    }
+    sqlRun(`
+      UPDATE daily_log SET cash_amount = total, card_amount = 0
+      WHERE payment_method IN ('cash')
+        AND (cash_amount IS NULL OR cash_amount = 0) AND total > 0
+    `);
+    sqlRun(`
+      UPDATE daily_log SET card_amount = total, cash_amount = 0
+      WHERE payment_method IN ('card','karte','debit_card','credit_card')
+        AND (card_amount IS NULL OR card_amount = 0) AND total > 0
+    `);
   }
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_cloud_sale ON daily_log(cloud_sale_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_order_id ON daily_log(order_id)");
@@ -2017,6 +2049,34 @@ function initSchema() {
         WHERE closed_at IS NOT NULL
           AND (z_report_printed_at IS NULL OR TRIM(z_report_printed_at) = '')
       `);
+    },
+  );
+
+  runSchemaMigration(
+    "room-charge-notifications-v1",
+    backupCtx,
+    () => {
+      const row = sqlAll(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='room_charge_notifications'",
+      );
+      return row.length === 0;
+    },
+    () => {
+      sqlRun(`
+        CREATE TABLE room_charge_notifications (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          room_number   TEXT NOT NULL,
+          table_number  INTEGER NOT NULL DEFAULT 0,
+          guest_name    TEXT NOT NULL DEFAULT '',
+          total         REAL NOT NULL DEFAULT 0,
+          waiter_name   TEXT NOT NULL DEFAULT '',
+          created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          seen_at       TEXT
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_room_charge_notif_unseen ON room_charge_notifications(seen_at)",
+      );
     },
   );
   try {

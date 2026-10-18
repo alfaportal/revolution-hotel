@@ -860,7 +860,8 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   const taxpayerNui =
     settings.taxpayer_nui || settings.developer_nui || "";
   const taxpayerVat = settings.taxpayer_vat_number || "";
-  const taxpayerName = settings.taxpayer_legal_name || "Biznesi";
+  const dbMod = require("../database");
+  const taxpayerName = settings.taxpayer_legal_name || dbMod.getUnifiedBusinessName() || "";
   const taxpayerAddress = settings.taxpayer_address || "";
   const unitName = settings.unit_name || "";
   const unitPhone = settings.unit_phone || "";

@@ -1,5 +1,64 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-10-18 — Folio check-out: depozitë, për pagesë, NUI
+
+| Skedar | Ndryshimi |
+|--------|----------|
+| `export-print-html.js` | `buildGuestFolioPrintHtml/Lines`: pas TOTALI — Depozita + PËR PAGESË kur `bill.deposit > 0`; header NF/TVSh/NUI vetëm nëse plotësuar (`taxpayer_nui` nga `fiscal-config`) |
+
+**Provë:** `node -e` smoke — HTML/lines me deposit 30 → Depozita + PËR PAGESË; deposit 0 → vetëm TOTALI.
+
+---
+
+## 2026-10-18 — Emri i biznesit i njëtrajtshëm në print (getUnifiedBusinessName)
+
+| Skedar | Ndryshimi |
+|--------|----------|
+| `database.js` | `getUnifiedBusinessName()`, `syncVenueNameAcrossSettings()` — restaurant_name + biz_name + taxpayer_legal_name |
+| `receipt-text.js`, `receipt-html.js`, `receipt-print.js`, `close-table-print.js` | Pa fallback «Restorant»/«Hotel» |
+| `shift-report-html.js`, `export-print-html.js`, `waiter-shift-html.js` | Header print nga `getUnifiedBusinessName()` |
+| `sales-invoices-*`, `fiscal/*` (print), `server.js` (print API) | I njëjti burim, bosh nëse nuk ka emër |
+| `purchase-print-html.js`, `kontabilisti-html.js`, `ditari-report.js`, `hotel-qr-service.js` | Pa «Hotel» në header print |
+
+**Provë:** `node -e "require('./database').whenReady().then(()=>console.log(require('./database').getUnifiedBusinessName()))"` → string nga settings (pa fallback).
+
+---
+
+## 2026-10-18 — daily_log: cash_amount / card_amount gjithmonë (initSchema)
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `db-engine.js` | ALTER + backfill idempotent në startup (jashtë `hotel-lan-outbox-v1`) |
+
+**Provë:** `PRAGMA table_info(daily_log)` pas `whenReady()` — kolonat PO.
+
+---
+
+## 2026-10-18 — Njoftim faturë në dhomë: SQLite + «Konfirmo» (recepsion)
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `db-engine.js` | Tabela `room_charge_notifications` (+ migrim) |
+| `database.js` | `insertRoomChargeNotification`, `listUnseenRoomChargeNotifications`, `markRoomChargeNotificationSeen` |
+| `server.js` | Pas charge-to-room → insert SQLite; GET unseen; POST `/:id/seen` (hequr RAM 90s) |
+| `public/recepcion.html` | Toast me «Konfirmo», poll sync, nuk skadon vetë |
+
+**Provë:** node smoke — insert id=1, unseen=1 → seen → unseen=0.
+
+---
+
+## 2026-10-18 — Pay-on-site (spa/bazen): pagesë → daily_log SVC-
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `database.js` | `pending_pay_on_site_services`, `enqueuePendingPayOnSiteService`, `recordPayOnSiteServicePayment`; `SVC-` në raport/ndërrim recepsion |
+| `server.js` | Enqueue pas PRANO; `GET pay-on-site-services/pending`, `POST /api/waiter/service-payment` |
+| `public/recepcion.html` | Modal «Paguar Cash/Kartë»; rreshta «prit pagesë» te Porositë |
+
+**Provë:** node smoke — `SVC-*` + `daily_log` cash 25€; pending=bosh pas pagesës.
+
+---
+
 ## 2026-10-18 — Raportet TOTALI: mos dyfisho `payment_method=room` pas CO-
 
 | Skedar | Ndryshim |

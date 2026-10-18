@@ -9,6 +9,14 @@ const {
   paperChars,
 } = require("./receipt-text");
 
+function unifiedPrintBusinessName() {
+  try {
+    return require("./database").getUnifiedBusinessName();
+  } catch {
+    return "";
+  }
+}
+
 function formatShiftDateTime(iso) {
   const { date, time } = formatReceiptDateTime(iso);
   return { date, time };
@@ -35,7 +43,7 @@ function buildShiftCloseHtml({
   live = false,
 }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const opened = formatShiftDateTime(shift.opened_at);
   const closed = live ? null : formatShiftDateTime(shift.closed_at || new Date().toISOString());
   const now = formatShiftDateTime(new Date().toISOString());
@@ -126,7 +134,7 @@ function buildShiftCloseLines({
   paper = "80mm",
 }) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
   const opened = formatShiftDateTime(shift.opened_at);
   const closed = live ? null : formatShiftDateTime(shift.closed_at || new Date().toISOString());
@@ -224,7 +232,7 @@ function buildWaiterLiveReportLines({
   const totalSales = Number(totals.total_sales ?? 0);
 
   const lines = [
-    pad(restaurantName || "Hotel", w, "center"),
+    pad(unifiedPrintBusinessName(), w, "center"),
     divider(w),
     pad("RAPORTI I KAMARIERIT", w, "center"),
     divider(w),

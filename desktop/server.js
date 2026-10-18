@@ -155,7 +155,7 @@ function buildFiscalDayReportText(details, settings, mode) {
     title,
     subtitle,
     line("-"),
-    row(t("report_business"), settings.taxpayer_legal_name || "-"),
+    row(t("report_business"), settings.taxpayer_legal_name || require("./database").getUnifiedBusinessName() || ""),
     row(t("nui_label"), settings.taxpayer_nui || "-"),
     row(t("report_unit"), settings.unit_name || "-"),
     row(t("report_sef_id"), fiscalNumbering.getSefIdentifier() || "-"),
@@ -242,7 +242,7 @@ function buildShortPeriodicReportText(details, settings) {
   const tax = details.vat_breakdown || {};
   const lines = [
     line("="),
-    center(settings.taxpayer_legal_name || t("business_fallback")),
+    center(settings.taxpayer_legal_name || require("./database").getUnifiedBusinessName() || ""),
     row(t("nui_label"), settings.taxpayer_nui || "-"),
     row(t("report_nf_vat"), settings.taxpayer_vat_number || settings.taxpayer_vat || "-"),
     row(t("report_unit"), settings.unit_name || "-"),
@@ -299,7 +299,7 @@ function buildMonthlyMemoryReportText(details, settings) {
 
   const lines = [
     line("="),
-    center(settings.taxpayer_legal_name || t("business_fallback")),
+    center(settings.taxpayer_legal_name || require("./database").getUnifiedBusinessName() || ""),
     row(t("nui_label"), settings.taxpayer_nui || "-"),
     row(t("report_unit"), settings.unit_name || "-"),
     row(t("report_sef_id"), fiscalNumbering.getSefIdentifier() || "-"),
@@ -452,22 +452,6 @@ const STAFF_LOCAL_EMPTY_ONLINE_ORDERS = {
   my_orders: [],
   message: "",
 };
-
-/* ── Njoftimet "faturë në dhomë" — recepsioni i lexon me poll ────────── */
-const _roomChargeNotifs = [];
-const ROOM_CHARGE_NOTIF_TTL = 90_000;
-function pushRoomChargeNotification(info) {
-  _roomChargeNotifs.push({ ...info, ts: Date.now() });
-  while (_roomChargeNotifs.length > 50) _roomChargeNotifs.shift();
-}
-function drainRoomChargeNotifications() {
-  const now = Date.now();
-  while (_roomChargeNotifs.length && now - _roomChargeNotifs[0].ts > ROOM_CHARGE_NOTIF_TTL) {
-    _roomChargeNotifs.shift();
-  }
-  const out = _roomChargeNotifs.splice(0, _roomChargeNotifs.length);
-  return out;
-}
 
 const license = require("./license");
 const receiptPrint = require("./receipt-print");
@@ -838,6 +822,12 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
           guest_service: true,
           ...applied,
         });
+        if (
+          applied?.pay_on_site
+          && typeof db.enqueuePendingPayOnSiteService === "function"
+        ) {
+          db.enqueuePendingPayOnSiteService(order, { accepted_by: waiterName });
+        }
       } catch (e) {
         imported.push({ ok: false, cloud_id: order.id, error: e.message });
       }
@@ -1392,7 +1382,7 @@ async function printGuestFolioReceipt(db, folio, opts = {}) {
   const kind = normalizeCouponType(opts.couponType || opts.coupon_type || "thermal");
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
-  const hotelName = folio?.hotel_name || settings.business_name || "Hotel";
+  const hotelName = db.getUnifiedBusinessName();
   const receiptFolio = enrichGuestFolioForReceipt(db, folio, {
     processedBy: opts.processedBy,
     paymentMethod: opts.paymentMethod,
@@ -1425,6 +1415,54 @@ async function printGuestFolioReceipt(db, folio, opts = {}) {
       printMessage: err.message || "Printeri termik nuk u gjet.",
     };
   }
+}
+
+/** Kupon termik për shitje walk-in kasa recepsion (RC-…) — pa fiskal. */
+async function printRecepcionKasaThermalReceipt(db, {
+  receipt_number,
+  total,
+  payment_method,
+  items,
+  waiter_name,
+} = {}) {
+  const fiscal = db.getFiscalSettings();
+  const parsedItems = (Array.isArray(items) ? items : []).map((it) => ({
+    name: String(it.name || "Shërbim"),
+    quantity: Math.max(1, Number(it.quantity) || 1),
+    price: Math.round((Number(it.price) || 0) * 100) / 100,
+  }));
+  const saleTotal =
+    Number(total) > 0
+      ? Math.round(Number(total) * 100) / 100
+      : Math.round(
+          parsedItems.reduce((s, it) => s + it.price * it.quantity, 0) * 100,
+        ) / 100;
+  const totals = db.calcFiscalTotals(
+    saleTotal,
+    fiscal.tvsh_enabled,
+    fiscal.tvsh_percent,
+  );
+  const pseudoOrder = {
+    total: saleTotal,
+    payment_method: payment_method || "cash",
+    waiter_name: waiter_name || "Recepsion",
+    items_json: JSON.stringify(parsedItems),
+    subtotal: saleTotal,
+    source_label: "Kasa recepsion",
+  };
+  return receiptPrint.printOrderReceipt(db, {
+    order: pseudoOrder,
+    tableNumber: "Recepsion",
+    receiptNumber: receipt_number || "",
+    fiscal,
+    totals,
+    items: parsedItems,
+    closedAt: new Date().toISOString(),
+    paymentMethod: payment_method || "cash",
+    slipKind: "final",
+    station: "bar",
+    paymentBy: waiter_name || "Recepsion",
+  });
 }
 
 function syncCatalogToCloud() {
@@ -4217,6 +4255,47 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
   }
 });
 
+/** Shërbime spa/bazen me pagesë në vend — prit pagesë pas PRANO. */
+app.get("/api/waiter/pay-on-site-services/pending", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    const pending = typeof db.listPendingPayOnSiteServices === "function"
+      ? db.listPendingPayOnSiteServices()
+      : [];
+    res.json({ ok: true, pending, count: pending.length });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, pending: [] });
+  }
+});
+
+app.post("/api/waiter/service-payment", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    const orderId = String(req.body?.order_id || req.body?.cloud_order_id || "").trim();
+    if (!orderId) {
+      return res.status(400).json({ ok: false, gabim: "Mungon ID e porosisë." });
+    }
+    const staffId = resolveWaiterStaffId(req.session);
+    const staff = staffId ? db.findStaffById(staffId) : null;
+    const waiterName = String(req.session?.emri || staff?.name || "Recepsion").trim();
+    const shift = staffId && typeof db.getOpenShift === "function" ? db.getOpenShift(staffId) : null;
+    const result = db.recordPayOnSiteServicePayment({
+      order_id: orderId,
+      payment_method: req.body?.payment_method || "cash",
+      amount: req.body?.amount,
+      waiter_name: waiterName,
+      staff_id: staffId,
+      shift_id: shift?.id,
+    });
+    auditReq(
+      req,
+      "Pagesë shërbim në vend",
+      `${orderId.slice(0, 8)}… · ${result.total}€ · ${result.payment_method}`,
+    );
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
   try {
     let booking = resolvePendingPublicBookingRow(db, req.params.id);
@@ -4533,7 +4612,7 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
         }
 
         const reportPayload = {
-          restaurantName: fiscal.biz_name || settings.business_name,
+          restaurantName: db.getUnifiedBusinessName(),
           phone: fiscal.biz_phone,
           address: fiscal.biz_address,
           city: fiscal.biz_city,
@@ -5006,9 +5085,23 @@ app.get("/api/waiter/rooms", auth, staffOrAdmin, (_req, res) => {
   res.json(db.listRoomsWithGuests());
 });
 
-/** Njoftimet kur tavolina faturohet në dhomë — recepsioni poll. */
+/** Njoftimet kur tavolina faturohet në dhomë — recepsioni poll (SQLite, pa skadim). */
 app.get("/api/waiter/room-charge-notifications", auth, staffOrAdmin, (_req, res) => {
-  res.json({ ok: true, notifications: drainRoomChargeNotifications() });
+  try {
+    const notifications = db.listUnseenRoomChargeNotifications();
+    res.json({ ok: true, notifications });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/room-charge-notifications/:id/seen", auth, staffOrAdmin, (req, res) => {
+  try {
+    const row = db.markRoomChargeNotificationSeen(req.params.id);
+    res.json({ ok: true, notification: row });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
 });
 
 app.post("/api/waiter/rooms/:id/check-in", auth, staffOrAdmin, (req, res) => {
@@ -5098,7 +5191,7 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
         guest: result.guest,
         room: result.room,
         bill: result.bill,
-        hotel_name: db.getSettings()?.business_name || "Hotel",
+        hotel_name: db.getUnifiedBusinessName(),
       };
     }
     const processedBy = req.session.emri || "Recepcion";
@@ -5482,7 +5575,7 @@ app.get("/api/waiter/services", auth, staffOrAdmin, (_req, res) => {
   });
 });
 
-app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, (req, res) => {
+app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, async (req, res) => {
   try {
     if (req.session?.role !== "recepsion" && req.session?.role !== "admin") {
       return res.status(403).json({ gabim: "Vetëm recepsioni." });
@@ -5494,12 +5587,66 @@ app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, (req, res) => {
       payment_splits: req.body?.payment_splits,
       waiter_name: waiterName,
     });
+    let printed = false;
+    let printMessage = "";
+    let html = null;
+    let text = null;
+    if (req.body?.print_thermal === true) {
+      const printResult = await printRecepcionKasaThermalReceipt(db, {
+        receipt_number: result.receipt_number,
+        total: result.total,
+        payment_method: result.payment_method,
+        items: req.body?.items,
+        waiter_name: waiterName,
+      });
+      printed = !!printResult.printed;
+      printMessage = printResult.printMessage || "";
+      html = printResult.html || null;
+      text = printResult.text || null;
+    }
     auditReq(
       req,
       "Kasa recepsion",
-      `${result.receipt_number} · ${result.total}€ · ${result.payment_method}`,
+      `${result.receipt_number} · ${result.total}€ · ${result.payment_method}${
+        req.body?.print_thermal ? " · termik" : ""
+      }`,
     );
-    res.json({ ok: true, ...result });
+    res.json({
+      ok: true,
+      ...result,
+      printed,
+      printMessage,
+      html,
+      text,
+      coupon_type: req.body?.print_thermal ? "thermal" : undefined,
+    });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/recepcion/kasa/print-thermal", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    if (req.session?.role !== "recepsion" && req.session?.role !== "admin") {
+      return res.status(403).json({ gabim: "Vetëm recepsioni." });
+    }
+    const waiterName = String(req.session?.name || req.session?.emri || "Recepsion").trim();
+    const body = req.body || {};
+    const printResult = await printRecepcionKasaThermalReceipt(db, {
+      receipt_number: body.receipt_number,
+      total: body.total,
+      payment_method: body.payment_method,
+      items: body.items,
+      waiter_name: waiterName,
+    });
+    res.json({
+      ok: true,
+      printed: !!printResult.printed,
+      printMessage: printResult.printMessage || "",
+      html: printResult.html || null,
+      text: printResult.text || null,
+      coupon_type: "thermal",
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -5877,14 +6024,17 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       `T${table?.number || "?"} → Dhoma ${room.room_number} · ${guest.guest_name} · ${order.total}€`,
     );
 
-    pushRoomChargeNotification({
-      table_number: table?.number || 0,
-      room_number: room.room_number,
-      guest_name: guest.guest_name,
-      total: Number(order.total) || 0,
-      waiter_name: waiterName,
-      source: "pos",
-    });
+    try {
+      db.insertRoomChargeNotification({
+        table_number: table?.number || 0,
+        room_number: room.room_number,
+        guest_name: guest.guest_name,
+        total: Number(order.total) || 0,
+        waiter_name: waiterName,
+      });
+    } catch (notifErr) {
+      console.warn("[charge-to-room] room_charge_notification:", notifErr.message);
+    }
 
     const bill = onSecondaryRegister ? null : db.getCheckoutPreview(roomId).bill;
     res.json({
@@ -6872,7 +7022,7 @@ app.get("/api/admin/ditari/preview", auth, adminOnly, (req, res) => {
   const ditari = db.getDitari(opts);
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
-  const html = buildDitariReportHtml(ditari, fiscal, settings.business_name);
+  const html = buildDitariReportHtml(ditari, fiscal, db.getUnifiedBusinessName());
   res.json({ html, ditari });
 });
 
@@ -6882,7 +7032,7 @@ app.post("/api/admin/ditari/print", auth, adminOnly, async (req, res) => {
     const ditari = db.getDitari(opts);
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildDitariReportHtml(ditari, fiscal, settings.business_name);
+    const html = buildDitariReportHtml(ditari, fiscal, db.getUnifiedBusinessName());
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
@@ -7410,8 +7560,8 @@ app.post("/api/menu/print", auth, adminOnly, async (req, res) => {
       db.getCategoryNames(),
       db.getMenuItems(false),
       fiscal,
-      settings.business_name,
-      settings.version || settings.business_name,
+      db.getUnifiedBusinessName(),
+      settings.version || db.getUnifiedBusinessName(),
     );
     let result;
     try {
@@ -7476,12 +7626,12 @@ app.post("/api/reports/print", auth, adminOnly, async (req, res) => {
     const report = db.getReports(from, to);
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildReportPrintHtml(report, fiscal, settings.business_name);
+    const html = buildReportPrintHtml(report, fiscal, db.getUnifiedBusinessName());
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
     } catch {
-      const text = buildReportPrintLines(report, fiscal, settings.business_name).join("\n");
+      const text = buildReportPrintLines(report, fiscal, db.getUnifiedBusinessName()).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
     auditReq(req, "Raport — print", `${from} — ${to}`);
@@ -7504,12 +7654,12 @@ app.post("/api/admin/reports/x/print", auth, adminOnly, async (req, res) => {
     const data = db.buildXReportData();
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildXReportHtml({ fiscal, restaurantName: settings.business_name, data });
+    const html = buildXReportHtml({ fiscal, restaurantName: db.getUnifiedBusinessName(), data });
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
     } catch {
-      const text = buildXReportLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
+      const text = buildXReportLines({ fiscal, restaurantName: db.getUnifiedBusinessName(), data }).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
     auditReq(req, "Raporti X — print", `${data.open_shift_count} nderrime aktive · ${Number(data.total_sales).toFixed(2)} €`);
@@ -7524,7 +7674,7 @@ app.post("/api/admin/reports/daily-summary/print", auth, adminOnly, async (req, 
     const data = db.buildDailySummaryData();
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const text = buildDailySummaryLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
+    const text = buildDailySummaryLines({ fiscal, restaurantName: db.getUnifiedBusinessName(), data }).join("\n");
     let result;
     if (fiscalConfig.isFiscalEnabled()) {
       result = await getFiscalMain().printFiscalReportText(text, { station: "bar" });
@@ -7569,7 +7719,7 @@ function buildFiscalModXReportText(details, sefSettings) {
     "RAPORTI X (MODI X)",
     "Gjendja aktuale — JO mbyllje",
     line("-"),
-    row("Biznesi:", sefSettings.taxpayer_legal_name || "-"),
+    row("Biznesi:", sefSettings.taxpayer_legal_name || require("./database").getUnifiedBusinessName() || ""),
     row("NUI:", sefSettings.taxpayer_nui || "-"),
     row("Njësia:", sefSettings.unit_name || "-"),
     row("SEF ID:", sefId),
@@ -7694,12 +7844,12 @@ app.post("/api/admin/reports/z/:shiftId/print", auth, adminOnly, async (req, res
     const data = db.buildZReportData(req.params.shiftId);
     const settings = db.getSettings();
     const fiscal = db.getFiscalSettings();
-    const html = buildZReportHtml({ fiscal, restaurantName: settings.business_name, data });
+    const html = buildZReportHtml({ fiscal, restaurantName: db.getUnifiedBusinessName(), data });
     let result;
     try {
       result = await printer.printReceiptAt(html, db, "fiscal");
     } catch {
-      const text = buildZReportLines({ fiscal, restaurantName: settings.business_name, data }).join("\n");
+      const text = buildZReportLines({ fiscal, restaurantName: db.getUnifiedBusinessName(), data }).join("\n");
       result = await printer.printPlainTextAt(text, db, "bar");
     }
     db.markShiftZReportPrinted(data.shift_id);
@@ -7732,7 +7882,7 @@ app.post("/api/admin/reports/waiter/:shiftId/print", auth, adminOnly, async (req
     const settings = db.getSettings();
     const { buildWaiterLiveReportLines } = require("./waiter-shift-html");
     const lines = buildWaiterLiveReportLines({
-      restaurantName: settings.business_name,
+      restaurantName: db.getUnifiedBusinessName(),
       waiterName: data.waiter_name,
       shift: { opened_at: data.opened_at },
       totals: data,
@@ -7967,7 +8117,7 @@ app.get("/api/purchases/export/pdf", auth, adminOnly, (req, res) => {
   const invoices = db.listPurchases({ from, to, supplier });
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildPurchasesListHtml(invoices, settings.business_name, period);
+  const html = buildPurchasesListHtml(invoices, db.getUnifiedBusinessName(), period);
   res.json({ html, count: invoices.length });
 });
 
@@ -8027,7 +8177,7 @@ app.get("/api/kontabilisti/sales-ledger/export/pdf", auth, adminOnly, (req, res)
   const rows = db.getSalesLedger(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildSalesLedgerHtml(rows, settings.business_name, period);
+  const html = buildSalesLedgerHtml(rows, db.getUnifiedBusinessName(), period);
   res.json({ html, count: rows.length });
 });
 
@@ -8072,7 +8222,7 @@ app.get("/api/kontabilisti/expenses/export/pdf", auth, adminOnly, (req, res) => 
   const rows = db.listExpenses(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildExpensesLedgerHtml(rows, settings.business_name, period);
+  const html = buildExpensesLedgerHtml(rows, db.getUnifiedBusinessName(), period);
   res.json({ html, count: rows.length });
 });
 
@@ -8095,7 +8245,7 @@ app.get("/api/kontabilisti/vat-report/export.csv", auth, adminOnly, (req, res) =
 app.get("/api/kontabilisti/vat-report/export/pdf", auth, adminOnly, (req, res) => {
   const report = db.getVatReport(req.query);
   const settings = db.getSettings();
-  const html = buildVatReportHtml(report, settings.business_name, report.month);
+  const html = buildVatReportHtml(report, db.getUnifiedBusinessName(), report.month);
   res.json({ html, count: report.rows.length });
 });
 
@@ -8421,7 +8571,7 @@ app.get("/api/kontabilisti/purchases/export/pdf", auth, adminOnly, (req, res) =>
   const rows = db.listPurchasesLedger(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
-  const html = buildPurchasesLedgerHtml(rows, settings.business_name, period);
+  const html = buildPurchasesLedgerHtml(rows, db.getUnifiedBusinessName(), period);
   const invoiceIds = new Set(rows.map((r) => r.invoice_id));
   res.json({ html, count: invoiceIds.size, line_count: rows.length });
 });
@@ -8445,7 +8595,7 @@ app.get("/api/kontabilisti/bilanc/export.csv", auth, adminOnly, (req, res) => {
 app.get("/api/kontabilisti/bilanc/export/pdf", auth, adminOnly, (req, res) => {
   const bilanc = db.getKontabilistiBilanc(req.query);
   const settings = db.getSettings();
-  const html = buildBilancHtml(bilanc, settings.business_name);
+  const html = buildBilancHtml(bilanc, db.getUnifiedBusinessName());
   res.json({ html, bilanc });
 });
 
@@ -8491,7 +8641,7 @@ app.get("/api/purchases/:id/print", auth, adminOnly, (req, res) => {
   const inv = db.getPurchaseInvoice(Number(req.params.id));
   if (!inv) return res.status(404).json({ gabim: "Fatura nuk u gjet" });
   const settings = db.getSettings();
-  const html = buildPurchaseInvoiceHtml(inv, settings.business_name);
+  const html = buildPurchaseInvoiceHtml(inv, db.getUnifiedBusinessName());
   res.json({ html, invoice: inv });
 });
 
@@ -8733,7 +8883,7 @@ app.get("/api/guest/menu", (req, res) => {
     const hotelName =
       db.getBusinessDisplayName?.()
       || settings.business_display_name
-      || settings.business_name
+      || db.getUnifiedBusinessName()
       || settings.restaurant_name
       || "Hotel";
     res.json({
@@ -8757,7 +8907,7 @@ app.get("/api/guest/services", (_req, res) => {
     res.json({
       ok: true,
       source: "hotel_services",
-      hotel_name: settings.business_name || settings.restaurant_name || "Hotel",
+      hotel_name: db.getUnifiedBusinessName(),
       groups,
       categories: catalog.categories || [],
       services: (catalog.services || []).map(toGuestServiceDto),
@@ -9483,8 +9633,7 @@ async function printClosedShiftZReport(shiftId) {
   const data = db.buildZReportData(shiftId);
   const settings = db.getSettings();
   const fiscal = db.getFiscalSettings();
-  const venueName =
-    String(settings.business_name || settings.restaurant_name || "").trim() || "Revolution HOTEL";
+  const venueName = db.getUnifiedBusinessName();
   const html = buildZReportHtml({ fiscal, restaurantName: venueName, data });
   const text = buildZReportLines({ fiscal, restaurantName: venueName, data }).join("\n");
   let printResult;

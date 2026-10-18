@@ -112,7 +112,7 @@ async function printOrderReceipt(db, {
   }
 
   const receiptText = finalizeReceiptText(buildReceiptText({
-    restaurantName: fiscal.biz_name || settings.restaurant_name,
+    restaurantName: db.getUnifiedBusinessName(),
     phone: fiscal.biz_phone || "",
     address: fiscal.biz_address || "",
     city: fiscal.biz_city || "",

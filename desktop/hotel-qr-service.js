@@ -107,10 +107,8 @@ async function listHotelQrs(db) {
   const settings = db.getSettings();
   const slug = resolveHotelQrSlug(db);
   const business_name =
-    (typeof db.getBusinessName === "function" ? db.getBusinessName() : "")
-    || settings.business_name
-    || settings.restaurant_name
-    || "Hotel";
+    (typeof db.getUnifiedBusinessName === "function" ? db.getUnifiedBusinessName() : "")
+    || "";
 
   if (!slug) {
     return {

@@ -194,7 +194,7 @@ function buildReceiptLineItems({
   const w = paperChars(paper);
   const { date, time } = formatReceiptDateTime(closedAt);
   const lines = [];
-  const bizName = String(restaurantName || "Restorant").trim();
+  const bizName = String(restaurantName || "").trim();
   const kind = slipKind === "order" ? "order" : "final";
   const nr = displayReceiptNumber(receiptNumber, orderNumber, kind);
   const venue = resolveVenueLine({ tableNumber, sourceLabel });

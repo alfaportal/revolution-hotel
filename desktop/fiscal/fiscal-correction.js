@@ -390,7 +390,13 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   const taxpayerVat =
     original.taxpayer_vat || settings.taxpayer_vat_number || "";
   const taxpayerName =
-    original.taxpayer_name || settings.taxpayer_legal_name || "Biznesi";
+    original.taxpayer_name || settings.taxpayer_legal_name || (() => {
+      try {
+        return require("../database").getUnifiedBusinessName();
+      } catch {
+        return "";
+      }
+    })();
   const taxpayerAddress =
     original.taxpayer_address || settings.taxpayer_address || "";
   const unitName = settings.unit_name || "";

@@ -301,7 +301,13 @@ function queueOfflineReceipt(receiptData) {
   const taxpayerNui = d.taxpayer_nui || settings.taxpayer_nui || settings.developer_nui || "";
   const taxpayerVat = d.taxpayer_vat || settings.taxpayer_vat_number || "";
   const taxpayerName =
-    d.taxpayer_name || settings.taxpayer_legal_name || "Biznesi";
+    d.taxpayer_name || settings.taxpayer_legal_name || (() => {
+      try {
+        return require("../database").getUnifiedBusinessName();
+      } catch {
+        return "";
+      }
+    })();
   const taxpayerAddress = d.taxpayer_address || settings.taxpayer_address || "";
   const unitName = d.unit_name || settings.unit_name || "";
   const unitPhone = d.unit_phone || settings.unit_phone || "";

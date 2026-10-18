@@ -62,7 +62,7 @@ async function printClosedTableReceipt(db, {
       fiscal,
       receiptNumber: receipt.receipt_number,
       totals,
-      restaurantName: fiscal.biz_name,
+      restaurantName: db.getUnifiedBusinessName(),
       paymentMethod: order.payment_method,
       closedAt,
       discountTotal,

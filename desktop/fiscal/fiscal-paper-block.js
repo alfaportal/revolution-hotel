@@ -611,7 +611,13 @@ function generatePaperBlockSlipText(row, copy = "merchant") {
   const lines = [];
   const hr = "-".repeat(w);
   lines.push("^C^BBLLOK LETRE");
-  lines.push(`^B${settings.taxpayer_legal_name || "Biznesi"}`);
+  let unifiedBiz = "";
+  try {
+    unifiedBiz = require("../database").getUnifiedBusinessName();
+  } catch {
+    unifiedBiz = "";
+  }
+  lines.push(`^B${settings.taxpayer_legal_name || unifiedBiz || ""}`);
   lines.push(settings.taxpayer_address || "");
   lines.push(`NUI: ${settings.taxpayer_nui || "—"}`);
   lines.push(hr);
@@ -734,7 +740,13 @@ async function registerPaperBlockInSef(paperId, opts = {}) {
     operator_id: paper.operator_id,
     taxpayer_nui: settings.taxpayer_nui || "",
     taxpayer_vat: settings.taxpayer_vat_number || null,
-    taxpayer_name: settings.taxpayer_legal_name || "Biznesi",
+    taxpayer_name: settings.taxpayer_legal_name || (() => {
+      try {
+        return require("../database").getUnifiedBusinessName();
+      } catch {
+        return "";
+      }
+    })(),
     taxpayer_address: settings.taxpayer_address || "",
     items_json: JSON.stringify(itemsWithMeta),
     subtotal: paper.subtotal,

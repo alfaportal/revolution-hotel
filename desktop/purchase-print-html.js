@@ -34,7 +34,7 @@ function buildPurchaseInvoiceHtml(invoice, bizName) {
   @media print{body{padding:12px}}
 </style></head><body>
 <h1>Faturë blerje stoku</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · Furnizues: <strong>${escHtml(inv.supplier)}</strong><br>
+<div class="meta">${escHtml(bizName || "")} · Furnizues: <strong>${escHtml(inv.supplier)}</strong><br>
 Nr. faturës: ${escHtml(inv.invoice_number || "—")} · Data: ${escHtml(inv.invoice_date)} · Status: ${escHtml(inv.status || "completed")}</div>
 <table>
   <thead><tr><th>Produkti</th><th>Sasia</th><th>Çmimi</th><th>Totali</th></tr></thead>
@@ -70,7 +70,7 @@ function buildPurchasesListHtml(invoices, bizName, periodLabel) {
   @media print{body{padding:12px}}
 </style></head><body>
 <h1>Historia e blerjeve</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(periodLabel || "")}</div>
+<div class="meta">${escHtml(bizName || "")} · ${escHtml(periodLabel || "")}</div>
 <table>
   <thead><tr><th>Data</th><th>Furnizuesi</th><th>Nr. faturës</th><th>Shuma</th><th>Statusi</th></tr></thead>
   <tbody>${rows || "<tr><td colspan='5'>Nuk ka fatura</td></tr>"}</tbody>

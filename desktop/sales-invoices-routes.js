@@ -148,10 +148,10 @@ function registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly }) {
       const pdfBuffer = await renderInvoicePdf(invoice);
       const filename = `Fature-${String(invoice.number).replace(/[^\w-]/g, "_")}.pdf`;
       const sellerName =
-        invoice.sellerSnapshot?.companyName || svc.getSellerSnapshot().companyName || "Hotel";
+        invoice.sellerSnapshot?.companyName || svc.getSellerSnapshot().companyName || "";
       const data = await deliverEmail({
         to,
-        from: buildInvoiceA4From(sellerName, "Hotel"),
+        from: buildInvoiceA4From(sellerName, ""),
         subject: `Faturë ${invoice.number} — ${sellerName}`,
         text: `Faturë shitje nr. ${invoice.number} nga ${sellerName}.`,
         html: `<p>Faturë shitje nr. ${invoice.number} nga ${sellerName}.</p>`,
@@ -200,10 +200,10 @@ function registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly }) {
       const pdfBuffer = await renderInvoicePdf(invoice);
       const filename = `Fature-${String(invoice.number).replace(/[^\w-]/g, "_")}.pdf`;
       const sellerName =
-        invoice.sellerSnapshot?.companyName || svc.getSellerSnapshot().companyName || "Hotel";
+        invoice.sellerSnapshot?.companyName || svc.getSellerSnapshot().companyName || "";
       const data = await deliverEmail({
         to,
-        from: buildInvoiceA4From(sellerName, "Hotel"),
+        from: buildInvoiceA4From(sellerName, ""),
         subject: `Faturë ${invoice.number} — ${sellerName}`,
         text: `Faturë shitje nr. ${invoice.number}.`,
         html: `<p>Faturë shitje nr. ${invoice.number}.</p>`,

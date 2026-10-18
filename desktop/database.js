@@ -1766,8 +1766,34 @@ function getStoredBusinessSubtype() {
   return fallback;
 }
 
+/** Emri i njëtrajtshëm për print — Cilësimet; bosh nëse nuk është vendosur (pa fallback). */
+function getUnifiedBusinessName() {
+  const rest = String(getSetting("restaurant_name", "") || "").trim();
+  if (rest) return rest;
+  const biz = String(getSetting("biz_name", "") || "").trim();
+  if (biz) return biz;
+  const legacy = String(getSetting("business_name", "") || "").trim();
+  return legacy || "";
+}
+
+/** Ruaj emrin e biznesit njëherë — restaurant_name, biz_name dhe emri ligjor ATK (nëse ka). */
+function syncVenueNameAcrossSettings(name) {
+  const n = String(name ?? "").trim();
+  setSetting("restaurant_name", n);
+  setSetting("biz_name", n);
+  if (!n) return;
+  try {
+    const { saveFiscalSettings } = require("./fiscal/fiscal-config");
+    saveFiscalSettings({ taxpayer_legal_name: n });
+  } catch {
+    /* fiscal DB jo gati */
+  }
+}
+
 /** Emri i biznesit — biz_name (fiskal/zyrtar) ose restaurant_name (legacy). */
 function getBusinessName() {
+  const unified = getUnifiedBusinessName();
+  if (unified) return unified;
   const biz = String(getSetting("biz_name", "") || "").trim();
   const rest = String(getSetting("restaurant_name", "") || "").trim();
   return biz || rest;
@@ -2345,8 +2371,7 @@ function applyRestaurantNameIfEmpty(name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return false;
   if (getSetting("restaurant_name", "").trim()) return false;
-  setSetting("restaurant_name", trimmed);
-  setSetting("biz_name", trimmed);
+  syncVenueNameAcrossSettings(trimmed);
   return true;
 }
 
@@ -2364,8 +2389,7 @@ function runSetup({
   const name = String(restaurant_name || "").trim();
 
   sqlite.transaction(() => {
-    setSetting("restaurant_name", name);
-    setSetting("biz_name", name);
+    syncVenueNameAcrossSettings(name);
     setSetting("business_subtype", type);
     setSetting("business_type", type); /* alias për kod të vjetër */
     setSetting("admin_password", hashPassword(admin_password));
@@ -4895,6 +4919,68 @@ function drainHousekeepingNotifications() {
   return rows;
 }
 
+function insertRoomChargeNotification({
+  room_number,
+  table_number = 0,
+  guest_name = "",
+  total = 0,
+  waiter_name = "",
+} = {}) {
+  const r = sqlite.prepare(`
+    INSERT INTO room_charge_notifications (
+      room_number, table_number, guest_name, total, waiter_name
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(
+    String(room_number ?? "").trim(),
+    Math.max(0, Math.floor(Number(table_number) || 0)),
+    String(guest_name ?? "").trim(),
+    Math.round((Number(total) || 0) * 100) / 100,
+    String(waiter_name ?? "").trim(),
+  );
+  return sqlite
+    .prepare(
+      `SELECT id, room_number, table_number, guest_name, total, waiter_name, created_at, seen_at
+       FROM room_charge_notifications WHERE id = ?`,
+    )
+    .get(r.lastInsertRowid);
+}
+
+function listUnseenRoomChargeNotifications() {
+  return sqlite.prepare(`
+    SELECT id, room_number, table_number, guest_name, total, waiter_name, created_at, seen_at
+    FROM room_charge_notifications
+    WHERE seen_at IS NULL
+    ORDER BY id ASC
+  `).all();
+}
+
+function markRoomChargeNotificationSeen(id) {
+  const rowId = Number(id);
+  if (!rowId) throw new Error("Njoftimi mungon.");
+  const row = sqlite
+    .prepare("SELECT id, seen_at FROM room_charge_notifications WHERE id = ?")
+    .get(rowId);
+  if (!row) throw new Error("Njoftimi nuk u gjet.");
+  if (row.seen_at) {
+    return sqlite
+      .prepare(
+        `SELECT id, room_number, table_number, guest_name, total, waiter_name, created_at, seen_at
+         FROM room_charge_notifications WHERE id = ?`,
+      )
+      .get(rowId);
+  }
+  const seenAt = new Date().toISOString();
+  sqlite
+    .prepare("UPDATE room_charge_notifications SET seen_at = ? WHERE id = ?")
+    .run(seenAt, rowId);
+  return sqlite
+    .prepare(
+      `SELECT id, room_number, table_number, guest_name, total, waiter_name, created_at, seen_at
+       FROM room_charge_notifications WHERE id = ?`,
+    )
+    .get(rowId);
+}
+
 /** Panel pastrimi stafi — { status: clean | in_progress | dirty } (SQLite lokal). */
 function setSherbimiCleaningStatus(roomId, status) {
   const st = String(status || "").trim().toLowerCase();
@@ -7058,9 +7144,9 @@ function getGuestFolio(guestId, { check_out_date, extra_services, services_total
     });
   }
 
-  let hotelName = "Hotel";
+  let hotelName = "";
   try {
-    hotelName = getSetting("restaurant_name", hotelName) || hotelName;
+    hotelName = getUnifiedBusinessName();
   } catch {
     /* ignore */
   }
@@ -7582,6 +7668,226 @@ function removePendingPublicServiceRequest(id) {
   } catch (err) {
     console.warn("removePendingPublicServiceRequest:", err.message);
   }
+}
+
+function ensurePendingPayOnSiteServiceTable() {
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS pending_pay_on_site_services (
+        cloud_order_id TEXT PRIMARY KEY,
+        payload_json   TEXT NOT NULL,
+        accepted_at    TEXT NOT NULL,
+        accepted_by    TEXT NOT NULL DEFAULT '',
+        status         TEXT NOT NULL DEFAULT 'awaiting_payment',
+        daily_log_id   INTEGER,
+        paid_at        TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_pay_on_site_status ON pending_pay_on_site_services(status);
+    `);
+  } catch (err) {
+    console.warn("ensurePendingPayOnSiteServiceTable:", err.message);
+  }
+}
+
+function buildPayOnSiteServicePayloadFromCloudOrder(cloudOrder) {
+  const meta = parseGuestOrderMetaFromCloud(cloudOrder);
+  const rawLines = Array.isArray(cloudOrder?.service_lines) && cloudOrder.service_lines.length
+    ? cloudOrder.service_lines
+    : (Array.isArray(meta.service_lines) ? meta.service_lines : []);
+  const displayItems = expandGuestOrderLineItems(cloudOrder);
+  const items = (displayItems.length ? displayItems : rawLines.map((raw) => {
+    const qty = Math.max(1, Number(raw.quantity) || 1);
+    const price = Math.round((Number(raw.amount ?? raw.price) || 0) * 100) / 100;
+    return {
+      name: String(raw.name || "Shërbim").trim(),
+      quantity: qty,
+      price,
+      service_id: raw.service_id != null ? Number(raw.service_id) : null,
+    };
+  })).map((it) => ({
+    name: String(it.name || "Shërbim").trim(),
+    quantity: Math.max(1, Number(it.quantity) || 1),
+    price: Math.round((Number(it.price ?? it.amount) || 0) * 100) / 100,
+    service_id: it.service_id != null ? Number(it.service_id) : null,
+  }));
+  let total = Number(cloudOrder?.total);
+  if (!Number.isFinite(total) || total <= 0) {
+    total = Math.round(items.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
+  }
+  return {
+    cloud_order_id: String(cloudOrder?.id || "").trim(),
+    guest_name: String(
+      cloudOrder?.customer_name || cloudOrder?.customer_label || cloudOrder?.guest_name || "",
+    ).trim(),
+    guest_phone: String(cloudOrder?.guest_phone || cloudOrder?.phone || "").trim(),
+    guest_email: String(cloudOrder?.guest_email || cloudOrder?.email || "").trim(),
+    venue_label: String(meta.venue_label || cloudOrder?.venue_label || cloudOrder?.source_label || "").trim(),
+    service_lines: rawLines,
+    items,
+    total,
+    pay_on_site: true,
+  };
+}
+
+/** Pas PRANO — shërbim spa/bazen me pagesë në vend (pa folio dhome). */
+function enqueuePendingPayOnSiteService(cloudOrder, { accepted_by = "" } = {}) {
+  if (!isGuestVenuePayOnSiteServiceOrder(cloudOrder)) {
+    return { ok: false, skipped: true };
+  }
+  ensurePendingPayOnSiteServiceTable();
+  const cloudId = String(cloudOrder?.id || "").trim();
+  if (!cloudId) throw new Error("Mungon ID e porosisë.");
+  const payload = buildPayOnSiteServicePayloadFromCloudOrder(cloudOrder);
+  if (!payload.items.length) throw new Error("Porosia nuk ka shërbime.");
+  const now = new Date().toISOString();
+  const existing = sqlite.prepare(
+    "SELECT status, daily_log_id FROM pending_pay_on_site_services WHERE cloud_order_id = ?",
+  ).get(cloudId);
+  if (existing?.status === "paid" && existing.daily_log_id) {
+    return { ok: true, already_paid: true, cloud_order_id: cloudId };
+  }
+  sqlite.prepare(`
+    INSERT INTO pending_pay_on_site_services (cloud_order_id, payload_json, accepted_at, accepted_by, status)
+    VALUES (?, ?, ?, ?, 'awaiting_payment')
+    ON CONFLICT(cloud_order_id) DO UPDATE SET
+      payload_json = excluded.payload_json,
+      accepted_at = excluded.accepted_at,
+      accepted_by = excluded.accepted_by,
+      status = CASE
+        WHEN pending_pay_on_site_services.status = 'paid' THEN pending_pay_on_site_services.status
+        ELSE 'awaiting_payment'
+      END
+  `).run(cloudId, JSON.stringify(payload), now, String(accepted_by || "").trim());
+  return { ok: true, cloud_order_id: cloudId, payload };
+}
+
+function listPendingPayOnSiteServices() {
+  ensurePendingPayOnSiteServiceTable();
+  try {
+    const rows = sqlite.prepare(`
+      SELECT cloud_order_id, payload_json, accepted_at, accepted_by, status
+      FROM pending_pay_on_site_services
+      WHERE status = 'awaiting_payment'
+      ORDER BY accepted_at ASC, cloud_order_id ASC
+    `).all();
+    return rows.map((row) => {
+      let payload = {};
+      try {
+        payload = JSON.parse(row.payload_json || "{}");
+      } catch {
+        payload = {};
+      }
+      return {
+        order_id: row.cloud_order_id,
+        cloud_order_id: row.cloud_order_id,
+        accepted_at: row.accepted_at,
+        accepted_by: row.accepted_by,
+        status: row.status,
+        ...payload,
+      };
+    });
+  } catch (err) {
+    console.warn("listPendingPayOnSiteServices:", err.message);
+    return [];
+  }
+}
+
+function nextPayOnSiteServiceReceiptNumber() {
+  return `SVC-${Date.now()}`;
+}
+
+/** Pagesë cash/kartë për shërbim në vend — daily_log SVC-… */
+function recordPayOnSiteServicePayment({
+  order_id,
+  payment_method = "cash",
+  amount = null,
+  waiter_name = "Recepsion",
+  staff_id = null,
+  shift_id = null,
+} = {}) {
+  ensurePendingPayOnSiteServiceTable();
+  const cloudId = String(order_id || "").trim();
+  if (!cloudId) throw new Error("Mungon ID e porosisë.");
+  const row = sqlite.prepare(
+    "SELECT * FROM pending_pay_on_site_services WHERE cloud_order_id = ?",
+  ).get(cloudId);
+  if (!row) throw new Error("Shërbimi nuk u gjet — pranoni porosinë së pari.");
+  if (String(row.status || "") === "paid" && row.daily_log_id) {
+    const dupLog = sqlite.prepare("SELECT * FROM daily_log WHERE id = ?").get(Number(row.daily_log_id));
+    if (dupLog) {
+      return {
+        ok: true,
+        already_paid: true,
+        daily_log_id: dupLog.id,
+        receipt_number: dupLog.receipt_number,
+        total: Number(dupLog.total) || 0,
+      };
+    }
+  }
+  let payload = {};
+  try {
+    payload = JSON.parse(row.payload_json || "{}");
+  } catch {
+    throw new Error("Të dhënat e shërbimit janë të dëmtuara.");
+  }
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) throw new Error("Porosia nuk ka artikuj.");
+  let total = amount != null && Number.isFinite(Number(amount)) && Number(amount) > 0
+    ? Math.round(Number(amount) * 100) / 100
+    : Math.round(Number(payload.total) || 0);
+  if (total <= 0) {
+    total = Math.round(items.reduce(
+      (s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1),
+      0,
+    ) * 100) / 100;
+  }
+  if (total <= 0) throw new Error("Totali duhet të jetë më i madh se zero.");
+  const meta = staff_id != null && shift_id != null
+    ? { staff_id: Number(staff_id), shift_id: Number(shift_id) }
+    : shiftMetaForWaiter(waiter_name);
+  const method = normalizePaymentMethod(payment_method);
+  const receipt_number = nextPayOnSiteServiceReceiptNumber();
+  const venue = String(payload.venue_label || "Shërbim në vend").trim();
+  const guestLabel = String(payload.guest_name || "Mysafir").trim();
+  const tableLabel = payload.guest_phone
+    ? `${venue} · ${guestLabel} · ${payload.guest_phone}`
+    : `${venue} · ${guestLabel}`;
+
+  const paidAt = new Date().toISOString();
+  const dailyLogId = sqlite.transaction(() => {
+    const logId = addDailyLogEntry({
+      table_number: tableLabel.slice(0, 120),
+      waiter_name: waiter_name || "Recepsion",
+      items_json: JSON.stringify(items.map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        price: it.price,
+        service_id: it.service_id,
+      }))),
+      total,
+      receipt_number,
+      payment_method: method,
+      staff_id: meta.staff_id,
+      shift_id: meta.shift_id,
+      subtotal: total,
+      cloud_sale_id: cloudId,
+    });
+    sqlite.prepare(`
+      UPDATE pending_pay_on_site_services
+      SET status = 'paid', daily_log_id = ?, paid_at = ?
+      WHERE cloud_order_id = ?
+    `).run(logId, paidAt, cloudId);
+    return logId;
+  })();
+
+  return {
+    ok: true,
+    daily_log_id: dailyLogId,
+    receipt_number,
+    total,
+    payment_method: method,
+    order_id: cloudId,
+  };
 }
 
 function parseFolioChargeIdsFromCloudPayload(payload) {
@@ -8287,6 +8593,7 @@ function enrichCloudOrderForWaiter(cloudOrder) {
     is_guest_hotel_service: guestSvc,
     is_guest_room_menu: guestMenu,
     is_recepcion_qr: recepQr,
+    pay_on_site: isGuestVenuePayOnSiteServiceOrder(cloudOrder),
     is_qr_table: qr,
     is_online_pickup: !staff && !qr && !guestSvc && !recepQr && isCloudOnlinePickupOrder(cloudOrder),
     qr_table_number: qr ? parseQrTableNumberFromCloudOrder(cloudOrder) : 0,
@@ -9413,9 +9720,16 @@ function isRecepcionKasaReceipt(receiptNumber) {
   return String(receiptNumber || "").trim().toUpperCase().startsWith("RC-");
 }
 
-/** Recepsion — check-out ose kasa walk-in (jo tavolinë/restorant). */
+/** Shërbim hoteli me pagesë në vend (spa/bazen) — daily_log SVC-… */
+function isRecepcionVenueServiceReceipt(receiptNumber) {
+  return String(receiptNumber || "").trim().toUpperCase().startsWith("SVC-");
+}
+
+/** Recepsion — check-out, kasa walk-in, ose shërbim në vend (jo tavolinë/restorant). */
 function isRecepsionDailyLogReceipt(receiptNumber) {
-  return isRecepsionCheckoutReceipt(receiptNumber) || isRecepcionKasaReceipt(receiptNumber);
+  return isRecepsionCheckoutReceipt(receiptNumber)
+    || isRecepcionKasaReceipt(receiptNumber)
+    || isRecepcionVenueServiceReceipt(receiptNumber);
 }
 
 function parseDailyLogItemsJson(raw) {
@@ -10017,6 +10331,7 @@ function getReports(dateFrom, dateTo) {
     const rc = String(e.receipt_number || "").trim().toUpperCase();
     let registerName = "Restorant";
     if (isRecepsionCheckoutReceipt(e.receipt_number)) registerName = "Recepsion (check-out)";
+    else if (isRecepcionVenueServiceReceipt(e.receipt_number)) registerName = "Shërbim në vend";
     else if (isRecepcionKasaReceipt(e.receipt_number)) registerName = "Kasa recepsion";
     if (!byRegisterMap.has(registerName)) {
       byRegisterMap.set(registerName, {
@@ -10277,12 +10592,14 @@ function shiftDailyLogRoleWhereSql(sessionRole, prefix = "AND") {
     return ` ${prefix} (
       UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
       OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+      OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
     )`;
   }
   if (role === "kamarier") {
     return ` ${prefix} NOT (
       UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
       OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+      OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
     )`;
   }
   return "";
@@ -11606,9 +11923,7 @@ function updateSettings({
   const nameRaw =
     restaurant_name != null ? restaurant_name : biz_name != null ? biz_name : null;
   if (nameRaw != null) {
-    const name = String(nameRaw).trim();
-    setSetting("restaurant_name", name);
-    setSetting("biz_name", name);
+    syncVenueNameAcrossSettings(String(nameRaw).trim());
   }
   const subtypeRaw = business_subtype != null ? business_subtype : business_type;
   if (subtypeRaw != null) {
@@ -14534,9 +14849,7 @@ function updateFiscalSettings(data) {
     if (key === "tvsh_enabled") {
       setSetting(settingKey, data[key] ? "1" : "0");
     } else if (key === "biz_name") {
-      const name = String(data[key]).trim();
-      setSetting("biz_name", name);
-      setSetting("restaurant_name", name);
+      syncVenueNameAcrossSettings(String(data[key]).trim());
     } else {
       setSetting(settingKey, String(data[key]).trim());
     }
@@ -15851,6 +16164,8 @@ function getVersionInfo() {
     setAdminTabOrder,
     DEFAULT_ADMIN_TAB_ORDER,
     getBusinessName,
+    getUnifiedBusinessName,
+    syncVenueNameAcrossSettings,
     getBusinessDisplayName,
     getAppWindowTitle,
     getBusinessTypeInfo,
@@ -15926,6 +16241,9 @@ function getVersionInfo() {
     setSherbimiCleaningStatus,
     insertHousekeepingNotification,
     drainHousekeepingNotifications,
+    insertRoomChargeNotification,
+    listUnseenRoomChargeNotifications,
+    markRoomChargeNotificationSeen,
     setHousekeepingMaintenance,
     readyHousekeepingFromMaintenance,
     openHousekeepingTaskForRoom,
@@ -16005,6 +16323,10 @@ function getVersionInfo() {
     reconcilePendingPublicServiceRequests,
     listPendingPublicServiceRequests,
     removePendingPublicServiceRequest,
+    enqueuePendingPayOnSiteService,
+    listPendingPayOnSiteServices,
+    recordPayOnSiteServicePayment,
+    isGuestVenuePayOnSiteServiceOrder,
     removeRoomChargesForExpiredCloudOrder,
     importCloudOrderToLocal,
     parseTableNumberFromCloudOrder,

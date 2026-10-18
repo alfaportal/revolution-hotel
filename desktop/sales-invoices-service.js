@@ -159,7 +159,7 @@ function getSellerSnapshot() {
   const fiscal = dbMod.getFiscalSettings();
   const settings = dbMod.getSettings();
   const inv = getInvoiceSettings();
-  const companyName = String(fiscal.biz_name || settings.restaurant_name || "Hotel").trim();
+  const companyName = String(dbMod.getUnifiedBusinessName()).trim();
   return {
     companyName,
     companyNameDisplay: companyName.toLocaleUpperCase("sq-AL"),

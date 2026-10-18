@@ -40,7 +40,7 @@ function buildSalesLedgerHtml(rows, bizName, periodLabel) {
 <title>Libri i shitjeve</title>
 <style>${PRINT_STYLE}</style></head><body>
 <h1>Libri i shitjeve</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(periodLabel || "")}</div>
+<div class="meta">${escHtml(bizName || "")} · ${escHtml(periodLabel || "")}</div>
 <table>
   <thead><tr><th>Data</th><th>Nr. faturës</th><th>Artikujt</th><th>Shuma</th><th>Norma TVSH</th><th>TVSh</th><th>Mënyra e pagesës</th></tr></thead>
   <tbody>${trs || "<tr><td colspan='7'>Nuk ka shitje</td></tr>"}</tbody>
@@ -67,7 +67,7 @@ function buildExpensesLedgerHtml(rows, bizName, periodLabel) {
 <title>Libri i blerjeve/shpenzimeve</title>
 <style>${PRINT_STYLE}</style></head><body>
 <h1>Libri i blerjeve/shpenzimeve</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(periodLabel || "")}</div>
+<div class="meta">${escHtml(bizName || "")} · ${escHtml(periodLabel || "")}</div>
 <table>
   <thead><tr><th>Data</th><th>Emri i firmës</th><th>Përshkrimi</th><th>Kategoria</th><th>Shuma</th><th>Regjistroi</th></tr></thead>
   <tbody>${trs || "<tr><td colspan='6'>Nuk ka shpenzime</td></tr>"}</tbody>
@@ -91,7 +91,7 @@ function buildVatReportHtml(report, bizName, periodLabel) {
 <title>Raporti i TVSH-së</title>
 <style>${PRINT_STYLE}</style></head><body>
 <h1>Raporti i TVSH-së</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(periodLabel || "")}</div>
+<div class="meta">${escHtml(bizName || "")} · ${escHtml(periodLabel || "")}</div>
 <table>
   <thead><tr><th>Norma</th><th>Shitjet neto</th><th>TVSh e mbledhur</th><th>Shitjet bruto</th></tr></thead>
   <tbody>${trs || "<tr><td colspan='4'>Nuk ka të dhëna</td></tr>"}</tbody>
@@ -126,7 +126,7 @@ function buildPurchasesLedgerHtml(rows, bizName, periodLabel) {
 <title>Blerjet</title>
 <style>${PRINT_STYLE}</style></head><body>
 <h1>Blerjet (stok)</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(periodLabel || "")}</div>
+<div class="meta">${escHtml(bizName || "")} · ${escHtml(periodLabel || "")}</div>
 <table>
   <thead><tr><th>Data</th><th>Furnitori</th><th>Artikulli</th><th>Sasia</th><th>Çmimi</th><th>Totali</th></tr></thead>
   <tbody>${trs || "<tr><td colspan='6'>Nuk ka blerje</td></tr>"}</tbody>
@@ -150,7 +150,7 @@ function buildBilancHtml(bilanc, bizName) {
   .formula{color:#64748b;font-size:0.9rem;margin-top:8px}
 </style></head><body>
 <h1>Bilanci i kontabilistit</h1>
-<div class="meta">${escHtml(bizName || "Hotel")} · ${escHtml(period)}</div>
+<div class="meta">${escHtml(bizName || "")} · ${escHtml(period)}</div>
 <div class="bilanc-grid">
   <div class="bilanc-box"><div class="lbl">Shitjet (pa TVSH)</div><div class="val">${formatEuro(b.sales_total)}</div></div>
   <div class="bilanc-box"><div class="lbl">Blerjet (pa TVSH)</div><div class="val">${formatEuro(b.purchases_total)}</div></div>

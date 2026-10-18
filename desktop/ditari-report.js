@@ -26,7 +26,13 @@ function nrDisplay(receiptNumber) {
 
 function buildDitariReportHtml(ditari, fiscal, restaurantName) {
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const bizName = (() => {
+    try {
+      return require("./database").getUnifiedBusinessName();
+    } catch {
+      return "";
+    }
+  })();
   const gen = formatReceiptDateTime(new Date().toISOString());
   const addr = [f.biz_address, f.biz_city].filter(Boolean).join(", ");
 

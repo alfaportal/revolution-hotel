@@ -40,9 +40,9 @@ function formatRFC5322DisplayName(name) {
 
 
 
-function buildInvoiceA4From(displayName, nameFallback = "Hotel") {
+function buildInvoiceA4From(displayName, nameFallback = "") {
 
-  const label = formatRFC5322DisplayName(displayName) || String(nameFallback || "Hotel").trim();
+  const label = formatRFC5322DisplayName(displayName) || String(nameFallback || "").trim();
 
   const addr = invoiceFromAddressFromEnv();
 

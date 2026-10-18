@@ -600,6 +600,96 @@
       color: #f1f5f9;
       border: 1px solid #2d3f5c;
     }
+    .col-pay.market-checkout-panel #btn-kupon-termik {
+      background: linear-gradient(180deg, #38bdf8, #0284c7);
+      color: #0c4a6e;
+    }
+    .col-pay.market-checkout-panel .checkout-pay-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .kasa-table-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 12000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .kasa-table-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+    }
+    .kasa-table-modal-content {
+      position: relative;
+      z-index: 1;
+      width: min(420px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.1rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+    .kasa-table-modal-content h2 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+    #modal-kasa-post-pay-thermal .btn-coupon-thermal {
+      width: 100%;
+      min-height: var(--touch-min);
+      font-weight: 800;
+      border: none;
+      border-radius: 10px;
+      padding: 0.75rem;
+      font-size: 0.92rem;
+      cursor: pointer;
+      background: linear-gradient(180deg, #38bdf8, #0284c7);
+      color: #0c4a6e;
+      font-family: inherit;
+    }
+    #modal-kasa-post-pay-thermal .btn-kasa-vazhdo {
+      width: 100%;
+      min-height: var(--touch-min);
+      font-weight: 800;
+      border: none;
+      border-radius: 10px;
+      padding: 0.75rem;
+      font-size: 0.92rem;
+      cursor: pointer;
+      background: linear-gradient(180deg, #4ade80, #16a34a);
+      color: #052e16;
+      font-family: inherit;
+    }
+    #kasa-post-pay-thermal-msg {
+      margin-top: 0.75rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fecaca;
+    }
+    .print-receipt { display: none; }
+    @media print {
+      body * { visibility: hidden !important; }
+      #print-fature, #print-fature * { visibility: visible !important; }
+      #print-fature {
+        display: block !important;
+        position: absolute;
+        left: 50%;
+        top: 0;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 300px;
+        padding: 16px;
+        font-family: "Courier New", monospace;
+        font-size: 11pt;
+        color: #000;
+      }
+    }
     .col-pay.market-checkout-panel #msg {
       min-height: 32px;
       padding: 6px 8px;
@@ -889,12 +979,29 @@
         </div>
         <div class="checkout-pay-actions">
           <button type="button" class="btn" id="btn-paguaj">Paguaj</button>
+          <button type="button" class="btn" id="btn-kupon-termik">Kupon Termik</button>
           <button type="button" class="btn" id="btn-clear-cart">Pastro shportën</button>
         </div>
         <p id="msg"></p>
       </div>
     </section>
   </div>
+
+  <div id="modal-kasa-post-pay-thermal" class="kasa-table-modal" hidden>
+    <div class="kasa-table-modal-backdrop" id="kasa-post-pay-thermal-backdrop"></div>
+    <div class="kasa-table-modal-content" role="dialog" aria-modal="true" aria-labelledby="kasa-post-pay-thermal-title">
+      <h2 id="kasa-post-pay-thermal-title">Pagesa u krye</h2>
+      <p style="margin:0.35rem 0 0;color:var(--muted);font-size:0.88rem">
+        Mund të shtypni kuponin termik (jo fiskal) edhe një herë para se të vazhdoni.
+      </p>
+      <div id="kasa-post-pay-thermal-msg" hidden></div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:1rem">
+        <button type="button" class="btn-coupon-thermal" id="kasa-btn-shtyp-kupon-termik">Shtyp Kuponin</button>
+        <button type="button" class="btn-kasa-vazhdo" id="kasa-btn-post-pay-vazhdo">Vazhdo</button>
+      </div>
+    </div>
+  </div>
+  <div id="print-fature" class="print-receipt"></div>
 
   <script src="/js/app.js?v=10"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
@@ -928,6 +1035,7 @@
     let multiPay = false;
     let paperBlockActive = false;
     let recepPendingOrderCount = 0;
+    let kasaPostPayCtx = null;
 
     function euro(n) {
       return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2) + " €";
@@ -1288,8 +1396,79 @@
       if (btn) btn.textContent = paperBlockActive ? "Paguaj (bllok letër)" : "Paguaj";
     }
 
-    async function paySale() {
+    function hideKasaPostPayThermalModal() {
+      const m = document.getElementById("modal-kasa-post-pay-thermal");
+      if (m) m.hidden = true;
+    }
+
+    function showKasaPostPayThermalModal(ctx) {
+      kasaPostPayCtx = ctx;
+      const msgEl = document.getElementById("kasa-post-pay-thermal-msg");
+      if (msgEl) { msgEl.hidden = true; msgEl.textContent = ""; }
+      const m = document.getElementById("modal-kasa-post-pay-thermal");
+      if (m) m.hidden = false;
+    }
+
+    async function finalizeKasaPostPaySuccess() {
+      kasaPostPayCtx = null;
+      hideKasaPostPayThermalModal();
+      cart = [];
+      setPrimaryPay("cash");
+      const recv = document.getElementById("pay-received");
+      if (recv) recv.value = "";
+      renderCart();
+      await loadShift();
+      await refreshPaperBlockKasaUi();
+    }
+
+    function applyKasaThermalPrintResult(res, msgEl) {
+      if (res?.html) {
+        const pf = document.getElementById("print-fature");
+        if (pf) pf.innerHTML = res.html;
+      }
+      if (res?.printed) {
+        if (msgEl) { msgEl.hidden = true; msgEl.textContent = ""; }
+        return;
+      }
+      const pmsg = res?.printMessage || "Printeri termik nuk u gjet.";
+      if (msgEl) {
+        msgEl.hidden = false;
+        msgEl.textContent = pmsg;
+      }
+      const html = res?.html;
+      if (html && window.confirm(`${pmsg}\n\nHap dialogun e printimit të Windows?`)) {
+        window.print();
+      }
+    }
+
+    async function shtypKasaKuponTermikPasPagese() {
+      const ctx = kasaPostPayCtx;
+      const gabimEl = document.getElementById("kasa-post-pay-thermal-msg");
+      if (!ctx?.reprintBody) return;
+      const btn = document.getElementById("kasa-btn-shtyp-kupon-termik");
+      if (btn) btn.disabled = true;
+      try {
+        const r = await api("/api/recepcion/kasa/print-thermal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ctx.reprintBody),
+        });
+        applyKasaThermalPrintResult(r, gabimEl);
+      } catch (e) {
+        if (gabimEl) {
+          gabimEl.hidden = false;
+          gabimEl.textContent = e.message || "Printimi dështoi";
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function paySale(opts = {}) {
+      const thermal = opts.thermal === true;
       const msg = document.getElementById("msg");
+      const btnPay = document.getElementById("btn-paguaj");
+      const btnTermik = document.getElementById("btn-kupon-termik");
       if (!shiftSummary?.open) {
         msg.textContent = "Hap ndërrimin në recepsion para shitjes.";
         return;
@@ -1305,7 +1484,9 @@
         msg.textContent = e.message || "Gabim pagese";
         return;
       }
-      msg.textContent = "Duke regjistruar…";
+      msg.textContent = thermal ? "Duke paguar dhe printuar termik…" : "Duke regjistruar…";
+      if (btnPay) btnPay.disabled = true;
+      if (btnTermik) btnTermik.disabled = true;
       try {
         const items = cartItemsForCheckout();
         const base = {
@@ -1315,7 +1496,7 @@
           recepcion_kasa: true,
         };
 
-        if (paperBlockActive) {
+        if (!thermal && paperBlockActive) {
           let serialNo = null;
           while (true) {
             const entered = window.prompt(
@@ -1354,23 +1535,47 @@
           msg.textContent =
             `Bllok letër · ${euro(res.total)} · serik ${p.serial_no || serialNo}` +
             (p.slip_text ? " · print u nis" : " · ruajtur lokalisht, dërgohet te ATK kur lidhet");
-        } else {
-          const res = await api("/api/recepcion/kasa/pay", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(base),
-          });
-          msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+          cart = [];
+          setPrimaryPay("cash");
+          document.getElementById("pay-received").value = "";
+          renderCart();
+          await loadShift();
+          await refreshPaperBlockKasaUi();
+          return;
         }
 
-        cart = [];
-        setPrimaryPay("cash");
-        document.getElementById("pay-received").value = "";
-        renderCart();
-        await loadShift();
-        await refreshPaperBlockKasaUi();
+        const res = await api("/api/recepcion/kasa/pay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...base, print_thermal: thermal }),
+        });
+
+        if (thermal) {
+          applyKasaThermalPrintResult(res, null);
+          msg.textContent = `Pagesa u krye · ${euro(res.total)} · ${res.receipt_number}`;
+          showKasaPostPayThermalModal({
+            result: res,
+            reprintBody: {
+              receipt_number: res.receipt_number,
+              total: res.total,
+              payment_method: res.payment_method,
+              items,
+            },
+          });
+        } else {
+          msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+          cart = [];
+          setPrimaryPay("cash");
+          document.getElementById("pay-received").value = "";
+          renderCart();
+          await loadShift();
+          await refreshPaperBlockKasaUi();
+        }
       } catch (e) {
         msg.textContent = e.message || "Gabim";
+      } finally {
+        if (btnPay) btnPay.disabled = false;
+        if (btnTermik) btnTermik.disabled = false;
       }
     }
 
@@ -1426,6 +1631,16 @@
     document.getElementById("pay-cash").onclick = () => { setPrimaryPay("cash"); paySale(); };
     document.getElementById("pay-card").onclick = () => { setPrimaryPay("credit_card"); paySale(); };
     document.getElementById("btn-paguaj").onclick = () => paySale();
+    document.getElementById("btn-kupon-termik").onclick = () => paySale({ thermal: true });
+    document.getElementById("kasa-btn-shtyp-kupon-termik")?.addEventListener("click", () => {
+      shtypKasaKuponTermikPasPagese();
+    });
+    document.getElementById("kasa-btn-post-pay-vazhdo")?.addEventListener("click", () => {
+      finalizeKasaPostPaySuccess();
+    });
+    document.getElementById("kasa-post-pay-thermal-backdrop")?.addEventListener("click", () => {
+      finalizeKasaPostPaySuccess();
+    });
     document.getElementById("btn-clear-cart").onclick = () => {
       cart = [];
       renderCart();

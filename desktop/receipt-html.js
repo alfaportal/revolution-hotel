@@ -58,7 +58,8 @@ function buildReceiptHtml({
     ? formatReceiptDateFromIso(closedAt)
     : formatReceiptDate();
   const f = fiscal || {};
-  const bizName = f.biz_name || restaurantName || "Hotel";
+  const { getUnifiedBusinessName } = require("./database");
+  const bizName = getUnifiedBusinessName();
   const nr = displayReceiptNumber(receiptNumber, receiptNumber, "final");
   const lines = (items || []).map(it =>
     `<div class="receipt-item"><span>${it.quantity}× ${it.name}</span><span>${formatEuro(it.price * it.quantity)}</span></div>`

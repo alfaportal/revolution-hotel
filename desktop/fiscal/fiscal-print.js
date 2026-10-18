@@ -1416,11 +1416,18 @@ function generateFiscalReceipt(orderData, fiscalData) {
   const isReturn = receiptType === "return";
   const isCancel = receiptType === "cancel" || receiptType === "storno";
 
+  let unifiedBiz = "";
+  try {
+    unifiedBiz = require("../database").getUnifiedBusinessName();
+  } catch {
+    unifiedBiz = "";
+  }
   const legalName =
     fiscal.taxpayer_legal_name ||
     fiscal.taxpayer_name ||
     order.taxpayer_legal_name ||
-    t("business_fallback");
+    unifiedBiz ||
+    "";
   const brandName =
     fiscal.taxpayer_trade_name ||
     fiscal.business_name ||

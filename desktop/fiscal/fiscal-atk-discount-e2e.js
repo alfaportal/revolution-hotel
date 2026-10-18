@@ -665,7 +665,13 @@ async function runAtkDiscountE2eTest(opts = {}) {
     operator_id: "E2E-DISC",
     taxpayer_nui: settings.taxpayer_nui || "",
     taxpayer_vat: settings.taxpayer_vat_number || null,
-    taxpayer_name: settings.taxpayer_legal_name || "Biznesi",
+    taxpayer_name: settings.taxpayer_legal_name || (() => {
+      try {
+        return require("../database").getUnifiedBusinessName();
+      } catch {
+        return "";
+      }
+    })(),
     taxpayer_address: settings.taxpayer_address || "",
     items_json: JSON.stringify(items),
     subtotal: round4(totals.netLines + totals.cartDiscount - totals.cartSurcharge),
