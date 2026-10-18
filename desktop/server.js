@@ -425,20 +425,9 @@ function sessionMayTalkToCloud(session) {
   return cloudStaffAccess.isCloudEnabledForSession(session);
 }
 
-/** Staf: përgjigje lokale (SQLite). Admin: vazhdon te cloud. */
-function rejectStaffCloud(req, res, localOnlyBody) {
-  if (sessionMayTalkToCloud(req.session)) return false;
-  if (localOnlyBody != null) {
-    res.json(localOnlyBody);
-    return true;
-  }
-  cloudStaffAccess.jsonStaffCloudDisabled(res);
-  return true;
-}
-
-/** Porosi online (PRANO/refuzo) — cloud outbound vetëm admin; stafi/recepsioni = SQLite. */
-function allowCloudOutboundForGuestOrderSession(session) {
-  return sessionMayTalkToCloud(session);
+/** Si KAFENE — nuk ka bllokim cloud sipas rolit (sync outbound/inbound i njëjtë). */
+function rejectStaffCloud(_req, _res, _localOnlyBody) {
+  return false;
 }
 
 const STAFF_LOCAL_EMPTY_ONLINE_ORDERS = {
@@ -749,39 +738,11 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
   const ackPin = cloudAckPinFromInput(pinTrim);
   const ackMeta = staffCloudAckMeta(staff);
 
-  const allowCloudOutbound = options.allowCloudOutbound === true;
-  let cloudResult = { ok: true, message: "", accepted_by: "", acknowledged: ids.length };
-  if (allowCloudOutbound) {
-    if (!ackPin && !ackMeta.waiterName) {
-      throw Object.assign(
-        new Error("Mungon identifikimi i kamarierit për cloud."),
-        { status: 400 },
-      );
-    }
-    try {
-      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
-    } catch (e) {
-      cloudResult = { ok: false, message: e.message || "", accepted_by: "", acknowledged: 0 };
-    }
-    const ackCount = Number(cloudResult.acknowledged) || 0;
-    if (!cloudResult.ok || ackCount < 1) {
-      throw Object.assign(
-        new Error(
-          cloudResult.message
-          || "Porosia nuk u shënua në cloud — provoni përsëri ose kontrolloni internetin.",
-        ),
-        { status: 400, cloud_ok: false },
-      );
-    }
-  }
-
   let slotLayout = [];
-  if (allowCloudOutbound) {
-    try {
-      slotLayout = await cloudSync.fetchOnlineSlotLayout(db, { unfiltered: true });
-    } catch {
-      /* offline */
-    }
+  try {
+    slotLayout = await cloudSync.fetchOnlineSlotLayout(db, { unfiltered: true });
+  } catch {
+    /* offline */
   }
   function onlineSlotForOrder(orderId) {
     const id = String(orderId || "").trim();
@@ -872,21 +833,50 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   if (tableImports.length) {
     await finalizeImportedCloudOrders(tableImports, waiterName);
-    const slipCloudIds = [];
-    for (let i = 0; i < ordersBefore.length; i++) {
-      const r = imported[i];
-      if (r?.ok && r.table_id && !r.room_menu && !r.guest_service && ordersBefore[i]?.id) {
-        slipCloudIds.push(String(ordersBefore[i].id));
-      }
-    }
-    if (slipCloudIds.length) onlineOrdersWatcher.markOrdersPrinted(db, slipCloudIds);
   }
 
-  onlineOrdersWatcher.persistAcknowledged(db, ids);
-  db.removePendingCloudOrders(ids);
+  if (success.length) {
+    const attachRows = [];
+    for (let i = 0; i < ordersBefore.length; i++) {
+      const r = imported[i];
+      const cloudOrder = ordersBefore[i];
+      if (!r?.ok || !r.order_id || !cloudOrder?.id) continue;
+      if (typeof db.isCloudQrTableOrder === "function" && !db.isCloudQrTableOrder(cloudOrder)) {
+        continue;
+      }
+      attachRows.push({
+        localOrderId: r.order_id,
+        cloudOrderId: cloudOrder.id,
+        cloudOrder,
+      });
+    }
+    const ackFromAttach = typeof db.rememberPosAcceptedQrCloudOrders === "function"
+      ? db.rememberPosAcceptedQrCloudOrders(attachRows)
+      : [];
+    const ackAll = [...new Set([...ids, ...ackFromAttach].map(id => String(id || "").trim()).filter(Boolean))];
+    onlineOrdersWatcher.persistAcknowledged(db, ackAll);
+    onlineOrdersWatcher.purgeRemoteHandledOrderIds(db, ackAll);
+    db.removePendingCloudOrders(ackAll);
+  }
+
+  onlineOrdersWatcher.markOrdersPrinted(db, ids);
   onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
 
-  if (allowCloudOutbound && tableImports.length) {
+  let cloudResult = { ok: false, message: "", accepted_by: "" };
+  if (ackPin || ackMeta.waiterName) {
+    try {
+      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
+    } catch (e) {
+      cloudResult = { ok: false, message: e.message || "", accepted_by: "" };
+    }
+    if (cloudResult.ok && !success.length) {
+      onlineOrdersWatcher.persistAcknowledged(db, ids);
+      db.removePendingCloudOrders(ids);
+      onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
+    }
+  }
+
+  if (tableImports.length) {
     for (let i = 0; i < ordersBefore.length; i++) {
       const r = imported[i];
       const cloudOrder = ordersBefore[i];
@@ -958,18 +948,16 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       created_at: cloudOrder.created_at || new Date().toISOString(),
       cloud_order_id: cloudOrder.id,
     };
-    if (allowCloudOutbound) {
-      try {
-        await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
-          cloudOrderId: cloudOrder.id,
-          cloudOrder,
-          waiterName,
-          waiterId: ackMeta.waiterId,
-          table_number: 0,
-        });
-      } catch (pushErr) {
-        console.warn("[accept] push QR dhomë → kuzhinë:", pushErr.message || pushErr);
-      }
+    try {
+      await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
+        cloudOrderId: cloudOrder.id,
+        cloudOrder,
+        waiterName,
+        waiterId: ackMeta.waiterId,
+        table_number: 0,
+      });
+    } catch (pushErr) {
+      console.warn("[accept] push QR dhomë → kuzhinë:", pushErr.message || pushErr);
     }
   }
 
@@ -1042,18 +1030,16 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     || (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(pendingLocal))
   );
 
-  const allowCloudOutbound = options.allowCloudOutbound === true;
-  let cloudResult = { ok: true, message: "", refused: 1, order_id: orderId, refused_by: staff?.name || "" };
+  let cloudResult = { ok: false, message: "", refused: 0, order_id: orderId };
   const ackPin = cloudAckPinFromInput(pinTrim);
   const ackMeta = staffCloudAckMeta(staff);
-  if (allowCloudOutbound) {
+  if (!isLocalGuestOrder) {
     try {
       cloudResult = await cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta);
     } catch (e) {
       cloudResult = { ok: false, message: e.message || "", refused: 0, order_id: orderId };
     }
-
-    if (!cloudResult.ok && !isLocalGuestOrder) {
+    if (!cloudResult.ok) {
       cloudSync.refuseOnlineOrder(db, orderId, ackPin, refuseReason, ackMeta).catch(() => {});
       throw Object.assign(
         new Error(cloudResult.message || "Nuk u refuzua porosia në cloud — provoni përsëri."),
@@ -1062,15 +1048,19 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
     }
   }
 
-  if (isLocalGuestOrder || !allowCloudOutbound) {
-    onlineOrdersWatcher.persistAcknowledged(db, ids);
-    db.removePendingCloudOrders(ids);
-    onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
-  }
-
-  if (cloudResult.ok) {
+  if (staff?.id && cloudResult.ok) {
     onlineOrdersWatcher.persistStaffRefusal(db, staff.id, orderId);
   }
+
+  for (const id of ids) {
+    const active = db.getActiveOrderByCloudId(id);
+    if (active?.table_id) {
+      db.cancelActiveOrder(active.table_id);
+    }
+  }
+  onlineOrdersWatcher.persistAcknowledged(db, ids);
+  db.removePendingCloudOrders(ids);
+  onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
 
   const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
   let freshSnapshot;
@@ -1105,18 +1095,14 @@ async function cancelPendingOnlineOrdersFlow(orderIds, options = {}) {
   db.removePendingCloudOrders(ids);
   onlineOrdersWatcher.markOrdersPrinted(db, ids);
 
-  const allowCloudOutbound = options.allowCloudOutbound === true;
-  let cloudResult = { ok: true, message: "", cancelled: ids.length, order_ids: ids };
-  if (allowCloudOutbound) {
-    try {
-      cloudResult = await cloudSync.cancelOnlineOrders(db, ids);
-    } catch (e) {
-      cloudResult = { ok: false, message: e.message || "", cancelled: 0, order_ids: [] };
-    }
-
-    if (!cloudResult.ok) {
-      cloudSync.cancelOnlineOrders(db, ids).catch(() => {});
-    }
+  let cloudResult = { ok: false, message: "", cancelled: 0, order_ids: [] };
+  try {
+    cloudResult = await cloudSync.cancelOnlineOrders(db, ids);
+  } catch (e) {
+    cloudResult = { ok: false, message: e.message || "", cancelled: 0, order_ids: [] };
+  }
+  if (!cloudResult.ok) {
+    cloudSync.cancelOnlineOrders(db, ids).catch(() => {});
   }
 
   onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
@@ -1161,24 +1147,36 @@ async function closeCloudLinkedSale(tableId, cloudOrderIds, opts = {}) {
         waiter_name: opts.waiter_name,
         waiter_id: staff?.cloud_waiter_id || staff?.id,
         items: opts.items,
-        fiscal_skip: opts.fiscal_skip,
-        coupon_type: opts.coupon_type,
       });
       closed += 1;
     } catch (err) {
       console.warn("[close] cloud online order:", orderId, err.message);
     }
   }
+  if (closed === 0 && opts.localOrder) {
+    try {
+      await cloudSync.pushSaleSync(db, opts.localOrder, {
+        table_number: 0,
+        receipt_number: opts.receipt_number || "",
+        closed_at: opts.closed_at || new Date().toISOString(),
+        status: "closed",
+        payment_method: opts.payment_method,
+      });
+      closed = 1;
+      console.log("[close] cloud online fallback: sales/sync closed");
+    } catch (err) {
+      console.warn("[close] cloud online fallback:", err.message);
+    }
+  }
   return { closed };
 }
 
-async function ensureCloudTableImportedForCheckout(dbRef, tableNumber, waiterName, session) {
-  if (session && !sessionMayTalkToCloud(session)) return null;
+async function ensureCloudTableImportedForCheckout(db, tableNumber, waiterName) {
   const t = Number(tableNumber);
   if (!t) return null;
   try {
     return await Promise.race([
-      cloudSync.ensureCloudTableImported(dbRef, t, waiterName),
+      cloudSync.ensureCloudTableImported(db, t, waiterName),
       new Promise(resolve => setTimeout(() => resolve(null), 3500)),
     ]);
   } catch {
@@ -1186,7 +1184,90 @@ async function ensureCloudTableImportedForCheckout(dbRef, tableNumber, waiterNam
   }
 }
 
-/** Cloud pas mbylljes lokale — mos blloko pagesën; lirim tavoline/slot sapo cloud mbyll. */
+/** Pajisje POS (jo WEB-*) që nuk është ky PC — porosia e saj i përket asaj arke. */
+function isOtherRegisterDevice(deviceId) {
+  const d = String(deviceId || "").trim().toUpperCase();
+  if (!d || d.startsWith("WEB-")) return false;
+  const own = String(license.getMachineId() || "").trim().toUpperCase();
+  return !!own && d !== own;
+}
+
+function otherRegisterLabel(order) {
+  const label = String(order?.source_label || "").trim();
+  return label && label !== "POS" ? label.replace(/^POS\s+/, "") : "arkë tjetër";
+}
+
+const HELD_TABLES_CACHE_MS = 5000;
+let heldTablesCloudCache = { at: 0, live: null };
+let heldTablesLanCache = { at: 0, occupied: null };
+
+async function fetchMasterRegisterOccupiedTables() {
+  if (Date.now() - heldTablesLanCache.at < HELD_TABLES_CACHE_MS) return heldTablesLanCache.occupied;
+  let occupied = null;
+  try {
+    const eapp = electronApp();
+    const m = /^arka(\d+)$/.exec(String(license.readTerminalRole(eapp) || "").trim().toLowerCase());
+    const lan = m && Number(m[1]) >= 2 ? license.readTerminalLan(eapp) : null;
+    const host = String(lan?.host || "").trim();
+    const celesi = storedLicenseKeyForCloud();
+    if (host && celesi) {
+      const cloudHealth = require("./cloud-health");
+      const r = await cloudHealth.requestJsonOnce(
+        "GET",
+        `http://${host}:${Number(lan.port) || 3000}`,
+        "/api/terminal/tables",
+        null,
+        2500,
+        { "x-license-key": celesi },
+      );
+      let parsed = r?.data;
+      if (typeof parsed === "string") {
+        try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+      }
+      if (r?.status < 400 && parsed?.ok && Array.isArray(parsed.occupied)) {
+        occupied = new Set(parsed.occupied.map(Number));
+      }
+    }
+  } catch (e) {
+    console.warn("[table-lock] Arka 1 (LAN):", e.message);
+  }
+  heldTablesLanCache = { at: Date.now(), occupied };
+  return occupied;
+}
+
+/**
+ * Tavolina e hapur në arkë tjetër POS → { label } ; ndryshe null.
+ * Cloud së pari; pa cloud, Arka 2+ pyet Arka 1 me LAN; pa asnjë → lejo (null).
+ */
+async function findTableHeldByOtherRegister(tableNumber) {
+  const num = Number(tableNumber) || 0;
+  if (!num) return null;
+  const cloudTtl = heldTablesCloudCache.live ? HELD_TABLES_CACHE_MS : HELD_TABLES_CACHE_MS * 4;
+  if (Date.now() - heldTablesCloudCache.at >= cloudTtl) {
+    let live = null;
+    try {
+      live = await cloudSync.fetchLiveCloudTables(db);
+    } catch {
+      live = null;
+    }
+    heldTablesCloudCache = { at: Date.now(), live };
+  }
+  const live = heldTablesCloudCache.live;
+  if (live && Array.isArray(live.tables)) {
+    const t = live.tables.find((x) => Number(x.number) === num && x.status === "occupied");
+    if (t?.order && isOtherRegisterDevice(t.order.device_id)) return { label: otherRegisterLabel(t.order) };
+    return null;
+  }
+  const lanOccupied = await fetchMasterRegisterOccupiedTables();
+  if (lanOccupied && lanOccupied.has(num)) return { label: "Kryesore" };
+  return null;
+}
+
+function heldTableMessage(tableNumber, held) {
+  return `Tavolina ${tableNumber} është e hapur në ${held.label} — vetëm ajo arkë mund ta përdorë dhe ta paguajë.`;
+}
+
+/** Cloud pas mbylljes lokale — mos blloko pagesën (deri 12s+ cloud sync). Si KAFENE. */
 function scheduleCloudAfterTableClose(db, {
   tableId,
   order,
@@ -1197,33 +1278,23 @@ function scheduleCloudAfterTableClose(db, {
   mirrorsCloud,
   cloudOrderIds,
   logTag = "close",
-  cloudFiscalOpts = {},
-  skipCloud = false,
 } = {}) {
-  if (skipCloud) return;
   void (async () => {
     const ids = [...new Set((cloudOrderIds || []).map(id => String(id || "").trim()).filter(Boolean))];
     try {
       if (mirrorsCloud || ids.length) {
-        let closeRes = { closed: 0 };
         try {
-          closeRes = await closeCloudLinkedSale(tableId, ids, {
+          await closeCloudLinkedSale(tableId, ids, {
             items: closeItems,
             total: order?.total,
             payment_method: order?.payment_method,
             receipt_number: receipt?.receipt_number,
             waiter_name: waiterName,
             closed_at: receipt?.printed_at || new Date().toISOString(),
-            ...cloudFiscalOpts,
-          }) || closeRes;
+            localOrder: order,
+          });
         } finally {
           purgeClosedCloudOrdersFromWatcher(ids);
-        }
-        if (table?.number && typeof db.isPhysicalVenueTable === "function") {
-          const tRow = db.db.prepare("SELECT * FROM tables WHERE id = ?").get(Number(tableId));
-          if (tRow && db.isPhysicalVenueTable(tRow)) {
-            await cloudSync.pushTableFree(db, table.number);
-          }
         }
       } else if (order) {
         const syncRes = await cloudSync.pushSaleSync(db, order, {
@@ -1233,11 +1304,10 @@ function scheduleCloudAfterTableClose(db, {
           status: "closed",
           payment_method: order.payment_method,
           timeoutMs: cloudSync.CLOUD_CLOSE_PUSH_TIMEOUT_MS,
-          ...cloudFiscalOpts,
         });
         const st = String(syncRes?.sale_status || "").toLowerCase();
         if (syncRes?.ok && table?.number && (st === "closed" || st === "cancelled")) {
-          await cloudSync.pushTableFree(db, table.number);
+          cloudSync.pushTableFree(db, table.number);
         }
       }
     } catch (err) {
@@ -3177,14 +3247,19 @@ app.get("/api/login/online-orders", async (_req, res) => {
     } catch {
       snap = onlineOrdersWatcher.getOnlineOrdersSnapshot();
     }
-    let data;
+    let data = cloudSync.buildLoginNotifyFromOrders(db, snap.orders || [], snap);
     if (typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
-      data = await cloudSync.fetchLoginOrderNotify(db);
-      if (!data.orders?.length && !(data.bar_orders || []).length && (snap.orders || []).length) {
-        data = cloudSync.buildLoginNotifyFromOrders(db, snap.orders || [], snap);
+      try {
+        const cloud = await cloudSync.fetchLoginOrderNotify(db);
+        data.connected = !!cloud.connected;
+        const snapTotal = (data.pending || 0) + (data.bar_pending || 0);
+        const cloudTotal = (cloud.pending || 0) + (cloud.bar_pending || 0);
+        if (snapTotal <= 0 && cloudTotal > 0) {
+          data = cloud;
+        }
+      } catch {
+        /* mbet snap lokale */
       }
-    } else {
-      data = cloudSync.buildLoginNotifyFromOrders(db, snap.orders || [], snap);
     }
     res.json({
       ok: data.ok !== false,
@@ -3220,7 +3295,9 @@ app.post("/api/login/online-orders/acknowledge", async (req, res) => {
     }
 
     const fallbackOrders = Array.isArray(req.body?.orders) ? req.body.orders : [];
-    const flow = await acceptOnlineOrdersFlow(ids, req.body?.pin || req.body?.waiter_pin, { fallbackOrders });
+    const flow = await acceptOnlineOrdersFlow(ids, req.body?.pin || req.body?.waiter_pin, {
+      fallbackOrders,
+    });
     const snapshot = flow.snapshot || {};
 
     res.json({
@@ -3507,7 +3584,13 @@ app.get("/api/waiter/cloud-tables", auth, waiterOnly, async (req, res) => {
   if (rejectStaffCloud(req, res, { ok: true, tables: [], updated_at: null, local_only: true })) return;
   try {
     const live = await cloudSync.fetchLiveCloudTables(db);
-    res.json({ ok: true, tables: live?.tables || [], updated_at: live?.updated_at || null });
+    if (live) heldTablesCloudCache = { at: Date.now(), live };
+    const tables = (live?.tables || []).map((t) => (
+      t?.order && t.status === "occupied" && isOtherRegisterDevice(t.order.device_id)
+        ? { ...t, held_by_other_register: true, held_by_label: otherRegisterLabel(t.order) }
+        : t
+    ));
+    res.json({ ok: true, tables, updated_at: live?.updated_at || null });
   } catch (e) {
     res.json({ ok: false, tables: [], gabim: e.message });
   }
@@ -3553,13 +3636,18 @@ app.post("/api/waiter/cloud-table/dismiss", auth, waiterOnly, async (req, res) =
       tableNum = Number(row?.number) || 0;
     }
     if (!tableNum) return res.status(400).json({ ok: false, gabim: "Mungon tavolina." });
-    const tableRow = db.getTableByNumber?.(tableNum) || db.db.prepare("SELECT id FROM tables WHERE id = ?").get(tableId);
+    const tableRow = db.getTableByNumber?.(tableNum) || db.db.prepare("SELECT id FROM tables WHERE number = ?").get(tableNum);
     const tid = Number(tableRow?.id || tableId);
     if (tid && db.getActiveOrderForTable(tid)) {
       return res.status(400).json({
         ok: false,
         gabim: "Ka porosi lokale — përdorni Anulo ose mbyllni tavolinën.",
       });
+    }
+    heldTablesCloudCache = { at: 0, live: null };
+    const held = await findTableHeldByOtherRegister(tableNum);
+    if (held) {
+      return res.status(409).json({ ok: false, held_by_other_register: true, gabim: heldTableMessage(tableNum, held) });
     }
     const result = await cloudSync.clearStuckCloudTableOrder(db, tableNum);
     if (result.still_occupied_in_cloud && !result.cloud_cancelled) {
@@ -3769,19 +3857,10 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) 
     .filter(Boolean);
   ids.forEach((id) => _seenReadyOrderIds.add(id));
   persistWaiterReadyDismissedIds(_seenReadyOrderIds);
-  const cloudIds = ids.filter((id) => CLOUD_ORDER_UUID_RE.test(id));
-  try {
-    if (cloudSync.isCloudConfigured(db) && cloudIds.length) {
-      await cloudSync.acknowledgeReadyOrdersPicked(db, cloudIds);
-    }
-  } catch (err) {
-    console.warn("[ready-dismiss] cloud ack:", err?.message || err);
-  }
-  res.json({ ok: true, dismissed: ids.length, local_only: ids.length - cloudIds.length });
+  res.json({ ok: true, dismissed: ids.length });
 });
 
 app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req, res) => {
-  const allowCloud = sessionMayTalkToCloud(req.session);
   try {
     ensureOnlineOrdersWatcher();
     const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
@@ -3791,49 +3870,17 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
     } catch {
       data = onlineOrdersWatcher.getOnlineOrdersSnapshot();
     }
-    const isAcceptPending = (o) => o?.id && (
-      db.isAnyStaffAcceptPendingOrder(o) || db.isCloudOnlinePickupOrder(o)
+    let orders = filterWaiterPosPendingOrders(
+      [...(data.orders || []), ...(db.listPendingCloudOrders() || [])],
+      req.session?.emri,
     );
-    const isStillPendingForPos = (o) => {
-      if (!isAcceptPending(o)) return false;
-      const id = String(o?.id || "").trim();
-      if (id && typeof onlineOrdersWatcher.isLocallyAcked === "function"
-        && onlineOrdersWatcher.isLocallyAcked(db, id)) {
-        return false;
-      }
-      return !cloudSync.isCloudOrderAccepted(o);
-    };
-    let orders = (data.orders || []).filter(isStillPendingForPos);
-    if (!orders.length && !data.connected) {
-      orders = (db.listPendingCloudOrders() || []).filter(isStillPendingForPos);
-    }
-    if (!orders.length && data.connected && typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
-      try {
-        const cloud = await cloudSync.fetchOnlineOrders(db);
-        // Vetëm "orders" (ende në pritje sipas cloud) — kurrë "all_orders", pasi ai
-        // përfshin edhe porositë e pranuara/mbyllura dhe do t'i "ringjallte" te paneli.
-        const pool = cloud.orders || [];
-        orders = pool.filter(isStillPendingForPos);
-        if (orders.length) {
-          data = { ...data, connected: !!cloud.connected, has_new: true };
-        }
-      } catch { /* offline */ }
-    }
     orders = orders.map(o => db.enrichCloudOrderForWaiter(o));
-    orders = orders.filter((o) => {
-      const id = String(o?.id || "").trim();
-      if (!id) return false;
-      const localActive = typeof db.getActiveOrderByCloudId === "function"
-        ? db.getActiveOrderByCloudId(id)
-        : null;
-      return !localActive;
-    });
+    orders = filterOnlineOrdersForStaffRole(orders, req.session);
     const layoutChanged = db.ensureTablesForPendingCloudOrders(orders);
     const staffId = resolveWaiterStaffId(req.session);
     if (staffId) {
       orders = orders.filter(o => !onlineOrdersWatcher.isStaffRefusedOrder(db, staffId, o.id));
     }
-    orders = filterOnlineOrdersForStaffRole(orders, req.session);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const hasPending = orders.length > 0;
     let public_booking_requests = [];
@@ -3845,7 +3892,7 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
       connected: !!data.connected,
       pending: orders.length,
       has_pending: hasPending,
-      has_new: hasPending,
+      has_new: hasPending && !!data.has_new,
       orders,
       my_external: myOrders.length,
       my_orders: myOrders,
@@ -3942,16 +3989,13 @@ app.post("/api/waiter/online-orders/close", auth, waiterOnly, async (req, res) =
     if (!orderId) return res.status(400).json({ ok: false, gabim: "Mungon order_id." });
     const items = db.parseOrderItems(req.body?.items || []);
     const staff = db.findStaffByName?.(req.session.emri) || null;
-    let cloud = { ok: true, local_only: true };
-    if (sessionMayTalkToCloud(req.session)) {
-      cloud = await cloudSync.closeCloudOnlineOrderById(db, {
-        order_id: orderId,
-        payment_method: req.body?.payment_method || "cash",
-        waiter_name: req.session.emri,
-        waiter_id: staff?.cloud_waiter_id || staff?.id,
-        items,
-      });
-    }
+    const cloud = await cloudSync.closeCloudOnlineOrderById(db, {
+      order_id: orderId,
+      payment_method: req.body?.payment_method || "cash",
+      waiter_name: req.session.emri,
+      waiter_id: staff?.cloud_waiter_id || staff?.id,
+      items,
+    });
     const active = db.getActiveOrderByCloudId(orderId);
     if (active) {
       try {
@@ -3997,7 +4041,6 @@ app.post("/api/waiter/online-orders/accept", auth, waiterOrRecepsion, async (req
         fallbackOrders,
         trustedStaff,
         sessionRole: req.session.role,
-        allowCloudOutbound: allowCloudOutboundForGuestOrderSession(req.session),
       },
     );
     if (acceptNote) {
@@ -4051,9 +4094,13 @@ app.post("/api/waiter/online-orders/resync-cloud", auth, waiterOnly, async (req,
       } catch {
         /* minimal payload */
       }
-      const r = await cloudSync.pushOnlinePickupAcceptToCloud(db, order, cloudOrder, who);
-      if (r.ok) pushed += 1;
-      else failed.push({ cloud_id: cloudId, error: r.message || "push dështoi" });
+      const r = await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, cloudOrder, {
+        waiterName: who.waiterName,
+        waiterId: who.waiterId,
+        localOrder: order,
+      });
+      if (r?.ok) pushed += 1;
+      else failed.push({ cloud_id: cloudId, error: r?.message || "push dështoi" });
     }
     res.json({ ok: true, pushed, failed, total: db.listActiveOnlineOrders().length });
   } catch (e) {
@@ -4085,7 +4132,6 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
       pin,
       trustedStaff,
       reason,
-      allowCloudOutbound: allowCloudOutboundForGuestOrderSession(req.session),
     });
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const visibleOrders = filterOnlineOrdersForStaffRole(flow.snapshot?.orders || [], req.session);
@@ -4364,7 +4410,6 @@ app.post("/api/waiter/online-orders/cancel", auth, waiterOnly, async (req, res) 
       }
     }
     const flow = await cancelPendingOnlineOrdersFlow(ids, {
-      allowCloudOutbound: sessionMayTalkToCloud(req.session),
     });
     const staffId = resolveWaiterStaffId(req.session);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
@@ -4412,6 +4457,36 @@ app.get("/api/waiter/active-register-mode", auth, (req, res) => {
 
 function filterQrOrdersForWaiterName(orders, waiterName) {
   return (orders || []).filter(o => db.qrOrderAccessForWaiter(o, waiterName).allowed);
+}
+
+function isWaiterPosOrderStillPending(o) {
+  if (!o?.id) return false;
+  const isAcceptPending = db.isCloudPosAcceptQueueOrder(o) || db.isCloudOnlinePickupOrder(o);
+  if (!isAcceptPending) return false;
+  if (
+    typeof db.isCloudQrTableOrder === "function"
+    && db.isCloudQrTableOrder(o)
+    && typeof db.isQrCloudOrderResolvedForPos === "function"
+  ) {
+    return !db.isQrCloudOrderResolvedForPos(o);
+  }
+  const id = String(o.id || "").trim();
+  if (db.isCloudOrderLocallyDismissed(id)) return false;
+  if (db.isCloudOrderHandledLocally(id)) return false;
+  return !cloudSync.isCloudOrderAccepted(o, db);
+}
+
+function filterWaiterPosPendingOrders(orders, waiterName) {
+  const seen = new Set();
+  const out = [];
+  for (const o of orders || []) {
+    const id = String(o?.id || "").trim();
+    if (!id || seen.has(id)) continue;
+    if (!isWaiterPosOrderStillPending(o)) continue;
+    seen.add(id);
+    out.push(o);
+  }
+  return filterQrOrdersForWaiterName(out, waiterName);
 }
 
 function filterOnlineOrdersForStaffRole(orders, session) {
@@ -4711,14 +4786,10 @@ app.get("/api/tables", auth, (req, res) => {
   try {
     const withReservations = req.session.role === "kamarier" || req.query.reservations === "1";
     if (req.session.role === "kamarier" && req.query.layout === "1") {
-      try {
-        const now = Date.now();
-        if (now - (global.__hotelLastTableReconcileMs || 0) >= 3000) {
-          global.__hotelLastTableReconcileMs = now;
-          cloudSync.reconcileAllTablesWithCloud(db);
-        }
-      } catch (err) {
-        console.warn("reconcileAllTablesWithCloud:", err.message);
+      const now = Date.now();
+      if (now - (global.__kafeneLastTableReconcileMs || 0) >= 3000) {
+        global.__kafeneLastTableReconcileMs = now;
+        cloudSync.reconcileAllTablesWithCloud(db);
       }
     }
 
@@ -6015,7 +6086,6 @@ app.post("/api/waiter/charge-to-room", auth, waiterOnly, async (req, res) => {
       mirrorsCloud,
       cloudOrderIds: cloudIds3,
       logTag: "charge-to-room",
-      skipCloud: !sessionMayTalkToCloud(req.session),
     });
 
     auditReq(
@@ -6067,6 +6137,13 @@ app.post("/api/orders", auth, async (req, res) => {
   }
   try {
     const existing = db.getActiveOrderForTable(table_id);
+    if (!existing) {
+      const tRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(Number(table_id));
+      const held = await findTableHeldByOtherRegister(tRow?.number);
+      if (held) {
+        return res.status(409).json({ gabim: heldTableMessage(tRow.number, held), held_by_other_register: true });
+      }
+    }
     // Throttle backend: nëse artikujt janë identikë me ekzistuesin dhe u dërguan brenda 10s, kthe direkt
     if (existing) {
       const age = Date.now() - new Date(existing.updated_at || existing.created_at).getTime();
@@ -6076,6 +6153,11 @@ app.post("/api/orders", auth, async (req, res) => {
           const incomingKey = JSON.stringify([...items].sort((a,b)=>String(a.id||a.name).localeCompare(String(b.id||b.name))));
           const existingKey = JSON.stringify([...existingItems].sort((a,b)=>String(a.id||a.name).localeCompare(String(b.id||b.name))));
           if (incomingKey === existingKey) {
+            const tSkip = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(Number(table_id));
+            cloudSync.pushWaiterOrderToCloudBackground(db, existing, {
+              table_number: tSkip?.number || 0,
+              ordered_at: existing.updated_at || existing.created_at,
+            });
             return res.json({ ok: true, id: existing.id, skipped: true });
           }
         } catch { /* ignore parse errors */ }
@@ -6201,8 +6283,6 @@ app.post("/api/orders/close", auth, async (req, res) => {
         mirrorsCloud,
         cloudOrderIds: cloudIdsClose,
         logTag: "orders/close",
-        cloudFiscalOpts,
-        skipCloud: !sessionMayTalkToCloud(req.session),
       });
     }
 
@@ -6217,7 +6297,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
   }
 });
 
-app.post("/api/orders/cancel", auth, (req, res) => {
+app.post("/api/orders/cancel", auth, async (req, res) => {
   const tableId = Number(req.body.table_id);
   if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
   try {
@@ -6231,14 +6311,19 @@ app.post("/api/orders/cancel", auth, (req, res) => {
     const cloudIds2 = db.getLinkedCloudOrderIds(order.id);
     cloudSync.pushTableCancelled(db, tableId);
     db.cancelActiveOrder(tableId);
-    if (t?.number) cloudSync.pushTableFree(db, t.number);
-    if (cloudIds2.length) cloudSync.cancelOnlineOrders(db, cloudIds2).catch(() => {});
+    let cloud = null;
+    if (t?.number) {
+      cloud = await cloudSync.clearStuckCloudTableOrder(db, t.number, {
+        cloud_order_ids: cloudIds2,
+      });
+    }
+    if (cloudIds2.length) purgeClosedCloudOrdersFromWatcher(cloudIds2);
     emitLocalStaffEvent("table-update", {
       table_id: tableId,
       table_number: t?.number,
       action: "cancelled",
     });
-    res.json({ ok: true, message: "Porosia u anullua" });
+    res.json({ ok: true, message: "Porosia u anullua", cloud });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -6415,8 +6500,6 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       mirrorsCloud,
       cloudOrderIds: cloudIds3,
       logTag: "close-and-print",
-      cloudFiscalOpts,
-      skipCloud: !sessionMayTalkToCloud(req.session),
     });
 
     checkout.markClosed();
@@ -6627,8 +6710,6 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
         mirrorsCloud,
         cloudOrderIds: cloudIds4,
         logTag: "split-close",
-        cloudFiscalOpts,
-        skipCloud: !sessionMayTalkToCloud(req.session),
       });
     }
 

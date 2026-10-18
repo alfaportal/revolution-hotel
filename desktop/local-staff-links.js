@@ -205,7 +205,7 @@ function startStaffLocalLinksLanWatcher(db) {
 
       lanStaffLinksPushInFlight = true;
       cloudSync
-        .pushStaffLocalLinksAsync(db, { payload, fingerprint: fp })
+        .syncCatalogToCloud(db)
         .catch((err) => {
           console.warn("[lan-staff-links] cloud push:", err?.message || err);
         })
@@ -233,7 +233,7 @@ function runStaffLocalLinksLanWatchNow(db) {
     const prev = readStoredStaffLocalLinksFingerprint(db);
     if (fp === prev) return;
     cloudSync
-      .pushStaffLocalLinksAsync(db, { payload, fingerprint: fp })
+      .syncCatalogToCloud(db)
       .catch((err) => {
         console.warn("[lan-staff-links] cloud push:", err?.message || err);
       });

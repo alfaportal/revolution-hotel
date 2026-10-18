@@ -16,7 +16,7 @@ const license = require("./license");
 const cloudStaffAccess = require("./cloud-staff-access");
 
 function staffCloudAutoJobsPaused() {
-  return cloudStaffAccess.isStaffCloudFeaturesDisabled();
+  return false;
 }
 
 const CONNECTION_CHECK_MS = 5 * 60 * 1000;
@@ -294,12 +294,12 @@ async function runOwnerReportSyncJob(db) {
 }
 
 function runAllSideSyncJobs(db) {
-  runOwnerAdminPasswordSync(db).catch(() => {});
-  runOwnerReportSyncJob(db).catch(() => {});
   runClosedWaiterSalesSync(db).catch(() => {});
+  runOwnerAdminPasswordSync(db).catch(() => {});
   if (staffCloudAutoJobsPaused()) return;
   runStaffPushSync(db).catch(() => {});
   runRegisterModeSync(db).catch(() => {});
+  runOwnerReportSyncJob(db).catch(() => {});
 }
 
 function startPeriodicJob(db, fn, intervalMs) {

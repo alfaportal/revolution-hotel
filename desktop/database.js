@@ -7331,21 +7331,11 @@ function getActiveOrderByCloudId(cloudOrderId) {
 }
 
 function isCloudOrderHandledLocally(cloudOrderId) {
-  const cid = String(cloudOrderId || "").trim();
-  if (!cid) return false;
-  const prior = getOrderByCloudId(cid);
-  if (prior) {
-    const st = String(prior.status || "").toLowerCase();
-    // active = në punë; completed/cancelled = tashmë mbyllur/anuluar lokalisht — mos ri-importo nga cloud
-    if (st === "active" || st === "completed" || st === "cancelled") return true;
-  }
-  // WEB-WAITER i bashkuar në POS order — cloud_order_id nuk vendoset në orders,
-  // por linkCloudOrderId e ruan. Mos ri-importo (do dyfishonte artikujt).
-  try {
-    const links = JSON.parse(getSetting("cloud_order_id_links", "{}"));
-    if (links[cid]) return true;
-  } catch { /* ignore */ }
-  return false;
+  const prior = getOrderByCloudId(cloudOrderId);
+  if (!prior) return false;
+  const st = String(prior.status || "").toLowerCase();
+  // active = në punë; completed/cancelled = tashmë mbyllur/anuluar lokalisht — mos ri-importo nga cloud
+  return st === "active" || st === "completed" || st === "cancelled";
 }
 
 // Merr të gjitha cloud order ID-të të lidhura me një porosi lokale (direkt + nga links)
@@ -7379,19 +7369,41 @@ function linkCloudOrderId(localOrderId, cloudOrderId) {
   setSetting("cloud_order_id_links", JSON.stringify(Object.fromEntries(entries)));
 }
 
+/** Pas PRANO QR — lidh cloud ID, shëno si të pranuar lokalisht (njoftimi fiket para pagesës). */
+function rememberPosAcceptedQrCloudOrders(entries) {
+  const ackIds = [];
+  for (const row of entries || []) {
+    const cloudOrder = row?.cloudOrder;
+    if (cloudOrder && !isCloudQrTableOrder(cloudOrder)) continue;
+    const cid = String(row?.cloudOrderId || cloudOrder?.id || "").trim();
+    const lid = Number(row?.localOrderId);
+    if (!cid || !lid) continue;
+    linkCloudOrderId(lid, cid);
+    try {
+      sqlite.prepare(`
+        UPDATE orders SET cloud_order_id = COALESCE(NULLIF(TRIM(cloud_order_id), ''), ?)
+        WHERE id = ?
+      `).run(cid, lid);
+    } catch {
+      /* ignore */
+    }
+    ackIds.push(cid);
+  }
+  if (!ackIds.length) return [];
+  const cur = loadDismissedCloudOrderIds();
+  for (const id of ackIds) cur.add(id);
+  setSetting("online_orders_local_ack_ids", JSON.stringify([...cur].slice(-400)));
+  return ackIds;
+}
+
 const CLOUD_STAFF_PUSH_KEYS = "cloud_staff_sale_push_keys";
 
-/**
- * Si KAFENE: ruaj local_order_id + device_id të rreshtit cloud (kamarier nga telefoni, takeaway),
- * që çdo përditësim/mbyllje nga PC të shkojë te I NJËJTI rresht — jo rresht i dytë «POS»
- * (ai rresht i dytë dyfishonte artikujt në telefon dhe në faturë).
- */
+/** Ruaj local_order_id + device_id cloud që POS të mbyllë/përditësojë të njëjtin rresht (telefon, takeaway). */
 function rememberStaffWaiterCloudPushKey(cloudOrder) {
   if (!isCloudStaffWaiterOrder(cloudOrder) && !isCloudOnlinePickupOrder(cloudOrder)) return;
   const cloudId = String(cloudOrder?.id || "").trim();
-  // Vetëm me çelësin e vërtetë të rreshtit cloud — pa hamendësim (përndryshe krijohet rresht i ri).
-  const localOrderId = String(cloudOrder?.local_order_id || "").trim();
-  if (!cloudId || !localOrderId || !String(cloudOrder?.device_id || "").trim()) return;
+  const localOrderId = String(cloudOrder?.local_order_id || cloudOrder?.id || "").trim();
+  if (!cloudId || !localOrderId) return;
   let map = {};
   try {
     map = JSON.parse(getSetting(CLOUD_STAFF_PUSH_KEYS, "{}"));
@@ -7414,6 +7426,12 @@ function loadDismissedCloudOrderIds() {
   } catch {
     return new Set();
   }
+}
+
+function isCloudOrderLocallyDismissed(cloudOrderId) {
+  const id = String(cloudOrderId || "").trim();
+  if (!id) return false;
+  return loadDismissedCloudOrderIds().has(id);
 }
 
 function upsertPendingCloudOrders(orders) {
@@ -8352,13 +8370,38 @@ function isQrTableOrderSubjectToAcceptGate(cloudOrder) {
 }
 
 function isCloudOrderAcceptedForImport(cloudOrder) {
+  if (isQrTableOrderSubjectToAcceptGate(cloudOrder)) {
+    const handler = String(
+      cloudOrder?.accepted_by_waiter_name || cloudOrder?.accepted_by || "",
+    ).trim();
+    return !!(handler && isLocalWaiterStaffName(handler));
+  }
   const at = cloudOrder?.accepted_at;
   if (at != null && String(at).trim() !== "") return true;
   if (String(cloudOrder?.accepted_by_waiter_name || "").trim()) return true;
-  if (isQrTableOrderSubjectToAcceptGate(cloudOrder)) return false;
   const handler = String(cloudOrder?.accepted_by || "").trim();
   const customer = String(cloudOrder?.customer_label || "").trim();
   return !!(handler && handler !== customer);
+}
+
+/** QR tavolinë — mos e shfaq si «në pritje» në POS pas pranimit/importit lokale. */
+function isQrCloudOrderResolvedForPos(cloudOrder) {
+  if (!isCloudQrTableOrder(cloudOrder)) return false;
+  const id = String(cloudOrder?.id || "").trim();
+  if (!id) return true;
+  if (isCloudOrderLocallyDismissed(id)) return true;
+  if (isCloudOrderHandledLocally(id)) return true;
+  if (isCloudOrderAcceptedForImport(cloudOrder)) return true;
+  const tn = parseQrTableNumberFromCloudOrder(cloudOrder);
+  if (tn <= 0) return false;
+  const table = getTableByNumber(tn);
+  if (!table) return false;
+  const active = getActiveOrderForTable(table.id);
+  if (!active) return false;
+  const linked = getLinkedCloudOrderIds(active.id);
+  if (linked.includes(id)) return true;
+  if (String(active.cloud_order_id || "").trim() === id) return true;
+  return false;
 }
 
 /** Porosi shërbimesh hoteli nga QR i dhomës — stafi pranon si takeaway. */
@@ -16340,7 +16383,10 @@ function getVersionInfo() {
     getOrderByCloudId,
     getActiveOrderByCloudId,
     isCloudOrderHandledLocally,
+    isCloudOrderLocallyDismissed,
     getLinkedCloudOrderIds,
+    linkCloudOrderId,
+    rememberPosAcceptedQrCloudOrders,
     upsertPendingCloudOrders,
     listPendingCloudOrders,
     listPendingCloudOrderFirstSeen,
@@ -16360,6 +16406,7 @@ function getVersionInfo() {
     importCloudOrderToLocal,
     parseTableNumberFromCloudOrder,
     isCloudQrTableOrder,
+    isQrCloudOrderResolvedForPos,
     isCloudPosAcceptQueueOrder,
     isAnyStaffAcceptPendingOrder,
     isRecepcionAcceptPendingOrder,

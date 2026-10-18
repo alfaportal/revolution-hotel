@@ -1,14 +1,18 @@
 /**
- * Çaktivizim cloud për stafin — vetëm admin/pronar mbetet aktiv.
- * Kodi cloud mbetet; riaktivizo duke vendosur STAFF_CLOUD_FEATURES_DISABLED = false
- * ose duke shtuar role te CLOUD_ENABLED_SESSION_ROLES.
+ * NJË program — jo «dy programe».
+ * Burimi i punës: SQLite në PC (kamarier/recepsion). Pasqyrë e njëjtë: cloud (pronari, zilja, KDS).
+ * Outbound sync: i njëjti si KAFENE (cloud-sync.js) — pa bllokim nga ky skedar.
+ *
+ * Këtu fiket vetëm POLL/UI inbound te stafi (mos e ngarko ekranin me cloud).
+ * PRANO, artikuj, pagesë, tavolina, PMS — gjithmonë outbound kur ka licencë.
  */
-/** Vetëm këto role flasin me cloud — stafi tjetër vetëm POS lokal (/api → SQLite). */
+/** Role që mund të lexojë cloud nga UI (poll). Të tjerët punojnë POS — sync vazhdon në background. */
 const CLOUD_ENABLED_SESSION_ROLES = new Set(["admin"]);
 const CLOUD_ROLES = CLOUD_ENABLED_SESSION_ROLES;
 
 /** Kill-switch global — stafi nuk sheh dhe nuk thërret cloud. */
-const STAFF_CLOUD_FEATURES_DISABLED = true;
+/** Si KAFENE — pa kill-switch global; stafi + admin përdorin të njëjtin rrjedhë cloud. */
+const STAFF_CLOUD_FEATURES_DISABLED = false;
 
 function isStaffCloudFeaturesDisabled() {
   return STAFF_CLOUD_FEATURES_DISABLED;
@@ -30,10 +34,17 @@ function jsonStaffCloudDisabled(res, extra = {}) {
   });
 }
 
-/** Push-e në background (PMS) — vetëm nga veprime admin kur stafi është off. */
-function allowBackgroundCloudPush(reason) {
-  if (!STAFF_CLOUD_FEATURES_DISABLED) return true;
-  return String(reason || "").trim().toLowerCase().startsWith("admin-");
+/** PMS / housekeeping / rezervime — i njëjti urë POS↔cloud si porositë. */
+function allowBackgroundCloudPush(_reason) {
+  return allowPosOutboundSalesSync();
+}
+
+/**
+ * POS → cloud për porosi/tavolina (pronari telefon, KDS).
+ * Kill-switch stafi fshin vetëm poll/UI inbound — nuk ndalon sync outbound.
+ */
+function allowPosOutboundSalesSync() {
+  return true;
 }
 
 module.exports = {
@@ -44,4 +55,5 @@ module.exports = {
   isCloudEnabledForSession,
   jsonStaffCloudDisabled,
   allowBackgroundCloudPush,
+  allowPosOutboundSalesSync,
 };

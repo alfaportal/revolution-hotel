@@ -252,27 +252,14 @@ function purgeCloudResolvedOrders(db, orderIds) {
 function normalizePendingOrder(o) {
   if (!o?.id) return null;
   let items = o.items;
-  if (items && typeof items === "object" && !Array.isArray(items) && Array.isArray(items.items)) {
-    items = items.items;
-  }
-  if (!Array.isArray(items) || !items.length) {
-    if (o.items_json != null) {
-      try {
-        const parsed = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
-        if (Array.isArray(parsed)) items = parsed;
-        else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
-          items = parsed.items;
-        } else {
-          items = [];
-        }
-      } catch {
-        items = [];
-      }
-    } else {
+  if (!items?.length && o.items_json) {
+    try {
+      items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+    } catch {
       items = [];
     }
   }
-  return { ...o, items: Array.isArray(items) ? items : [] };
+  return { ...o, items: items || [] };
 }
 
 function orderSortKey(o) {
@@ -364,13 +351,12 @@ function savePrintedIds(db) {
 async function printOrderSlipAfterImport(db, printBarTicket, cloudOrder, importResult, waiterName) {
   if (typeof printBarTicket !== "function") return;
   if (!importResult?.ok || importResult.closed || importResult.cancelled) return;
-  const slipFromBatch = Array.isArray(importResult.batch_items) && importResult.batch_items.length > 0;
-  if (importResult.already && !importResult.merged && !slipFromBatch) return;
+  if (importResult.already && !importResult.merged) return;
 
   const cloudId = String(cloudOrder?.id || "").trim();
-  if (!cloudId || isCloudOrderSlipMarkedPrinted(cloudId)) return;
+  if (!cloudId || printedIds.has(cloudId)) return;
 
-  let slipItems = slipFromBatch ? importResult.batch_items : [];
+  let slipItems = Array.isArray(importResult.batch_items) ? importResult.batch_items : [];
   if (!slipItems.length && importResult.table_id && typeof db.getActiveOrderForTable === "function") {
     try {
       const order = db.getActiveOrderForTable(importResult.table_id);
@@ -492,10 +478,6 @@ function isOrderEligibleForAutoImport(o, db) {
       console.log("[watcher] SKIP WEB-WAITER import — cloud kamarieri i çaktivizuar");
       return false;
     }
-    // Mos ri-importo WEB-WAITER që është bashkuar tashmë në POS order
-    if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
-      return false;
-    }
     return true;
   }
   if (typeof db.isCloudOrderHandledLocally === "function" && db.isCloudOrderHandledLocally(o.id)) {
@@ -548,24 +530,20 @@ function ssePayloadOrderIds(payload) {
 }
 
 function broadcastInstantPosRefresh(extra = {}) {
-  const e = extra && typeof extra === "object" ? extra : {};
   try {
     const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
-    broadcastWaiterRealtime("tables", { reason: "sse_instant_import", ...e });
-    broadcastWaiterRealtime("online_orders", { reason: "sse_instant_import", ...e });
-    broadcastWaiterRealtime("cloud_tables", { reason: "sse_instant_import", ...e });
-  } catch {
-    /* ignore */
-  }
-  try {
-    const { emit } = require("./lib/local-events-hub");
-    emit("guest-order", { reason: "instant_import", ...e });
-    emit("table-update", { reason: "instant_import", ...e });
+    broadcastWaiterRealtime("tables", { reason: "sse_instant_import", ...extra });
+    broadcastWaiterRealtime("online_orders", { reason: "sse_instant_import", ...extra });
+    broadcastWaiterRealtime("cloud_tables", { reason: "sse_instant_import", ...extra });
   } catch {
     /* ignore */
   }
 }
 
+/**
+ * Import i një porosie cloud → SQLite + print slip (nëse ka).
+ * @returns {{ imported: boolean, result?: object, order?: object, waiterName?: string }}
+ */
 async function attachOnlineSlotForPickupOrders(db, orders) {
   const list = (orders || []).filter(Boolean);
   if (!list.some(o => typeof db.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o))) {
@@ -585,11 +563,7 @@ async function attachOnlineSlotForPickupOrders(db, orders) {
   });
 }
 
-/**
- * Import i një porosie cloud → SQLite + print slip (nëse ka).
- * @returns {{ imported: boolean, result?: object, order?: object, waiterName?: string }}
- */
-async function autoImportOneCloudOrder(db, printBarTicket, rawOrder, opts = {}) {
+async function autoImportOneCloudOrder(db, printBarTicket, rawOrder) {
   if (!rawOrder?.id || typeof db.importCloudOrderToLocal !== "function") {
     return { imported: false };
   }
@@ -655,34 +629,7 @@ async function autoImportOneCloudOrder(db, printBarTicket, rawOrder, opts = {}) 
       imported?.ok
       && !imported?.needs_accept
       && (imported.already === false || imported.merged || slipDelta);
-    const skipSlip = opts.skipSlipPrint || isCloudOrderSlipMarkedPrinted(String(order.id || ""));
-    if (!skipSlip) {
-      void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
-    }
-    // POS + WEB-WAITER/QR merge: pusho artikujt e bashkuar PARA se të anulosh rreshtin
-    // e vjetër në cloud — përndryshe cloud sheh tavolinën si "free" për ~1-2s
-    // dhe syncLocalCancelledFromCloud e mbyll gabimisht.
-    if (imported?.pos_table_merged && imported?.waiter_cloud_order) {
-      try {
-        const localOrder = db.getActiveOrderForTable(imported.table_id);
-        if (localOrder) {
-          const pushResult = await cloudSync.pushActiveOrderUpdateSync(db, localOrder, {
-            table_number: imported.table_number || 0,
-            ordered_at: localOrder.created_at,
-          });
-          if (pushResult?.ok) {
-            console.log("[watcher] POS merge T" + (imported.table_number || "?") +
-              " — merged items pushed OK, cancelling old cloud row");
-          } else {
-            console.warn("[watcher] POS merge T" + (imported.table_number || "?") +
-              " — push u kthye " + JSON.stringify(pushResult) + ", cancel WEB-WAITER gjithsesi");
-          }
-        }
-        cloudSync.cancelMergedWaiterCloudOrder(db, imported.waiter_cloud_order);
-      } catch (mergeErr) {
-        console.warn("[watcher] POS merge cloud cleanup:", mergeErr.message);
-      }
-    }
+    void printOrderSlipAfterImport(db, printBarTicket, order, imported, wName);
     return { imported: !!didWrite, result: imported, order, waiterName: wName };
   } catch (err) {
     console.warn("[online-orders] auto-import:", err.message || err);
@@ -755,8 +702,7 @@ async function runKitchenSseInstantImport(db, payload) {
   for (const raw of targets) {
     const order = mergeKitchenSseIntoOrder(raw, payload);
     if (!order || !isOrderEligibleForAutoImport(order, db)) continue;
-    const skipSlipPrint = status === "accepted" || isCloudOrderSlipMarkedPrinted(String(order.id || ""));
-    const out = await autoImportOneCloudOrder(db, printBarTicket, order, { skipSlipPrint });
+    const out = await autoImportOneCloudOrder(db, printBarTicket, order);
     if (out.imported) {
       importedAny = true;
       const tn = Number(out.result?.table_number) || tableNumFromCloudOrder(order, db);
@@ -818,9 +764,7 @@ async function tick(db, printBarTicket) {
   if (data.ok !== false && data.connected && typeof db.importCloudOrderToLocal === "function") {
     const ordersToAutoImport = allOrders.filter(o => isOrderEligibleForAutoImport(o, db));
     for (const order of ordersToAutoImport) {
-      await autoImportOneCloudOrder(db, printBarTicket, order, {
-        skipSlipPrint: isCloudOrderSlipMarkedPrinted(String(order.id || "")),
-      });
+      await autoImportOneCloudOrder(db, printBarTicket, order);
     }
 
     // Takeaway/Delivery të pranuara → importo vetëm për kamarierin që e pranoi (emër lokal)
@@ -839,10 +783,7 @@ async function tick(db, printBarTicket) {
         try {
           const imported = db.importCloudOrderToLocal({ ...slot.order, online_slot: slot.slot }, acceptName);
           if (imported?.needs_accept || (imported && imported.ok === false && !imported.already)) continue;
-          const slotCloudId = String(slot.order?.id || "").trim();
-          if (slotCloudId && !isCloudOrderSlipMarkedPrinted(slotCloudId)) {
-            void printOrderSlipAfterImport(db, printBarTicket, slot.order, imported, acceptName);
-          }
+          void printOrderSlipAfterImport(db, printBarTicket, slot.order, imported, acceptName);
         } catch {
           /* injoro */
         }
@@ -917,13 +858,6 @@ async function tick(db, printBarTicket) {
       const { broadcastWaiterRealtime } = require("./waiter-ws-hub");
       broadcastWaiterRealtime("online_orders", { pending: lastSnapshot.pending });
       if (lastSnapshot.has_new) broadcastWaiterRealtime("tables", { reason: "online_pending" });
-    } catch {
-      /* ignore */
-    }
-    try {
-      const { emit } = require("./lib/local-events-hub");
-      emit("guest-order", { pending: lastSnapshot.pending, has_new: !!lastSnapshot.has_new });
-      if (lastSnapshot.has_new) emit("table-update", { reason: "online_pending" });
     } catch {
       /* ignore */
     }
@@ -1036,5 +970,4 @@ module.exports = {
   markOrdersPrinted,
   isCloudOrderSlipMarkedPrinted,
   normalizePendingOrder,
-  isLocallyAcked,
 };

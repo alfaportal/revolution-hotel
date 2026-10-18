@@ -2247,6 +2247,7 @@
     }
 
     async function ngarkoPorosiOnlineWaiter(skipLayoutFetch = false) {
+      if (waiterAcceptBusy && !skipLayoutFetch) return;
       try {
         const data = await api("/api/waiter/online-orders/pending");
         lastMyExternalOrders = data.my_orders || [];
@@ -4366,15 +4367,12 @@
       card.type = "button";
 
       const hasLocalOrder = Boolean(t.order);
-      const cloudPending = (!hasLocalOrder && t.status === "free" && eshteTavolinFizikeLokale(t))
-        ? gjejPorosiOnlinePerTavoline(t.number)
-        : null;
 
-      const cloudLive = (!hasLocalOrder && t.status === "free" && !cloudPending && eshteTavolinFizikeLokale(t))
+      const cloudLive = (!hasLocalOrder && t.status === "free" && eshteTavolinFizikeLokale(t))
         ? (cloudTableMap.get(Number(t.number)) || null)
         : null;
 
-      const isFree = !hasLocalOrder && t.status === "free" && !cloudPending && !cloudLive;
+      const isFree = !hasLocalOrder && t.status === "free" && !cloudLive;
       const isMine = t.order && t.order.waiter_name === user.emri;
       const isForeign = t.order && t.order.waiter_name !== user.emri;
 
@@ -4383,7 +4381,6 @@
       } else {
         card.className = "table-card " + (isFree ? "free" : "occupied");
       }
-      if (cloudPending) card.classList.add("pending-cloud");
       if (isForeign) card.classList.add("foreign");
       if (t.reserved) card.classList.add("reserved");
 
@@ -4392,8 +4389,7 @@
       if (cloudLive) {
         const clo = cloudLive.order || {};
         statusText = clo.waiter_name ? `${clo.waiter_name} ☁` : tt("E zënë ☁");
-      } else if (cloudPending) statusText = `QR T${t.number} — ${tt("pritje")}`;
-      else if (t.reserved && isFree) statusText = tt("E rezervuar");
+      } else if (t.reserved && isFree) statusText = tt("E rezervuar");
       else if (isForeign) statusText = t.order.waiter_name;
       else if (t.order) statusText = user.emri;
 
@@ -4405,12 +4401,6 @@
         const items = (clo.items || []).slice(0, 2).map(it => `${Number(it.quantity)||1}× ${it.name||"—"}`).join(", ");
         if (items) inner += `<div class="table-card-hint">${items}</div>`;
         inner += `<div class="table-card-hint">${tt("Kliko → hap & mbyll")}</div>`;
-      } else if (cloudPending) {
-        const items = (cloudPending.items || []).slice(0, 3)
-          .map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
-        inner += `<div class="table-card-meta">${formatEuro(cloudPending.total || 0)}</div>`;
-        if (items) inner += `<div class="table-card-hint">${items}</div>`;
-        inner += `<div class="table-card-hint">${tt("Kliko → prano")}</div>`;
       } else if (!isFree && t.order) {
         const count = (t.items || []).reduce((s, i) => s + i.quantity, 0);
         const total = (t.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
@@ -4424,13 +4414,7 @@
       }
       card.innerHTML = inner;
       card.addEventListener("click", () => {
-        if (cloudPending) {
-          vendosPorosiOnlinePrioritet({
-            ...cloudPending,
-            table_number: Number(cloudPending.table_number) || t.number,
-          });
-          hapWaiterOnlinePop();
-        } else if (cloudLive) {
+        if (cloudLive) {
           void (async () => {
             const openImport = confirm(
               `T${t.number} — porosi cloud (☁).\n\nOK = Hap & importo\nAnulo = Pastro porosinë cloud pa import`,
@@ -4714,12 +4698,7 @@
         section.appendChild(zoneHead);
         const grid = document.createElement("div");
         grid.className = "table-cards-grid";
-        if (eshteZoneOnlinePickup(zone)) {
-          for (const o of porosiTakeawayNePritje()) {
-            grid.appendChild(ndertoKartelenPorosiTakeaway(o));
-            totalCards += 1;
-          }
-        }
+        /* Porosi në pritje — vetëm popup PRANO (alarm / KPI), jo katrore në grid. */
         for (const t of zone.tables || []) {
           if (!tavolinaPerputhetMeKpiFilter(t)) continue;
           grid.appendChild(ndertoKartelenTavoline(t));
