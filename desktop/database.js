@@ -10885,26 +10885,48 @@ function buildXReportData() {
   };
 }
 
-const Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG =
-  "Duhet të shtypni Raportin Z para se të filloni ndërrimin e ri";
+/** Vetëm kujtesë UI — NUK bllokon hapjen e ndërrimit (pronari/admin mund ta printojë Z). */
+const Z_REPORT_REMINDER_BEFORE_SHIFT_MSG =
+  "Rekomandohet Raporti Z (pronari ose admin) — mund të vazhdoni punën edhe pa ta shtypur këtu.";
+const Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG = Z_REPORT_REMINDER_BEFORE_SHIFT_MSG;
 
-/** Ndërrim i mbyllur pa Raport Z të printuar — bllokon hapjen e ndërrimit të ri. */
-function getUnprintedClosedZShift() {
+/** Recepsion vs restorant — ndërrimi i mbyllur i recepsionit nuk bllokon kamarierin (dhe anasjelltas). */
+function zReportPendingShiftRoleSql(sessionRole, prefix = "AND") {
+  const role = normalizeStaffRole(String(sessionRole || "").trim() || "");
+  if (role === "recepsion") {
+    return ` ${prefix} staff_id IN (
+      SELECT id FROM staff
+      WHERE active = 1
+        AND LOWER(TRIM(COALESCE(staff_role, ''))) IN ('recepsion', 'receptionist', 'recepsionist')
+    )`;
+  }
+  if (role === "kamarier") {
+    return ` ${prefix} staff_id IN (
+      SELECT id FROM staff
+      WHERE active = 1
+        AND LOWER(TRIM(COALESCE(staff_role, ''))) NOT IN ('recepsion', 'receptionist', 'recepsionist')
+    )`;
+  }
+  return "";
+}
+
+/** Ndërrim i mbyllur pa Raport Z të printuar — bllokon hapjen e ndërrimit të ri (sipas rolit). */
+function getUnprintedClosedZShift(opts = {}) {
+  const roleSql = zReportPendingShiftRoleSql(opts.sessionRole || opts.role || "");
   return sqlite.prepare(`
     SELECT id, staff_id, waiter_name, closed_at
     FROM waiter_shifts
     WHERE closed_at IS NOT NULL
       AND (z_report_printed_at IS NULL OR TRIM(z_report_printed_at) = '')
+      ${roleSql}
     ORDER BY closed_at ASC
     LIMIT 1
   `).get();
 }
 
-function assertZReportPrintedBeforeNewShift() {
-  const pending = getUnprintedClosedZShift();
-  if (pending) {
-    throw new Error(Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG);
-  }
+/** E vjetër — mbetet no-op: Raporti Z nuk bllokon punën. */
+function assertZReportPrintedBeforeNewShift(_staffId, _sessionRole = "") {
+  /* intentionally empty */
 }
 
 function markShiftZReportPrinted(shiftId) {
@@ -11131,18 +11153,23 @@ function enrichShiftSummary(shift, totals, staff, extra = {}) {
     cash_total: cashSales,
     room_total: Number(totals?.room_total) || 0,
     discount_total: Number(totals?.discount_total) || 0,
-    blocks_new_shift: !!extra.blocks_new_shift,
+    blocks_new_shift: false,
+    z_report_reminder: !!extra.z_report_reminder,
     pending_z_shift: extra.pending_z_shift || null,
-    z_report_required_message: extra.z_report_required_message || null,
+    z_report_reminder_message: extra.z_report_reminder_message || null,
+    z_report_required_message: extra.z_report_reminder_message || null,
   };
 }
 
-function shiftOpenZReportMeta() {
-  const pending = getUnprintedClosedZShift();
+function shiftOpenZReportMeta(opts = {}) {
+  const pending = getUnprintedClosedZShift(opts);
+  const remind = !!pending;
   return {
-    blocks_new_shift: !!pending,
+    blocks_new_shift: false,
+    z_report_reminder: remind,
     pending_z_shift: pending || null,
-    z_report_required_message: pending ? Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG : null,
+    z_report_reminder_message: remind ? Z_REPORT_REMINDER_BEFORE_SHIFT_MSG : null,
+    z_report_required_message: remind ? Z_REPORT_REMINDER_BEFORE_SHIFT_MSG : null,
   };
 }
 
@@ -11162,7 +11189,7 @@ function openWaiterShiftWithCash(staffId, openingCash) {
     if (existing.opening_cash != null) {
       throw new Error("Nderrimi është hapur tashmë.");
     }
-    assertZReportPrintedBeforeNewShift();
+    assertZReportPrintedBeforeNewShift(id, sessionRole);
     sqlite.prepare("UPDATE waiter_shifts SET opening_cash = ? WHERE id = ?").run(amount, existing.id);
     const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(existing.id);
     insertLanOutbox("shift_open", { ref: shift.id });
@@ -11171,11 +11198,11 @@ function openWaiterShiftWithCash(staffId, openingCash) {
     return enrichShiftSummary(shift, { ...totals, active_tables: activeLabels.length }, staff, {
       active_table_labels: activeLabels,
       handover_peers_count: listHandoverPeers(id, sessionRole).length,
-      ...shiftOpenZReportMeta(),
+      ...shiftOpenZReportMeta({ sessionRole }),
     });
   }
 
-  assertZReportPrintedBeforeNewShift();
+  assertZReportPrintedBeforeNewShift(id, sessionRole);
   const now = new Date().toISOString();
   const r = sqlite.prepare(`
     INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash)
@@ -11194,7 +11221,7 @@ function openWaiterShiftWithCash(staffId, openingCash) {
   }, staff, {
     active_table_labels: [],
     handover_peers_count: listHandoverPeers(id, sessionRole).length,
-    ...shiftOpenZReportMeta(),
+    ...shiftOpenZReportMeta({ sessionRole }),
   });
 }
 
@@ -11231,7 +11258,7 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
       `).run(newOpening, openShift.id);
       targetShiftId = openShift.id;
     } else {
-      assertZReportPrintedBeforeNewShift();
+      assertZReportPrintedBeforeNewShift(id, sessionRole);
       const r = sqlite.prepare(`
         INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash, handover_id)
         VALUES (?, ?, ?, ?, ?)
@@ -11262,7 +11289,7 @@ function acceptShiftHandover(staffId, handoverId, openingCash) {
         opening_discrepancy: openingDiscrepancy,
         merged_into_open_shift: !!openShift,
       },
-      ...shiftOpenZReportMeta(),
+      ...shiftOpenZReportMeta({ sessionRole }),
     });
   })();
 }
@@ -11275,7 +11302,9 @@ function getWaiterShiftSummary(staffId, opts = {}) {
 
   const pendingHandover = getPendingHandoverForStaff(id);
   const shift = getOpenShift(id);
-  const zMeta = shiftOpenZReportMeta();
+  const sessionRoleForZ =
+    opts.sessionRole || normalizeStaffRole(staff.staff_role || "");
+  const zMeta = shiftOpenZReportMeta({ sessionRole: sessionRoleForZ });
   const shiftOpts = { sessionRole: opts.sessionRole || "" };
   const peersCount = listHandoverPeers(id, shiftOpts.sessionRole).length;
   const activeLabels = activeTableLabelsForWaiter(staff.name, shiftOpts);

@@ -1,5 +1,6 @@
 /**
- * Lidhje automatike POS në WiFi — stafi nuk mbetet te IP e vjetër pas router-it.
+ * Lidhje automatike POS në rrjet lokal (LAN ose Wi‑Fi) — telefon/tablet nuk mbeten te IP e vjetër.
+ * Electron / PC (127.0.0.1): nuk skanon — POS është në të njëjtën makinë.
  */
 (function staffAutoConnect() {
   if (typeof window === "undefined" || typeof fetch !== "function") return;
@@ -14,6 +15,7 @@
   const SCAN_BATCH = 20;
   const GATEWAY_IPS = ["192.168.1.1", "192.168.0.1", "10.0.0.1"];
   const HEALTH_MS = 45000;
+  const MSG_NOT_FOUND = "POS nuk u gjet — kontrolloni LAN ose Wi‑Fi (i njëjti rrjet).";
 
   // TODO: UDP broadcast for native app discovery (port 41567 — server.js lan-pos-udp-beacon)
 
@@ -21,6 +23,29 @@
   let statusEl = null;
   let dotEl = null;
   let overlayEl = null;
+
+  function hostLower() {
+    return String(window.location.hostname || "").trim().toLowerCase();
+  }
+
+  /** POS desktop (Electron) — serveri është në të njëjtën makinë, jo skanim WiFi. */
+  function isLoopbackPos() {
+    const h = hostLower();
+    return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  }
+
+  function isPrivateLanHost(host) {
+    const h = String(host || "").trim();
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    return false;
+  }
+
+  /** Skanim IP/.local vetëm për telefon/tablet në LAN/Wi‑Fi — jo për app të instaluar. */
+  function shouldRunNetworkDiscovery() {
+    return !isLoopbackPos();
+  }
 
   function normalizeBase(url) {
     const s = String(url || "").trim().replace(/\/+$/, "");
@@ -301,6 +326,10 @@
   }
 
   async function discoverPos() {
+    if (!shouldRunNetworkDiscovery()) {
+      setUi("hidden");
+      return null;
+    }
     if (reconnectBusy) return null;
     reconnectBusy = true;
     setUi("searching", "Duke kërkuar POS-in…");
@@ -313,7 +342,7 @@
         redirectToBase(hit);
         return hit;
       }
-      setUi("searching", "POS nuk u gjet — kontrolloni Wi‑Fi.");
+      setUi("searching", MSG_NOT_FOUND);
       return null;
     } finally {
       reconnectBusy = false;
@@ -322,11 +351,27 @@
 
   async function ensureConnected() {
     const origin = normalizeBase(window.location.origin);
-    const hit = await probeServerInfo(origin, 1500);
+    const probeMs = isLoopbackPos() ? 3500 : 1500;
+    const hit = await probeServerInfo(origin, probeMs);
     if (hit) {
       persistFromServerInfo(hit.info, hit.port);
       setUi("connected", "POS u gjet!");
       return true;
+    }
+    if (!shouldRunNetworkDiscovery()) {
+      setUi("hidden");
+      return false;
+    }
+    if (isPrivateLanHost(hostLower())) {
+      const port = parsePortFromBase(origin || localStorage.getItem(LS_BASE) || "");
+      const staticIp = String(localStorage.getItem(LS_STATIC_IP) || "").trim();
+      if (staticIp) {
+        const staticHit = await probeServerInfo(`http://${staticIp}:${port}`, 2000);
+        if (staticHit) {
+          redirectToBase(staticHit);
+          return true;
+        }
+      }
     }
     const found = await discoverPos();
     return Boolean(found);
@@ -344,22 +389,29 @@
     }
   }
 
+  function isLikelyNetworkFailure(err) {
+    if (!err) return false;
+    const name = String(err.name || "");
+    if (name === "AbortError") return false;
+    if (name === "TypeError") return true;
+    const msg = String(err.message || "").toLowerCase();
+    return (
+      msg.includes("failed to fetch")
+      || msg.includes("networkerror")
+      || msg.includes("load failed")
+      || msg.includes("network request failed")
+    );
+  }
+
   const nativeFetch = window.fetch.bind(window);
   window.fetch = function staffPosFetchWrapped(input, init) {
     const p = nativeFetch(input, init);
-    return p
-      .then((res) => {
-        if (shouldTriggerDiscovery(input) && !res.ok) {
-          void discoverPos();
-        }
-        return res;
-      })
-      .catch((err) => {
-        if (shouldTriggerDiscovery(input)) {
-          void discoverPos();
-        }
-        throw err;
-      });
+    return p.catch((err) => {
+      if (shouldTriggerDiscovery(input) && isLikelyNetworkFailure(err)) {
+        void ensureConnected();
+      }
+      throw err;
+    });
   };
 
   window.addEventListener("online", () => {
@@ -376,11 +428,18 @@
     }
     void ensureConnected();
     window.setInterval(() => {
-      void probeServerInfo(window.location.origin, 1500).then((hit) => {
+      const probeMs = isLoopbackPos() ? 3500 : 1500;
+      void probeServerInfo(window.location.origin, probeMs).then((hit) => {
         if (hit) {
           persistFromServerInfo(hit.info, hit.port);
           setUi("connected");
-        } else void discoverPos();
+          return;
+        }
+        if (shouldRunNetworkDiscovery()) {
+          void ensureConnected();
+        } else {
+          setUi("hidden");
+        }
       });
     }, HEALTH_MS);
   });

@@ -1319,6 +1319,12 @@ body.waiter-screen:has(#ekrani-porosia.active) {
   cursor: not-allowed;
 }
 
+.shift-open-z-btn {
+  margin-bottom: 0.65rem;
+  background: linear-gradient(135deg, #b45309, #ea580c);
+  box-shadow: 0 8px 20px rgba(234, 88, 12, 0.35);
+}
+
 .shift-close-card {
   max-width: 340px;
   max-height: min(90vh, 620px);

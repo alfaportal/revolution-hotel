@@ -7677,7 +7677,18 @@ app.post("/api/admin/reports/daily-summary/print", auth, adminOnly, async (req, 
     const text = buildDailySummaryLines({ fiscal, restaurantName: db.getUnifiedBusinessName(), data }).join("\n");
     let result;
     if (fiscalConfig.isFiscalEnabled()) {
-      result = await getFiscalMain().printFiscalReportText(text, { station: "bar" });
+      const operatorName = String(req.session?.emri || "Admin").trim();
+      const operatorId = resolveBodyOperatorId(req);
+      const reportDetails = fiscalNumbering.getXReportSnapshot(
+        operatorName,
+        operatorId,
+      );
+      result = await getFiscalMain().printFiscalReportText(text, {
+        station: "bar",
+        reportDetails: reportDetails || undefined,
+        reportMode: "X",
+        operatorId,
+      });
     } else {
       result = await printer.printPlainTextAt(text, db, "bar");
     }
@@ -7754,8 +7765,15 @@ app.post("/api/admin/reports/fiscal-x/print", auth, adminOnly, async (req, res) 
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është aktiv" });
     }
     const sefSettings = fiscalConfig.getFiscalSettings();
-    const text = buildFiscalModXReportText(details, sefSettings);
-    const result = await getFiscalMain().printFiscalReportText(text, { station: "bar" });
+    const operatorName = String(req.session?.emri || "Admin").trim();
+    const operatorId = resolveBodyOperatorId(req);
+    const text = buildXReportText(details, sefSettings);
+    const result = await getFiscalMain().printFiscalReportText(text, {
+      station: "bar",
+      reportDetails: details,
+      reportMode: "X",
+      operatorId,
+    });
     auditReq(
       req,
       "Raporti X fiskal (Modi X) — print",
@@ -7789,13 +7807,14 @@ app.post("/api/admin/reports/fiscal-periodic/print", auth, adminOnly, async (req
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është aktiv" });
     }
     const sefSettings = fiscalConfig.getFiscalSettings();
-    const text = buildFiscalModXReportText(
-      { ...details, mode: "PERIODIC" },
-      sefSettings
-    ).replace("RAPORTI X (MODI X)", "RAPORTI PERIODIK")
-      .replace("Gjendja aktuale — JO mbyllje", "Mes dy datave — JO mbyllje")
-      .replace("JO (Modi X)", "JO (periodik)");
-    const result = await getFiscalMain().printFiscalReportText(text, { station: "bar" });
+    const operatorId = resolveBodyOperatorId(req);
+    const text = buildFiscalDayReportText(details, sefSettings, "PERIODIC");
+    const result = await getFiscalMain().printFiscalReportText(text, {
+      station: "bar",
+      reportDetails: details,
+      reportMode: "PERIODIC",
+      operatorId,
+    });
     auditReq(
       req,
       "Raport periodik fiskal — print",
@@ -9673,6 +9692,7 @@ async function postFiscalZReportHandler(req, res) {
     if (fiscalOn) {
       details = fiscalNumbering.onDailySummaryPrinted(operatorName, operatorId, zOpts);
       if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+      shiftsMarked = db.markAllPendingShiftZReportsPrinted();
 
       text = buildZReportText(details, settings);
       if (!skipPrint) {
@@ -9688,7 +9708,6 @@ async function postFiscalZReportHandler(req, res) {
           printMessage = pe.message || "Printimi Z dështoi";
         }
       }
-      shiftsMarked = db.markAllPendingShiftZReportsPrinted();
     } else {
       const pending = db.getUnprintedClosedZShift();
       if (!pending) {
@@ -9699,10 +9718,8 @@ async function postFiscalZReportHandler(req, res) {
         text = shiftReport.text;
         printed = shiftReport.printed;
         printMessage = shiftReport.printMessage || "";
-        shiftsMarked = 1;
-      } else {
-        shiftsMarked = db.markAllPendingShiftZReportsPrinted();
       }
+      shiftsMarked = db.markAllPendingShiftZReportsPrinted();
     }
 
     const enrichedDetails = details
@@ -9879,7 +9896,11 @@ app.post("/api/fiscal/short-periodic-report", auth, adminOnly, async (req, res) 
     let printMessage = "";
     if (!req.body?.skip_print) {
       try {
-        const pr = await getFiscalMain().printFiscalReportText(text);
+        const pr = await getFiscalMain().printFiscalReportText(text, {
+          reportDetails: details,
+          reportMode: "PERIODIC",
+          operatorId,
+        });
         printed = !!pr.printed;
         if (!pr.printed) printMessage = pr.printMessage || "Printimi i raportit të shkurtër dështoi";
       } catch (pe) {
@@ -9923,7 +9944,11 @@ app.post("/api/fiscal/monthly-memory-report", auth, adminOnly, async (req, res) 
     let printMessage = "";
     if (!req.body?.skip_print) {
       try {
-        const pr = await getFiscalMain().printFiscalReportText(text);
+        const pr = await getFiscalMain().printFiscalReportText(text, {
+          reportDetails: { ...details, mode: "MONTHLY" },
+          reportMode: "PERIODIC",
+          operatorId,
+        });
         printed = !!pr.printed;
         if (!pr.printed) printMessage = pr.printMessage || "Printimi i raportit mujor dështoi";
       } catch (pe) {

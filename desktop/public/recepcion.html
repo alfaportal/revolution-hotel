@@ -494,8 +494,8 @@
       <div class="waiter-sidebar-spacer"></div>
       <nav class="waiter-sidebar-nav waiter-sidebar-nav-bottom" aria-label="Veprime">
         <div id="sidebar-z-report-warn" class="waiter-sidebar-z-warn" hidden role="status" aria-live="polite">
-          <strong class="waiter-sidebar-z-warn-title">Raporti Z nuk është shtypur!</strong>
-          <span class="waiter-sidebar-z-warn-sub">Duhet Raporti Z para ndërrimit të ri</span>
+          <strong class="waiter-sidebar-z-warn-title">Kujtesë: Raporti Z</strong>
+          <span class="waiter-sidebar-z-warn-sub">Opsional — nuk bllokon punën</span>
         </div>
         <button type="button" class="waiter-nav-btn waiter-nav-exit" onclick="dil()">DIL</button>
       </nav>
@@ -833,6 +833,7 @@
         <button type="button" class="shift-preset" data-amount="50">€50</button>
         <button type="button" class="shift-preset" data-amount="100">€100</button>
       </div>
+      <button type="button" class="shift-start-btn shift-open-z-btn" id="btn-rc-shift-open-z" hidden>Printo Raportin Z</button>
       <button type="button" class="shift-start-btn" id="btn-rc-shift-open-start">Fillo ndërrimin</button>
       <div id="rc-shift-open-msg" class="alert alert-error" hidden></div>
     </div>
@@ -3471,13 +3472,17 @@
       }
     }
 
-    const RC_Z_SHIFT_BLOCK_MSG =
-      "Duhet të shtypni Raportin Z para se të filloni ndërrimin e ri";
+    const RC_Z_SHIFT_REMINDER_MSG =
+      "Rekomandohet Raporti Z (pronari/admin) — mund të filloni ndërrimin edhe pa ta shtypur këtu.";
+
+    function shiftHasZReminder(shiftSummary) {
+      return !!(shiftSummary && (shiftSummary.z_report_reminder || shiftSummary.pending_z_shift));
+    }
 
     function syncSidebarZReportWarn(shiftSummary) {
       const el = document.getElementById("sidebar-z-report-warn");
       if (!el) return;
-      el.hidden = !(shiftSummary && shiftSummary.blocks_new_shift);
+      el.hidden = !shiftHasZReminder(shiftSummary);
     }
 
     async function shtypRaportinZRecepcion(ev) {
@@ -3496,7 +3501,13 @@
         const printInfo = data.printed ? "Printuar." : (data.printMessage || "Printimi nuk u bë.");
         window.alert(`Raporti Z u gjenerua.\n${printInfo}`);
         const s = await ngarkoShiftRecep();
-        if (s) syncSidebarZReportWarn(s);
+        if (s) {
+          syncSidebarZReportWarn(s);
+          const openModal = document.getElementById("modal-rc-shift-open");
+          if (openModal && !openModal.hidden) {
+            showRcShiftOpenModal(s.z_report_reminder ? s : null);
+          }
+        }
       } catch (err) {
         window.alert(err.message || "Raporti Z dështoi.");
       } finally {
@@ -3505,21 +3516,36 @@
       }
     }
 
-    function showRcShiftOpenModal(blockedByZ) {
+    function showRcShiftOpenModal(zReminder) {
       const nameEl = document.getElementById("rc-shift-open-staff-name");
       if (nameEl) nameEl.textContent = user?.emri || "Recepsion";
       const msg = document.getElementById("rc-shift-open-msg");
       const btn = document.getElementById("btn-rc-shift-open-start");
-      if (blockedByZ) {
+      const zBtn = document.getElementById("btn-rc-shift-open-z");
+      if (btn) btn.disabled = false;
+      rcShiftOpenPad.setValue(50);
+      if (zReminder && shiftHasZReminder(zReminder)) {
         if (msg) {
-          msg.textContent = blockedByZ.z_report_required_message || RC_Z_SHIFT_BLOCK_MSG;
+          msg.textContent =
+            zReminder.z_report_reminder_message
+            || zReminder.z_report_required_message
+            || RC_Z_SHIFT_REMINDER_MSG;
           msg.hidden = false;
+          msg.classList.remove("alert-error");
+          msg.classList.add("alert-info");
         }
-        if (btn) btn.disabled = true;
+        if (zBtn) {
+          zBtn.hidden = false;
+          zBtn.disabled = false;
+        }
       } else {
-        if (msg) { msg.hidden = true; msg.textContent = ""; }
-        if (btn) btn.disabled = false;
-        rcShiftOpenPad.setValue(50);
+        if (msg) {
+          msg.hidden = true;
+          msg.textContent = "";
+          msg.classList.remove("alert-info");
+          msg.classList.add("alert-error");
+        }
+        if (zBtn) zBtn.hidden = true;
       }
       document.getElementById("modal-rc-shift-open").hidden = false;
     }
@@ -3551,13 +3577,6 @@
       try {
         shiftSnap = await api("/api/waiter/shift");
       } catch { /* server do ta kthejë te POST */ }
-      if (shiftSnap?.blocks_new_shift) {
-        if (msg) {
-          msg.textContent = shiftSnap.z_report_required_message || RC_Z_SHIFT_BLOCK_MSG;
-          msg.hidden = false;
-        }
-        return;
-      }
       if (msg) msg.hidden = true;
       if (btn) btn.disabled = true;
       try {
@@ -3608,6 +3627,7 @@
     }
 
     document.getElementById("btn-rc-shift-open-start")?.addEventListener("click", filloNderriminRecep);
+    document.getElementById("btn-rc-shift-open-z")?.addEventListener("click", shtypRaportinZRecepcion);
     document.getElementById("btn-rc-shift-accept-confirm")?.addEventListener("click", pranoNderriminRecep);
 
     /** Pas login: ndërrimi si kamarieri — kusuri + pranim dorëzimi (jo hapje auto 0 €). */
@@ -3641,7 +3661,7 @@
       if (s.needs_opening_cash) {
         recepShiftOpen = false;
         syncRcShiftCloseButton();
-        showRcShiftOpenModal(s.blocks_new_shift ? s : null);
+        showRcShiftOpenModal(s.z_report_reminder ? s : null);
         return;
       }
 

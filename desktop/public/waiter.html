@@ -890,8 +890,8 @@
       <div class="waiter-sidebar-spacer"></div>
       <nav class="waiter-sidebar-nav waiter-sidebar-nav-bottom" aria-label="Veprime">
         <div id="sidebar-z-report-warn" class="waiter-sidebar-z-warn" hidden role="status" aria-live="polite">
-          <strong class="waiter-sidebar-z-warn-title">Raporti Z nuk është shtypur!</strong>
-          <span class="waiter-sidebar-z-warn-sub">Duhet Raporti Z para ndërrimit të ri</span>
+          <strong class="waiter-sidebar-z-warn-title">Kujtesë: Raporti Z</strong>
+          <span class="waiter-sidebar-z-warn-sub">Opsional — nuk bllokon punën</span>
         </div>
         <div id="sidebar-porosi-actions" class="waiter-sidebar-porosi" hidden aria-label="Porosi në pritje">
           <span class="waiter-sidebar-porosi-label" id="sidebar-porosi-label">Porosi</span>
@@ -1478,6 +1478,7 @@
         <button type="button" class="shift-preset" data-amount="50">€50</button>
         <button type="button" class="shift-preset" data-amount="100">€100</button>
       </div>
+      <button type="button" class="shift-start-btn shift-open-z-btn" id="btn-shift-open-z" hidden>Printo Raportin Z</button>
       <button type="button" class="shift-start-btn" id="btn-shift-open-start">Fillo me €0.00 në Kuletë</button>
       <div id="shift-open-msg" class="alert alert-error" hidden></div>
     </div>
@@ -2160,6 +2161,10 @@
           const s = await api("/api/waiter/shift");
           lastShiftSummary = s;
           syncSidebarZReportWarn(s);
+          const openModal = document.getElementById("modal-shift-open");
+          if (openModal && !openModal.hidden) {
+            showShiftOpenModal(s.z_report_reminder ? s : null);
+          }
         } catch { /* ignore */ }
       } catch (err) {
         window.alert(err.message || tt("Raporti Z dështoi."));
@@ -4103,30 +4108,46 @@
       zgjidhHandoverPeer(btn.dataset.handoverId || "");
     });
 
-    const Z_SHIFT_BLOCK_MSG =
-      "Duhet të shtypni Raportin Z para se të filloni ndërrimin e ri";
+    const Z_SHIFT_REMINDER_MSG =
+      "Rekomandohet Raporti Z (pronari/admin) — mund të filloni ndërrimin edhe pa ta shtypur këtu.";
+
+    function shiftHasZReminder(shiftSummary) {
+      return !!(shiftSummary && (shiftSummary.z_report_reminder || shiftSummary.pending_z_shift));
+    }
 
     function syncSidebarZReportWarn(shiftSummary) {
       const el = document.getElementById("sidebar-z-report-warn");
       if (!el) return;
-      el.hidden = !(shiftSummary && shiftSummary.blocks_new_shift);
+      el.hidden = !shiftHasZReminder(shiftSummary);
     }
 
-    function showShiftOpenModal(blockedByZ) {
+    function showShiftOpenModal(zReminder) {
       document.getElementById("shift-open-waiter-name").textContent = user.emri;
       const msg = document.getElementById("shift-open-msg");
       const btn = document.getElementById("btn-shift-open-start");
-      if (blockedByZ) {
-        msg.textContent = blockedByZ.z_report_required_message || Z_SHIFT_BLOCK_MSG;
+      const zBtn = document.getElementById("btn-shift-open-z");
+      if (btn) btn.disabled = false;
+      if (zReminder && shiftHasZReminder(zReminder)) {
+        msg.textContent =
+          zReminder.z_report_reminder_message
+          || zReminder.z_report_required_message
+          || Z_SHIFT_REMINDER_MSG;
         msg.hidden = false;
-        if (btn) btn.disabled = true;
+        msg.classList.remove("alert-error");
+        msg.classList.add("alert-info");
+        if (zBtn) {
+          zBtn.hidden = false;
+          zBtn.disabled = false;
+        }
       } else {
         msg.hidden = true;
         msg.textContent = "";
-        if (btn) btn.disabled = false;
+        msg.classList.remove("alert-info");
+        msg.classList.add("alert-error");
+        if (zBtn) zBtn.hidden = true;
       }
       document.getElementById("modal-shift-open").hidden = false;
-      if (!blockedByZ) shiftOpenPad.setValue(50);
+      shiftOpenPad.setValue(50);
     }
 
     function hideShiftOpenModal() {
@@ -4229,11 +4250,6 @@
       const msg = document.getElementById("shift-open-msg");
       msg.hidden = true;
       const btn = document.getElementById("btn-shift-open-start");
-      if (lastShiftSummary?.blocks_new_shift) {
-        msg.textContent = lastShiftSummary.z_report_required_message || Z_SHIFT_BLOCK_MSG;
-        msg.hidden = false;
-        return;
-      }
       btn.disabled = true;
       try {
         const res = await api("/api/waiter/shift/open", {
@@ -4257,6 +4273,7 @@
     }
 
     document.getElementById("btn-shift-open-start")?.addEventListener("click", filloNderriminMePara);
+    document.getElementById("btn-shift-open-z")?.addEventListener("click", shtypRaportinZWaiter);
     document.getElementById("btn-shift-close-cancel")?.addEventListener("click", hideShiftCloseModal);
 
     async function kontrolloNderrimin() {
@@ -4278,7 +4295,7 @@
       if (s.needs_opening_cash) {
         shiftReady = false;
         shiftOpen = false;
-        showShiftOpenModal(s.blocks_new_shift ? s : null);
+        showShiftOpenModal(s.z_report_reminder ? s : null);
         return false;
       }
       shiftReady = true;
