@@ -375,11 +375,7 @@
           firmName.textContent = String(s.app_brand || lic.firm_name || "REVOLUTION HOTEL").toUpperCase();
         }
         const typeLabel = (s.business_subtype_label || s.business_type_label || "").trim();
-        const displayName = (
-          s.business_display_name
-          || name
-          || lic.client_name
-        ).trim();
+        const displayName = (s.business_display_name || name).trim();
         const venueLabel = (
           (typeLabel && displayName ? `${typeLabel} ${displayName}` : displayName)
           || s.app_brand
@@ -869,11 +865,47 @@
     }
 
     function pinDigitsHint() {
+      const fromServer = Number(staffInjected.pin_digits);
+      if (staffInjected.locked && Number.isFinite(fromServer) && fromServer > 0) return fromServer;
       return selectedPinLoginMode === "recepsion" || selectedPinLoginMode === "pastrim" ? 6 : 4;
     }
 
     function pinSubmitLengths() {
-      return selectedPinLoginMode === "recepsion" || selectedPinLoginMode === "pastrim" ? [6] : [4, 6];
+      const d = pinDigitsHint();
+      return d === 6 ? [6] : [4, 6];
+    }
+
+    function staffZoneMeta(mode) {
+      const m = mode || selectedPinLoginMode || "kamarier";
+      if (
+        staffInjected.locked
+        && staffInjected.mode === m
+        && staffInjected.title
+      ) {
+        return {
+          title: String(staffInjected.title),
+          pinDigits: Number(staffInjected.pin_digits) || pinDigitsHint(),
+          recepStyle: m === "recepsion" || m === "pastrim",
+        };
+      }
+      const map = {
+        recepsion: { title: "Recepsioni", pinDigits: 6, recepStyle: true },
+        pastrim: { title: "Pastrimi", pinDigits: 6, recepStyle: true },
+        kuzhina: { title: "Kuzhina", pinDigits: 4, recepStyle: false },
+        banaku: { title: "Banaku", pinDigits: 4, recepStyle: false },
+        kamarier: { title: "Restoranti", pinDigits: 4, recepStyle: false },
+      };
+      return map[m] || map.kamarier;
+    }
+
+    function pinHintForMode(mode, staffName) {
+      const meta = staffZoneMeta(mode);
+      if (staffName) return `Shkruani PIN-in tuaj (${meta.pinDigits} shifra) — ${staffName}`;
+      if (mode === "recepsion") return "Shkruani PIN-in e recepsionit (6 shifra)";
+      if (mode === "pastrim") return "Shkruani PIN-in e pastrimit (6 shifra)";
+      if (mode === "kuzhina") return "Shkruani PIN-in e kuzhinës (4 shifra)";
+      if (mode === "banaku") return "Shkruani PIN-in e barit (4 shifra)";
+      return "Shkruani PIN-in e restorantit (4 shifra) ose skanoni kartelën RFID";
     }
 
     function shouldTryPinLogin() {
@@ -881,21 +913,22 @@
     }
 
     function syncLoginZoneUi() {
-      const isRecep = selectedPinLoginMode === "recepsion";
-      const zoneLabel = isRecep ? "Recepsioni" : "Restoranti";
+      const meta = staffZoneMeta(selectedPinLoginMode);
       const zoneName = document.getElementById("login-zone-name");
       const zoneActive = document.getElementById("login-zone-active");
       const zoneTitle = document.getElementById("login-staff-zone-title");
       const zoneSwitch = document.getElementById("login-zone-switch");
-      if (zoneName) zoneName.textContent = zoneLabel;
-      if (zoneTitle) zoneTitle.textContent = zoneLabel;
-      zoneActive?.classList.toggle("login-zone-active--recepsion", isRecep);
+      if (zoneName) zoneName.textContent = meta.title;
+      if (zoneTitle) zoneTitle.textContent = meta.title;
+      zoneActive?.classList.toggle("login-zone-active--recepsion", meta.recepStyle);
       if (zoneSwitch) zoneSwitch.hidden = loginZoneLocked || isStaffOnlyLoginMode;
       const hint = document.getElementById("pin-hint-login");
-      if (hint && !isStaffOnlyLoginMode) {
-        hint.textContent = isRecep
-          ? "Shkruani PIN-in e recepsionit (6 shifra) ose skanoni kartelën RFID"
-          : "Shkruani PIN-in e restorantit (4 shifra) ose skanoni kartelën RFID";
+      if (hint) {
+        hint.textContent = isStaffOnlyLoginMode
+          ? pinHintForMode(selectedPinLoginMode, personalStaffName)
+          : (selectedPinLoginMode === "recepsion"
+            ? "Shkruani PIN-in e recepsionit (6 shifra) ose skanoni kartelën RFID"
+            : "Shkruani PIN-in e restorantit (4 shifra) ose skanoni kartelën RFID");
       }
       persistLoginZone();
     }
@@ -944,6 +977,7 @@
 
     if (isStaffOnlyLoginMode) {
       selectedPinLoginMode = staffLoginMode;
+      loginZoneLocked = true;
       syncLoginZoneUi();
       const zonePick = document.getElementById("login-zone-pick");
       if (zonePick) zonePick.hidden = true;
@@ -967,39 +1001,25 @@
     function isStaffMobileLoginUi() {
       if (loginHubPanel) return false;
       return isStaffOnlyLoginMode
-        || document.documentElement.classList.contains("login-mode-staff-kamarier")
-        || document.documentElement.classList.contains("login-mode-staff-recepsion");
+        || document.documentElement.classList.contains("login-mode-staff");
     }
     window.isStaffMobileLoginUi = isStaffMobileLoginUi;
 
     function initHotelStaffMobileUi() {
       if (!isStaffMobileLoginUi()) return;
-      const mode = selectedPinLoginMode === "recepsion"
-        ? "recepsion"
-        : selectedPinLoginMode === "pastrim"
-          ? "pastrim"
-          : "kamarier";
+      const mode = selectedPinLoginMode || staffLoginMode || "kamarier";
+      const meta = staffZoneMeta(mode);
       document.documentElement.classList.add(
         "login-mode-staff",
-        mode === "recepsion" || mode === "pastrim"
-          ? "login-mode-staff-recepsion"
-          : "login-mode-staff-kamarier",
+        meta.recepStyle ? "login-mode-staff-recepsion" : "login-mode-staff-kamarier",
       );
-      document.title = mode === "recepsion"
-        ? "Recepsion — Revolution HOTEL"
-        : mode === "pastrim"
-          ? "Pastrim — Revolution HOTEL"
-          : "Restorant — Revolution HOTEL";
+      document.title = `${meta.title} — Revolution HOTEL`;
+      syncLoginZoneUi();
+      const head = document.querySelector(".staff-main-head h1");
+      if (head && isStaffOnlyLoginMode) head.textContent = meta.title;
       const hint = document.getElementById("pin-hint-login");
-      if (hint) {
-        const digits = mode === "recepsion" || mode === "pastrim" ? 6 : 4;
-        hint.textContent = personalStaffName
-          ? `Shkruani PIN-in tuaj (${digits} shifra) — ${personalStaffName}`
-          : (mode === "recepsion"
-            ? "Shkruani PIN-in e recepsionit (6 shifra)"
-            : mode === "pastrim"
-              ? "Shkruani PIN-in e pastrimit (6 shifra)"
-              : "Shkruani PIN-in tuaj (4 shifra)");
+      if (hint && isStaffOnlyLoginMode) {
+        hint.textContent = pinHintForMode(mode, personalStaffName);
       }
       const venueMark = document.getElementById("brand-venue-mark");
       if (venueMark) venueMark.hidden = false;
@@ -1042,7 +1062,7 @@
         const wData = await fetch("/api/login/waiters").then((r) => r.json()).catch(() => ({}));
         const waiters = Array.isArray(wData.waiters) ? wData.waiters : [];
         const withPin = waiters.filter((x) => String(x.pin || x.pin_code || "").trim().length === 6);
-        const roleLabel = selectedPinLoginMode === "recepsion" ? "recepsion" : "kamarierë";
+        const roleLabel = staffZoneMeta(selectedPinLoginMode).title.toLowerCase();
         foot.textContent = `${withPin.length || waiters.length} staf ${roleLabel} me PIN · Prek ekranin një herë për zile/dridhje edhe me telefon të mbyllur`;
         foot.hidden = false;
       } catch {
@@ -1186,6 +1206,24 @@
       resetPin();
     }
 
+    function panelPathForStaffSession(data) {
+      if (
+        staffInjected.locked
+        && staffInjected.session_role
+        && data.roli !== staffInjected.session_role
+      ) {
+        throw new Error(`Ky PIN nuk është për ${staffInjected.title || "këtë panel"}.`);
+      }
+      if (staffInjected.locked && staffInjected.panel_path) {
+        return String(staffInjected.panel_path);
+      }
+      if (data.roli === "recepsion") return "/kasa-recepcion.html";
+      if (data.roli === "pastrim") return "/sherbimi.html";
+      if (data.roli === "kuzhina") return "/kitchen.html";
+      if (data.roli === "banaku") return "/bar.html";
+      return "/waiter.html";
+    }
+
     async function hyrSiKamarier(data) {
       ruajSesionin({
         emri: data.emri,
@@ -1194,17 +1232,7 @@
         login_time: data.login_time,
         staff_id: data.staff_id || null,
       });
-      window.location.replace(
-        data.roli === "recepsion"
-          ? "/kasa-recepcion.html"
-          : data.roli === "pastrim"
-            ? "/sherbimi.html"
-            : data.roli === "kuzhina"
-              ? "/kitchen.html"
-              : data.roli === "banaku"
-                ? "/bar.html"
-                : "/waiter.html",
-      );
+      window.location.replace(panelPathForStaffSession(data));
     }
 
     async function provoPinLogin() {
@@ -1267,9 +1295,8 @@
           return;
         }
         if (data.roli !== selectedPinLoginMode) {
-          throw new Error(selectedPinLoginMode === "recepsion"
-            ? "Ky PIN është për Restorantin — kliko Ndërro."
-            : "Ky PIN është për Recepsionin — kliko Ndërro.");
+          const meta = staffZoneMeta(selectedPinLoginMode);
+          throw new Error(`Ky PIN nuk është për ${meta.title}.`);
         }
         await hyrSiKamarier(data);
       } catch (err) {

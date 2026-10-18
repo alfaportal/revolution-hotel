@@ -1596,19 +1596,6 @@
 
   <div id="print-fature" class="print-receipt"></div>
 
-  <div id="modal-post-pay-thermal" class="table-modal" hidden>
-    <div class="table-modal-backdrop" id="post-pay-thermal-backdrop"></div>
-    <div class="table-modal-content" role="dialog" aria-modal="true" aria-labelledby="post-pay-thermal-title">
-      <h2 id="post-pay-thermal-title">Pagesa u krye</h2>
-      <p class="split-modal-hint">Mund të shtypni kuponin termik (jo fiskal) edhe një herë para se të vazhdoni.</p>
-      <div id="post-pay-thermal-msg" class="alert alert-error" hidden></div>
-      <div class="payments-btn-grid" style="margin-top:0.75rem;">
-        <button type="button" class="btn-coupon btn-coupon-thermal pos-pay-btn" id="btn-shtyp-kupon-termik-post">Shtyp Kuponin</button>
-        <button type="button" class="btn btn-primary pos-pay-btn" id="btn-post-pay-vazhdo">Vazhdo</button>
-      </div>
-    </div>
-  </div>
-
   <div id="modal-split-bill" class="table-modal" hidden>
     <div class="table-modal-backdrop" id="split-modal-backdrop"></div>
     <div class="table-modal-content split-modal-content">
@@ -5972,74 +5959,6 @@
       return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
     }
 
-    let postPayCloseCtx = null;
-
-    function hidePostPayThermalModal() {
-      const m = document.getElementById("modal-post-pay-thermal");
-      if (m) m.hidden = true;
-    }
-
-    async function finalizePasPageseSukses() {
-      const ctx = postPayCloseCtx;
-      postPayCloseCtx = null;
-      hidePostPayThermalModal();
-      if (!ctx) return;
-      lironTavolinenNëPamje(ctx.tavolinaId);
-      await mbyllEkraninPorosise();
-      kyçKamarierPasPagese();
-      ngarkoPazarin();
-      ngarkoPorosiOnlineWaiter(true).catch(() => {});
-      try { window.dispatchEvent(new Event("pos-order-closed")); } catch (_e) { /* */ }
-      if (typeof refreshFiscalNetIndicator === "function") refreshFiscalNetIndicator();
-    }
-
-    function showPostPayThermalModal(ctx) {
-      postPayCloseCtx = ctx;
-      const msg = document.getElementById("post-pay-thermal-msg");
-      if (msg) { msg.hidden = true; msg.textContent = ""; }
-      const m = document.getElementById("modal-post-pay-thermal");
-      if (m) m.hidden = false;
-    }
-
-    async function shtypKuponTermikPasPagese() {
-      const orderId = postPayCloseCtx?.res?.order_id;
-      const gabimEl = document.getElementById("post-pay-thermal-msg");
-      if (!orderId) return;
-      const btn = document.getElementById("btn-shtyp-kupon-termik-post");
-      if (btn) btn.disabled = true;
-      try {
-        const r = await api("/api/waiter/print-thermal-receipt", {
-          method: "POST",
-          body: JSON.stringify({ order_id: orderId }),
-        });
-        if (r.html) document.getElementById("print-fature").innerHTML = r.html;
-        if (r.printed) {
-          if (gabimEl) { gabimEl.hidden = true; gabimEl.textContent = ""; }
-        } else {
-          const msg = r.printMessage || "Printeri termik nuk u gjet.";
-          if (gabimEl) { gabimEl.hidden = false; gabimEl.textContent = msg; }
-          if (r.html && confirm(`${msg}\n\nHap dialogun e printimit të Windows?`)) window.print();
-        }
-      } catch (e) {
-        if (gabimEl) {
-          gabimEl.hidden = false;
-          gabimEl.textContent = e.message || "Printimi dështoi";
-        }
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-    }
-
-    document.getElementById("btn-shtyp-kupon-termik-post")?.addEventListener("click", () => {
-      shtypKuponTermikPasPagese();
-    });
-    document.getElementById("btn-post-pay-vazhdo")?.addEventListener("click", () => {
-      finalizePasPageseSukses();
-    });
-    document.getElementById("post-pay-thermal-backdrop")?.addEventListener("click", () => {
-      finalizePasPageseSukses();
-    });
-
     async function mbyllMePagese(paymentMethod, opts = {}) {
       const checkout_token = generateCheckoutToken();
       const payInfo = paymentMethod && typeof paymentMethod === "object" && paymentMethod.payment_method
@@ -6130,10 +6049,6 @@
           );
         } else if (res.printMessage) {
           shfaqGabim(gabimEl, res.printMessage);
-        }
-        if (res.order_id) {
-          showPostPayThermalModal({ tavolinaId, res });
-          return;
         }
         lironTavolinenNëPamje(tavolinaId);
         await mbyllEkraninPorosise();

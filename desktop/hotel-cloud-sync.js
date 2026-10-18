@@ -499,6 +499,26 @@ async function pullHotelDataFromCloud(db, { forceFull = false } = {}) {
   };
 }
 
+async function ackOwnerHotelPmsForceSyncIfNeeded(db) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) return { ok: false, skipped: true };
+  try {
+    const q = `celesi=${encodeURIComponent(cfg.celesi)}`;
+    const r = await requestJson("GET", `/api/v1/hotel/pms-sync/owner-force?${q}`, null);
+    const parsed = parseJsonResponse(r);
+    const forceAt = String(parsed.force_at || "").trim();
+    if (!forceAt) return { ok: true, ack: false };
+    await requestJson("POST", "/api/v1/hotel/pms-sync/owner-force/ack", {
+      celesi: cfg.celesi,
+      device_id: cfg.deviceId,
+      force_at: forceAt,
+    });
+    return { ok: true, ack: true, force_at: forceAt };
+  } catch {
+    return { ok: false, ack: false };
+  }
+}
+
 /** Menjëherë pas check-in / check-out — mysafirët + statusi i dhomave (QR dhomë). */
 async function pushGuestStaySnapshotToCloud(db) {
   if (!db || !cloudSync.isCloudConfigured(db)) {
@@ -608,7 +628,8 @@ async function fullHotelSync(db) {
       } catch {
         /* ignore */
       }
-      return { ok: true, secondary_register: true, pull, push };
+      const owner_force_ack = await ackOwnerHotelPmsForceSyncIfNeeded(db);
+      return { ok: true, secondary_register: true, pull, push, owner_force_ack };
     }
   } catch {
     /* ignore */
@@ -636,12 +657,15 @@ async function fullHotelSync(db) {
     /* ignore */
   }
 
+  const owner_force_ack = await ackOwnerHotelPmsForceSyncIfNeeded(db);
+
   return {
     ok: true,
     push,
     public_bookings,
     pull,
     last_hotel_sync: syncStartedAt,
+    owner_force_ack,
   };
 }
 

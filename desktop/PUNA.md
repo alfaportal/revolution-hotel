@@ -1,5 +1,83 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-10-18 — Raportet TOTALI: mos dyfisho `payment_method=room` pas CO-
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `database.js` | `sumRestaurantRegisterExcludingRoomAccrual` — TOTALI/Ditari pa tavolinë «në dhomë» (mblidhet te CO-) |
+
+**Provë:** `protected-functions.test.js` room payment; `npm test` 11/11.
+
+---
+
+## 2026-10-18 — Recepsion check-out: Paguaj (Termik) + modal «Pagesa u krye»
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `public/recepcion.html` | Buton «Paguaj (Termik)» poshtë «Paguaj»; modal Shtyp Kuponin / Vazhdo; reprint `guests/:id/print-folio` |
+
+---
+
+## 2026-10-18 — Raportet: KPI «Cash në arkë» (si KAFENE)
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `database.js` | `getCashInRegister()` — SUM `cash_amount` ditari − blerje cash; fusha në `getReports()` |
+| `public/admin.html` | KPI + nënshkrim shitje/blerje cash |
+
+---
+
+## 2026-10-18 — Cash drawer kick (ESC/POS, si KAFENE)
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `lib/cash-drawer.js` | `openCashDrawer`, `paymentIncludesCash`, pin 2/5 |
+| `server.js` | `scheduleCashDrawerKick` pas cash/mixed: `close-and-print`, `split-close-and-print`, `orders/close`; `POST /api/waiter/open-drawer` |
+
+**Jo:** `charge-to-room`. **Provë:** `node --check server.js` OK.
+
+---
+
+## 2026-10-18 — Ditari: filtër sipas kolonës `date` (si Raportet / KAFENE)
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `database.js` `getDitari()` | `date >= ? AND date <= ?`, `ORDER BY date DESC, time DESC` (jo `datetime(date||time)`) |
+
+**Provë:** `node tests/hotel-report-totals.test.js` OK.
+
+---
+
+## 2026-10-18 — Raportet + Ditari: Cash/Kartë/Tjera nga `cash_amount`/`card_amount`
+
+**Shkaku:** `getReports`/`getDitari` numëronin nga `payment_method` (mixed → i gjithë totali cash).
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `database.js` | `dailyLogEntryCashAmount/CardAmount/OtherAmount`; `getReports` + `getDitari` + `byRegister.tjera` |
+| `db-engine.js` | Backfill `cash_amount`/`card_amount` për rreshta të vjetër cash/kartë |
+| `public/admin.html` | KPI Cash/Kartë/Tjera (Raportet); Ditari kartë Tjera; tabelë arka «Tjera» |
+| `tests/hotel-report-totals.test.js` | mixed 40/60 + assert Cash+Kartë+Tjera = `restaurantRegisterSales` |
+
+**Provë:** `node tests/hotel-report-totals.test.js` OK.
+
+---
+
+## 2026-10-18 — Recepsion: njoftime rezervim web + shërbime (staff cloud off)
+
+**Shkaku:** `rejectStaffCloud` kthente listë bosh për kërkesat publike rezervim/shërbim; porositë online punonin vetëm nga `online-orders-watcher`.
+
+| Skedar | Ndryshim |
+|--------|----------|
+| `public-guest-requests-watcher.js` | Poll cloud → SQLite |
+| `db-engine.js`, `database.js` | Cache pending booking/service |
+| `server.js` | GET nga SQLite; POST cloud me licencë |
+| `public/recepcion.html` | Poll 15s + toast rezervimi |
+
+**Provë:** restart app → kërkesë publike → toast ~15–30s.
+
+---
+
 ## 2026-10-11 — Dita e biznesit (Europe/Belgrade) — **IMPLEMENTUAR**
 
 **Rregull:** `Europe/Belgrade` (Kosovë) për **dita e biznesit** në lexim/raporte/sync — PC + cloud. **`daily_log` INSERT** mbetet `date('now','localtime')` (ora Windows). **Jo** ndryshim Z-raport / ATK PDF (`server.js` ~6923 `createDate` UTC).
@@ -35,7 +113,7 @@
 
 `node tests/run-all.js` (11 suite, përfshirë `hotel-business-date.test.js`); `node tmp-hotel-accounting-real-path-audit.js` → **15/16 PO**.
 
-### Release 2026-10-11 (Naseri OK)
+### Release 2026-10-11 (operator OK)
 
 | Hapi | Rezultat |
 |------|----------|
@@ -135,8 +213,8 @@
 | **2 PC — «në dhomë» → folio Kryesore 1×** | import idempotent | `test-dual-pc-room-charge.js` ×3 | **PO** | |
 | **2 PC — dhomë pa mysafir** | refuzo | Fazat `secondary-reject` + `master-reject` ×3 | **PO** | |
 | **2 PC — relay pa LAN** | cloud queue | Skript simulon import relay (jo LAN off live 3×) | **PO (logjikë)** / **JO (2 PC fizik)** | |
-| **Faqe publike te-naseri-2 — 3 tab** | Rezervim / Dhoma / Menu (+ shërbime) | HTML live: `Rezervim`, `Dhoma`, `Menu`, `data-tab` **PO**; API `sections` bosh | **PO (faqe)** | `git_commit` health **b9eda37** |
-| **Rezervim web DRY → recepsion → përgjigje → fshi** | flow i plotë | `PUBLIC_BOOKING_DRY_EMAIL=1` `test-public-booking-flow.js te-naseri-2`: create **201**, list recepsion **PO**, respond **PO** (dry email) | **Pjesërisht** | **Fshirja auto JO** — mungon `PUBLIC_BOOKING_TEST_DELETE=1` + `PUBLIC_BOOKING_TEST_LICENSE_KEY`; ID test: `ecf9a127-64c8-4ecd-8945-5bb8b106b721` (fshi manual në recepsion/cloud) |
+| **Faqe publike demo-hotel — 3 tab** | Rezervim / Dhoma / Menu (+ shërbime) | HTML live: `Rezervim`, `Dhoma`, `Menu`, `data-tab` **PO**; API `sections` bosh | **PO (faqe)** | `git_commit` health **b9eda37** |
+| **Rezervim web DRY → recepsion → përgjigje → fshi** | flow i plotë | `PUBLIC_BOOKING_DRY_EMAIL=1` `test-public-booking-flow.js demo-hotel`: create **201**, list recepsion **PO**, respond **PO** (dry email) | **Pjesërisht** | **Fshirja auto JO** — mungon `PUBLIC_BOOKING_TEST_DELETE=1` + `PUBLIC_BOOKING_TEST_LICENSE_KEY`; ID test: `ecf9a127-64c8-4ecd-8945-5bb8b106b721` (fshi manual në recepsion/cloud) |
 | **Rrjedha e plotë audit (restorant/recepsion/B2B/raporte)** | `tmp-hotel-accounting-real-path-audit.js` | **Dështoi seed:** PIN 6 në `tmp-hotel-real-path-seed.js` vs policy 4 shifra | **JO** | E njëjta shkak si suite B2B |
 | **Të gjitha testet desktop** | `tests/run-all.js` | **9/10** suite | **JO** | Dështoi vetëm `hotel-b2b-kontabilist.test.js` (setup `addStaff` PIN 6) |
 | **Të gjitha testet server** | 6× `tests/*.test.js` | **6/6 PO** | **PO** | |
@@ -146,7 +224,7 @@
 
 1. **Mesatar — suite audit / B2B:** `hotel-b2b-kontabilist.test.js` dhe `tmp-hotel-accounting-real-path-audit.js` përdorin PIN 6-shifror në `addStaff` kamarier → `validateNewStaffPin` refuzon (politika 4 shifra). **Duhet përditësuar seed/test** (jo bërë tani).
 2. **Mesatar — rezervim test live:** kërkesa test **nuk u fshi** automatikisht (mungon license key në env provë).
-3. **I ulët — hyrje UI:** localStorage / «Ndërro» / logout **pa 3× klik** në Electron (Setup i ri duhet provuar nga Naseri).
+3. **I ulët — hyrje UI:** localStorage / «Ndërro» / logout **pa 3× klik** në Electron (Setup i ri duhet provuar nga operator).
 4. **I ulët — 2 PC fizik:** relay me LAN të fikur **pa** dy PC + Wi‑Fi off (mbetet simulim skripti).
 
 ### Skedarë desktop të ndryshuar / pa commit (`hotel-system`, `git status`)
@@ -416,7 +494,7 @@
 
 **Tani:** një pipeline në **08:00** (ora e klientit, `Europe/Belgrade`): raport për **dje** nga PC → `ai_daily_reports` + email + Telegram/SMS me tekstin AI. Pronari: `daily_report_enabled`, `daily_report_hour`, `notify_daily_report`. Cron: `morningOwnerAiReportService.js` + `jobs/aiDailyReports.js` (çdo :00). Pa `profit_forecast` në cron (1 thirrje AI/ditë + limit mujor). Migrim **089**.
 
-**Provë:** `node tests/ai-daily-report-morning.test.js` **PO**; `node scripts/manual-morning-ai-report.js te-naseri-2 --dry-notify` kërkon `.env` Supabase — **JO** në këtë PC (pa keys).
+**Provë:** `node tests/ai-daily-report-morning.test.js` **PO**; `node scripts/manual-morning-ai-report.js demo-hotel --dry-notify` kërkon `.env` Supabase — **JO** në këtë PC (pa keys).
 
 **Git cloud:** `8ef72e3`.
 
@@ -594,7 +672,7 @@
 | `public/js/hotel-ingredients-recipes-admin.js` | **I ri** — UI Stoku (përbërës), receta në edit produkt, blerje Menu/Përbërës |
 | `public/admin.html` | Panel përbërësish, receta, rreshta blerje |
 | `fiscal/fiscal-correction.js` | Kthim stoku (përbërës/copë) pas kuponit korrigjues |
-| `tests/ingredients-recipes.test.js` | **I ri** — skenari Naseri (10 kg×8 €, Biftek 0,25 kg, 6 shitje, anulo 1, Coca-Cola) |
+| `tests/ingredients-recipes.test.js` | **I ri** — skenari operator (10 kg×8 €, Biftek 0,25 kg, 6 shitje, anulo 1, Coca-Cola) |
 | `package.json` | `ingredients-recipes.js` në `build.files` (Setup i ardhshëm) |
 
 ### Verifikim
@@ -647,7 +725,7 @@
 
 **Scope:** vetëm `hotel-system/desktop` + `revolution-hotel-server`. **Pa ndryshime kodi** — vetëm ky dokument. **Pa build.** **Pa prekje** KAFENE/MARKET/FURRA/BIZNES.
 
-**Qëllimi i planit (Naseri):** përbërës + receta **vetëm në PC**; cloud **lexon**; blerje kg/l → stok përbërësi; shitje zbret recetën; numërim javor vs «duhej të harxhohej»; artikuj pa recetë = copë si sot; të dhënat në përmbledhje ditore + AI.
+**Qëllimi i planit (operator):** përbërës + receta **vetëm në PC**; cloud **lexon**; blerje kg/l → stok përbërësi; shitje zbret recetën; numërim javor vs «duhej të harxhohej»; artikuj pa recetë = copë si sot; të dhënat në përmbledhje ditore + AI.
 
 ---
 
@@ -767,7 +845,7 @@
 | `server/public/js/owner-inventory.js` | UI përbërës |
 | `MARKET/.../database.js` | `recipe_items` (referencë) |
 
-**Status:** **prit OK** nga Naseri para çdo ndryshimi kodi.
+**Status:** **prit OK** nga operator para çdo ndryshimi kodi.
 
 ---
 
@@ -1171,7 +1249,7 @@ Shkruaj rezultatin te PUNA.md (data, periudha, diferencat).
 
 ## 2026-10-10 — Audit: raport pronari (cloud) vs PC — **pa ndryshime kodi**
 
-**Status:** vetëm analizë + rekomandim; **prit OK** nga Naseri para implementimit.
+**Status:** vetëm analizë + rekomandim; **prit OK** nga operator para implementimit.
 
 ### Cloud — nga çfarë llogaritet?
 
@@ -1216,7 +1294,7 @@ Shkruaj rezultatin te PUNA.md (data, periudha, diferencat).
 | **Pro** | **Një burim i vetëm llogarie** (SQLite PC); pronari lexon të njëjtin total si admin; offline-first (radhë sync) | Cloud “i pavarur” pa PC online |
 | **Kundër** | Duhet skemë + sync i besueshëm | Dy implementime `getReports` → risik ** përsëri dy numra**; më shumë të dhëna + migrime |
 
-**Rekomandim (agreement me Naseri): (a)** — PC mbetet burimi i së vërtetës; cloud panel **lexon snapshot** të sync-uar (jo `Σ sales_orders.total` si “të ardhura totale hoteli”).
+**Rekomandim (agreement me operator): (a)** — PC mbetet burimi i së vërtetës; cloud panel **lexon snapshot** të sync-uar (jo `Σ sales_orders.total` si “të ardhura totale hoteli”).
 
 **Hapi tjetër:** pas **OK** të qartë — dizajn tabelë/API sync + ndryshim `getOwnerReport` / UI që të lexojë snapshot-in (projekt i veçantë desktop + hotel-server).
 
@@ -1411,7 +1489,7 @@ Supabase `hotel_guests`: `AUDIT-PUSH-R*` **`checked_in`** para pastimit. **Pastr
 
 ## 2026-10-10 — AUDIT recepsion i plotë (3×, kopje DB :3995) — **pa ndryshime kodi produkti**
 
-**Metodë:** `%TEMP%\hotel-e2e-audit-20261010\hotel.db`, server **3995**, `AUDIT_SET_TEMP_ADMIN=1` vetëm në kopje. Skript: `tmp-hotel-e2e-recepsion-full.js`. Rezultat: `%TEMP%\hotel-recepsion-audit.json`. Cloud lexim/pastrim: Supabase `revolution-hotel` (klient `te-naseri-2-aed709`).
+**Metodë:** `%TEMP%\hotel-e2e-audit-20261010\hotel.db`, server **3995**, `AUDIT_SET_TEMP_ADMIN=1` vetëm në kopje. Skript: `tmp-hotel-e2e-recepsion-full.js`. Rezultat: `%TEMP%\hotel-recepsion-audit.json`. Cloud lexim/pastrim: Supabase `revolution-hotel` (klient `demo-hotel-aed709`).
 
 **Përgatitje kopje:** 39 dhoma `free` (nuk u bë check-out shtesë). Prova: dhoma **102 / 103 / 104**, netë **1 / 2 / 3**, totale CO **45 / 136.5 / 288 €**.
 
@@ -1421,7 +1499,7 @@ Supabase `hotel_guests`: `AUDIT-PUSH-R*` **`checked_in`** para pastimit. **Pastr
 |------|--------|---------------------------|-------|-----------------|
 | Rezervim | 201, `display_status=reserved` | **201**, `disp=reserved` | **PO** | `database.js` ~5285–5338, ~3084–3089 |
 | Check-in nga rezervimi | occupied + mysafir aktiv | **200**, `st=occupied` | **PO** | `server.js` ~4438–4445 |
-| Cloud `hotel_guests` **menjëherë** (6s, pa sync manual) | mysafir `checked_in` te-naseri-2 | **Jo** në 6s; pas `sync-all` në CO: rreshta `AUDIT-REC-*` (pastaj **fshi** nga audit) | **JO** | `server.js` ~4438 (**nuk** thërret `pushHotelGuestStayToCloudAsync`; krahaso ~3897) |
+| Cloud `hotel_guests` **menjëherë** (6s, pa sync manual) | mysafir `checked_in` demo-hotel | **Jo** në 6s; pas `sync-all` në CO: rreshta `AUDIT-REC-*` (pastaj **fshi** nga audit) | **JO** | `server.js` ~4438 (**nuk** thërret `pushHotelGuestStayToCloudAsync`; krahaso ~3897) |
 | Restorant «në dhomë» (`charge-to-room`) | 200; **cash** ndërrimi kamarier **0** | **200**, cash **0→0** (room_shift rritet) | **PO** | `server.js` ~4452–4505 |
 | QR dhomë cloud → pranim | 201 + accept → folio | **404** (URL audit i gabuar) + mysafir **mungon** në cloud gjatë qëndrimit | **JO** | Skript audit; API: `guest.js` ~126 `/hotel/api/guest/menu-order?slug=&key=` |
 | Shërbim (saunë/spa) | në faturë | **201**, `hasLine=true` (3×) | **PO** * | `server.js` ~4247–4261 (201, jo 200) |
@@ -1509,7 +1587,7 @@ Audit **nuk** e ruajti `gabim` në `audit-cloud.json` (vetëm `status=400 id=?`)
 | 13 | B2B faturë + pagesë 40€ / borxh 60€ | endpoint pagese | inv **201**, `POST .../payments` → **404** | **JO** | `sales-invoices-routes.js` (~81, **mungon route**) | **i rëndë** |
 | 14 | Raport ditor | total = shitje | GET **200** (`totalSales` në body, jo `totals.sales`) | **PO** | `database.js` ~8502 `getReports` | i vogël |
 | 15 | Kontabilitet TVSH | 200 | **200** | **PO** | `server.js` ~6291 | — |
-| 16 | Cloud bootstrap te-naseri-2 | ok | **200** `ok:true` | **PO** | `revolution-hotel-server` `waiter.js` ~87 | — |
+| 16 | Cloud bootstrap demo-hotel | ok | **200** `ok:true` | **PO** | `revolution-hotel-server` `waiter.js` ~87 | — |
 | 17 | PC `trigger-sync` + pending | 200 | sync **200**, pending **200** | **PO** | `cloud-sync.js` | — |
 | 18 | Cloud POST porosi tavolinë (telefon) | 201 → PC import | audit: **400** (payload pa `waiter_id`); **riprovë 2026-10-10: 201 + import PO ×3** | **PO** * | skript audit vs `waiter.js` ~2190–2197 | **i rëndë** * |
 | 19 | Pastrim cloud porosi test | cancel OK | **Nuk u arrit** (pa order id) | **JO** | `waiter.js` ~71 | mesatar |
@@ -1535,13 +1613,13 @@ Audit **nuk** e ruajti `gabim` në `audit-cloud.json` (vetëm `status=400 id=?`)
 
 ## 2026-10-10 — KONTROLL I PLOTË PARA SETUP-IT (audit — **pa ndryshime kodi**)
 
-**Metodë:** Lexim `.cursorrules` + `CLAUDE.md`; prova vetëm në **DB të përkohshme** (`tests/*` — jo DB klienti); cloud **vetëm lexim** te klienti **`te-naseri-2`** / slug canonical `te-naseri-2-aed709`; **asnjë** POST/PUT që modifikon të dhëna cloud; **asnjë** dërgim ATK; **jo** Electron/Setup UI në këtë sesion; **jo** build/push.
+**Metodë:** Lexim `.cursorrules` + `CLAUDE.md`; prova vetëm në **DB të përkohshme** (`tests/*` — jo DB klienti); cloud **vetëm lexim** te klienti **`demo-hotel`** / slug canonical `demo-hotel-aed709`; **asnjë** POST/PUT që modifikon të dhëna cloud; **asnjë** dërgim ATK; **jo** Electron/Setup UI në këtë sesion; **jo** build/push.
 
 **Pastrim testesh cloud:** Nuk u krijuan të dhëna test në Supabase/cloud gjatë auditit → **nuk kishte çfarë të fshihej**.
 
 **Verifikim automatik (×4):** `node tests/run-all.js` → **5/5 suite** çdo herë (përfshirë `protected-functions` 10/10, B2B 5/5, blerje 12/12, factory-reset 5/5, kontabilist-atk suite).
 
-**Live cloud:** `GET /hotel/health` → 200, `git_commit` ≈ `a44a163…`; `GET /hotel/api/r/te-naseri-2` → 200 (dhoma, menu, shërbime).
+**Live cloud:** `GET /hotel/health` → 200, `git_commit` ≈ `a44a163…`; `GET /hotel/api/r/demo-hotel` → 200 (dhoma, menu, shërbime).
 
 **Rrezik Setup:** Working tree desktop **shumë i modifikuar** vs `origin/master` (20+ skedarë) — Setup i vjetër **nuk** përmban këto ndryshime derisa të bëhet build i ri me OK.
 
@@ -1555,7 +1633,7 @@ Audit **nuk** e ruajti `gabim` në `audit-cloud.json` (vetëm `status=400 id=?`)
 | 4 | Kuponi / print mbylljeje tavoline | 0 runtime; 1 trace | **?** | Thirrje `printReceiptAt` / `close-table-print` ekziston; **nuk** u simulua printer | `close-table-print.js` ~86; `server.js` ~5274 | **mesatar** |
 | 5 | Arka / ndërrime restorant vs recepsion; cash = cash real; «Në dhomë» veç | 4× | **PO** (logjikë) | Test: 10€ cash + 5€ room → `cash_total` 10, `room_total` 5; check-out 50€ → raport +60 pa dyfishim `(T#)` | `protected-functions.test.js` ~348–435; `database.js` `computeShiftTotals` | **PO** në DB test; **?** UI ndërrimi |
 | 6 | Recepsion: rezervim, check-in, ngarkesa, check-out, fatura mysafiri | 0 UI; 1 kod | **?** | Sync PMS / folio në kod; **nuk** u ekzekutua flow recepsion | `hotel-cloud-sync.js`; `database.js` folio | **i rëndë** |
-| 7 | Dhomat / pastrimi: statuse, check-out → për pastrim | 0 UI; 1 kod + cloud GET | **Pjesërisht** | Cloud `/hotel/te-naseri-2/sherbimi` → **200** (redirect nga `-aed709`); push HK në kod desktop | `server.js` HK API; `sherbimi-cloud.html` (cloud) | **mesatar** (UI pastrimi pa PIN live) |
+| 7 | Dhomat / pastrimi: statuse, check-out → për pastrim | 0 UI; 1 kod + cloud GET | **Pjesërisht** | Cloud `/hotel/demo-hotel/sherbimi` → **200** (redirect nga `-aed709`); push HK në kod desktop | `server.js` HK API; `sherbimi-cloud.html` (cloud) | **mesatar** (UI pastrimi pa PIN live) |
 | 8 | Shitje → stoku | 4× | **PO** | `decrementMenuItemStock` pas `closeTable`; cloud rebuild pa dyfishim | `protected-functions.test.js` ~400–419 | **i vogël** (mbuluar test) |
 | 9 | Blerje → stoku + kosto | 4× | **PO** | `increaseMenuItemStock`; neto/bruto skanim | `purchase-neto-bruto.test.js`; test rritje stoku | **i vogël** |
 | 10 | Inventari = shitje + blerje | 0 UI; 1 test indirekt | **?** | Nuk u numërua inventar fizik vs sistem në UI | `database.js` reconcile baseline në test boot | **mesatar** |
@@ -1565,7 +1643,7 @@ Audit **nuk** e ruajti `gabim` në `audit-cloud.json` (vetëm `status=400 id=?`)
 | 14 | QR: dhomë, tavolinë, venue; skadim 15 min | 0 E2E; 1 kod | **Pjesërisht** | `UNTOUCHED_PENDING_EXPIRE_MS` = 15 min desktop; cloud `pendingAcceptExpiry.js` 15 min; **jo** porosi reale QR | `online-orders-watcher.js` ~18; `pendingAcceptExpiry.js` ~12 | **i rëndë** (E2E) |
 | 15 | PC ↔ cloud (tavolina, porosi, pagesa, HK, mysafirë) | 0 sinkron live | **?** | Watcher/sync në kod; **nuk** u bë veprim dy-krahësh PC+telefon | `cloud-sync.js`; `online-orders-watcher.js` | **i rëndë** |
 | 16 | Panel pronari (cloud): tab + të dhëna | 0 login owner | **?** | Faqet publike/staff **GET** OK; panel kërkon session — **nuk** u hapur | `revolution-hotel-server/public/js/owner.js` | **i rëndë** |
-| 17 | Linqet Internet + Wi‑Fi (kamarier, recepsion, pastrim) | 3× curl | **Pjesërisht** | `/hotel/te-naseri-2/kamarier` **200**; `/recepsion` **200**; `/sherbimi` **200**; Wi‑Fi varet nga sync PC (`staff_local_links`) — **nuk** u verifikua payload live | `local-staff-links.js`; cloud `owner.js` | **mesatar** |
+| 17 | Linqet Internet + Wi‑Fi (kamarier, recepsion, pastrim) | 3× curl | **Pjesërisht** | `/hotel/demo-hotel/kamarier` **200**; `/recepsion` **200**; `/sherbimi` **200**; Wi‑Fi varet nga sync PC (`staff_local_links`) — **nuk** u verifikua payload live | `local-staff-links.js`; cloud `owner.js` | **mesatar** |
 | 18 | Fiskalizimi: gati, pa ATK, kupon jo dy herë | 0 runtime; 1 kod | **Pjesërisht** | `FISCAL_LOCAL_RUN=1`, `ATK_AUTO_SEND=0` në `main.js`/`server.js`; dedup print `<5s` MD5 | `fiscal-main.js` ~369–376; `fiscal-local-env.js` | **mesatar** (licencë + printer) |
 | 19 | Cloud health / migrim 086 `expired` | 1 API + Supabase (sesion prior) | **PO** | `sales_orders.status` përfshin `expired` | `086_hotel_order_expired_status.sql` | **i vogël** |
 | 20 | URL e gabuar `/hotel/.../waiter` | 1 curl | **JO** (404) | Rruga e saktë publike: `/hotel/{slug}/kamarier` ose gateway — **jo** `/waiter` nën `/hotel` | `revolution-hotel-server/src/server.js` ~812 | **i vogël** (dokumentim/link) |
@@ -1580,7 +1658,7 @@ Audit **nuk** e ruajti `gabim` në `audit-cloud.json` (vetëm `status=400 id=?`)
 6. **mesatar — Panel pronari + numra KPI:** Kërkon login owner; tab-et nuk u klikuan.
 7. **mesatar — Inventar UI vs lëvizje stoku:** Vetëm stok nga teste automatike.
 8. **mesatar — Fiskalizimi runtime:** Dedup 5s; pa licencë ATK — sjellja e plotë e kuponit nuk u provua.
-9. **i vogël — `/hotel/{slug}/waiter` → 404:** Përdor `/kamarier` (live 200 për `te-naseri-2`).
+9. **i vogël — `/hotel/{slug}/waiter` → 404:** Përdor `/kamarier` (live 200 për `demo-hotel`).
 
 **Kufizim i auditit:** Me OK të Naserit, rregullimet **një nga një** — **mos** u prek asgjë gjatë këtij raporti.
 
@@ -1747,7 +1825,7 @@ Kur kamarieri (POS ose telefon) mbyll tavolinë me `payment_method = "room"`, re
 ## 17 tetor 2026 (2) — PWA sipas rolit (/hotel/{slug}/…)
 
 - `manifest-kamarier.json`, `manifest-recepsion.json`, `manifest-sherbimi.json`, `sw-staff.js`, `icon-192.png`
-- `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/te-naseri-2/kamarier`
+- `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/demo-hotel/kamarier`
 - `serveStaffLoginPage` injekton PWA; pas PIN: `waiter.html` / `kasa-recepcion.html` me manifest rol
 
 ---
@@ -1773,5 +1851,5 @@ Kur kamarieri (POS ose telefon) mbyll tavolinë me `payment_method = "room"`, re
 ## 17 tetor 2026 (2) — PWA sipas rolit (/hotel/{slug}/…)
 
 - `manifest-kamarier.json`, `manifest-recepsion.json`, `manifest-sherbimi.json`, `sw-staff.js`, `icon-192.png`
-- `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/te-naseri-2/kamarier`
+- `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/demo-hotel/kamarier`
 - `serveStaffLoginPage` injekton PWA; pas PIN: `waiter.html` / `kasa-recepcion.html` me manifest rol

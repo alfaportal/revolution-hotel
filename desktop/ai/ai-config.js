@@ -2,7 +2,7 @@
  * AI config — toggle + lidhje me package-tier-map.
  *
  * AI QASJA — 3 NIVELE:
- * 1. Admin (Naseri) në telefon — AI komplet, krejt klientët
+ * 1. Super-admin në telefon — AI komplet, krejt klientët
  * 2. Pronari në panel (kompjuter) — AI me kategori (shitjet, stoku, kamarierët)
  * 3. Pronari në telefon — skanim fature + chat i thjeshtë
  */

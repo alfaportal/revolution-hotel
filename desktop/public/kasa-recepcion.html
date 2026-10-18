@@ -912,7 +912,6 @@
 
     const user = window.__recepUser;
     const RECEP_MODULES = [
-      { id: "kasa", label: "Arka" },
       { id: "rooms", label: "Dhomat" },
       { id: "reservations", label: "Rezervimet" },
       { id: "services", label: "Shërbimet" },
@@ -1023,11 +1022,7 @@
     }
 
     function openRecepModule(view) {
-      if (view === "kasa") {
-        closeRecepModule();
-        return;
-      }
-      if (!RECEP_MODULES.some((m) => m.id === view) || view === "kasa") view = "rooms";
+      if (!RECEP_MODULES.some((m) => m.id === view)) view = "rooms";
       activeRecepView = view;
       renderCategoryNav();
       const col = document.getElementById("col-cart");
@@ -1198,14 +1193,7 @@
     function renderCategoryNav() {
       const nav = document.getElementById("main-cat-bar");
       nav.innerHTML = RECEP_MODULES.map((m) => {
-        const on =
-          m.id === "kasa"
-            ? !activeRecepView
-              ? " on"
-              : ""
-            : activeRecepView === m.id
-              ? " on"
-              : "";
+        const on = activeRecepView === m.id ? " on" : "";
         const badge =
           m.id === "orders" && recepPendingOrderCount > 0
             ? `<span class="recep-pending-badge" aria-label="${recepPendingOrderCount} në pritje">${recepPendingOrderCount}</span>`
@@ -1231,6 +1219,17 @@
       if (d.type === "hotel-recep-pending-orders") {
         recepPendingOrderCount = Math.max(0, Number(d.pending) || 0);
         renderCategoryNav();
+        if (d.playBell) playKasaRecepOrderBell();
+        return;
+      }
+      if (d.type === "hotel-recep-web-booking" && d.booking) {
+        const b = d.booking;
+        const msg = document.getElementById("msg");
+        if (msg) {
+          msg.textContent =
+            `Kërkesë rezervimi — ${b.guest_name || "Mysafir"}, ${String(b.check_in_date || "").slice(0, 10)}, ${b.room_type || ""}`;
+          msg.style.color = "#fbbf24";
+        }
         if (d.playBell) playKasaRecepOrderBell();
         return;
       }

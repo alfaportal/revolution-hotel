@@ -225,7 +225,6 @@ async function runLicenseCheck(db) {
 }
 
 async function runClosedWaiterSalesSync(db) {
-  if (staffCloudAutoJobsPaused()) return;
   if (!canRunCloudSideJobs(db) || isCloudWaiterDisabled(db)) return;
   if (waiterClosedSyncInFlight) return;
   waiterClosedSyncInFlight = true;
@@ -297,8 +296,8 @@ async function runOwnerReportSyncJob(db) {
 function runAllSideSyncJobs(db) {
   runOwnerAdminPasswordSync(db).catch(() => {});
   runOwnerReportSyncJob(db).catch(() => {});
-  if (staffCloudAutoJobsPaused()) return;
   runClosedWaiterSalesSync(db).catch(() => {});
+  if (staffCloudAutoJobsPaused()) return;
   runStaffPushSync(db).catch(() => {});
   runRegisterModeSync(db).catch(() => {});
 }
@@ -396,8 +395,8 @@ function armCloudPeriodicJobs(db) {
   connectionTimer = startPeriodicJob(db, runConnectionCheck, CONNECTION_CHECK_MS);
   ownerPasswordTimer = startPeriodicJob(db, runOwnerAdminPasswordSync, OWNER_ADMIN_PASSWORD_MS);
   ownerReportTimer = startPeriodicJob(db, runOwnerReportSyncJob, OWNER_REPORT_SYNC_MS);
+  closedWaiterTimer = startPeriodicJob(db, runClosedWaiterSalesSync, CLOSED_WAITER_SALES_MS);
   if (!staffCloudAutoJobsPaused()) {
-    closedWaiterTimer = startPeriodicJob(db, runClosedWaiterSalesSync, CLOSED_WAITER_SALES_MS);
     staffPushTimer = startPeriodicJob(db, runStaffPushSync, STAFF_PUSH_INTERVAL_MS);
     registerModeTimer = startPeriodicJob(db, runRegisterModeSync, REGISTER_MODE_MS);
   }
@@ -409,6 +408,7 @@ function runStartupBurst(db) {
       if (status?.connected) {
         scheduleVenueLogoSyncOnce(db);
         runAllSideSyncJobs(db);
+        runHotelFullSync(db).catch(() => {});
       }
       return runCatalogPush(db, { force: true });
     })
@@ -418,7 +418,10 @@ function runStartupBurst(db) {
 function runReconnectBurst(db) {
   runConnectionCheck(db)
     .then(status => {
-      if (status?.connected) runAllSideSyncJobs(db);
+      if (status?.connected) {
+        runAllSideSyncJobs(db);
+        runHotelFullSync(db).catch(() => {});
+      }
       return runCatalogPush(db, { force: true });
     })
     .catch(() => {});
@@ -440,7 +443,6 @@ function startCloudAutoSync(db) {
 
   cloudHealth.onReconnect(() => {
     runReconnectBurst(db);
-    if (staffCloudAutoJobsPaused()) return;
     try {
       cloudSync.reconcileAllTablesWithCloud(db);
     } catch {

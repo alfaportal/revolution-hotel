@@ -39,7 +39,8 @@ function startLocalDiscovery(opts = {}) {
   const slug = String(opts.slug || "").trim();
   const hostname = String(opts.hostname || "revolution-hotel").trim() || "revolution-hotel";
   const key = discoveryOptsKey({ port, slug, hostname });
-  if (key === lastOptsKey && activeService) return { ok: true, already: true };
+  const forceRestart = opts.force === true;
+  if (!forceRestart && key === lastOptsKey && activeService) return { ok: true, already: true };
 
   stopLocalDiscovery();
   lastOptsKey = key;
@@ -87,7 +88,7 @@ function startLocalDiscovery(opts = {}) {
 
 function restartLocalDiscovery(opts) {
   lastOptsKey = "";
-  return startLocalDiscovery(opts);
+  return startLocalDiscovery({ ...(opts || {}), force: true });
 }
 
 // TODO: BLE discovery — Web Bluetooth pairing për URL POS (prioritet i ulët).

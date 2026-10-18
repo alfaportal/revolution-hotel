@@ -1574,20 +1574,10 @@ async function reportHardwareIdToCloud(app) {
   }
 }
 
-const CONTACT_PHONE_DISPLAY = "+383 48707880";
-const CONTACT_WHATSAPP = "38348707880";
-
-function buildWhatsAppActivationUrl(hardwareId, email) {
-  const hw = String(hardwareId || "").trim() || "—";
-  const em = String(email || "").trim();
-  const lines = [
-    "Pershendetje Revolution Invest,",
-    `ID pajisje per aktivizim: ${hw}`,
-    em ? `Email: ${em}` : null,
-    "Ju lutem me dergoni kodin e licences. Mund te dergoj edhe foto te ketij ekrani.",
-  ].filter(Boolean);
-  return `https://wa.me/${CONTACT_WHATSAPP}?text=${encodeURIComponent(lines.join("\n"))}`;
-}
+const {
+  getLicenseSupportContactHtml,
+  buildLicenseWhatsAppActivationUrl,
+} = require("./lib/license-support-contact");
 
 function promptForLicense(app, validateFn, lastError = "") {
   return new Promise(resolve => {
@@ -1648,7 +1638,7 @@ function promptForLicense(app, validateFn, lastError = "") {
         <button type="button" class="wa" id="wa-btn">WhatsApp</button>
       </div>
       <p class="hint">Ky ID del automatikisht (16 shenja). Hapni WhatsApp, dërgoni foto ose tekst me këto numra — pastaj merrni çelësin e licencës.</p>
-      <p class="phone">WhatsApp / tel: <b>${CONTACT_PHONE_DISPLAY}</b></p>
+      ${getLicenseSupportContactHtml()}
       <label for="email">Email (i detyrueshëm për regjistrim)</label>
       <input id="email" type="email" placeholder="p.sh. emri@email.com" autocomplete="email" spellcheck="false">
       <label for="k">Çelësi i licencës</label>
@@ -1739,7 +1729,7 @@ function promptForLicense(app, validateFn, lastError = "") {
 
     ipcMain.handle("lic-whatsapp", async (_e, payload) => {
       try {
-        const url = buildWhatsAppActivationUrl(payload?.hardware_id || hwId, payload?.email);
+        const url = buildLicenseWhatsAppActivationUrl(payload?.hardware_id || hwId, payload?.email);
         await shell.openExternal(url);
         return { ok: true };
       } catch (err) {

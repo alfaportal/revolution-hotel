@@ -191,7 +191,7 @@ function buildInternalTestCouponBundle(settings = {}, opts = {}) {
       settings.taxpayer_legal_name || opts.taxpayer_legal_name || "Test Biznes",
     taxpayer_legal_name:
       settings.taxpayer_legal_name || opts.taxpayer_legal_name || "Test Biznes",
-    taxpayer_address: settings.taxpayer_address || opts.taxpayer_address || "Prishtine",
+    taxpayer_address: settings.taxpayer_address || opts.taxpayer_address || "",
     taxpayer_vat: settings.taxpayer_vat_number || opts.taxpayer_vat || "",
     unit_name: settings.unit_name || opts.unit_name || "Njësia Test",
     unit_phone: settings.unit_phone || opts.unit_phone || "044 111 222",

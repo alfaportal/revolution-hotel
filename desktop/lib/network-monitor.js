@@ -6,9 +6,9 @@ const {
 } = require("../local-staff-links");
 
 class NetworkMonitor extends EventEmitter {
-  constructor(intervalMs = 30000) {
+  constructor(intervalMs = 5000) {
     super();
-    this.intervalMs = Math.max(5000, Number(intervalMs) || 30000);
+    this.intervalMs = Math.max(3000, Math.min(60000, Number(intervalMs) || 5000));
     this.timer = null;
     this.lastSnapshot = null;
   }
@@ -26,17 +26,19 @@ class NetworkMonitor extends EventEmitter {
     };
   }
 
+  tick() {
+    const next = this.snapshot();
+    if (!this.lastSnapshot || next.fingerprint !== this.lastSnapshot.fingerprint) {
+      const previous = this.lastSnapshot;
+      this.lastSnapshot = next;
+      this.emit("change", { previous, current: next });
+    }
+  }
+
   start() {
     if (this.timer) return this;
     this.lastSnapshot = this.snapshot();
-    this.timer = setInterval(() => {
-      const next = this.snapshot();
-      if (!this.lastSnapshot || next.fingerprint !== this.lastSnapshot.fingerprint) {
-        const previous = this.lastSnapshot;
-        this.lastSnapshot = next;
-        this.emit("change", { previous, current: next });
-      }
-    }, this.intervalMs);
+    this.timer = setInterval(() => this.tick(), this.intervalMs);
     return this;
   }
 

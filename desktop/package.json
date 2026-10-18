@@ -1,6 +1,6 @@
 {
   "name": "revolution-hotel",
-  "version": "1.0.631",
+  "version": "1.0.633",
   "description": "Revolution HOTEL — sistem lokal (një Setup, pako 3/4 nga telefoni)",
   "main": "main.js",
   "scripts": {
@@ -179,6 +179,7 @@
       "cloud-server-url.js",
       "cloud-staff-access.js",
       "online-orders-watcher.js",
+      "public-guest-requests-watcher.js",
       "waiter-ws-hub.js",
       "register-mode.js",
       "ditari-report.js",

@@ -4197,10 +4197,16 @@
 
       <div class="settings-danger-zone" id="settings-danger-zone">
         <div class="settings-danger-title">Zona e rrezikshme</div>
-        <p class="settings-danger-desc">Fshin krejt të dhënat lokale dhe e kthen programin si instalim të ri. Ky veprim nuk kthehet mbrapa.</p>
+        <p class="settings-danger-desc">Veprime që fshijnë të dhëna lokale. Licenca mbetet; riaktivizimi nuk kërkohet.</p>
         <button type="button" class="btn btn-danger-reset" id="btn-factory-reset">
-          Rivendos si të re (fshin krejt të dhënat)
+          Rivendos (fshin shitjet, mban konfigurimin)
         </button>
+        <button type="button" class="btn btn-danger-reset" id="btn-full-wipe" style="margin-top:0.65rem">
+          Fshij çdo gjë (biznes i ri / PC tjetër)
+        </button>
+        <p class="settings-danger-desc" style="margin-top:0.5rem;font-size:0.82rem">
+          «Fshij çdo gjë» heq menu, staf, dhoma dhe cilësime — si instalim i ri (wizard). «Rivendos» mban konfigurimin.
+        </p>
 
         <div class="settings-danger-item">
           <div class="settings-danger-title" style="font-size:0.95rem">Fshij të dhënat e ditës (restorant)</div>
@@ -4245,7 +4251,7 @@
       <div class="factory-reset-modal-backdrop" data-factory-cancel></div>
       <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
         <h3>Rivendos si të re</h3>
-        <p>A jeni i sigurt? Kjo fshin krejt të dhënat lokale (porositë, shitjet, menynë, cilësimet) dhe e rivendos programin si të ri. Licenca mbetet. Ky veprim nuk kthehet mbrapa.</p>
+        <p>A jeni i sigurt? Kjo fshin porositë, shitjet, ditari dhe të dhëna transaksionale. Menuja, stafi, dhomat dhe cilësimet mbeten. Licenca mbetet.</p>
         <div class="factory-reset-modal-actions">
           <button type="button" class="btn btn-ghost" data-factory-cancel>Anulo</button>
           <button type="button" class="btn btn-danger-reset" id="btn-factory-reset-continue">Vazhdo</button>
@@ -4261,6 +4267,31 @@
         <div class="factory-reset-modal-actions">
           <button type="button" class="btn btn-ghost" data-factory-cancel>Anulo</button>
           <button type="button" class="btn btn-danger-reset" id="btn-factory-reset-confirm">Rivendos tani</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-full-wipe-1" class="factory-reset-modal" hidden>
+      <div class="factory-reset-modal-backdrop" data-full-wipe-cancel></div>
+      <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
+        <h3>Fshij çdo gjë</h3>
+        <p>Kjo fshin <strong>të gjitha</strong> të dhënat lokale: cilësime, menu, staf, dhoma, shitje — si instalim i parë. Përdore kur programi kalon te një biznes tjetër. Licenca mbetet. Nuk kthehet mbrapa.</p>
+        <div class="factory-reset-modal-actions">
+          <button type="button" class="btn btn-ghost" data-full-wipe-cancel>Anulo</button>
+          <button type="button" class="btn btn-danger-reset" id="btn-full-wipe-continue">Vazhdo</button>
+        </div>
+      </div>
+    </div>
+    <div id="modal-full-wipe-2" class="factory-reset-modal" hidden>
+      <div class="factory-reset-modal-backdrop" data-full-wipe-cancel></div>
+      <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
+        <h3>Konfirmim final</h3>
+        <p>Fjalëkalimi i administratorit dhe shkruani <strong>FSHIJ GJITHÇKA</strong></p>
+        <input type="password" id="full-wipe-admin-password" autocomplete="current-password" placeholder="Fjalëkalimi admin">
+        <input type="text" id="full-wipe-confirm-input" autocomplete="off" spellcheck="false" placeholder="FSHIJ GJITHÇKA" style="margin-top:0.5rem">
+        <div class="factory-reset-modal-actions">
+          <button type="button" class="btn btn-ghost" data-full-wipe-cancel>Anulo</button>
+          <button type="button" class="btn btn-danger-reset" id="btn-full-wipe-confirm">Fshij tani</button>
         </div>
       </div>
     </div>
@@ -7147,6 +7178,74 @@
         if (ev.key === "Enter") {
           ev.preventDefault();
           document.getElementById("btn-factory-reset-confirm")?.click();
+        }
+      });
+    })();
+
+    (function setupFullWipe() {
+      const modal1 = document.getElementById("modal-full-wipe-1");
+      const modal2 = document.getElementById("modal-full-wipe-2");
+      const pwInput = document.getElementById("full-wipe-admin-password");
+      const confirmInput = document.getElementById("full-wipe-confirm-input");
+      const btnOpen = document.getElementById("btn-full-wipe");
+      if (!btnOpen || !modal1 || !modal2) return;
+
+      function closeModals() {
+        modal1.hidden = true;
+        modal2.hidden = true;
+        if (pwInput) pwInput.value = "";
+        if (confirmInput) confirmInput.value = "";
+      }
+
+      function openModal(el) {
+        closeModals();
+        el.hidden = false;
+      }
+
+      btnOpen.addEventListener("click", () => openModal(modal1));
+      document.getElementById("btn-full-wipe-continue")?.addEventListener("click", () => {
+        openModal(modal2);
+        setTimeout(() => pwInput?.focus(), 50);
+      });
+      document.querySelectorAll("[data-full-wipe-cancel]").forEach((el) => {
+        el.addEventListener("click", closeModals);
+      });
+      document.getElementById("btn-full-wipe-confirm")?.addEventListener("click", async () => {
+        const typed = String(confirmInput?.value || "").trim();
+        const adminPassword = String(pwInput?.value || "");
+        if (typed !== "FSHIJ GJITHÇKA") {
+          alert('Duhet të shkruani saktë "FSHIJ GJITHÇKA".');
+          confirmInput?.focus();
+          return;
+        }
+        if (!adminPassword) {
+          alert("Jepni fjalëkalimin e administratorit.");
+          pwInput?.focus();
+          return;
+        }
+        const confirmBtn = document.getElementById("btn-full-wipe-confirm");
+        if (confirmBtn) confirmBtn.disabled = true;
+        if (btnOpen) btnOpen.disabled = true;
+        try {
+          await api("/api/admin/full-wipe", {
+            method: "POST",
+            body: JSON.stringify({
+              confirm: "FSHIJ GJITHÇKA",
+              admin_password: adminPassword,
+            }),
+          });
+          closeModals();
+          alert("Të gjitha të dhënat po fshihen. Programi po riniset te konfigurimi fillestar…");
+        } catch (e) {
+          alert(e.message || "Fshirja e plotë dështoi.");
+          if (confirmBtn) confirmBtn.disabled = false;
+          if (btnOpen) btnOpen.disabled = false;
+        }
+      });
+      confirmInput?.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          document.getElementById("btn-full-wipe-confirm")?.click();
         }
       });
     })();
@@ -18656,7 +18755,7 @@
           ? "Tablet recepsioni — i njëjti WiFi si PC; hyrje me PIN recepsioni (roli Recepsion te Stafi)."
           : "";
       }
-      const venue = String(emriRestorantit || s.client_name || "").trim();
+      const venue = String(emriRestorantit || "").trim();
       const wLbl = document.getElementById("cloud-local-waiter-label");
       const rLbl = document.getElementById("cloud-local-recepsion-label");
       if (wLbl) wLbl.textContent = venue ? `Kamarier — ${venue}` : "Kamarier — WiFi i hotelit";

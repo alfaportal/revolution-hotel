@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * GJENERUESI I LICENCËS — VETËM PËR NASERIN
+ * GJENERUESI I LICENCËS — vetëm ops / distributori
  *
  * Rrjedha:
- *   1. Klienti instalon → sheh HARDWARE_ID → ta dërgon Naserit
- *   2. Naseri: node tools/generate-license.js [HARDWARE_ID] [--type trial|annual]
- *   3. Naseri ia dërgon LICENSE_KEY klientit
+ *   1. Klienti instalon → sheh HARDWARE_ID → ia dërgon ops
+ *   2. Ops: node tools/generate-license.js [HARDWARE_ID] [--type trial|annual]
+ *   3. Ops ia dërgon LICENSE_KEY klientit
  *   4. Klienti e fut → programi hapet
  *
  * Tipet:

@@ -1,7 +1,8 @@
-/* Revolution HOTEL — PWA stafi (kamarier / recepsion / shërbimi). Network-first. */
-const CACHE_NAME = "hotel-staff-role-pwa-v3";
+/* Revolution HOTEL — PWA stafi (kamarier / recepsion / shërbimi). Network-first + finder offline. */
+const CACHE_NAME = "hotel-staff-role-pwa-v4";
 const PRECACHE_URLS = [
   "/login.html",
+  "/staff-pos-finder.html",
   "/waiter.html",
   "/kasa-recepcion.html",
   "/sherbimi.html",
@@ -29,6 +30,11 @@ function isCacheableGet(url) {
   return false;
 }
 
+function isStaffApiPath(pathname) {
+  const p = String(pathname || "");
+  return p.startsWith("/api/") || p.startsWith("/hotel/api/");
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -53,6 +59,15 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+async function openFinderPage() {
+  const cache = await caches.open(CACHE_NAME);
+  const finder = await cache.match("/staff-pos-finder.html");
+  if (finder) return finder;
+  const login = await cache.match("/login.html");
+  if (login) return login;
+  return undefined;
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -64,6 +79,18 @@ self.addEventListener("fetch", (event) => {
   }
   if (url.origin !== self.location.origin) return;
 
+  if (isStaffApiPath(url.pathname)) {
+    event.respondWith(
+      fetch(req).catch(() =>
+        Response.json(
+          { ok: false, gabim: "pos_offline", staff_auto_connect: true },
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(req)
       .then((res) => {
@@ -73,14 +100,26 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       })
-      .catch(() =>
-        caches.match(req).then((cached) => {
-          if (cached) return cached;
-          if (req.mode === "navigate") {
-            return caches.match("/login.html");
-          }
-          return undefined;
-        }),
-      ),
+      .catch(async () => {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+        if (req.mode === "navigate") {
+          const finder = await openFinderPage();
+          if (finder) return finder;
+        }
+        return undefined;
+      }),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "STAFF_POS_DISCOVER") {
+    event.waitUntil(
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          client.postMessage({ type: "STAFF_POS_RUN_DISCOVER" });
+        }
+      }),
+    );
+  }
 });

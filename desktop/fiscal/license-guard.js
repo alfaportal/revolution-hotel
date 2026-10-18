@@ -17,25 +17,25 @@ const INSTALL_SALT_BASENAME = ".install-salt";
 const TRIAL_USED_BASENAME = ".hw-trial-used";
 const GRACE_BASENAME = ".hw-grace.json";
 const AUDIT_BASENAME = ".hw-audit.log";
-const CONTACT_PHONE = "+383 48707880";
-const CONTACT_WHATSAPP = "38348707880";
+const {
+  getLicenseSupportPhoneDisplay,
+  getLicenseSupportContactHtml,
+  getLicenseSupportContactPlain,
+  buildLicenseWhatsAppActivationUrl,
+} = require("../lib/license-support-contact");
 
 function buildWhatsAppActivationUrl(hardwareId, email) {
-  const hw = String(hardwareId || "").trim() || "—";
-  const em = String(email || "").trim();
-  const lines = [
-    "Pershendetje Revolution Invest,",
-    `ID pajisje per aktivizim: ${hw}`,
-    em ? `Email: ${em}` : null,
-    "Ju lutem me dergoni kodin e licences. Mund te dergoj edhe foto te ketij ekrani.",
-  ].filter(Boolean);
-  return `https://wa.me/${CONTACT_WHATSAPP}?text=${encodeURIComponent(lines.join("\n"))}`;
+  return buildLicenseWhatsAppActivationUrl(hardwareId, email);
 }
 /** Grace HW kur çelësi lokal prishet — i shkurtuar (mbrojtje më e fortë). */
 const GRACE_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DAYS = 7;
 const ANNUAL_DAYS = 365;
-const MSG_LICENSE_EXPIRED = `Licenca ka skaduar, kontaktoni ${CONTACT_PHONE}`;
+function licenseExpiredMessage() {
+  const c = getLicenseSupportContactPlain();
+  return `Licenca ka skaduar, kontaktoni ${c}`;
+}
+const MSG_LICENSE_EXPIRED = licenseExpiredMessage();
 
 function _xorDecode(bytes) {
   return Buffer.from(bytes.map((x, i) => x ^ ((i * 11 + 37) & 0xff))).toString("utf8");
@@ -268,8 +268,8 @@ function getGraceBannerInfo(app) {
   if (!(g.hoursLeft > 0 && g.hoursLeft <= 48)) return null;
   return {
     hoursLeft: g.hoursLeft,
-    message: `Licenca skadon për ${g.hoursLeft} orë — kontaktoni mbështetjen (${CONTACT_PHONE})`,
-    phone: CONTACT_PHONE,
+    message: `Licenca skadon për ${g.hoursLeft} orë — kontaktoni mbështetjen (${getLicenseSupportContactPlain()})`,
+    phone: getLicenseSupportContactPlain(),
   };
 }
 
@@ -803,15 +803,15 @@ function promptHardwareActivation(app, opts = {}) {
     } else if (reason === "offline_expired") {
       subText =
         "Licenca ka skaduar offline. Lidhu me internet dhe aktivizo përsëri, ose kontaktoni " +
-        CONTACT_PHONE +
+        getLicenseSupportContactPlain() +
         ".";
     } else if (reason === "revoked") {
-      subText = "Licenca është çaktivizuar. Kontaktoni " + CONTACT_PHONE + " për çelës të ri.";
+      subText = "Licenca është çaktivizuar. Kontaktoni " + getLicenseSupportContactPlain() + " për çelës të ri.";
     } else if (reason === "terminal_revoked") {
       subText =
         "Kjo arkë është çaktivizuar nga administratori. Përdorni kod të ri lidhës (Lidhu) ose kontaktoni administratorin.";
     } else if (reason === "trial_used") {
-      subText = `Trial është përdorur në këtë kompjuter. Futni License Key vjetor. Kontaktoni ${CONTACT_PHONE}.`;
+      subText = `Trial është përdorur në këtë kompjuter. Futni License Key vjetor. Kontaktoni ${getLicenseSupportContactPlain()}.`;
     }
     let settled = false;
 
@@ -917,7 +917,7 @@ function promptHardwareActivation(app, opts = {}) {
         <button type="button" class="pair-join" id="pair-join">Lidhu</button>
       </div>
       <button type="button" class="ghost" id="c">Mbyll</button>
-      <p class="phone">WhatsApp / tel: <b>${CONTACT_PHONE}</b><br>Dërgoni foto të ID-së (këto numra) për aktivizim.<br>Duke pritur regjistrimin nga admini…</p>
+      ${getLicenseSupportContactHtml()}<p class="hint">Dërgoni foto të ID-së për aktivizim. Duke pritur regjistrimin nga admini…</p>
     </div></div>
     <script>
       const { ipcRenderer } = require('electron');
@@ -1069,7 +1069,7 @@ function promptHardwareActivation(app, opts = {}) {
           if (match.licenseType === "trial" && hasTrialBeenUsed(app)) {
             return {
               ok: false,
-              message: `Trial është përdorur në këtë kompjuter. Duhet License Key vjetor. Kontaktoni ${CONTACT_PHONE}.`,
+              message: `Trial është përdorur në këtë kompjuter. Duhet License Key vjetor. Kontaktoni ${getLicenseSupportContactPlain()}.`,
             };
           }
           if (match.licenseType === "annual" && match.expiresYmd) {
@@ -1334,7 +1334,8 @@ module.exports = {
   getGraceBannerInfo,
   logHwLicenseAudit,
   annualExpiresYmdFromToday,
-  CONTACT_PHONE,
+  getLicenseSupportPhoneDisplay,
+  getLicenseSupportContactPlain,
   MSG_LICENSE_EXPIRED,
   TRIAL_DAYS,
   ANNUAL_DAYS,

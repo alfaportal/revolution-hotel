@@ -1,6 +1,6 @@
 /** Resend — fatura A4 desktop (RESEND_API_KEY nga env). */
 
-const DEFAULT_INVOICE_FROM_ADDRESS = "noreply@ketujemi.com";
+const DEFAULT_INVOICE_FROM_ADDRESS = "noreply@revolution-pos.com";
 
 
 
@@ -16,7 +16,7 @@ function invoiceFromAddressFromEnv() {
 
   if (!addr.includes("@")) return DEFAULT_INVOICE_FROM_ADDRESS;
 
-  return addr.replace(/@revolutioninvest\.com/gi, "@ketujemi.com");
+  return addr.replace(/@revolutioninvest\.com/gi, "@revolution-pos.com");
 
 }
 

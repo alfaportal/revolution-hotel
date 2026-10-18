@@ -181,7 +181,7 @@ function buildStaffLocalLinksSyncPayload(db) {
   };
 }
 
-const LAN_STAFF_LINKS_WATCH_MS = 15000;
+const LAN_STAFF_LINKS_WATCH_MS = 5000;
 let lanStaffLinksWatchStarted = false;
 let lanStaffLinksPushInFlight = false;
 
@@ -217,8 +217,29 @@ function startStaffLocalLinksLanWatcher(db) {
     }
   };
 
-  setTimeout(tick, 4000);
+  setTimeout(tick, 2000);
   setInterval(tick, LAN_STAFF_LINKS_WATCH_MS);
+}
+
+/** Thirrje e menjëhershme kur ndryshon IP LAN (network-monitor). */
+function runStaffLocalLinksLanWatchNow(db) {
+  if (!db) return;
+  try {
+    const cloudSync = require("./cloud-sync");
+    if (!cloudSync.isCloudConfigured(db)) return;
+    const payload = buildStaffLocalLinksSyncPayload(db);
+    const fp = staffLocalLinksFingerprint(payload);
+    if (!fp) return;
+    const prev = readStoredStaffLocalLinksFingerprint(db);
+    if (fp === prev) return;
+    cloudSync
+      .pushStaffLocalLinksAsync(db, { payload, fingerprint: fp })
+      .catch((err) => {
+        console.warn("[lan-staff-links] cloud push:", err?.message || err);
+      });
+  } catch (err) {
+    console.warn("[lan-staff-links] watch-now:", err?.message || err);
+  }
 }
 
 module.exports = {
@@ -232,4 +253,5 @@ module.exports = {
   sanitizeLanHostname,
   getLocalServerPort,
   startStaffLocalLinksLanWatcher,
+  runStaffLocalLinksLanWatchNow,
 };

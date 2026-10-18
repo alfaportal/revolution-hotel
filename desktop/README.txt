@@ -13,4 +13,4 @@ NËSE NUK HAPET:
 - Hapni Chrome/Edge manualisht
 - Shkruani: localhost:3001
 
-PËR NDIHMË: +383 48707880
+PËR NDIHMË: support@revolution-pos.com

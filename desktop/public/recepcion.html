@@ -329,6 +329,13 @@
       background: #111827; color: #fff;
     }
     #modal-rc-checkout .btn-coupon.active { background: #16a34a; color: #fff; }
+    .rc-checkout-pay-actions { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; width: 100%; }
+    .rc-checkout-termik-btn { width: 100%; font-weight: 700; }
+    #modal-rc-post-pay-thermal .btn-coupon {
+      font-weight: 700; border: none; border-radius: 10px;
+      padding: 0.75rem 0.45rem; font-size: 0.9rem; cursor: pointer;
+      background: #16a34a; color: #fff;
+    }
     .coupon-type-forced {
       padding: 0.4rem 0.7rem; border-radius: 8px; background: #f1f5f9;
       color: #334155; font-size: 0.85rem; font-weight: 600; text-align: center;
@@ -969,10 +976,28 @@
         </div>
         <div id="rc-checkout-pay-mixed-status" class="pay-mixed-status" hidden aria-live="polite"></div>
       </div>
-      <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
-        <button type="button" class="btn btn-ghost" id="rc-checkout-cancel">Anulo</button>
-        <button type="button" class="btn btn-ghost" id="rc-checkout-print">Print Faturë</button>
-        <button type="button" class="btn btn-primary" id="rc-checkout-save" style="flex:1">Paguaj &amp; Check-out</button>
+      <div class="rc-checkout-pay-actions">
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;width:100%">
+          <button type="button" class="btn btn-ghost" id="rc-checkout-cancel">Anulo</button>
+          <button type="button" class="btn btn-ghost" id="rc-checkout-print">Print Faturë</button>
+          <button type="button" class="btn btn-primary" id="rc-checkout-save" style="flex:1">Paguaj</button>
+        </div>
+        <button type="button" class="btn btn-ghost rc-checkout-termik-btn" id="rc-checkout-paguaj-termik">Paguaj (Termik)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-post-pay-thermal" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-post-pay-thermal-backdrop"></div>
+    <div class="table-modal-content" role="dialog" aria-modal="true" aria-labelledby="rc-post-pay-thermal-title">
+      <h2 id="rc-post-pay-thermal-title">Pagesa u krye</h2>
+      <p style="margin:0.35rem 0 0;color:var(--ngjyr-muted);font-size:0.9rem">
+        Mund të shtypni kuponin termik (jo fiskal) edhe një herë para se të vazhdoni.
+      </p>
+      <div id="rc-post-pay-thermal-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:1rem">
+        <button type="button" class="btn-coupon btn-coupon-thermal" id="rc-btn-shtyp-kupon-termik" style="width:100%">Shtyp Kuponin</button>
+        <button type="button" class="btn btn-primary" id="rc-btn-post-pay-vazhdo" style="width:100%">Vazhdo</button>
       </div>
     </div>
   </div>
@@ -1078,6 +1103,7 @@
     let recepCheckoutPreview = null;
     let checkoutCouponType = "thermal";
     let rcCheckoutSessionToken = "";
+    let rcPostPayCtx = null;
 
     function generateCheckoutToken() {
       try {
@@ -1184,6 +1210,23 @@
         if (!document.body.classList.contains("recep-embed-kasa")) return;
         window.parent.postMessage(
           { type: "hotel-recep-pending-orders", ...(payload || {}) },
+          window.location.origin,
+        );
+      } catch {
+        /* iframe */
+      }
+    }
+
+    function postRecepWebBookingToKasaParent(booking) {
+      try {
+        if (window.parent === window) return;
+        if (!document.body.classList.contains("recep-embed-kasa")) return;
+        window.parent.postMessage(
+          {
+            type: "hotel-recep-web-booking",
+            booking,
+            playBell: true,
+          },
           window.location.origin,
         );
       } catch {
@@ -1389,6 +1432,8 @@
           api("/api/waiter/online-orders/pending"),
           api("/api/waiter/public-service-requests/pending").catch(() => ({ requests: [] })),
         ]);
+        const webBookings = Array.isArray(data.public_booking_requests) ? data.public_booking_requests : [];
+        processWebBookingAlertsFromPoll(webBookings);
         const cloudOrders = filtroPorosiSherbimiRecep(data.orders || []);
         const publicSvc = (svcData.requests || [])
           .filter((r) => String(r.status || "").toLowerCase() === "pending")
@@ -1964,13 +2009,36 @@
       });
     }
 
-    async function ngarkoWebBookingRequestsRecep() {
+    let lastWebBookingSeenIds = new Set();
+    let webBookingPollSeeded = false;
+
+    function formatWebBookingDateShort(iso) {
+      const s = String(iso || "").slice(0, 10);
+      const p = s.split("-");
+      if (p.length === 3) return `${p[2]}/${p[1]}`;
+      return s || "—";
+    }
+
+    function showWebBookingToast(r) {
+      const wrap = document.getElementById("room-charge-toast");
+      if (!wrap || !r) return;
+      const div = document.createElement("div");
+      div.className = "rc-toast-item";
+      div.textContent =
+        `📅 Kërkesë e re rezervimi — ${r.guest_name || "Mysafir"}, `
+        + `${formatWebBookingDateShort(r.check_in_date)}, ${r.room_type || "—"}`;
+      wrap.classList.remove("hidden");
+      wrap.appendChild(div);
+      setTimeout(() => {
+        div.remove();
+        if (!wrap.children.length) wrap.classList.add("hidden");
+      }, 12000);
+    }
+
+    function renderWebBookingRequestsRecep(rows) {
       const wrap = document.getElementById("recep-web-booking-wrap");
       const listEl = document.getElementById("recep-web-booking-list");
       if (!wrap || !listEl) return;
-      try {
-        const data = await api("/api/waiter/public-booking-requests/pending");
-        const rows = data.requests || [];
         if (!rows.length) {
           wrap.hidden = true;
           listEl.innerHTML = "";
@@ -2013,10 +2081,78 @@
             if (id) openWebBookingAcceptModal(id);
           });
         });
+    }
+
+    async function ngarkoWebBookingRequestsRecep() {
+      try {
+        const data = await api("/api/waiter/public-booking-requests/pending");
+        renderWebBookingRequestsRecep(data.requests || []);
       } catch (e) {
+        const wrap = document.getElementById("recep-web-booking-wrap");
         if (wrap) wrap.hidden = true;
         showMsg("recep-rez-msg", e.message || "Kërkesat web nuk u ngarkuan.", false);
       }
+    }
+
+    function processWebBookingAlertsFromPoll(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      const ids = new Set(list.map((r) => String(r.id || "")).filter(Boolean));
+      if (!webBookingPollSeeded) {
+        lastWebBookingSeenIds = ids;
+        webBookingPollSeeded = true;
+        if (recepView === "reservations") renderWebBookingRequestsRecep(list);
+        return;
+      }
+      for (const r of list) {
+        const id = String(r.id || "");
+        if (!id || lastWebBookingSeenIds.has(id)) continue;
+        showWebBookingToast(r);
+        postRecepWebBookingToKasaParent(r);
+        try {
+          triggerRecepPendingAlert(
+            list.length,
+            document.body.classList.contains("recep-embed-kasa"),
+            false,
+          );
+        } catch { /* */ }
+      }
+      lastWebBookingSeenIds = ids;
+      if (recepView === "reservations") renderWebBookingRequestsRecep(list);
+      updateRecepReservationsNavBadge(list.length);
+    }
+
+    function updateRecepReservationsNavBadge(n) {
+      const btn = document.getElementById("btn-tab-reservations");
+      if (!btn) return;
+      const count = Math.max(0, Number(n) || 0);
+      const label = "Rezervimet";
+      let badge = btn.querySelector(".recep-nav-pending-badge");
+      if (count <= 0) {
+        if (badge) badge.remove();
+        btn.textContent = label;
+        return;
+      }
+      if (!badge) {
+        btn.textContent = `${label} `;
+        badge = document.createElement("span");
+        badge.className = "recep-nav-pending-badge";
+        btn.appendChild(badge);
+      }
+      badge.textContent = String(count);
+    }
+
+    async function pollWebBookingRequestsRecep() {
+      try {
+        const data = await api("/api/waiter/public-booking-requests/pending");
+        processWebBookingAlertsFromPoll(data.requests || []);
+      } catch {
+        /* offline */
+      }
+    }
+
+    function startRecepWebBookingPolling() {
+      pollWebBookingRequestsRecep().catch(() => {});
+      setInterval(() => pollWebBookingRequestsRecep().catch(() => {}), 8_000);
     }
 
     function mbyllWebBookingAcceptModal() {
@@ -3503,54 +3639,147 @@
         if (btn) btn.disabled = false;
       }
     });
-    document.getElementById("rc-checkout-save")?.addEventListener("click", async () => {
+    function hideRcPostPayThermalModal() {
+      const m = document.getElementById("modal-rc-post-pay-thermal");
+      if (m) m.hidden = true;
+    }
+
+    async function finalizeRcPostPaySuccess() {
+      const ctx = rcPostPayCtx;
+      rcPostPayCtx = null;
+      hideRcPostPayThermalModal();
+      if (!ctx?.result) return;
+      await ngarkoDhomat();
+      showMsg(
+        "recep-rooms-msg",
+        `Check-out u krye · ${formatEuro(ctx.result?.bill?.total_due ?? ctx.result?.bill?.total ?? 0)}. Dhoma E Papastër.`,
+        true,
+      );
+    }
+
+    function showRcPostPayThermalModal(ctx) {
+      rcPostPayCtx = ctx;
+      const msgEl = document.getElementById("rc-post-pay-thermal-msg");
+      if (msgEl) { msgEl.hidden = true; msgEl.textContent = ""; }
+      const m = document.getElementById("modal-rc-post-pay-thermal");
+      if (m) m.hidden = false;
+    }
+
+    async function shtypRcKuponTermikPasPagese() {
+      const ctx = rcPostPayCtx;
+      const guestId = ctx?.guestId;
+      const gabimEl = document.getElementById("rc-post-pay-thermal-msg");
+      if (!guestId || !ctx?.printBody) return;
+      const btn = document.getElementById("rc-btn-shtyp-kupon-termik");
+      if (btn) btn.disabled = true;
+      try {
+        const r = await api(`/api/waiter/guests/${guestId}/print-folio`, {
+          method: "POST",
+          body: JSON.stringify(ctx.printBody),
+        });
+        if (ctx.result?.html) document.getElementById("print-fature").innerHTML = ctx.result.html;
+        if (r.html) document.getElementById("print-fature").innerHTML = r.html;
+        if (r.printed) {
+          if (gabimEl) { gabimEl.hidden = true; gabimEl.textContent = ""; }
+        } else {
+          const pmsg = r.printMessage || "Printeri termik nuk u gjet.";
+          if (gabimEl) { gabimEl.hidden = false; gabimEl.textContent = pmsg; }
+          const html = r.html || ctx.result?.html;
+          if (html && confirm(`${pmsg}\n\nHap dialogun e printimit të Windows?`)) window.print();
+        }
+      } catch (e) {
+        if (gabimEl) {
+          gabimEl.hidden = false;
+          gabimEl.textContent = e.message || "Printimi dështoi";
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    document.getElementById("rc-btn-shtyp-kupon-termik")?.addEventListener("click", () => {
+      shtypRcKuponTermikPasPagese();
+    });
+    document.getElementById("rc-btn-post-pay-vazhdo")?.addEventListener("click", () => {
+      finalizeRcPostPaySuccess();
+    });
+    document.getElementById("rc-post-pay-thermal-backdrop")?.addEventListener("click", () => {
+      finalizeRcPostPaySuccess();
+    });
+
+    async function performRcCheckOut({ forceThermal = false } = {}) {
       const msg = document.getElementById("rc-checkout-msg");
-      const btn = document.getElementById("rc-checkout-save");
+      const btnSave = document.getElementById("rc-checkout-save");
+      const btnTermik = document.getElementById("rc-checkout-paguaj-termik");
       const roomId = document.getElementById("rc-checkout-room-id")?.value;
       const payInfo = await resolveCheckoutPayment();
       if (!payInfo) return;
       if (!rcCheckoutSessionToken) rcCheckoutSessionToken = generateCheckoutToken();
-      const body = {
+      const couponType = forceThermal ? "thermal" : effectiveCheckoutCouponType();
+      const fiscalSkip = forceThermal || couponType === "thermal";
+      const printBody = {
         check_out_date: document.getElementById("rc-checkout-out")?.value || "",
         services_total: Number(document.getElementById("rc-checkout-services")?.value) || 0,
+      };
+      const body = {
+        ...printBody,
         payment_method: payInfo.payment_method,
-        coupon_type: effectiveCheckoutCouponType(),
-        fiscal_skip: effectiveCheckoutCouponType() === "thermal",
+        coupon_type: couponType,
+        fiscal_skip: fiscalSkip,
         checkout_token: rcCheckoutSessionToken,
       };
       if (payInfo.payment_splits) body.payment_splits = payInfo.payment_splits;
-      if (btn) btn.disabled = true;
+      if (btnSave) btnSave.disabled = true;
+      if (btnTermik) btnTermik.disabled = true;
       try {
         const result = await api(`/api/waiter/rooms/${roomId}/check-out`, {
           method: "POST",
           body: JSON.stringify(body),
         });
-        if (effectiveCheckoutCouponType() === "thermal" && !result.printed && result.html) {
-          const doWinPrint = confirm(
-            (result.printMessage || "Printeri termik nuk u gjet.") +
-            "\n\nCheck-out u krye. Hap dialogun e printimit të Windows?",
-          );
-          if (doWinPrint) {
-            document.getElementById("print-fature").innerHTML = result.html || "";
-            window.print();
-          }
-        } else if (effectiveCheckoutCouponType() === "fiscal" && !result.printed && result.printMessage) {
+        if (result.html) document.getElementById("print-fature").innerHTML = result.html;
+        if (couponType === "fiscal" && !result.printed && result.printMessage) {
           alert(
             `Kuponi fiskal NUK u printua.\n\n${result.printMessage}\n\nCheck-out u krye — dhoma është E Papastër.`,
           );
+        } else if (fiscalSkip && !result.printed && result.printMessage) {
+          const msgEl = document.getElementById("rc-checkout-msg");
+          if (msgEl) {
+            msgEl.hidden = false;
+            msgEl.className = "alert";
+            msgEl.style.color = "";
+            msgEl.textContent = result.printMessage;
+          }
         }
         mbyllRcCheckOut();
-        await ngarkoDhomat();
-        showMsg(
-          "recep-rooms-msg",
-          `Check-out u krye · ${formatEuro(result?.bill?.total || 0)}. Dhoma E Papastër.`,
-          true,
-        );
+        rcCheckoutSessionToken = "";
+        const guestId = result?.guest?.id;
+        if (guestId) {
+          showRcPostPayThermalModal({
+            result,
+            guestId,
+            printBody,
+          });
+        } else {
+          await ngarkoDhomat();
+          showMsg(
+            "recep-rooms-msg",
+            `Check-out u krye · ${formatEuro(result?.bill?.total || 0)}. Dhoma E Papastër.`,
+            true,
+          );
+        }
       } catch (err) {
         if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim Check-out"; }
       } finally {
-        if (btn) btn.disabled = false;
+        if (btnSave) btnSave.disabled = false;
+        if (btnTermik) btnTermik.disabled = false;
       }
+    }
+
+    document.getElementById("rc-checkout-save")?.addEventListener("click", () => {
+      performRcCheckOut({ forceThermal: false });
+    });
+    document.getElementById("rc-checkout-paguaj-termik")?.addEventListener("click", () => {
+      performRcCheckOut({ forceThermal: true });
     });
 
     document.getElementById("rc-add-svc-backdrop")?.addEventListener("click", mbyllRcAddService);
@@ -3656,6 +3885,7 @@
       await ensureRecepShiftOpen();
       setRecepView(initialView);
       startRecepGuestServicePolling();
+      startRecepWebBookingPolling();
       startRoomChargePolling();
       startHousekeepingUpdatesPolling();
       startLocalStaffEventsRecep();

@@ -410,8 +410,8 @@
         showError(data.gabim || "Nuk u ngarkuan porositë.");
         return;
       }
-      if (data.restaurant_name || data.client_name) {
-        const venue = data.restaurant_name || data.client_name;
+      if (data.restaurant_name) {
+        const venue = data.restaurant_name;
         venueInfo.name = venue;
         venueInfo.address = data.address || "";
         titleEl.textContent = waiterMode && data.assigned_waiter?.name

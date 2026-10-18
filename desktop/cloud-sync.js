@@ -1941,20 +1941,18 @@ async function fullCloudSync(db) {
   }
 }
 
-/** Vendos emrin e biznesit nga licenca (Super Admin) vetëm nëse lokalisht është bosh. */
+/** Ruaj metadata licencë (cloud_client_name) — emri i biznesit vetëm nga setup wizard. */
 async function syncRestaurantIdentityFromCloud(db) {
   try {
-    if ((db.getBusinessName() || "").trim()) {
-      return { applied: false };
-    }
     const status = await checkConnection(db);
     const name = (status.client_name || "").trim();
     if (!status.connected || !name) {
       return { applied: false, client_name: name || "" };
     }
-    const applied = db.applyRestaurantNameIfEmpty(name);
-    if (applied) console.log("Emri i biznesit nga licenca:", name);
-    return { applied, client_name: name };
+    if (typeof db.updateKitchenAccess === "function") {
+      db.updateKitchenAccess({ client_name: name });
+    }
+    return { applied: false, client_name: name };
   } catch (err) {
     console.warn("Identity sync:", err.message);
     return { applied: false };

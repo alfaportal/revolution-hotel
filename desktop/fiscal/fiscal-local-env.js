@@ -80,7 +80,7 @@ function ensureLocalDemoFiscalSettings() {
       taxpayer_legal_name:
         String(current.taxpayer_legal_name || "").trim() || "Biznes Lokal Test",
       taxpayer_address:
-        String(current.taxpayer_address || "").trim() || "Prishtine, Test",
+        String(current.taxpayer_address || "").trim() || "",
       unit_number: String(current.unit_number || current.business_unit_number || "5130484"),
       business_unit_number: String(current.business_unit_number || "5130484"),
       pos_id: String(current.pos_id || "11"),

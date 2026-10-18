@@ -118,7 +118,7 @@
       }
       if (!res.ok || !data.ok) return;
       hideError();
-      applyVenueName(data.restaurant_name || data.client_name);
+      applyVenueName(data.restaurant_name || "");
       const tables = data.tables || [];
       tablesGridEl.innerHTML = tables.length
         ? tables.map(renderLiveTableCard).join("")

@@ -25,7 +25,9 @@ async function api(cale, opts = {}) {
     dil();
     throw new Error(data.gabim || "Sesioni skadoi");
   }
-  if (!res.ok) throw new Error(data.gabim || "Gabim i panjohur");
+  if (!res.ok) {
+    throw new Error(data.gabim || data.error || data.message || "Gabim i panjohur");
+  }
   return data;
 }
 

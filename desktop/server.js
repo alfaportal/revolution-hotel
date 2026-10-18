@@ -40,6 +40,7 @@ const {
 const bizDate = require("./lib/hotel-business-date");
 const businessTodayYmd = () => bizDate.businessYmd();
 const staffPinPolicy = require("./lib/staffPinPolicy");
+const { openCashDrawer, paymentIncludesCash } = require("./lib/cash-drawer");
 
 function isHotelPmsCloudMaster() {
   try {
@@ -415,6 +416,7 @@ const cloudSync = require("./cloud-sync");
 const cloudAutoSync = require("./cloud-auto-sync");
 const cloudStaffAccess = require("./cloud-staff-access");
 const onlineOrdersWatcher = require("./online-orders-watcher");
+const publicGuestRequestsWatcher = require("./public-guest-requests-watcher");
 
 /** Vetëm admin/pronar — cloud outbound (alias CLOUD_ROLES në cloud-staff-access.js). */
 const CLOUD_ROLES = cloudStaffAccess.CLOUD_ROLES;
@@ -539,11 +541,35 @@ const i18n = require("./i18n");
 const CLOUD_ORDER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let onlineOrdersWatcherStarted = false;
+let publicGuestRequestsWatcherStarted = false;
 
 function ensureOnlineOrdersWatcher() {
   if (onlineOrdersWatcherStarted) return;
   onlineOrdersWatcher.startOnlineOrdersWatcher(db, opts => autoPrintKitchenTicket(db, opts));
   onlineOrdersWatcherStarted = true;
+}
+
+function ensurePublicGuestRequestsWatcher() {
+  if (publicGuestRequestsWatcherStarted) return;
+  publicGuestRequestsWatcher.ensurePublicGuestRequestsWatcher(db);
+  publicGuestRequestsWatcherStarted = true;
+}
+
+function resolvePendingPublicBookingRow(dbRef, id) {
+  const cid = String(id || "").trim();
+  if (!cid || typeof dbRef.getPendingPublicBookingRequest !== "function") return null;
+  return dbRef.getPendingPublicBookingRequest(cid);
+}
+
+async function loadPublicBookingRequestsForRecepcion() {
+  ensurePublicGuestRequestsWatcher();
+  try {
+    await publicGuestRequestsWatcher.refreshPublicGuestRequests(db);
+  } catch (err) {
+    console.warn("[public-booking] refresh:", err?.message || err);
+  }
+  if (typeof db.listPendingPublicBookingRequests !== "function") return [];
+  return db.listPendingPublicBookingRequests();
 }
 
 async function finalizeImportedCloudOrders(importedRows, waiterName) {
@@ -2230,6 +2256,14 @@ function waiterOnly(req, res, next) {
 }
 
 /** Recepsion / kamarier / pronari — Check-in / Check-out dhomash. */
+/** Pas pagesës cash — hap arkën (termik ESC/POS); mos blloko përgjigjen HTTP. */
+function scheduleCashDrawerKick(ctx) {
+  if (!paymentIncludesCash(ctx)) return;
+  setImmediate(() => {
+    openCashDrawer(db).catch(() => {});
+  });
+}
+
 function staffOrAdmin(req, res, next) {
   const role = req.session?.role;
   if (role !== "kamarier" && role !== "recepsion" && role !== "admin") {
@@ -2910,9 +2944,7 @@ app.get("/api/setup/status", (_req, res) => {
       payload.license = null;
     }
   }
-  const displayName = String(db.getBusinessDisplayName() || "").trim();
-  const licName = String(payload.license?.client_name || "").trim();
-  const venueName = displayName || licName;
+  const venueName = String(db.getBusinessDisplayName() || "").trim();
   if (venueName) {
     payload.business_display_name = venueName;
     payload.window_title = db.getAppWindowTitle({
@@ -3766,6 +3798,10 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
     orders = filterOnlineOrdersForStaffRole(orders, req.session);
     const myOrders = staffId ? db.listActiveOnlineOrdersForStaffId(staffId) : [];
     const hasPending = orders.length > 0;
+    let public_booking_requests = [];
+    if (String(req.session?.role || "").trim() === "recepsion") {
+      public_booking_requests = await loadPublicBookingRequestsForRecepcion();
+    }
     res.json({
       ok: true,
       connected: !!data.connected,
@@ -3777,6 +3813,8 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
       my_orders: myOrders,
       layout_refresh: layoutChanged,
       message: data.message || "",
+      public_booking_requests,
+      public_booking_pending: public_booking_requests.length,
     });
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message || "Gabim." });
@@ -4037,18 +4075,28 @@ app.post("/api/waiter/online-orders/refuse", auth, waiterOrRecepsion, async (req
 });
 
 app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: true, requests: [], local_only: true })) return;
   try {
-    const hotelCloudSync = require("./hotel-cloud-sync");
-    const data = await hotelCloudSync.listPublicBookingRequestsPending(db);
-    res.json(data);
+    const requests = await loadPublicBookingRequestsForRecepcion();
+    const staffCloud = sessionMayTalkToCloud(req.session);
+    if (staffCloud) {
+      try {
+        const hotelCloudSync = require("./hotel-cloud-sync");
+        const data = await hotelCloudSync.listPublicBookingRequestsPending(db);
+        if (Array.isArray(data.requests) && data.requests.length) {
+          db.reconcilePendingPublicBookingRequests(data.requests);
+          return res.json({ ok: true, requests: data.requests, local_only: false });
+        }
+      } catch {
+        /* cache */
+      }
+    }
+    res.json({ ok: true, requests, local_only: !staffCloud });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message, requests: [] });
   }
 });
 
 app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const data = await hotelCloudSync.respondPublicBookingRequest(db, req.params.id, {
@@ -4056,6 +4104,9 @@ app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrReceps
       staff_message: req.body?.staff_message,
       staff_name: req.body?.staff_name || req.session?.emri || "Recepsion",
     });
+    if (typeof db.removePendingPublicBookingRequest === "function") {
+      db.removePendingPublicBookingRequest(req.params.id);
+    }
     res.json(data);
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
@@ -4063,11 +4114,17 @@ app.post("/api/waiter/public-booking-requests/:id/respond", auth, waiterOrReceps
 });
 
 app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: true, rooms: [], local_only: true })) return;
   try {
-    const hotelCloudSync = require("./hotel-cloud-sync");
-    const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
-    const booking = (pending.requests || []).find((r) => String(r.id) === String(req.params.id));
+    let booking = resolvePendingPublicBookingRow(db, req.params.id);
+    if (!booking) {
+      await loadPublicBookingRequestsForRecepcion();
+      booking = resolvePendingPublicBookingRow(db, req.params.id);
+    }
+    if (!booking && sessionMayTalkToCloud(req.session)) {
+      const hotelCloudSync = require("./hotel-cloud-sync");
+      const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
+      booking = (pending.requests || []).find((r) => String(r.id) === String(req.params.id));
+    }
     if (!booking) {
       return res.status(404).json({ ok: false, gabim: "Kërkesa nuk u gjet ose është përpunuar." });
     }
@@ -4095,18 +4152,36 @@ app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterO
 
 /** Kërkesa publike bazen/spa — POS recepsion (burimi kryesor i pranimit). */
 app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: true, requests: [], local_only: true })) return;
   try {
-    const hotelCloudSync = require("./hotel-cloud-sync");
-    const data = await hotelCloudSync.listPublicServiceRequestsPending(db, { status: "open" });
-    res.json(data);
+    ensurePublicGuestRequestsWatcher();
+    try {
+      await publicGuestRequestsWatcher.refreshPublicGuestRequests(db);
+    } catch {
+      /* cache */
+    }
+    let requests = typeof db.listPendingPublicServiceRequests === "function"
+      ? db.listPendingPublicServiceRequests()
+      : [];
+    const staffCloud = sessionMayTalkToCloud(req.session);
+    if (staffCloud) {
+      try {
+        const hotelCloudSync = require("./hotel-cloud-sync");
+        const data = await hotelCloudSync.listPublicServiceRequestsPending(db, { status: "open" });
+        if (Array.isArray(data.requests)) {
+          requests = data.requests;
+          db.reconcilePendingPublicServiceRequests(requests);
+        }
+      } catch {
+        /* cache */
+      }
+    }
+    res.json({ ok: true, requests, local_only: !staffCloud });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message, requests: [] });
   }
 });
 
 app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
@@ -4114,6 +4189,9 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
       staff_name: staffName,
       request_prepayment: req.body?.request_prepayment,
     });
+    if (typeof db.removePendingPublicServiceRequest === "function") {
+      db.removePendingPublicServiceRequest(req.params.id);
+    }
     auditReq(req, "Shërbim publik pranuar", req.params.id);
     res.json(data);
   } catch (e) {
@@ -4122,7 +4200,6 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
 });
 
 app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
@@ -4130,6 +4207,9 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
       staff_name: staffName,
       staff_note: req.body?.staff_note || req.body?.reason || "",
     });
+    if (typeof db.removePendingPublicServiceRequest === "function") {
+      db.removePendingPublicServiceRequest(req.params.id);
+    }
     auditReq(req, "Shërbim publik refuzuar", req.params.id);
     res.json(data);
   } catch (e) {
@@ -4138,11 +4218,17 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
 });
 
 app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsion, async (req, res) => {
-  if (rejectStaffCloud(req, res, { ok: false, local_only: true, gabim: "Nuk disponohet për këtë rol." })) return;
   try {
+    let booking = resolvePendingPublicBookingRow(db, req.params.id);
+    if (!booking) {
+      await loadPublicBookingRequestsForRecepcion();
+      booking = resolvePendingPublicBookingRow(db, req.params.id);
+    }
     const hotelCloudSync = require("./hotel-cloud-sync");
-    const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
-    const booking = (pending.requests || []).find((r) => String(r.id) === String(req.params.id));
+    if (!booking && sessionMayTalkToCloud(req.session)) {
+      const pending = await hotelCloudSync.listPublicBookingRequestsPending(db);
+      booking = (pending.requests || []).find((r) => String(r.id) === String(req.params.id));
+    }
     if (!booking) {
       return res.status(404).json({ ok: false, gabim: "Kërkesa nuk u gjet ose është përpunuar." });
     }
@@ -4168,6 +4254,9 @@ app.post("/api/waiter/public-booking-requests/:id/accept", auth, waiterOrRecepsi
       staff_name: req.body?.staff_name || req.session?.emri || "Recepsion",
     });
     pushHotelReservationsToCloudAsync("public-booking-accept");
+    if (typeof db.removePendingPublicBookingRequest === "function") {
+      db.removePendingPublicBookingRequest(req.params.id);
+    }
     res.json({ ok: true, reservation, ...cloud });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
@@ -5947,6 +6036,11 @@ app.post("/api/orders/close", auth, async (req, res) => {
     }
 
     if (order) {
+      scheduleCashDrawerKick({
+        payment_method: payInfo.payment_method,
+        payment_splits: payInfo.payment_splits,
+        order,
+      });
       scheduleCloudAfterTableClose(db, {
         tableId,
         order,
@@ -6045,6 +6139,11 @@ function beginCheckoutToken(req, res) {
   return { blocked: false, markClosed() { entry.closed = true; } };
 }
 
+app.post("/api/waiter/open-drawer", auth, staffOrAdmin, async (_req, res) => {
+  const result = await openCashDrawer(db);
+  res.json({ ok: !!result.ok, ...result });
+});
+
 app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
   const { table_id, items, coupon_type } = req.body;
   const waiterName = req.session.emri;
@@ -6095,6 +6194,12 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
     if (!order) {
       return res.status(400).json({ gabim: "Nuk ka porosi aktive për këtë tavolinë." });
     }
+
+    scheduleCashDrawerKick({
+      payment_method: payInfo.payment_method,
+      payment_splits: payInfo.payment_splits,
+      order,
+    });
 
     const receipt = db.createReceipt(order.id);
     const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
@@ -6289,6 +6394,11 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       allowAnyWaiter: true,
       payment_splits: payInfo.payment_splits,
       checkout_token: checkoutToken || undefined,
+    });
+    scheduleCashDrawerKick({
+      payment_method: payInfo.payment_method,
+      payment_splits: payInfo.payment_splits,
+      order: result.order,
     });
     const table = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(tableId);
     const fiscalOrderId = result.fiscalOrderId;
@@ -6638,6 +6748,64 @@ app.delete("/api/menu/:id/purge", auth, adminOnly, (req, res) => {
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(e.status || 400).json({ ok: false, gabim: e.message });
+  }
+});
+
+/* Fshirje e plotë — të gjitha të dhënat lokale; licenca mbetet; setup wizard pas rinisjes. */
+app.post("/api/admin/full-wipe", auth, adminOnly, (req, res) => {
+  try {
+    const confirm = String(req.body?.confirm || "").trim();
+    const adminPassword = String(req.body?.admin_password || "").trim();
+    if (confirm !== "FSHIJ GJITHÇKA") {
+      return res.status(400).json({
+        gabim: 'Duhet të shkruani saktë fjalën FSHIJ GJITHÇKA.',
+      });
+    }
+    if (!adminPassword) {
+      return res.status(400).json({ gabim: "Jepni fjalëkalimin e administratorit." });
+    }
+    if (!db.verifyAdminPassword(adminPassword)) {
+      return res.status(403).json({ gabim: "Fjalëkalimi i administratorit është i gabuar." });
+    }
+    if (typeof global["__scheduleFactoryResetRelaunch"] !== "function") {
+      return res.status(500).json({
+        gabim: "Fshirja e plotë është e disponueshme vetëm në aplikacionin desktop (Electron).",
+      });
+    }
+    const wipe = db.wipeFull();
+    try {
+      const licenseMod = require("./license");
+      const eapp = electronApp();
+      const userData =
+        eapp?.getPath?.("userData") ||
+        path.join(require("os").homedir(), "AppData", "Roaming", "Revolution HOTEL");
+      if (typeof licenseMod.wipeAllClientData === "function") {
+        licenseMod.registerInstallContext(eapp);
+        licenseMod.wipeAllClientData(eapp, userData);
+      }
+    } catch (e) {
+      console.warn("[full-wipe] fiscal-keys wipe:", e.message || e);
+    }
+    try {
+      db.flushDatabase();
+    } catch {
+      /* ignore */
+    }
+    auditReq(req, "Fshirje e plotë e të dhënave", "full-wipe");
+    res.json({
+      ok: true,
+      message: "Të gjitha të dhënat u fshinë. Programi po riniset…",
+      wipe,
+    });
+    setTimeout(() => {
+      try {
+        global["__scheduleFactoryResetRelaunch"]({ skipDbWipe: true, fullWipe: true });
+      } catch (e) {
+        console.error("full-wipe relaunch:", e.message);
+      }
+    }, 250);
+  } catch (e) {
+    res.status(500).json({ gabim: e.message });
   }
 });
 
@@ -9310,6 +9478,31 @@ async function getFiscalZReportReminderPayload() {
   return getZReportReminderStatusAsync(db);
 }
 
+/** Raporti Z i ndërrimit (pa ATK) — për lokale pa fiskal ose si fallback. */
+async function printClosedShiftZReport(shiftId) {
+  const data = db.buildZReportData(shiftId);
+  const settings = db.getSettings();
+  const fiscal = db.getFiscalSettings();
+  const venueName =
+    String(settings.business_name || settings.restaurant_name || "").trim() || "Revolution HOTEL";
+  const html = buildZReportHtml({ fiscal, restaurantName: venueName, data });
+  const text = buildZReportLines({ fiscal, restaurantName: venueName, data }).join("\n");
+  let printResult;
+  try {
+    printResult = await printer.printReceiptAt(html, db, "fiscal");
+  } catch {
+    printResult = await printer.printPlainTextAt(text, db, "bar");
+  }
+  db.markShiftZReportPrinted(data.shift_id);
+  return {
+    data,
+    text,
+    printed: printResult?.printed !== false,
+    printMessage: printResult?.printMessage || printResult?.message || "",
+    printResult,
+  };
+}
+
 async function postFiscalZReportHandler(req, res) {
   try {
     const settings = fiscalConfig.getFiscalSettings();
@@ -9318,40 +9511,69 @@ async function postFiscalZReportHandler(req, res) {
     const operatorId = resolveBodyOperatorId(req);
     const reportDate = String(req.body?.report_date || req.body?.business_date || "").slice(0, 10);
     const zOpts = /^\d{4}-\d{2}-\d{2}$/.test(reportDate) ? { dateYmd: reportDate } : {};
-    const details = fiscalNumbering.onDailySummaryPrinted(operatorName, operatorId, zOpts);
-    if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+    const fiscalOn = fiscalConfig.isFiscalEnabled();
+    const skipPrint = !!req.body?.skip_print;
 
-    const text = buildZReportText(details, settings);
+    let details = null;
+    let text = "";
     let printed = false;
     let printMessage = "";
-    if (!req.body?.skip_print) {
-      try {
-        const pr = await getFiscalMain().printFiscalReportText(text, {
-          reportDetails: details,
-          reportMode: "Z",
-          operatorId,
-        });
-        printed = pr.printed;
-        if (!pr.printed) printMessage = pr.printMessage || "Printimi Z dështoi";
-      } catch (pe) {
-        printMessage = pe.message || "Printimi Z dështoi";
+    let shiftReport = null;
+    let shiftsMarked = 0;
+
+    if (fiscalOn) {
+      details = fiscalNumbering.onDailySummaryPrinted(operatorName, operatorId, zOpts);
+      if (!details) throw new Error("Fiskalizimi nuk është aktiv");
+
+      text = buildZReportText(details, settings);
+      if (!skipPrint) {
+        try {
+          const pr = await getFiscalMain().printFiscalReportText(text, {
+            reportDetails: details,
+            reportMode: "Z",
+            operatorId,
+          });
+          printed = pr.printed;
+          if (!pr.printed) printMessage = pr.printMessage || "Printimi Z dështoi";
+        } catch (pe) {
+          printMessage = pe.message || "Printimi Z dështoi";
+        }
+      }
+      shiftsMarked = db.markAllPendingShiftZReportsPrinted();
+    } else {
+      const pending = db.getUnprintedClosedZShift();
+      if (!pending) {
+        throw new Error("Nuk ka ndërrim të mbyllur që pret Raportin Z.");
+      }
+      if (!skipPrint) {
+        shiftReport = await printClosedShiftZReport(pending.id);
+        text = shiftReport.text;
+        printed = shiftReport.printed;
+        printMessage = shiftReport.printMessage || "";
+        shiftsMarked = 1;
+      } else {
+        shiftsMarked = db.markAllPendingShiftZReportsPrinted();
       }
     }
 
-    const enrichedDetails = { ...details, sef_id: fiscalNumbering.getSefIdentifier() || "" };
+    const enrichedDetails = details
+      ? { ...details, sef_id: fiscalNumbering.getSefIdentifier() || "" }
+      : null;
     let delivery = null;
-    try {
-      const { processZReportDelivery } = require("./fiscal/fiscal-z-report-atk");
-      delivery = await processZReportDelivery({
-        text,
-        details: enrichedDetails,
-        settings,
-        operator_name: operatorName,
-        operator_id: operatorId,
-        manual: false,
-      });
-    } catch (de) {
-      console.warn("[z-report] delivery:", de.message || de);
+    if (fiscalOn && enrichedDetails) {
+      try {
+        const { processZReportDelivery } = require("./fiscal/fiscal-z-report-atk");
+        delivery = await processZReportDelivery({
+          text,
+          details: enrichedDetails,
+          settings,
+          operator_name: operatorName,
+          operator_id: operatorId,
+          manual: false,
+        });
+      } catch (de) {
+        console.warn("[z-report] delivery:", de.message || de);
+      }
     }
 
     const role = String(req.session?.role || "").trim().toLowerCase();
@@ -9362,6 +9584,8 @@ async function postFiscalZReportHandler(req, res) {
     res.json({
       ok: true,
       details: enrichedDetails,
+      shift_report: shiftReport?.data || null,
+      shifts_marked: shiftsMarked,
       text,
       printed,
       printMessage,
@@ -9369,7 +9593,8 @@ async function postFiscalZReportHandler(req, res) {
     });
   } catch (e) {
     console.error("[z-report]", e);
-    res.status(400).json({ ok: false, error: e.message });
+    const msg = e.message || "Raporti Z dështoi";
+    res.status(400).json({ ok: false, gabim: msg, error: msg });
   }
 }
 
@@ -12221,6 +12446,11 @@ function onServerListening(server, port) {
         ensureOnlineOrdersWatcher();
       } catch (e) {
         console.warn("[cloud] online-orders-watcher:", e.message);
+      }
+      try {
+        ensurePublicGuestRequestsWatcher();
+      } catch (e) {
+        console.warn("[cloud] public-guest-requests-watcher:", e.message);
       }
       try {
         ensureWaiterReadyPoller();

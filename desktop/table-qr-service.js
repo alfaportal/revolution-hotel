@@ -168,7 +168,7 @@ async function listTableQrs(db, { refreshFromCloud = true } = {}) {
     client_id: cloud.cloud_client_id || "",
     kitchen_slug: cloud.kitchen_slug || "",
     count: tables.length,
-    business_name: settings.restaurant_name || cloud.cloud_client_name || "",
+    business_name: settings.restaurant_name || "",
     tables,
   };
 }
@@ -196,7 +196,7 @@ async function getTableQr(db, tableNumber) {
   const cloud = db.getCloudSettings();
   return {
     slug,
-    business_name: settings.restaurant_name || cloud.cloud_client_name || "",
+    business_name: settings.restaurant_name || "",
     label: row.label || `Tavolina ${table}`,
     ...entry,
   };

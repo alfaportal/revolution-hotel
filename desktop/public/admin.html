@@ -3423,6 +3423,26 @@
           <div class="dashboard-kpi-label">ZBRITJE (PROMO)</div>
           <div class="dashboard-kpi-val" id="raport-discount">0.00 €</div>
         </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">CASH</div>
+          <div class="dashboard-kpi-val" id="raport-cash">0.00 €</div>
+          <div class="dashboard-kpi-sub">Restorant (tavolina)</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">KARTË</div>
+          <div class="dashboard-kpi-val" id="raport-karte">0.00 €</div>
+          <div class="dashboard-kpi-sub">Restorant (tavolina)</div>
+        </div>
+        <div class="dashboard-kpi" id="raport-tjera-kpi" hidden>
+          <div class="dashboard-kpi-label">TJERA</div>
+          <div class="dashboard-kpi-val" id="raport-tjera">0.00 €</div>
+          <div class="dashboard-kpi-sub">Në dhomë, bankë, vauçer…</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">CASH NË ARKË</div>
+          <div class="dashboard-kpi-val" id="raport-cash-register">0.00 €</div>
+          <div class="dashboard-kpi-sub">Shitje cash: <span id="raport-cash-register-sales">0.00 €</span> · Blerje cash: <span id="raport-cash-register-purchases">0.00 €</span></div>
+        </div>
       </div>
 
       <div class="card dashboard-chart-card reports-chart-card">
@@ -3465,7 +3485,7 @@
         <div class="reports-table-wrap">
           <table class="dashboard-top-table">
             <thead>
-              <tr><th>Arka</th><th>Shitje</th><th>Cash</th><th>Kartë</th><th>Kredi</th><th>Totali</th></tr>
+              <tr><th>Arka</th><th>Shitje</th><th>Cash</th><th>Kartë</th><th>Tjera</th><th>Totali</th></tr>
             </thead>
             <tbody id="raport-by-register">
               <tr><td colspan="6" class="purchases-empty">Zgjidhni periudhën dhe klikoni Apliko</td></tr>
@@ -4283,10 +4303,16 @@
 
       <div class="settings-danger-zone" id="settings-danger-zone">
         <div class="settings-danger-title">Zona e rrezikshme</div>
-        <p class="settings-danger-desc">Fshin krejt të dhënat lokale dhe e kthen programin si instalim të ri. Ky veprim nuk kthehet mbrapa.</p>
+        <p class="settings-danger-desc">Veprime që fshijnë të dhëna lokale. Licenca mbetet; riaktivizimi nuk kërkohet.</p>
         <button type="button" class="btn btn-danger-reset" id="btn-factory-reset">
-          Rivendos si të re (fshin krejt të dhënat)
+          Rivendos (fshin shitjet, mban konfigurimin)
         </button>
+        <button type="button" class="btn btn-danger-reset" id="btn-full-wipe" style="margin-top:0.65rem">
+          Fshij çdo gjë (biznes i ri / PC tjetër)
+        </button>
+        <p class="settings-danger-desc" style="margin-top:0.5rem;font-size:0.82rem">
+          «Fshij çdo gjë» heq menu, staf, dhoma dhe cilësime — si instalim i ri (wizard). «Rivendos» mban konfigurimin.
+        </p>
 
         <div class="settings-danger-item">
           <div class="settings-danger-title" style="font-size:0.95rem">Fshij të dhënat e ditës (restorant)</div>
@@ -4331,7 +4357,7 @@
       <div class="factory-reset-modal-backdrop" data-factory-cancel></div>
       <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
         <h3>Rivendos si të re</h3>
-        <p>A jeni i sigurt? Kjo fshin krejt të dhënat lokale (porositë, shitjet, menynë, cilësimet) dhe e rivendos programin si të ri. Licenca mbetet. Ky veprim nuk kthehet mbrapa.</p>
+        <p>A jeni i sigurt? Kjo fshin porositë, shitjet, ditari dhe të dhëna transaksionale. Menuja, stafi, dhomat dhe cilësimet mbeten. Licenca mbetet.</p>
         <div class="factory-reset-modal-actions">
           <button type="button" class="btn btn-ghost" data-factory-cancel>Anulo</button>
           <button type="button" class="btn btn-danger-reset" id="btn-factory-reset-continue">Vazhdo</button>
@@ -4347,6 +4373,31 @@
         <div class="factory-reset-modal-actions">
           <button type="button" class="btn btn-ghost" data-factory-cancel>Anulo</button>
           <button type="button" class="btn btn-danger-reset" id="btn-factory-reset-confirm">Rivendos tani</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-full-wipe-1" class="factory-reset-modal" hidden>
+      <div class="factory-reset-modal-backdrop" data-full-wipe-cancel></div>
+      <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
+        <h3>Fshij çdo gjë</h3>
+        <p>Kjo fshin <strong>të gjitha</strong> të dhënat lokale: cilësime, menu, staf, dhoma, shitje — si instalim i parë. Përdore kur programi kalon te një biznes tjetër. Licenca mbetet. Nuk kthehet mbrapa.</p>
+        <div class="factory-reset-modal-actions">
+          <button type="button" class="btn btn-ghost" data-full-wipe-cancel>Anulo</button>
+          <button type="button" class="btn btn-danger-reset" id="btn-full-wipe-continue">Vazhdo</button>
+        </div>
+      </div>
+    </div>
+    <div id="modal-full-wipe-2" class="factory-reset-modal" hidden>
+      <div class="factory-reset-modal-backdrop" data-full-wipe-cancel></div>
+      <div class="factory-reset-modal-content" role="dialog" aria-modal="true">
+        <h3>Konfirmim final</h3>
+        <p>Fjalëkalimi i administratorit dhe shkruani <strong>FSHIJ GJITHÇKA</strong></p>
+        <input type="password" id="full-wipe-admin-password" autocomplete="current-password" placeholder="Fjalëkalimi admin">
+        <input type="text" id="full-wipe-confirm-input" autocomplete="off" spellcheck="false" placeholder="FSHIJ GJITHÇKA" style="margin-top:0.5rem">
+        <div class="factory-reset-modal-actions">
+          <button type="button" class="btn btn-ghost" data-full-wipe-cancel>Anulo</button>
+          <button type="button" class="btn btn-danger-reset" id="btn-full-wipe-confirm">Fshij tani</button>
         </div>
       </div>
     </div>
@@ -4481,6 +4532,14 @@
           <div class="settings-field">
             <label for="cil-fjalekalimi">Fjalëkalimi i ri i adminit</label>
             <input type="password" id="cil-fjalekalimi" placeholder="Lëreni bosh për të mos ndryshuar">
+          </div>
+          <div class="settings-field">
+            <label for="cil-staff-pos-static-ip">IP statike e POS-it (opsionale)</label>
+            <input type="text" id="cil-staff-pos-static-ip" placeholder="p.sh. 192.168.1.100" autocomplete="off" spellcheck="false" inputmode="decimal">
+            <p class="settings-field-hint">
+              Nëse e vendosni IP fikse në router për PC-në e POS-it, shkruajeni këtu — QR dhe linket kryesore për stafin do ta përdorin.
+              Pa këtë, përdoret <strong>revolution-hotel.local</strong>.
+            </p>
           </div>
           <div class="settings-field">
             <label for="cil-admin-card-input">Kartela RFID e pronarit (fjalëkalim ose kartelë — si te kamarierët)</label>
@@ -5455,9 +5514,9 @@
             <p id="cloud-local-recepsion-hint" class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)"></p>
           </div>
           <div class="fiscal-field-row" id="staff-pwa-links-block" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px dashed var(--ngjyr-border)">
-            <label>Staff Links</label>
+            <label>Staff Links <span id="staff-pwa-static-badge" hidden style="font-size:0.72rem;font-weight:600;color:#22c55e;margin-left:0.35rem">IP Statike ✓</span></label>
             <p class="links-hint" style="margin:0 0 0.5rem;font-size:0.8rem;color:var(--ngjyr-muted)">
-              Linke LAN për stafin (PWA) — skanoni QR, «Shto në ekranin kryesor». IP: <span id="staff-pwa-ips" style="font-family:monospace">—</span>
+              Linke LAN për stafin (PWA) — QR nga linku kryesor; nëse nuk hapet, provoni rezervën. IP aktuale: <span id="staff-pwa-ips" style="font-family:monospace">—</span>
             </p>
             <div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem">
               <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-staff-pwa-links">Rifresko IP / linke</button>
@@ -5477,6 +5536,7 @@
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-waiter-url">Kopjo</button>
                 </div>
                 <img id="staff-pwa-waiter-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR kamarier PWA" hidden>
+                <p id="staff-pwa-waiter-backup" class="links-hint" style="margin:0.35rem 0 0;font-size:0.72rem;color:var(--ngjyr-muted);max-width:18rem;word-break:break-all"></p>
               </div>
               <div style="min-width:10rem">
                 <label style="font-size:0.8rem;display:block;margin-bottom:0.35rem">Recepsion</label>
@@ -5485,6 +5545,7 @@
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-staff-pwa-recepsion-url">Kopjo</button>
                 </div>
                 <img id="staff-pwa-recepsion-qr-img" class="table-qr-preview-img" width="160" height="160" alt="QR recepsion PWA" hidden>
+                <p id="staff-pwa-recepsion-backup" class="links-hint" style="margin:0.35rem 0 0;font-size:0.72rem;color:var(--ngjyr-muted);max-width:18rem;word-break:break-all"></p>
               </div>
             </div>
           </div>
@@ -7433,6 +7494,74 @@
       });
     })();
 
+    (function setupFullWipe() {
+      const modal1 = document.getElementById("modal-full-wipe-1");
+      const modal2 = document.getElementById("modal-full-wipe-2");
+      const pwInput = document.getElementById("full-wipe-admin-password");
+      const confirmInput = document.getElementById("full-wipe-confirm-input");
+      const btnOpen = document.getElementById("btn-full-wipe");
+      if (!btnOpen || !modal1 || !modal2) return;
+
+      function closeModals() {
+        modal1.hidden = true;
+        modal2.hidden = true;
+        if (pwInput) pwInput.value = "";
+        if (confirmInput) confirmInput.value = "";
+      }
+
+      function openModal(el) {
+        closeModals();
+        el.hidden = false;
+      }
+
+      btnOpen.addEventListener("click", () => openModal(modal1));
+      document.getElementById("btn-full-wipe-continue")?.addEventListener("click", () => {
+        openModal(modal2);
+        setTimeout(() => pwInput?.focus(), 50);
+      });
+      document.querySelectorAll("[data-full-wipe-cancel]").forEach((el) => {
+        el.addEventListener("click", closeModals);
+      });
+      document.getElementById("btn-full-wipe-confirm")?.addEventListener("click", async () => {
+        const typed = String(confirmInput?.value || "").trim();
+        const adminPassword = String(pwInput?.value || "");
+        if (typed !== "FSHIJ GJITHÇKA") {
+          alert('Duhet të shkruani saktë "FSHIJ GJITHÇKA".');
+          confirmInput?.focus();
+          return;
+        }
+        if (!adminPassword) {
+          alert("Jepni fjalëkalimin e administratorit.");
+          pwInput?.focus();
+          return;
+        }
+        const confirmBtn = document.getElementById("btn-full-wipe-confirm");
+        if (confirmBtn) confirmBtn.disabled = true;
+        if (btnOpen) btnOpen.disabled = true;
+        try {
+          await api("/api/admin/full-wipe", {
+            method: "POST",
+            body: JSON.stringify({
+              confirm: "FSHIJ GJITHÇKA",
+              admin_password: adminPassword,
+            }),
+          });
+          closeModals();
+          alert("Të gjitha të dhënat po fshihen. Programi po riniset te konfigurimi fillestar…");
+        } catch (e) {
+          alert(e.message || "Fshirja e plotë dështoi.");
+          if (confirmBtn) confirmBtn.disabled = false;
+          if (btnOpen) btnOpen.disabled = false;
+        }
+      });
+      confirmInput?.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          document.getElementById("btn-full-wipe-confirm")?.click();
+        }
+      });
+    })();
+
     document.querySelectorAll("[data-goto-panel]").forEach(btn => {
       btn.addEventListener("click", () => switchAdminPanel(btn.dataset.gotoPanel));
     });
@@ -7449,6 +7578,7 @@
         <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Shitjet")} (${d.periodLabel})</div></div>
         <div class="stat-card"><div class="val">${formatEuro(d.totalCash)}</div><div class="lbl">${tt("Cash")}</div></div>
         <div class="stat-card"><div class="val">${formatEuro(d.totalKarte)}</div><div class="lbl">${tt("Kartë")}</div></div>
+        ${Number(d.totalTjera) > 0 ? `<div class="stat-card"><div class="val">${formatEuro(d.totalTjera)}</div><div class="lbl">${tt("Tjera")}</div></div>` : ""}
         <div class="stat-card"><div class="val">${d.orderCount}</div><div class="lbl">${tt("Porosi të përfunduara")}</div></div>`;
     }
 
@@ -8403,6 +8533,8 @@
       );
       applyAppVersionBadge(s, "hdr-app-version");
       document.getElementById("cil-emri").value = s.business_name || s.restaurant_name || "";
+      const staticIpEl = document.getElementById("cil-staff-pos-static-ip");
+      if (staticIpEl) staticIpEl.value = s.staff_pos_static_ip || "";
       const adminCardStatus = document.getElementById("cil-admin-card-status");
       const adminCardDel = document.getElementById("cil-admin-card-del-btn");
       if (adminCardStatus) {
@@ -15485,6 +15617,21 @@
       document.getElementById("raport-orders").textContent = String(r.orderCount);
       document.getElementById("raport-average").textContent = formatEuro(r.average || 0);
       document.getElementById("raport-discount").textContent = formatEuro(r.totalDiscount || 0);
+      const raportCashEl = document.getElementById("raport-cash");
+      if (raportCashEl) raportCashEl.textContent = formatEuro(r.totalCash ?? 0);
+      const raportKarteEl = document.getElementById("raport-karte");
+      if (raportKarteEl) raportKarteEl.textContent = formatEuro(r.totalKarte ?? 0);
+      const tjeraKpi = document.getElementById("raport-tjera-kpi");
+      const tjeraVal = Number(r.totalTjera) || 0;
+      if (tjeraKpi) tjeraKpi.hidden = !(tjeraVal > 0);
+      const raportTjeraEl = document.getElementById("raport-tjera");
+      if (raportTjeraEl) raportTjeraEl.textContent = formatEuro(tjeraVal);
+      const regEl = document.getElementById("raport-cash-register");
+      if (regEl) regEl.textContent = formatEuro(r.cash_in_register ?? 0);
+      const regSalesEl = document.getElementById("raport-cash-register-sales");
+      if (regSalesEl) regSalesEl.textContent = formatEuro(r.sales_cash ?? 0);
+      const regPurchEl = document.getElementById("raport-cash-register-purchases");
+      if (regPurchEl) regPurchEl.textContent = formatEuro(r.purchases_cash ?? 0);
       renderRaportDailyChart(r.dailySales || []);
       renderRaportProductsChart(r.topItems || []);
       renderRaportTopTable(r.topItems || []);
@@ -15497,7 +15644,7 @@
               <td>${x.order_count}</td>
               <td>${formatEuro(x.cash)}</td>
               <td>${formatEuro(x.card)}</td>
-              <td>${formatEuro(x.credit)}</td>
+              <td>${formatEuro(x.tjera ?? x.credit ?? 0)}</td>
               <td>${formatEuro(x.total)}</td>
             </tr>`).join("")
           : '<tr><td colspan="6" class="purchases-empty">Nuk ka shitje për këtë periudhë</td></tr>';
@@ -18764,6 +18911,22 @@
       }
     }
 
+    const STAFF_LAN_MDNS_HOST = "revolution-hotel.local";
+
+    function staffLanUrlPreferMdns(url, portHint) {
+      const raw = String(url || "").trim();
+      if (!raw) return "";
+      if (raw.includes(`${STAFF_LAN_MDNS_HOST}`)) return raw;
+      try {
+        const u = new URL(raw);
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(u.hostname)) return raw;
+        const port = portHint || u.port || 3001;
+        return `http://${STAFF_LAN_MDNS_HOST}:${port}${u.pathname}${u.search}`;
+      } catch {
+        return raw;
+      }
+    }
+
     async function loadStaffPwaServerInfo() {
       const block = document.getElementById("staff-pwa-links-block");
       if (!block) return;
@@ -18772,26 +18935,43 @@
         if (!r.ok) return;
         const d = await r.json();
         const links = d.links || {};
-        const waiterUrl =
-          String(d.local_waiter_url || links.kamarier || links.waiter || "").trim();
-        const recepsionUrl =
-          String(d.local_recepsion_url || links.recepsion || "").trim();
+        const linksIp = d.links_ip || {};
+        const port = Number(d.port || d.local_server_port) || 3001;
+        const waiterPrimary = String(links.kamarier || links.waiter || d.local_waiter_url || "").trim();
+        const recepsionPrimary = String(links.recepcion || links.recepsion || d.local_recepsion_url || "").trim();
+        const waiterBackup = String(linksIp.kamarier || d.local_waiter_url_ip || d.current_ip_url || "").trim();
+        const recepsionBackup = String(linksIp.recepcion || linksIp.recepsion || d.local_recepsion_url_ip || "").trim();
         const loginUrl = String(links.login || "").trim()
-          || (waiterUrl ? waiterUrl.replace(/\/[^/]+\/[^/]+\/kamarier.*$/i, "/login.html?mode=kamarier") : "");
+          || (waiterPrimary ? waiterPrimary.replace(/\/[^/]+\/[^/]+\/kamarier.*$/i, "/login.html?mode=kamarier") : "");
         const setVal = (id, val) => {
           const el = document.getElementById(id);
           if (el && val) el.value = val;
         };
+        const setBackup = (id, primary, backup) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const b = String(backup || "").trim();
+          const p = String(primary || "").trim();
+          if (b && b !== p) {
+            el.textContent = `Rezervë (IP): ${b}`;
+          } else {
+            el.textContent = "";
+          }
+        };
         setVal("staff-pwa-login-url", loginUrl);
-        setVal("staff-pwa-waiter-url", waiterUrl);
-        setVal("staff-pwa-recepsion-url", recepsionUrl);
+        setVal("staff-pwa-waiter-url", waiterPrimary);
+        setVal("staff-pwa-recepsion-url", recepsionPrimary);
+        setBackup("staff-pwa-waiter-backup", waiterPrimary, waiterBackup);
+        setBackup("staff-pwa-recepsion-backup", recepsionPrimary, recepsionBackup);
+        const badge = document.getElementById("staff-pwa-static-badge");
+        if (badge) badge.hidden = !(d.staff_pos_static_ip || d.static_ip_url);
         const ipsEl = document.getElementById("staff-pwa-ips");
         if (ipsEl) {
           const ips = Array.isArray(d.ips) ? d.ips : [];
           ipsEl.textContent = ips.length ? ips.join(", ") : "—";
         }
-        refreshStaffPwaQrUi("staff-pwa-waiter-qr-img", "waiter", waiterUrl);
-        refreshStaffPwaQrUi("staff-pwa-recepsion-qr-img", "recepsion", recepsionUrl);
+        refreshStaffPwaQrUi("staff-pwa-waiter-qr-img", "waiter", waiterPrimary);
+        refreshStaffPwaQrUi("staff-pwa-recepsion-qr-img", "recepsion", recepsionPrimary);
       } catch {
         /* ignore */
       }
@@ -18842,7 +19022,7 @@
       }
       box.hidden = false;
       box.innerHTML =
-        `<p style="font-size:0.8rem;color:var(--ngjyr-muted);margin:0 0 0.5rem">Alternativa pa IP (nëse WiFi e njeh emrin e PC-së ose mDNS):</p>`
+        `<p style="font-size:0.8rem;color:var(--ngjyr-muted);margin:0 0 0.5rem">Rezervë (IP / emër PC) — QR dhe linket kryesore përdorin <strong>revolution-hotel.local</strong>:</p>`
         + rows.map((e, i) => (
           `<div class="fiscal-field-actions" style="flex-wrap:wrap;gap:0.35rem;margin-bottom:0.35rem">`
           + `<span style="font-size:0.75rem;color:var(--ngjyr-muted);min-width:10rem">${escHtml(e.label || "Link")}</span>`
@@ -18864,13 +19044,16 @@
 
     function applyLocalWaiterLanPayload(s) {
       if (!s) return;
-      const localWaiterUrl =
+      const portHint = Number(s.local_server_port) || 3001;
+      const localWaiterUrl = staffLanUrlPreferMdns(
         s.local_waiter_url
         || s.local_staff_wifi?.kamarier
         || s.local_waiter_panel_url
         || (s.local_lan_ip && s.local_server_port
           ? `http://${s.local_lan_ip}:${s.local_server_port}/waiter.html`
-          : "");
+          : ""),
+        portHint,
+      );
       const cur = document.getElementById("cloud-local-waiter-url");
       if (cur && localWaiterUrl && cur.value !== localWaiterUrl) {
         cur.value = localWaiterUrl;
@@ -18938,22 +19121,28 @@
     /** Linke stafi / admin — LAN POS (jo cloud në UI). */
     function resolveLocalStaffLinksFromSync(s) {
       const src = s && typeof s === "object" ? s : {};
-      const base = String(src.local_base_url || "").replace(/\/+$/, "")
-        || (src.local_lan_ip && src.local_server_port
-          ? `http://${String(src.local_lan_ip).trim()}:${Number(src.local_server_port) || 3001}`
-          : "");
+      const portNum = Number(src.local_server_port) || 3001;
+      const mdnsBase = `http://${STAFF_LAN_MDNS_HOST}:${portNum}`.replace(/\/+$/, "");
+      const ipBase =
+        src.local_lan_ip && src.local_server_port
+          ? `http://${String(src.local_lan_ip).trim()}:${portNum}`
+          : "";
+      const base = String(src.local_base_url || "").replace(/\/+$/, "") || mdnsBase || ipBase;
       const slugRaw = stripLegacyKitchenSlugSuffix(
         src.kitchen_slug || src.client_id || src.hotel_slug || src.local_waiter_slug || "",
       );
       const tipi = String(src.client_tipi || "hotel").trim().toLowerCase() || "hotel";
-      let localWaiterUrl =
-        src.local_waiter_url
-        || src.local_staff_wifi?.kamarier
-        || "";
+      let localWaiterUrl = staffLanUrlPreferMdns(
+        src.local_waiter_url || src.local_staff_wifi?.kamarier || "",
+        portNum,
+      );
       if (!localWaiterUrl && base && slugRaw) {
-        localWaiterUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/kamarier`;
+        localWaiterUrl = `${mdnsBase}/${tipi}/${encodeURIComponent(slugRaw)}/kamarier`;
       }
-      let localRecepsionUrl = src.local_recepsion_url || src.local_staff_wifi?.recepsion || "";
+      let localRecepsionUrl = staffLanUrlPreferMdns(
+        src.local_recepsion_url || src.local_staff_wifi?.recepsion || "",
+        portNum,
+      );
       if (!localRecepsionUrl && localWaiterUrl) {
         localRecepsionUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/recepsion$1");
       } else if (!localRecepsionUrl && base && slugRaw) {
@@ -19074,9 +19263,19 @@
         if (row) row.hidden = !show;
       };
 
-      const localWaiterUrl = loc.localWaiterUrl || s.local_panel_waiter_url || "";
-      const localRecepsionUrl = loc.localRecepsionUrl || s.local_panel_recepsion_url || "";
-      const localSherbimiUrl = loc.localSherbimiUrl || s.local_panel_sherbimi_url || "";
+      const portHint = Number(s.local_server_port) || 3001;
+      const localWaiterUrl = staffLanUrlPreferMdns(
+        loc.localWaiterUrl || s.local_panel_waiter_url || "",
+        portHint,
+      );
+      const localRecepsionUrl = staffLanUrlPreferMdns(
+        loc.localRecepsionUrl || s.local_panel_recepsion_url || "",
+        portHint,
+      );
+      const localSherbimiUrl = staffLanUrlPreferMdns(
+        loc.localSherbimiUrl || s.local_panel_sherbimi_url || "",
+        portHint,
+      );
       const ownerUrl =
         s.owner_panel_url
         || s.owner_url
@@ -19110,8 +19309,8 @@
       setVal("cloud-public-url", s.public_page_url, { cloudNormalize: true });
       toggleRow("cloud-row-public", !!s.public_page_url);
 
-      const localKuzhinaUrl = loc.localKuzhinaUrl || "";
-      const localBanakuUrl = loc.localBanakuUrl || "";
+      const localKuzhinaUrl = staffLanUrlPreferMdns(loc.localKuzhinaUrl || "", portHint);
+      const localBanakuUrl = staffLanUrlPreferMdns(loc.localBanakuUrl || "", portHint);
       setVal("cloud-kitchen-url", localKuzhinaUrl);
       setVal("cloud-bar-url", localBanakuUrl);
       toggleRow("cloud-row-kitchen", !!localKuzhinaUrl);
@@ -19127,7 +19326,7 @@
       if (sherbHint && localSherbimiUrl) {
         sherbHint.textContent = "Pastrim POS — i njëjti WiFi si PC; hyrje me PIN pastrimi.";
       }
-      const venue = String(emriRestorantit || s.client_name || "").trim();
+      const venue = String(emriRestorantit || "").trim();
       const wLbl = document.getElementById("cloud-local-waiter-label");
       const rLbl = document.getElementById("cloud-local-recepsion-label");
       const shLbl = document.getElementById("cloud-local-sherbimi-label");
@@ -20464,10 +20663,12 @@
       try {
         const body = {
           restaurant_name: document.getElementById("cil-emri").value,
+          staff_pos_static_ip: (document.getElementById("cil-staff-pos-static-ip")?.value || "").trim(),
         };
         const fk = document.getElementById("cil-fjalekalimi").value;
         if (fk) body.admin_password = fk;
         const res = await api("/api/settings", { method: "PUT", body: JSON.stringify(body) });
+        void loadStaffPwaServerInfo();
         if (typeof applyAppWindowTitle === "function") applyAppWindowTitle(res);
         document.getElementById("hdr-emri").textContent = sanitizeVenueDisplayName(
           res.window_title || res.business_name || res.restaurant_name || res.app_brand || "Revolution HOTEL",

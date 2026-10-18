@@ -29,7 +29,7 @@ function pinDigitsForLoginMode(loginMode) {
   return 4;
 }
 
-/** Pranon 6 shifra për restorant vetëm legacy (pa ndryshuar DB pa OK të Naserit). */
+/** Pranon 6 shifra për restorant vetëm legacy (pa ndryshuar DB pa miratim ops). */
 function acceptsStaffPin(pin, staffRole) {
   const p = String(pin ?? "").trim();
   const k = normalizeStaffRoleKey(staffRole);

@@ -1013,6 +1013,36 @@ function initSchema() {
     },
   );
 
+  runSchemaMigration(
+    "pending-public-guest-requests-tables",
+    backupCtx,
+    () => !tableExists("pending_public_booking_requests"),
+    () => {
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS pending_public_booking_requests (
+          cloud_id       TEXT PRIMARY KEY,
+          payload_json   TEXT NOT NULL,
+          first_seen_at  TEXT NOT NULL,
+          last_seen_at   TEXT NOT NULL
+        )
+      `);
+      sqlRun(`
+        CREATE TABLE IF NOT EXISTS pending_public_service_requests (
+          cloud_id       TEXT PRIMARY KEY,
+          payload_json   TEXT NOT NULL,
+          first_seen_at  TEXT NOT NULL,
+          last_seen_at   TEXT NOT NULL
+        )
+      `);
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_pending_pub_booking_seen ON pending_public_booking_requests(last_seen_at)",
+      );
+      sqlRun(
+        "CREATE INDEX IF NOT EXISTS idx_pending_pub_service_seen ON pending_public_service_requests(last_seen_at)",
+      );
+    },
+  );
+
   migrateAddColumns(
     "daily-log-columns",
     "daily_log",
@@ -1029,6 +1059,20 @@ function initSchema() {
     ],
     backupCtx,
   );
+  if (tableExists("daily_log")) {
+    try {
+      sqlExec("ALTER TABLE daily_log ADD COLUMN checkout_token TEXT");
+    } catch {
+      /* kolona ekziston */
+    }
+    try {
+      sqlExec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_log_checkout_token ON daily_log(checkout_token) WHERE checkout_token IS NOT NULL",
+      );
+    } catch {
+      /* index ekziston ose skema e paplotë */
+    }
+  }
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_cloud_sale ON daily_log(cloud_sale_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_order_id ON daily_log(order_id)");
   try {
@@ -1083,6 +1127,18 @@ function initSchema() {
       if (!logColsLan.some((c) => c.name === "card_amount")) {
         sqlRun("ALTER TABLE daily_log ADD COLUMN card_amount REAL NOT NULL DEFAULT 0");
       }
+      sqlRun(`
+        UPDATE daily_log SET cash_amount = total, card_amount = 0
+        WHERE LOWER(TRIM(COALESCE(payment_method, ''))) IN ('cash', 'para', '')
+          AND COALESCE(cash_amount, 0) = 0 AND COALESCE(card_amount, 0) = 0
+          AND COALESCE(total, 0) > 0
+      `);
+      sqlRun(`
+        UPDATE daily_log SET card_amount = total, cash_amount = 0
+        WHERE LOWER(TRIM(COALESCE(payment_method, ''))) IN ('card', 'karte', 'kartë', 'debit_card', 'credit_card')
+          AND COALESCE(card_amount, 0) = 0 AND COALESCE(cash_amount, 0) = 0
+          AND COALESCE(total, 0) > 0
+      `);
       if (!logColsLan.some((c) => c.name === "source")) {
         sqlRun("ALTER TABLE daily_log ADD COLUMN source TEXT NOT NULL DEFAULT 'hotel-kasa'");
       }
@@ -1092,14 +1148,8 @@ function initSchema() {
       if (!logColsLan.some((c) => c.name === "source_ref")) {
         sqlRun("ALTER TABLE daily_log ADD COLUMN source_ref INTEGER");
       }
-      if (!logColsLan.some((c) => c.name === "checkout_token")) {
-        sqlRun("ALTER TABLE daily_log ADD COLUMN checkout_token TEXT");
-      }
       sqlRun(
         "CREATE INDEX IF NOT EXISTS idx_daily_log_source_ref ON daily_log(source_device_id, source_ref)",
-      );
-      sqlRun(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_log_checkout_token_unique ON daily_log(checkout_token) WHERE checkout_token IS NOT NULL AND TRIM(checkout_token) <> ''",
       );
       sqlRun(`
         CREATE TABLE IF NOT EXISTS lan_outbox (

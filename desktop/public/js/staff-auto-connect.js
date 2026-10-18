@@ -1,19 +1,26 @@
 /**
- * Lidhje automatike POS në WiFi — stafi nuk shikon IP / gabime teknike.
+ * Lidhje automatike POS në WiFi — stafi nuk mbetet te IP e vjetër pas router-it.
  */
 (function staffAutoConnect() {
   if (typeof window === "undefined" || typeof fetch !== "function") return;
 
   const LS_BASE = "hotel_staff_pos_base_url";
   const LS_PORT = "hotel_staff_pos_port";
-  const PROBE_MS = 2800;
-  const HEALTH_MS = 45000;
+  const LS_STATIC_IP = "hotel_staff_pos_static_ip";
+  const DISCOVERY_MAX_MS = 5000;
   const MDNS_HOSTS = ["revolution-hotel.local"];
+  const MDNS_CANONICAL_HOST = "revolution-hotel.local";
   const SUBNET_PREFIXES = ["192.168.1", "192.168.0", "10.0.0"];
+  const SCAN_BATCH = 20;
+  const GATEWAY_IPS = ["192.168.1.1", "192.168.0.1", "10.0.0.1"];
+  const HEALTH_MS = 45000;
+
+  // TODO: UDP broadcast for native app discovery (port 41567 — server.js lan-pos-udp-beacon)
 
   let reconnectBusy = false;
   let statusEl = null;
   let dotEl = null;
+  let overlayEl = null;
 
   function normalizeBase(url) {
     const s = String(url || "").trim().replace(/\/+$/, "");
@@ -57,17 +64,55 @@
     statusEl = wrap;
   }
 
-  function setUi(state) {
+  function ensureOverlay() {
+    if (overlayEl) return;
+    overlayEl = document.createElement("div");
+    overlayEl.id = "staff-pos-search-overlay";
+    overlayEl.setAttribute("role", "status");
+    overlayEl.setAttribute("aria-live", "polite");
+    overlayEl.style.cssText =
+      "position:fixed;inset:0;z-index:99998;display:none;align-items:center;justify-content:center;"
+      + "background:rgba(8,10,14,0.92);color:#e8eaed;font:600 1rem/1.4 system-ui,sans-serif;text-align:center;padding:1.5rem";
+    overlayEl.innerHTML =
+      '<div><div style="width:2.5rem;height:2.5rem;border:3px solid rgba(255,255,255,.15);'
+      + "border-top-color:#22c55e;border-radius:50%;animation:rh-pos-spin .75s linear infinite;margin:0 auto 1rem\"></div>"
+      + '<p id="staff-pos-search-text">Duke kërkuar POS-in…</p></div>';
+    const style = document.createElement("style");
+    style.textContent = "@keyframes rh-pos-spin{to{transform:rotate(360deg)}}";
+    document.head.appendChild(style);
+    document.documentElement.appendChild(overlayEl);
+  }
+
+  function showSearchOverlay(show, text) {
+    ensureOverlay();
+    if (!overlayEl) return;
+    const t = document.getElementById("staff-pos-search-text");
+    if (t && text) t.textContent = text;
+    overlayEl.style.display = show ? "flex" : "none";
+    const finderMsg = document.getElementById("staff-finder-msg");
+    if (finderMsg && text) finderMsg.textContent = text;
+  }
+
+  function setUi(state, text) {
     ensureUi();
     if (!statusEl || !dotEl) return;
     const label = document.getElementById("staff-pos-connect-label");
     if (state === "hidden") {
       statusEl.style.opacity = "0";
       if (label) label.textContent = "";
+      showSearchOverlay(false);
+      return;
+    }
+    if (state === "searching") {
+      showSearchOverlay(true, text || "Duke kërkuar POS-in…");
+      statusEl.style.opacity = "1";
+      dotEl.style.background = "#f97316";
+      if (label) label.textContent = text || "Duke kërkuar POS-in…";
       return;
     }
     statusEl.style.opacity = "1";
     if (state === "connected") {
+      showSearchOverlay(false, "POS u gjet!");
       dotEl.style.background = "#22c55e";
       if (label) label.textContent = "";
       window.setTimeout(() => setUi("hidden"), 2200);
@@ -79,11 +124,30 @@
     }
   }
 
+  function persistFromServerInfo(info, port) {
+    const p = Number(info?.port || info?.local_server_port || port) || 3001;
+    localStorage.setItem(LS_PORT, String(p));
+    const staticIp = String(info?.staff_pos_static_ip || localStorage.getItem(LS_STATIC_IP) || "").trim();
+    if (info?.staff_pos_static_ip != null) {
+      localStorage.setItem(LS_STATIC_IP, staticIp);
+    }
+    const primary = normalizeBase(info?.primary_url || info?.base_url || "");
+    if (primary) localStorage.setItem(LS_BASE, primary);
+  }
+
+  function preferredRedirectBase(info, port) {
+    const fromInfo = normalizeBase(info?.primary_url || info?.base_url || "");
+    if (fromInfo) return fromInfo;
+    const staticIp = String(info?.staff_pos_static_ip || localStorage.getItem(LS_STATIC_IP) || "").trim();
+    if (staticIp) return normalizeBase(`http://${staticIp}:${port}`);
+    return normalizeBase(`http://${MDNS_CANONICAL_HOST}:${port}`);
+  }
+
   async function probeServerInfo(base, timeoutMs) {
     const root = normalizeBase(base);
     if (!root) return null;
     const ctrl = new AbortController();
-    const timer = window.setTimeout(() => ctrl.abort(), timeoutMs || PROBE_MS);
+    const timer = window.setTimeout(() => ctrl.abort(), timeoutMs || 1500);
     try {
       const res = await fetch(`${root}/api/server-info`, {
         method: "GET",
@@ -95,7 +159,7 @@
       const data = await res.json();
       if (!data || typeof data !== "object") return null;
       const port = Number(data.port || data.local_server_port) || parsePortFromBase(root);
-      localStorage.setItem(LS_PORT, String(port));
+      persistFromServerInfo(data, port);
       return { base: root, info: data, port };
     } catch {
       return null;
@@ -104,40 +168,28 @@
     }
   }
 
-  function persistBase(base) {
-    const b = normalizeBase(base);
-    if (b) localStorage.setItem(LS_BASE, b);
+  function notifyReconnected() {
+    try {
+      window.dispatchEvent(new CustomEvent("staff-pos-reconnected"));
+    } catch {
+      /* ignore */
+    }
   }
 
-  function redirectToBase(base) {
-    const root = normalizeBase(base);
+  function redirectToBase(hit) {
+    if (!hit) return false;
+    const port = hit.port || parsePortFromBase(hit.base);
+    const root = preferredRedirectBase(hit.info, port);
     if (!root) return false;
-    persistBase(root);
+    localStorage.setItem(LS_BASE, root);
     const here = normalizeBase(window.location.origin);
-    if (root === here) {
-      setUi("connected");
+    if (here === root) {
+      setUi("connected", "POS u gjet!");
+      notifyReconnected();
       return true;
     }
-    const dest = `${root}${currentPathAndQuery()}`;
-    window.location.replace(dest);
+    window.location.replace(`${root}${currentPathAndQuery()}`);
     return true;
-  }
-
-  async function tryCandidates(bases, portHint) {
-    const seen = new Set();
-    for (const raw of bases) {
-      const b = normalizeBase(raw);
-      if (!b || seen.has(b)) continue;
-      seen.add(b);
-      const hit = await probeServerInfo(b, PROBE_MS);
-      if (hit) {
-        const port = hit.port || portHint || parsePortFromBase(b);
-        localStorage.setItem(LS_PORT, String(port));
-        redirectToBase(hit.base);
-        return hit;
-      }
-    }
-    return null;
   }
 
   function hostnameCandidates(port) {
@@ -145,46 +197,123 @@
     for (const h of MDNS_HOSTS) {
       out.push(`http://${h}:${port}`);
     }
+    try {
+      const pc = String(window.location.hostname || "").trim();
+      if (pc && pc.endsWith(".local") && !MDNS_HOSTS.includes(pc)) {
+        out.push(`http://${pc}:${port}`);
+      }
+    } catch {
+      /* ignore */
+    }
     return out;
   }
 
-  async function scanSubnet(port) {
+  function subnetPrefixesForScan() {
+    const prefixes = [];
+    const sources = [
+      localStorage.getItem(LS_BASE) || "",
+      window.location.href,
+    ];
+    for (const src of sources) {
+      const m = String(src).match(/https?:\/\/(\d+\.\d+\.\d+)\.\d+/);
+      if (m && m[1] && !prefixes.includes(m[1])) prefixes.push(m[1]);
+    }
+    for (const p of SUBNET_PREFIXES) {
+      if (!prefixes.includes(p)) prefixes.push(p);
+    }
+    return prefixes;
+  }
+
+  function buildScanIpList(port) {
     const ips = [];
-    for (const prefix of SUBNET_PREFIXES) {
-      for (let i = 1; i <= 254; i += 1) ips.push(`${prefix}.${i}`);
+    const staticIp = String(localStorage.getItem(LS_STATIC_IP) || "").trim();
+    if (staticIp) ips.push(staticIp);
+    for (const gw of GATEWAY_IPS) {
+      if (!ips.includes(gw)) ips.push(gw);
     }
-    const batch = 36;
-    for (let i = 0; i < ips.length; i += batch) {
-      const slice = ips.slice(i, i + batch);
-      const probes = slice.map((ip) => probeServerInfo(`http://${ip}:${port}`, 900));
-      const results = await Promise.all(probes);
-      const hit = results.find(Boolean);
-      if (hit) return hit;
+    const prefixes = subnetPrefixesForScan();
+    for (const prefix of prefixes) {
+      for (let i = 1; i <= 254; i += 1) {
+        const ip = `${prefix}.${i}`;
+        if (!ips.includes(ip)) ips.push(ip);
+      }
     }
-    return null;
+    return ips.map((ip) => `http://${ip}:${port}`);
+  }
+
+  async function raceDiscovery(port) {
+    const saved = normalizeBase(localStorage.getItem(LS_BASE) || "");
+    const staticIp = String(localStorage.getItem(LS_STATIC_IP) || "").trim();
+    const staticBase = staticIp ? normalizeBase(`http://${staticIp}:${port}`) : "";
+
+    const immediate = [
+      { base: saved, ms: 1500, label: "Duke provuar lidhjen e ruajtur…" },
+      ...hostnameCandidates(port).map((b) => ({ base: b, ms: 2000, label: "Duke provuar .local…" })),
+      ...(staticBase ? [{ base: staticBase, ms: 1500, label: "Duke provuar IP statike…" }] : []),
+      { base: normalizeBase(window.location.origin), ms: 1200, label: "Duke provuar adresën aktuale…" },
+    ];
+
+    setUi("searching", "Duke provuar .local…");
+
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (hit) => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(maxTimer);
+        resolve(hit || null);
+      };
+
+      const maxTimer = window.setTimeout(() => finish(null), DISCOVERY_MAX_MS);
+
+      for (const item of immediate) {
+        if (!item.base) continue;
+        probeServerInfo(item.base, item.ms).then((hit) => {
+          if (hit) {
+            setUi("searching", "POS u gjet!");
+            finish(hit);
+          }
+        });
+      }
+
+      const scanBases = buildScanIpList(port);
+      let scanIdx = 0;
+      const runScanBatch = () => {
+        if (done) return;
+        if (scanIdx >= scanBases.length) return;
+        setUi("searching", "Duke skanuar rrjetin…");
+        const slice = scanBases.slice(scanIdx, scanIdx + SCAN_BATCH);
+        scanIdx += SCAN_BATCH;
+        for (const base of slice) {
+          probeServerInfo(base, 1000).then((hit) => {
+            if (hit) {
+              setUi("searching", "POS u gjet!");
+              finish(hit);
+            }
+          });
+        }
+        if (!done && scanIdx < scanBases.length) {
+          window.setTimeout(runScanBatch, 0);
+        }
+      };
+      window.setTimeout(runScanBatch, 80);
+    });
   }
 
   async function discoverPos() {
     if (reconnectBusy) return null;
     reconnectBusy = true;
-    setUi("reconnecting");
+    setUi("searching", "Duke kërkuar POS-in…");
     try {
-      const saved = localStorage.getItem(LS_BASE) || "";
-      const port = parsePortFromBase(saved || window.location.origin);
-      const order = [
-        saved,
-        window.location.origin,
-        ...hostnameCandidates(port),
-      ];
-      let hit = await tryCandidates(order, port);
-      if (hit) return hit;
-
-      hit = await scanSubnet(port);
+      const port = parsePortFromBase(
+        localStorage.getItem(LS_BASE) || window.location.origin,
+      );
+      const hit = await raceDiscovery(port);
       if (hit) {
-        redirectToBase(hit.base);
+        redirectToBase(hit);
         return hit;
       }
-      setUi("reconnecting");
+      setUi("searching", "POS nuk u gjet — kontrolloni Wi‑Fi.");
       return null;
     } finally {
       reconnectBusy = false;
@@ -193,43 +322,45 @@
 
   async function ensureConnected() {
     const origin = normalizeBase(window.location.origin);
-    const hit = await probeServerInfo(origin, PROBE_MS);
+    const hit = await probeServerInfo(origin, 1500);
     if (hit) {
-      persistBase(hit.base);
-      setUi("connected");
+      persistFromServerInfo(hit.info, hit.port);
+      setUi("connected", "POS u gjet!");
       return true;
     }
     const found = await discoverPos();
     return Boolean(found);
   }
 
+  function shouldTriggerDiscovery(input) {
+    try {
+      const u = typeof input === "string" ? input : input?.url;
+      const url = new URL(u, window.location.href);
+      if (url.origin !== window.location.origin) return false;
+      const path = url.pathname || "";
+      return path.indexOf("/api/") === 0;
+    } catch {
+      return false;
+    }
+  }
+
   const nativeFetch = window.fetch.bind(window);
   window.fetch = function staffPosFetchWrapped(input, init) {
     const p = nativeFetch(input, init);
-    return p.catch((err) => {
-      let sameOrigin = false;
-      try {
-        const u = typeof input === "string" ? input : input?.url;
-        const url = new URL(u, window.location.href);
-        sameOrigin = url.origin === window.location.origin;
-      } catch {
-        sameOrigin = false;
-      }
-      if (sameOrigin && String(urlPath(input)).indexOf("/api/") === 0) {
-        void discoverPos();
-      }
-      throw err;
-    });
+    return p
+      .then((res) => {
+        if (shouldTriggerDiscovery(input) && !res.ok) {
+          void discoverPos();
+        }
+        return res;
+      })
+      .catch((err) => {
+        if (shouldTriggerDiscovery(input)) {
+          void discoverPos();
+        }
+        throw err;
+      });
   };
-
-  function urlPath(input) {
-    try {
-      const u = typeof input === "string" ? input : input?.url;
-      return new URL(u, window.location.href).pathname || "";
-    } catch {
-      return "";
-    }
-  }
 
   window.addEventListener("online", () => {
     void ensureConnected();
@@ -239,11 +370,17 @@
   });
 
   window.addEventListener("load", () => {
+    const port = parsePortFromBase(window.location.origin);
+    if (!localStorage.getItem(LS_BASE)) {
+      localStorage.setItem(LS_BASE, normalizeBase(`http://${MDNS_CANONICAL_HOST}:${port}`));
+    }
     void ensureConnected();
     window.setInterval(() => {
-      void probeServerInfo(window.location.origin, PROBE_MS).then((hit) => {
-        if (hit) persistBase(hit.base);
-        else void discoverPos();
+      void probeServerInfo(window.location.origin, 1500).then((hit) => {
+        if (hit) {
+          persistFromServerInfo(hit.info, hit.port);
+          setUi("connected");
+        } else void discoverPos();
       });
     }, HEALTH_MS);
   });

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Revolution HOTEL — lidhja</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f1419;
+      color: #e8eaed;
+      font: 600 1rem/1.4 system-ui, sans-serif;
+      text-align: center;
+      padding: 1.5rem;
+    }
+    .spin {
+      width: 2.5rem;
+      height: 2.5rem;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: #22c55e;
+      border-radius: 50%;
+      animation: rh-spin 0.75s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes rh-spin { to { transform: rotate(360deg); } }
+  </style>
+  <script src="/js/staff-auto-connect.js" defer></script>
+</head>
+<body>
+  <div>
+    <div class="spin" aria-hidden="true"></div>
+    <p id="staff-finder-msg">Duke kërkuar POS-in…</p>
+  </div>
+</body>
+</html>

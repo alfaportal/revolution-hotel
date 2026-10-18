@@ -132,7 +132,7 @@ function assertBuildSafeToStart() {
   if (fs.existsSync(BUILD_SOURCE_BACKUP)) {
     console.error(
       "\n[build] NDALOHET: ekziston .build-source-backup/ — build i mëparshëm u ndal në mes.\n" +
-        "Rikthe package.json nga backup ose fshi folderin (me leje të Naserit), pastaj provo përsëri.\n",
+        "Rikthe package.json nga backup ose fshi folderin (me leje ops), pastaj provo përsëri.\n",
     );
     process.exit(1);
   }

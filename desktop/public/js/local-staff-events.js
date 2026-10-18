@@ -67,6 +67,11 @@
     if (onReconnect) onReconnectCb = onReconnect;
     closed = false;
     openStream();
+    if (typeof global.addEventListener === "function") {
+      global.addEventListener("staff-pos-reconnected", () => {
+        if (!closed) openStream();
+      });
+    }
     return { close: disconnect };
   }
 
@@ -121,6 +126,11 @@
         /* ignore */
       }
       es = null;
+      if (typeof global.HotelStaffAutoConnect?.discoverPos === "function") {
+        void global.HotelStaffAutoConnect.discoverPos().then((hit) => {
+          if (hit && !closed) setTimeout(openStream, RECONNECT_MS);
+        });
+      }
       if (!closed) setTimeout(openStream, RECONNECT_MS);
     };
   }
@@ -142,6 +152,14 @@
     const fast = Number(fastMs) || 8000;
     const slow = Number(slowMs) || 30000;
     return isConnected() ? Math.max(slow, 30000) : fast;
+  }
+
+  if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener("message", (ev) => {
+      if (ev.data?.type === "STAFF_POS_RUN_DISCOVER" && global.HotelStaffAutoConnect?.discoverPos) {
+        void global.HotelStaffAutoConnect.discoverPos();
+      }
+    });
   }
 
   global.LocalStaffEvents = {

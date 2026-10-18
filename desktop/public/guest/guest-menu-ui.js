@@ -47,12 +47,49 @@
     );
   }
 
+  const GUEST_MENU_CAT_TEMPLATE = [
+    "Pije të ftohta",
+    "Pije joalkoolike",
+    "Alkool",
+    "Birra",
+    "Vera",
+    "Pije të nxehta",
+    "Mëngjes",
+    "Salata",
+    "Supa",
+    "Pizza",
+    "Hamburger / Fast Food",
+    "Sanduiç / Toast",
+    "Pasta",
+    "Mish",
+    "Peshk / Fruta deti",
+    "Pjata tradicionale",
+    "Shoqërime",
+    "Ëmbëlsira",
+    "Meny për fëmijë",
+  ];
+
+  function guestCatRank(name) {
+    const n = String(name || "").trim();
+    const i = GUEST_MENU_CAT_TEMPLATE.indexOf(n);
+    if (i >= 0) return i;
+    const low = n.toLowerCase();
+    if (low.includes("pije") || low.includes("birra") || low.includes("alkool") || low.includes("kafe")) {
+      return 1500;
+    }
+    return 8000;
+  }
+
   function orderedCategories(items, categoryOrder) {
     const present = new Set((items || []).map((i) => String(i.category || "").trim()).filter(Boolean));
     const ordered = (categoryOrder || []).filter((c) => present.has(c));
     for (const c of present) {
       if (!ordered.includes(c)) ordered.push(c);
     }
+    ordered.sort((a, b) => {
+      const d = guestCatRank(a) - guestCatRank(b);
+      return d !== 0 ? d : a.localeCompare(b, "sq");
+    });
     return ordered;
   }
 

@@ -777,12 +777,14 @@ if (!gotTheLock) {
 
       global["__scheduleFactoryResetRelaunch"] = (opts = {}) => {
         try {
+          const fullWipe = !!opts.fullWipe;
           dialog.showMessageBoxSync({
             type: "warning",
             title: APP_NAME,
-            message: "Rivendosje nga administratori",
-            detail:
-              "Shitjet dhe porositë fshihen; menuja, stafi dhe cilësimet mbeten. Licenca mbetet — programi riniset.",
+            message: fullWipe ? "Fshirje e plotë" : "Rivendosje nga administratori",
+            detail: fullWipe
+              ? "Të gjitha të dhënat lokale u fshinë. Licenca mbetet — programi riniset te konfigurimi fillestar."
+              : "Shitjet dhe porositë fshihen; menuja, stafi dhe cilësimet mbeten. Licenca mbetet — programi riniset.",
             buttons: ["OK"],
           });
         } catch {
@@ -815,7 +817,7 @@ if (!gotTheLock) {
             dialog.showErrorBox(
               "Integriteti i programit",
               (integ.reason || "Kontrolli dështoi.") +
-                "\nKontaktoni +383 48707880 dhe riinstaloni Setup zyrtar.",
+                "\nKontaktoni mbështetjen (revolution-pos.com) dhe riinstaloni Setup zyrtar.",
             );
             app.quit();
             return;

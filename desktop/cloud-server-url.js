@@ -123,7 +123,7 @@ function urlTipiSegment(tipi) {
     || "hotel";
 }
 
-/** Slug unik — hotel-{emri}-{hash} (si restaurant-naser-c57eb7). */
+/** Slug unik — hotel-{emri}-{hash} (si restaurant-myvenue-c57eb7). */
 function buildHotelVenueSlug(name, deviceId) {
   let base = slugifyVenueName(name);
   if (!base || base === "hotel") {

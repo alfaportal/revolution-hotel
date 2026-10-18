@@ -64,7 +64,7 @@ function assertNoStaleBuildBackup() {
   if (!fs.existsSync(BACKUP_DIR)) return;
   fail(
     "Ekziston .build-source-backup/ — një build u ndal në mes. " +
-      "Rikthe: kopjo .build-source-backup/package.json → package.json, pastaj fshi .build-source-backup/ me leje të Naserit.",
+      "Rikthe: kopjo .build-source-backup/package.json → package.json, pastaj fshi .build-source-backup/ me leje ops.",
   );
 }
 

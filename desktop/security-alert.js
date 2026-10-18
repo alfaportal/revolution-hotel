@@ -1,6 +1,6 @@
 ﻿/**
  * Njoftime sigurie â€” tentativa licence / DevTools.
- * Online â†’ POST cloud â†’ email te Naseri (nga sistemi).
+ * Online → POST cloud → email ops (SECURITY_ALERT_EMAIL / SUPPORT_EMAIL).
  * Offline â†’ queue lokale, dÃ«rgo kur kthehet neti.
  * ASNJÃ‹HERÃ‹ nuk ekspozon License Key tÃ« plotÃ« â€” vetÃ«m hash.
  */
@@ -15,7 +15,15 @@ const ATTEMPTS_BASENAME = ".hw-activate-attempts.json";
 const DEVTOOLS_BASENAME = ".devtools-attempts.json";
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_ATTEMPTS_URGENT = 3;
-const NASER_NOTIFY_EMAIL = "revolutioninvest05@gmail.com";
+function getSecurityAlertNotifyEmail() {
+  return String(
+    process.env.SECURITY_ALERT_EMAIL ||
+      process.env.SUPPORT_EMAIL ||
+      "alerts@revolution-pos.com",
+  )
+    .trim()
+    .toLowerCase();
+}
 
 /** SECRET pÃ«r HMAC alert â€” i obfuskuar (i njÃ«jtÃ« me cloud SECURITY_ALERT_HMAC default). */
 function getAlertHmacSecret() {
@@ -192,7 +200,7 @@ function buildAlertPayload(app, type, details = {}) {
     build_fingerprint: getBuildFingerprint(app),
     watermark: BUILD_WATERMARK,
     watermark_ok: isWatermarkOk(app),
-    notify_email: NASER_NOTIFY_EMAIL,
+    notify_email: getSecurityAlertNotifyEmail(),
     message: details.message || null,
     ts,
   };
@@ -349,7 +357,7 @@ function startSecurityAlertFlush(app) {
 
 module.exports = {
   BUILD_WATERMARK,
-  NASER_NOTIFY_EMAIL,
+  getSecurityAlertNotifyEmail,
   hashAttemptKey,
   getBuildFingerprint,
   isWatermarkOk,

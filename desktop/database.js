@@ -119,6 +119,14 @@ whenReady = async () => {
     /* ignore — schema mund të jetë ende duke u ngarkuar */
   }
   try {
+    const orphanGuestsClosed = reconcileAllOrphanActiveGuests();
+    if (orphanGuestsClosed > 0) {
+      console.log(`[pms] Startup: u mbyllën ${orphanGuestsClosed} mysafirë aktivë jetimë.`);
+    }
+  } catch (e) {
+    console.warn("[pms] orphan-guest reconcile:", e.message);
+  }
+  try {
     ensureMenuVatCategories();
   } catch {
     /* ignore */
@@ -143,10 +151,12 @@ whenReady = async () => {
       const { createIngredientsRecipesApi } = require("./ingredients-recipes");
       _irApi = createIngredientsRecipesApi(module.exports);
     }
-    const { ensureKosovoDefaultRestaurantIngredients } = require("./ingredients-kosovo-default-seed");
-    const seedRes = ensureKosovoDefaultRestaurantIngredients(_irApi, getSetting, setSetting);
-    if (seedRes?.added > 0) {
-      console.log(`[ingredients-seed] u shtuan ${seedRes.added} përbërës (ekzistuan ${seedRes.existed})`);
+    if (isSetupDone()) {
+      const { ensureKosovoDefaultRestaurantIngredients } = require("./ingredients-kosovo-default-seed");
+      const seedRes = ensureKosovoDefaultRestaurantIngredients(_irApi, getSetting, setSetting);
+      if (seedRes?.added > 0) {
+        console.log(`[ingredients-seed] u shtuan ${seedRes.added} përbërës (ekzistuan ${seedRes.existed})`);
+      }
     }
   } catch (e) {
     console.warn("[ingredients-seed] startup:", e.message);
@@ -1763,18 +1773,6 @@ function getBusinessName() {
   return biz || rest;
 }
 
-/** p.sh. te-naseri-2-aed709 → "Te Naseri 2" (slug publik, jo emër i gabuar cloud). */
-function displayNameFromKitchenSlug(slugRaw) {
-  const slug = String(slugRaw || "").trim().toLowerCase();
-  if (!slug) return "";
-  const base = slug.replace(/-[a-f0-9]{6,12}$/i, "");
-  const parts = base.split("-").filter(Boolean);
-  if (!parts.length) return "";
-  return parts
-    .map((p) => (/^\d+$/.test(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
-    .join(" ");
-}
-
 function getLicensedClientNameFromDisk() {
   try {
     const lic = require("./license");
@@ -1794,22 +1792,13 @@ function getLicensedClientNameFromDisk() {
   return "";
 }
 
-/** Emri zyrtar për UI — si në licencë; jo emër i vjetër cloud / slug tjetër. */
+/** Emri zyrtar për UI — vetëm nga settings (setup / admin), jo slug apo emër klienti licencë. */
 function getBusinessDisplayName() {
-  const fromLic = getLicensedClientNameFromDisk();
-  if (fromLic) return fromLic;
-
   const rest = String(getSetting("restaurant_name", "") || "").trim();
   if (rest) return rest;
 
   const biz = String(getSetting("biz_name", "") || "").trim();
   if (biz) return biz;
-
-  const fromSlug = displayNameFromKitchenSlug(getSetting("kitchen_slug", ""));
-  if (fromSlug) return fromSlug;
-
-  const fromCloud = String(getSetting("cloud_client_name", "") || "").trim();
-  if (fromCloud) return fromCloud;
 
   return getBusinessName() || "";
 }
@@ -1916,6 +1905,7 @@ function getSettings() {
     admin_has_card:  !!adminCard,
     admin_card_hint: adminCard ? `…${adminCard.slice(-4)}` : "",
     admin_tab_order: getAdminTabOrder(),
+    staff_pos_static_ip: String(getSetting("staff_pos_static_ip", "") || "").trim(),
   };
 }
 
@@ -2224,8 +2214,9 @@ function seedMenuAndCategories() {
   }
 }
 
-/** Në çdo nisje: menu/kategori default nëse mungojnë (p.sh. DB me kategori por pa artikuj). */
+/** Pas setup: menu/kategori starter nëse mungojnë (jo para konfigurimit fillestar). */
 function ensureMenuCatalog() {
+  if (!isSetupDone()) return 0;
   let seeded = 0;
   const beforeMenu = sqlite.prepare("SELECT COUNT(*) AS c FROM menu_items").get().c;
   const beforeCat = sqlite.prepare("SELECT COUNT(*) AS c FROM categories").get().c;
@@ -2255,7 +2246,25 @@ function ensureMenuCatalog() {
   if (seeded > 0 || (beforeCat === 0 && afterMenu > 0)) {
     console.log(`[menu] Katalog u plotësua: ${afterMenu} artikuj, ${getCategories().length} kategori`);
   }
+  try {
+    alignCategorySortOrderLikeKafene();
+  } catch (e) {
+    console.warn("[menu] alignCategorySortOrderLikeKafene:", e.message);
+  }
   return seeded;
+}
+
+/** Një herë — sort_order si KAFENE (pijet para) për panel, QR, cloud. */
+function alignCategorySortOrderLikeKafene() {
+  if (getSetting("hotel_menu_cat_kafene_sort_v1", "") === "1") return;
+  const names = getCategories().map((c) => c.name);
+  if (!names.length) return;
+  const { buildCategoryReorderList } = require("./lib/menu-category-guest-order");
+  const ordered = buildCategoryReorderList(names);
+  if (ordered.length !== names.length) return;
+  reorderCategories(ordered);
+  setSetting("hotel_menu_cat_kafene_sort_v1", "1");
+  console.log("[menu] Rend kategorish u harmonizua me KAFENE (pijet para).");
 }
 
 /**
@@ -3251,6 +3260,39 @@ function getActiveGuestForRoom(roomId) {
   `).get(Number(roomId)) || null;
 }
 
+/** Mysafir «active» kur dhoma nuk është occupied (test/audit/sync) — bllokon check-in. */
+function reconcileOrphanActiveGuestForRoom(roomId) {
+  const room = getRoomById(roomId);
+  if (!room || String(room.status || "").trim() === "occupied") return false;
+  const guest = getActiveGuestForRoom(roomId);
+  if (!guest) return false;
+  const outDate =
+    String(guest.check_out_date || "").trim().slice(0, 10) || businessTodayYmd();
+  sqlite.prepare(`
+    UPDATE guests
+    SET status = 'checked_out', check_out_date = ?
+    WHERE id = ? AND status = 'active'
+  `).run(outDate, Number(guest.id));
+  console.warn(
+    `[pms] Mysafir aktiv jetim u mbyll — dhoma ${room.room_number} (status=${room.status}, guest#${guest.id})`,
+  );
+  return true;
+}
+
+function reconcileAllOrphanActiveGuests() {
+  const orphans = sqlite.prepare(`
+    SELECT g.room_id AS room_id
+    FROM guests g
+    INNER JOIN rooms r ON r.id = g.room_id
+    WHERE g.status = 'active' AND r.status <> 'occupied'
+  `).all();
+  let closed = 0;
+  for (const row of orphans) {
+    if (reconcileOrphanActiveGuestForRoom(row.room_id)) closed += 1;
+  }
+  return closed;
+}
+
 const TERMINAL_OCCUPIED_CACHE_KEY = "terminal_master_occupied_rooms_v1";
 
 function buildOccupiedRoomsTerminalPayload() {
@@ -3488,6 +3530,9 @@ function checkInGuest({
   if (!room) throw new Error("Dhoma nuk u gjet.");
   if (room.status !== "free") {
     throw new Error("Check-in lejohet vetëm për dhoma të lira.");
+  }
+  if (getActiveGuestForRoom(room.id)) {
+    reconcileOrphanActiveGuestForRoom(room.id);
   }
   if (getActiveGuestForRoom(room.id)) {
     throw new Error("Dhoma ka tashmë një mysafir aktiv.");
@@ -7382,6 +7427,163 @@ function removePendingCloudOrders(ids) {
   }
 }
 
+function ensurePendingPublicGuestRequestTables() {
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS pending_public_booking_requests (
+        cloud_id       TEXT PRIMARY KEY,
+        payload_json   TEXT NOT NULL,
+        first_seen_at  TEXT NOT NULL,
+        last_seen_at   TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pending_public_service_requests (
+        cloud_id       TEXT PRIMARY KEY,
+        payload_json   TEXT NOT NULL,
+        first_seen_at  TEXT NOT NULL,
+        last_seen_at   TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_pub_booking_seen ON pending_public_booking_requests(last_seen_at);
+      CREATE INDEX IF NOT EXISTS idx_pending_pub_service_seen ON pending_public_service_requests(last_seen_at);
+    `);
+  } catch (err) {
+    console.warn("ensurePendingPublicGuestRequestTables:", err.message);
+  }
+}
+
+function reconcilePendingPublicBookingRequests(requests) {
+  ensurePendingPublicGuestRequestTables();
+  try {
+    const now = new Date().toISOString();
+    const liveIds = new Set();
+    const upsert = sqlite.prepare(`
+      INSERT INTO pending_public_booking_requests (cloud_id, payload_json, first_seen_at, last_seen_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(cloud_id) DO UPDATE SET
+        payload_json = excluded.payload_json,
+        last_seen_at = excluded.last_seen_at
+    `);
+    for (const r of requests || []) {
+      const id = String(r?.id || "").trim();
+      if (!id) continue;
+      liveIds.add(id);
+      upsert.run(id, JSON.stringify(r), now, now);
+    }
+    const rows = sqlite.prepare("SELECT cloud_id FROM pending_public_booking_requests").all();
+    const del = sqlite.prepare("DELETE FROM pending_public_booking_requests WHERE cloud_id = ?");
+    for (const row of rows || []) {
+      const id = String(row.cloud_id || "").trim();
+      if (id && !liveIds.has(id)) del.run(id);
+    }
+  } catch (err) {
+    console.warn("reconcilePendingPublicBookingRequests:", err.message);
+  }
+}
+
+function listPendingPublicBookingRequests() {
+  try {
+    const rows = sqlite.prepare(
+      "SELECT payload_json FROM pending_public_booking_requests ORDER BY first_seen_at ASC, last_seen_at ASC",
+    ).all();
+    const out = [];
+    for (const row of rows || []) {
+      try {
+        const parsed = JSON.parse(row.payload_json);
+        if (parsed?.id) out.push(parsed);
+      } catch {
+        /* skip */
+      }
+    }
+    return out;
+  } catch (err) {
+    console.warn("listPendingPublicBookingRequests:", err.message);
+    return [];
+  }
+}
+
+function getPendingPublicBookingRequest(id) {
+  const cid = String(id || "").trim();
+  if (!cid) return null;
+  try {
+    const row = sqlite
+      .prepare("SELECT payload_json FROM pending_public_booking_requests WHERE cloud_id = ?")
+      .get(cid);
+    if (!row?.payload_json) return null;
+    return JSON.parse(row.payload_json);
+  } catch {
+    return null;
+  }
+}
+
+function removePendingPublicBookingRequest(id) {
+  const cid = String(id || "").trim();
+  if (!cid) return;
+  try {
+    sqlite.prepare("DELETE FROM pending_public_booking_requests WHERE cloud_id = ?").run(cid);
+  } catch (err) {
+    console.warn("removePendingPublicBookingRequest:", err.message);
+  }
+}
+
+function reconcilePendingPublicServiceRequests(requests) {
+  ensurePendingPublicGuestRequestTables();
+  try {
+    const now = new Date().toISOString();
+    const liveIds = new Set();
+    const upsert = sqlite.prepare(`
+      INSERT INTO pending_public_service_requests (cloud_id, payload_json, first_seen_at, last_seen_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(cloud_id) DO UPDATE SET
+        payload_json = excluded.payload_json,
+        last_seen_at = excluded.last_seen_at
+    `);
+    for (const r of requests || []) {
+      const id = String(r?.id || "").trim();
+      if (!id) continue;
+      liveIds.add(id);
+      upsert.run(id, JSON.stringify(r), now, now);
+    }
+    const rows = sqlite.prepare("SELECT cloud_id FROM pending_public_service_requests").all();
+    const del = sqlite.prepare("DELETE FROM pending_public_service_requests WHERE cloud_id = ?");
+    for (const row of rows || []) {
+      const id = String(row.cloud_id || "").trim();
+      if (id && !liveIds.has(id)) del.run(id);
+    }
+  } catch (err) {
+    console.warn("reconcilePendingPublicServiceRequests:", err.message);
+  }
+}
+
+function listPendingPublicServiceRequests() {
+  try {
+    const rows = sqlite.prepare(
+      "SELECT payload_json FROM pending_public_service_requests ORDER BY first_seen_at ASC, last_seen_at ASC",
+    ).all();
+    const out = [];
+    for (const row of rows || []) {
+      try {
+        const parsed = JSON.parse(row.payload_json);
+        if (parsed?.id) out.push(parsed);
+      } catch {
+        /* skip */
+      }
+    }
+    return out;
+  } catch (err) {
+    console.warn("listPendingPublicServiceRequests:", err.message);
+    return [];
+  }
+}
+
+function removePendingPublicServiceRequest(id) {
+  const cid = String(id || "").trim();
+  if (!cid) return;
+  try {
+    sqlite.prepare("DELETE FROM pending_public_service_requests WHERE cloud_id = ?").run(cid);
+  } catch (err) {
+    console.warn("removePendingPublicServiceRequest:", err.message);
+  }
+}
+
 function parseFolioChargeIdsFromCloudPayload(payload) {
   if (!payload || typeof payload !== "object") return [];
   let meta = payload.items_json;
@@ -8660,6 +8862,37 @@ function resolveDailyLogPaymentSplit(method, total, { payment_splits = null, cas
   return { cash_amount: t, card_amount: 0 };
 }
 
+function dailyLogEntryCashAmount(e) {
+  const total = Number(e.total) || 0;
+  let cash = Number(e.cash_amount);
+  let card = Number(e.card_amount);
+  if (!Number.isFinite(cash)) cash = 0;
+  if (!Number.isFinite(card)) card = 0;
+  if (cash === 0 && card === 0 && total > 0 && isDailyLogCashMethod(e.payment_method)) {
+    return roundDailyLogMoney(total);
+  }
+  return roundDailyLogMoney(cash);
+}
+
+function dailyLogEntryCardAmount(e) {
+  const total = Number(e.total) || 0;
+  let cash = Number(e.cash_amount);
+  let card = Number(e.card_amount);
+  if (!Number.isFinite(cash)) cash = 0;
+  if (!Number.isFinite(card)) card = 0;
+  if (cash === 0 && card === 0 && total > 0 && isDailyLogCardMethod(e.payment_method)) {
+    return roundDailyLogMoney(total);
+  }
+  return roundDailyLogMoney(card);
+}
+
+function dailyLogEntryOtherAmount(e) {
+  const total = Number(e.total) || 0;
+  const cash = dailyLogEntryCashAmount(e);
+  const card = dailyLogEntryCardAmount(e);
+  return roundDailyLogMoney(Math.max(0, total - cash - card));
+}
+
 function paymentMethodLabel(method) {
   const m = normalizePaymentMethod(method);
   const labels = {
@@ -9265,6 +9498,27 @@ function aggregateReceptionCollected(receptionEntries) {
   };
 }
 
+/** Shitje restorant për TOTALI — pa rreshta payment_method=room (akruar në folio, mblidhet te CO-). */
+function sumRestaurantRegisterExcludingRoomAccrual(restaurantEntries) {
+  return (restaurantEntries || []).reduce((s, e) => {
+    if (isDailyLogRoomMethod(e.payment_method)) return s;
+    return s + Number(e.total || 0);
+  }, 0);
+}
+
+/** Të ardhura të njohura — restorant + netët/shërbime (akruale) + pjesët e faturës CO-/RC-. */
+function totalRecognizedSalesFromReportParts(restaurantSales, hotelRev, receptionCollected) {
+  const rc = receptionCollected || {};
+  return roundReportMoney(
+    Number(restaurantSales || 0)
+      + Number(hotelRev?.hotelNights || 0)
+      + Number(hotelRev?.hotelServices || 0)
+      + Number(rc.room || 0)
+      + Number(rc.restaurant || 0)
+      + Number(rc.services || 0),
+  );
+}
+
 function parseCheckoutGuestIdFromReceipt(receiptNumber) {
   const m = /^CO-(\d+)/i.exec(String(receiptNumber || "").trim());
   return m ? Number(m[1]) : null;
@@ -9375,7 +9629,14 @@ function recordRecepcionKasaSale({
 }
 
 /** Netët (akruale) + shërbime/RS — i njëjti burim si getHotelRevenueReport. Kontabilisti përdor check-out. */
-function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDitari = false } = {}) {
+function collectHotelReportRevenue({
+  from,
+  to,
+  fromDatetime,
+  toDatetime,
+  forDitari = false,
+  skipGuestIds = null,
+} = {}) {
   let hotelNights = 0;
   let hotelServices = 0;
   let restaurantRoomFood = 0;
@@ -9390,8 +9651,13 @@ function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDita
     return dt >= fromDatetime && dt <= toDatetime;
   };
 
+  const checkoutSkip = skipGuestIds instanceof Set
+    ? skipGuestIds
+    : loadCheckoutGuestIdsInReportRange({ from, to, fromDatetime, toDatetime });
+
   try {
     const accrued = accrueHotelNightsForRange(from, to, {
+      skipGuestIds: checkoutSkip,
       inDayRange: inDitariRange,
       buildEntry: (g, day, price) => {
         const amt = roundReportMoney(price);
@@ -9499,6 +9765,59 @@ function collectHotelReportRevenue({ from, to, fromDatetime, toDatetime, forDita
   };
 }
 
+/** Paratë e pritshme në arkë — shitje cash (cash_amount në ditari) minus blerje cash. */
+function getCashInRegister(dateFrom, dateTo, registerId = null) {
+  const from = dateFrom || businessTodayYmd();
+  const to = dateTo || from;
+  const regFilter =
+    registerId != null && registerId !== "" && String(registerId) !== "all"
+      ? Number(registerId)
+      : null;
+
+  let sales_cash = 0;
+  if (regFilter) {
+    sales_cash = Number(
+      sqlite.prepare(`
+        SELECT COALESCE(SUM(COALESCE(cash_amount, 0)), 0) AS t
+        FROM daily_log
+        WHERE status = 'completed'
+          AND date >= ? AND date <= ?
+          AND register_id = ?
+      `).get(from, to, regFilter)?.t,
+    ) || 0;
+  } else {
+    sales_cash = Number(
+      sqlite.prepare(`
+        SELECT COALESCE(SUM(COALESCE(cash_amount, 0)), 0) AS t
+        FROM daily_log
+        WHERE status = 'completed'
+          AND date >= ? AND date <= ?
+      `).get(from, to)?.t,
+    ) || 0;
+  }
+
+  let purchases_cash = 0;
+  const piCols = sqlite.prepare("PRAGMA table_info(purchase_invoices)").all();
+  const hasPurchasePayment = piCols.some((c) => c.name === "payment_method");
+  if (hasPurchasePayment) {
+    purchases_cash = Number(
+      sqlite.prepare(`
+        SELECT COALESCE(SUM(total), 0) AS t
+        FROM purchase_invoices
+        WHERE date(invoice_date) >= date(?)
+          AND date(invoice_date) <= date(?)
+          AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash'
+      `).get(from, to)?.t,
+    ) || 0;
+  }
+
+  sales_cash = roundReportMoney(sales_cash);
+  purchases_cash = roundReportMoney(purchases_cash);
+  const cash_in_register = roundReportMoney(sales_cash - purchases_cash);
+
+  return { sales_cash, purchases_cash, cash_in_register };
+}
+
 function getReports(dateFrom, dateTo) {
   const from = dateFrom || businessTodayYmd();
   const to   = dateTo   || from;
@@ -9522,8 +9841,14 @@ function getReports(dateFrom, dateTo) {
   const restaurantSales = roundReportMoney(
     restaurantRegisterSales + (hotelRev.restaurantRoomFood || 0),
   );
-  const totalSales = roundReportMoney(
-    hotelRev.hotelNights + hotelRev.hotelServices + restaurantSales,
+  const restaurantForTotal = roundReportMoney(
+    sumRestaurantRegisterExcludingRoomAccrual(restaurantEntries)
+      + (hotelRev.restaurantRoomFood || 0),
+  );
+  const totalSales = totalRecognizedSalesFromReportParts(
+    restaurantForTotal,
+    hotelRev,
+    receptionCollected,
   );
   const average = orderCount ? restaurantSales / orderCount : 0;
 
@@ -9567,6 +9892,9 @@ function getReports(dateFrom, dateTo) {
         restaurant: 0,
         reception: 0,
         reception_net: 0,
+        reception_room: 0,
+        reception_restaurant: 0,
+        reception_services: 0,
         nights: 0,
         services: 0,
         total: 0,
@@ -9585,11 +9913,29 @@ function getReports(dateFrom, dateTo) {
     dailyMap.get(day).reception += Number(e.total || 0);
     dailyMap.get(day).reception_net = (dailyMap.get(day).reception_net || 0)
       + receptionNetFromDailyLogEntry(e);
+    if (isRecepsionCheckoutReceipt(e.receipt_number)) {
+      const s = splitCheckoutReceptionEntry(e);
+      const row = dailyMap.get(day);
+      row.reception_room += s.room;
+      row.reception_restaurant += s.restaurantFood;
+      row.reception_services += s.services;
+    } else {
+      const tot = Number(e.total) || 0;
+      dailyMap.get(day).reception_services += tot;
+    }
   }
   for (const [day, amt] of hotelRev.nightsByDay) {
     if (!dailyMap.has(day)) {
       dailyMap.set(day, {
-        restaurant: 0, reception: 0, reception_net: 0, nights: 0, services: 0, total: 0,
+        restaurant: 0,
+        reception: 0,
+        reception_net: 0,
+        reception_room: 0,
+        reception_restaurant: 0,
+        reception_services: 0,
+        nights: 0,
+        services: 0,
+        total: 0,
       });
     }
     dailyMap.get(day).nights += amt;
@@ -9597,7 +9943,15 @@ function getReports(dateFrom, dateTo) {
   for (const [day, amt] of hotelRev.servicesByDay) {
     if (!dailyMap.has(day)) {
       dailyMap.set(day, {
-        restaurant: 0, reception: 0, reception_net: 0, nights: 0, services: 0, total: 0,
+        restaurant: 0,
+        reception: 0,
+        reception_net: 0,
+        reception_room: 0,
+        reception_restaurant: 0,
+        reception_services: 0,
+        nights: 0,
+        services: 0,
+        total: 0,
       });
     }
     dailyMap.get(day).services += amt;
@@ -9605,7 +9959,15 @@ function getReports(dateFrom, dateTo) {
   for (const [day, amt] of hotelRev.restaurantRoomByDay || []) {
     if (!dailyMap.has(day)) {
       dailyMap.set(day, {
-        restaurant: 0, reception: 0, reception_net: 0, nights: 0, services: 0, total: 0,
+        restaurant: 0,
+        reception: 0,
+        reception_net: 0,
+        reception_room: 0,
+        reception_restaurant: 0,
+        reception_services: 0,
+        nights: 0,
+        services: 0,
+        total: 0,
       });
     }
     dailyMap.get(day).restaurant += amt;
@@ -9616,6 +9978,9 @@ function getReports(dateFrom, dateTo) {
       const restaurant = roundReportMoney(row.restaurant);
       const reception = roundReportMoney(row.reception || 0);
       const receptionNet = roundReportMoney(row.reception_net ?? row.reception ?? 0);
+      const receptionRoom = roundReportMoney(row.reception_room || 0);
+      const receptionRestaurant = roundReportMoney(row.reception_restaurant || 0);
+      const receptionServices = roundReportMoney(row.reception_services || 0);
       const nights = roundReportMoney(row.nights);
       const services = roundReportMoney(row.services);
       return {
@@ -9623,14 +9988,29 @@ function getReports(dateFrom, dateTo) {
         restaurant,
         reception,
         reception_net: receptionNet,
+        reception_room: receptionRoom,
+        reception_restaurant: receptionRestaurant,
+        reception_services: receptionServices,
         nights,
         services,
-        total: roundReportMoney(restaurant + nights + services),
+        total: roundReportMoney(
+          restaurant + nights + services + receptionRoom + receptionRestaurant + receptionServices,
+        ),
       };
     });
 
   const restaurantRounded = roundReportMoney(restaurantSales);
   const receptionRounded = roundReportMoney(receptionSales);
+
+  const totalCash = roundReportMoney(
+    restaurantEntries.reduce((s, e) => s + dailyLogEntryCashAmount(e), 0),
+  );
+  const totalKarte = roundReportMoney(
+    restaurantEntries.reduce((s, e) => s + dailyLogEntryCardAmount(e), 0),
+  );
+  const totalTjera = roundReportMoney(
+    restaurantEntries.reduce((s, e) => s + dailyLogEntryOtherAmount(e), 0),
+  );
 
   const byRegisterMap = new Map();
   for (const e of entries) {
@@ -9645,6 +10025,7 @@ function getReports(dateFrom, dateTo) {
         total: 0,
         cash: 0,
         card: 0,
+        tjera: 0,
         credit: 0,
         room: 0,
         restaurant_food: 0,
@@ -9655,20 +10036,17 @@ function getReports(dateFrom, dateTo) {
     b.order_count += 1;
     const tot = Number(e.total) || 0;
     b.total += tot;
-    const pm = normalizePaymentMethod(e.payment_method);
+    b.cash += dailyLogEntryCashAmount(e);
+    b.card += dailyLogEntryCardAmount(e);
+    b.tjera += dailyLogEntryOtherAmount(e);
     if (isRecepsionCheckoutReceipt(e.receipt_number)) {
       const split = splitCheckoutReceptionEntry(e);
       b.room += split.room;
       b.restaurant_food += split.restaurantFood;
       b.services += split.services;
-      if (pm === "karte" || pm === "debit_card" || pm === "credit_card") b.card += tot;
-      else b.cash += tot;
-    } else if (pm === "room") {
+    } else if (normalizePaymentMethod(e.payment_method) === "room") {
       b.room += tot;
-    } else if (pm === "karte" || pm === "debit_card" || pm === "credit_card") b.card += tot;
-    else if (pm === "kredi") b.credit += tot;
-    else if (pm === "mixed") b.cash += tot;
-    else b.cash += tot;
+    }
   }
   const byRegister = [...byRegisterMap.values()]
     .map((b) => ({
@@ -9676,6 +10054,7 @@ function getReports(dateFrom, dateTo) {
       total: roundReportMoney(b.total),
       cash: roundReportMoney(b.cash),
       card: roundReportMoney(b.card),
+      tjera: roundReportMoney(b.tjera),
       credit: roundReportMoney(b.credit),
       room: roundReportMoney(b.room || 0),
       restaurant_food: roundReportMoney(b.restaurant_food || 0),
@@ -9683,8 +10062,16 @@ function getReports(dateFrom, dateTo) {
     }))
     .sort((a, b) => String(a.register_name).localeCompare(String(b.register_name), "sq"));
 
+  const cashRegister = getCashInRegister(from, to);
+
   return {
     totalSales,
+    totalCash,
+    totalKarte,
+    totalTjera,
+    sales_cash: cashRegister.sales_cash,
+    purchases_cash: cashRegister.purchases_cash,
+    cash_in_register: cashRegister.cash_in_register,
     restaurantSales: restaurantRounded,
     receptionSales: receptionRounded,
     receptionSalesNet: roundReportMoney(receptionSalesNet),
@@ -10213,6 +10600,18 @@ function markShiftZReportPrinted(shiftId) {
     WHERE id = ? AND closed_at IS NOT NULL
   `).run(now, sid);
   return sqlite.prepare("SELECT z_report_printed_at FROM waiter_shifts WHERE id = ?").get(sid);
+}
+
+/** Pas Raportit Z (fiskal ose ndërrimi) — zgjidh bllokimin e ndërrimit të ri. */
+function markAllPendingShiftZReportsPrinted() {
+  const now = new Date().toISOString();
+  const r = sqlite.prepare(`
+    UPDATE waiter_shifts
+    SET z_report_printed_at = ?
+    WHERE closed_at IS NOT NULL
+      AND (z_report_printed_at IS NULL OR TRIM(z_report_printed_at) = '')
+  `).run(now);
+  return Number(r.changes) || 0;
 }
 
 /** Nderrime të mbyllura, më të fundit së pari — për zgjedhësin e Raportit Z. */
@@ -11202,6 +11601,7 @@ function updateSettings({
   biz_name,
   admin_card_uid,
   clear_admin_card,
+  staff_pos_static_ip,
 } = {}) {
   const nameRaw =
     restaurant_name != null ? restaurant_name : biz_name != null ? biz_name : null;
@@ -11222,6 +11622,20 @@ function updateSettings({
   if (clear_admin_card === true || clear_admin_card === "1") clearAdminCard();
   else if (admin_card_uid != null && String(admin_card_uid).trim()) {
     updateAdminCard(admin_card_uid);
+  }
+  if (staff_pos_static_ip != null) {
+    const raw = String(staff_pos_static_ip).trim();
+    if (!raw) {
+      setSetting("staff_pos_static_ip", "");
+    } else {
+      const parts = raw.split(".").map((n) => Number(n));
+      const ok =
+        /^(\d{1,3}\.){3}\d{1,3}$/.test(raw)
+        && parts.length === 4
+        && parts.every((p) => Number.isFinite(p) && p >= 0 && p <= 255);
+      if (!ok) throw new Error("IP statike e POS-it — format i pavlefshëm (p.sh. 192.168.1.100).");
+      setSetting("staff_pos_static_ip", raw);
+    }
   }
   setSetting("table_count", getTableCount());
 }
@@ -11270,7 +11684,7 @@ function updateKitchenAccess({ kitchen_slug, kitchen_key, client_id, client_name
 function exportReportText(dateFrom, dateTo) {
   const rep = getReports(dateFrom, dateTo);
   const src = rep.by_source || {};
-  const name = getSetting("restaurant_name", VERSION.versionLabel);
+  const name = String(getSetting("restaurant_name", "") || "").trim() || VERSION.versionLabel;
   let txt = `RAPORTI — ${name}\n`;
   txt += `Periudha: ${rep.dateFrom} deri ${rep.dateTo}\n`;
   txt += `${"=".repeat(40)}\n`;
@@ -11289,7 +11703,7 @@ function exportReportText(dateFrom, dateTo) {
 }
 
 function exportMenuText() {
-  const name = getSetting("restaurant_name", VERSION.versionLabel);
+  const name = String(getSetting("restaurant_name", "") || "").trim() || VERSION.versionLabel;
   const cats = getCategoryNames();
   const items = getMenuItems(false);
   let txt = `MENU — ${name}\n`;
@@ -14850,10 +15264,10 @@ function getDitari(opts = {}) {
   const range = resolveDitariRange(opts);
   const entries = sqlite.prepare(`
     SELECT * FROM daily_log
-    WHERE datetime(date || ' ' || time) >= datetime(?)
-      AND datetime(date || ' ' || time) <= datetime(?)
-    ORDER BY datetime(date || ' ' || time) DESC
-  `).all(range.fromDatetime, range.toDatetime);
+    WHERE date >= ?
+      AND date <= ?
+    ORDER BY date DESC, time DESC
+  `).all(range.dateFrom, range.dateTo);
 
   const parsed = entries.map(e => ({
     ...e,
@@ -14887,6 +15301,10 @@ function getDitari(opts = {}) {
   const restaurantSales = roundReportMoney(
     restaurantRegisterSales + (hotelRev.restaurantRoomFood || 0),
   );
+  const restaurantForTotal = roundReportMoney(
+    sumRestaurantRegisterExcludingRoomAccrual(completedRestOnly)
+      + (hotelRev.restaurantRoomFood || 0),
+  );
   const hotelEntries = hotelRev.hotelEntries.sort((a, b) => {
     const da = `${a.date || ""} ${a.time || ""}`;
     const db_ = `${b.date || ""} ${b.time || ""}`;
@@ -14899,15 +15317,21 @@ function getDitari(opts = {}) {
     return db_.localeCompare(da) || String(a.id).localeCompare(String(b.id));
   });
 
-  const totalSales = roundReportMoney(
-    hotelRev.hotelNights + hotelRev.hotelServices + restaurantSales,
+  const totalSales = totalRecognizedSalesFromReportParts(
+    restaurantForTotal,
+    hotelRev,
+    receptionCollected,
   );
-  const totalCash = completedRestOnly
-    .filter(e => normalizePaymentMethod(e.payment_method) === "cash")
-    .reduce((s, e) => s + e.total, 0);
-  const totalKarte = completedRestOnly
-    .filter(e => normalizePaymentMethod(e.payment_method) === "karte")
-    .reduce((s, e) => s + e.total, 0);
+  const paymentEntries = completedRestaurant;
+  const totalCash = roundReportMoney(
+    paymentEntries.reduce((s, e) => s + dailyLogEntryCashAmount(e), 0),
+  );
+  const totalKarte = roundReportMoney(
+    paymentEntries.reduce((s, e) => s + dailyLogEntryCardAmount(e), 0),
+  );
+  const totalTjera = roundReportMoney(
+    paymentEntries.reduce((s, e) => s + dailyLogEntryOtherAmount(e), 0),
+  );
   const totalRoom = completedRestOnly
     .filter(e => normalizePaymentMethod(e.payment_method) === "room")
     .reduce((s, e) => s + e.total, 0);
@@ -14946,6 +15370,7 @@ function getDitari(opts = {}) {
     },
     totalCash,
     totalKarte,
+    totalTjera,
     totalRoom: roundReportMoney(totalRoom),
     orderCount: completedRestOnly.length,
     hotelTransactionCount: hotelEntries.length,
@@ -15175,7 +15600,7 @@ function getDashboardOverview() {
 
 function exportDitariText(opts = {}) {
   const d = getDitari(opts);
-  const name = getSetting("restaurant_name", VERSION.versionLabel);
+  const name = String(getSetting("restaurant_name", "") || "").trim() || VERSION.versionLabel;
   let txt = `DITARI — ${name}\n`;
   txt += `Periudha: ${d.periodLabel}\n`;
   txt += `Nga: ${d.dateFrom} ${d.timeFrom}\n`;
@@ -15326,6 +15751,74 @@ function wipeSalesDataOnly(opts = {}) {
   return { ok: true, deleted };
 }
 
+function listAllSqliteUserTables() {
+  return sqlite
+    .prepare(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+       ORDER BY name`,
+    )
+    .all()
+    .map((row) => String(row.name || ""));
+}
+
+/**
+ * Fshirje e plotë — të gjitha tabelat (settings, menu, staf, dhoma, etj.).
+ * Licenca mbetet në disk; setup_done hiqet → wizard pas rinisjes.
+ */
+function wipeFull(opts = {}) {
+  if (!dbReady) {
+    throw new Error("Database not ready — await whenReady() before full wipe");
+  }
+  const failAt = opts._testFailAt ? String(opts._testFailAt) : "";
+  const deleted = {};
+
+  sqlite.transaction(() => {
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    sqlite.exec("DROP TRIGGER IF EXISTS trg_fiscal_receipts_block_delete");
+    sqlite.exec("DROP TRIGGER IF EXISTS trg_fiscal_audit_block_delete");
+    sqlite.exec("DROP TRIGGER IF EXISTS trg_paper_block_block_delete");
+
+    for (const table of listAllSqliteUserTables()) {
+      if (failAt && failAt === table) {
+        throw new Error(`full-wipe test inject fail at ${table}`);
+      }
+      const r = sqlite.prepare(`DELETE FROM ${table}`).run();
+      deleted[table] = Number(r.changes) || 0;
+    }
+
+    if (factoryResetTableExists("sqlite_sequence")) {
+      sqlite.prepare("DELETE FROM sqlite_sequence").run();
+    }
+    sqlite.exec("PRAGMA foreign_keys = ON");
+  })();
+
+  try {
+    const { initFiscalDB } = require("./fiscal/fiscal-db");
+    initFiscalDB(db);
+  } catch (e) {
+    console.warn("[full-wipe] initFiscalDB:", e.message || e);
+  }
+
+  try {
+    sqlite.exec("VACUUM");
+  } catch (e) {
+    console.warn("[full-wipe] VACUUM:", e.message || e);
+  }
+  try {
+    sqlite.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch (e) {
+    console.warn("[full-wipe] wal_checkpoint:", e.message || e);
+  }
+  try {
+    flushDatabase();
+  } catch (e) {
+    console.warn("[full-wipe] flush:", e.message || e);
+  }
+
+  return { ok: true, deleted, setup_done: isSetupDone() };
+}
+
 function getVersionInfo() {
   let appBrand = "Revolution HOTEL";
   try {
@@ -15351,6 +15844,7 @@ function getVersionInfo() {
     whenReady,
     flushDatabase,
     wipeSalesDataOnly,
+    wipeFull,
     isSetupDone,
     getSettings,
     getAdminTabOrder,
@@ -15416,6 +15910,8 @@ function getVersionInfo() {
     updateRoom,
     deleteRoom,
     getActiveGuestForRoom,
+    reconcileAllOrphanActiveGuests,
+    reconcileOrphanActiveGuestForRoom,
     getGuestById,
     checkInGuest,
     getCheckoutPreview,
@@ -15502,6 +15998,13 @@ function getVersionInfo() {
     listPendingCloudOrders,
     listPendingCloudOrderFirstSeen,
     removePendingCloudOrders,
+    reconcilePendingPublicBookingRequests,
+    listPendingPublicBookingRequests,
+    getPendingPublicBookingRequest,
+    removePendingPublicBookingRequest,
+    reconcilePendingPublicServiceRequests,
+    listPendingPublicServiceRequests,
+    removePendingPublicServiceRequest,
     removeRoomChargesForExpiredCloudOrder,
     importCloudOrderToLocal,
     parseTableNumberFromCloudOrder,
@@ -15558,6 +16061,7 @@ function getVersionInfo() {
     listLocalActiveOrders,
     listActiveHotelOrdersForWaiter,
     cancelActiveOrder,
+    getCashInRegister,
     getReports,
     getStaff,
     getStaffForAdmin,
@@ -15601,7 +16105,9 @@ function getVersionInfo() {
     buildXReportData,
     listRecentClosedShifts,
     buildZReportData,
+    getUnprintedClosedZShift,
     markShiftZReportPrinted,
+    markAllPendingShiftZReportsPrinted,
     getUnprintedClosedZShift,
     Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG,
     listOpenShiftsForReports,
