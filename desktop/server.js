@@ -451,6 +451,7 @@ const localKdsEvents = require("./lib/local-kds-events");
 const localEventsHub = require("./lib/local-events-hub");
 const localKds = require("./lib/local-kds-service");
 const menuStockPhotos = require("./menu-stock-photos");
+const serviceStockPhotos = require("./service-stock-photos");
 
 function emitLocalStaffEvent(type, data = {}) {
   try {
@@ -1612,7 +1613,10 @@ function resolveMenuItemPhoto(id) {
 
 function resolveServicePhoto(id) {
   const svc = typeof db.getHotelServiceById === "function" ? db.getHotelServiceById(id) : null;
-  return String(svc?.photo || "").trim();
+  if (!svc) return "";
+  const stored = String(svc.photo || "").trim();
+  if (stored) return stored;
+  return String(serviceStockPhotos.stockPhotoForServiceName(svc.name) || "").trim();
 }
 
 function sendResolvedPhoto(res, photo) {

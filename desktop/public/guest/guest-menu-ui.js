@@ -11,7 +11,7 @@
     const s = String(src || "").trim();
     if (!s || /^https?:\/\//i.test(s)) return s;
     const hotelPrefix = String(global.location?.pathname || "").includes("/hotel/") ? "/hotel" : "";
-    if (s.startsWith("/menu-stock/")) return `${hotelPrefix}${s}`;
+    if (s.startsWith("/menu-stock/") || s.startsWith("/service-stock/")) return `${hotelPrefix}${s}`;
     if (s.startsWith("/hotel/")) return s;
     if (s.startsWith("/")) return `${hotelPrefix}${s}`;
     return s;
@@ -27,10 +27,32 @@
 
   /** Foto shërbimi — e njëjta burim si Admin → Shërbimet / kamarier. */
   function guestServicePhotoUrl(service, group) {
+    const G = global.GuestOrder;
     const src = String(service?.photo_src || service?.photo || group?.photo || "").trim();
-    if (src.startsWith("/") || /^https?:\/\//i.test(src)) return src;
-    if (service?.id != null) return guestApi(`/api/guest/services/${service.id}/photo`);
+    if (src) {
+      if (/^https?:\/\//i.test(src)) return src;
+      if (src.startsWith("/hotel/")) return src;
+      if (src.startsWith("/api/")) {
+        if (G && typeof G.withSlugQuery === "function") return G.withSlugQuery(src);
+        return guestApi(src);
+      }
+      return guestStaticAssetUrl(src);
+    }
+    if (service?.id != null) {
+      const path = `/api/guest/services/${service.id}/photo`;
+      if (G && typeof G.withSlugQuery === "function") return G.withSlugQuery(path);
+      return guestApi(path);
+    }
     return "";
+  }
+
+  function guestSvcPhotoImgHtml(url) {
+    const u = String(url || "").trim();
+    if (!u) return `<div class="guest-svc-photo guest-svc-photo-ph">✨</div>`;
+    return (
+      `<img class="guest-svc-photo" src="${u.replace(/"/g, "&quot;")}" alt="" loading="lazy" decoding="async" ` +
+      `onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'guest-svc-photo guest-svc-photo-ph',textContent:'✨'}));">`
+    );
   }
 
   function photoImgHtml(url, alt, className) {
@@ -47,50 +69,30 @@
     );
   }
 
-  const GUEST_MENU_CAT_TEMPLATE = [
-    "Pije të ftohta",
-    "Pije joalkoolike",
-    "Alkool",
-    "Birra",
-    "Vera",
-    "Pije të nxehta",
-    "Mëngjes",
-    "Salata",
-    "Supa",
-    "Pizza",
-    "Hamburger / Fast Food",
-    "Sanduiç / Toast",
-    "Pasta",
-    "Mish",
-    "Peshk / Fruta deti",
-    "Pjata tradicionale",
-    "Shoqërime",
-    "Ëmbëlsira",
-    "Meny për fëmijë",
-  ];
-
-  function guestCatRank(name) {
-    const n = String(name || "").trim();
-    const i = GUEST_MENU_CAT_TEMPLATE.indexOf(n);
-    if (i >= 0) return i;
-    const low = n.toLowerCase();
-    if (low.includes("pije") || low.includes("birra") || low.includes("alkool") || low.includes("kafe")) {
-      return 1500;
-    }
-    return 8000;
-  }
-
+  /** Si KAFENE / kamarieri: rendi i KATEGORITE nga API (admin sort_order), pastaj orphan. */
   function orderedCategories(items, categoryOrder) {
     const present = new Set((items || []).map((i) => String(i.category || "").trim()).filter(Boolean));
     const ordered = (categoryOrder || []).filter((c) => present.has(c));
     for (const c of present) {
       if (!ordered.includes(c)) ordered.push(c);
     }
-    ordered.sort((a, b) => {
-      const d = guestCatRank(a) - guestCatRank(b);
-      return d !== 0 ? d : a.localeCompare(b, "sq");
-    });
     return ordered;
+  }
+
+  function sortMenuItemsByAdminOrder(list) {
+    return (list || []).slice().sort(
+      (a, b) =>
+        (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0),
+    );
+  }
+
+  function sortServicesByAdminOrder(list) {
+    return (list || []).slice().sort(
+      (a, b) =>
+        (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0),
+    );
   }
 
   function bindCategoryBarScroll(bar) {
@@ -205,13 +207,7 @@
     global.menuPhotoUrl = guestPhotoUrl;
 
     function renderGrid() {
-      const filtered = list
-        .filter((it) => it.category === active)
-        .sort(
-          (a, b) =>
-            (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
-            (Number(a.id) || 0) - (Number(b.id) || 0),
-        );
+      const filtered = sortMenuItemsByAdminOrder(list.filter((it) => it.category === active));
       gridEl.innerHTML = "";
       if (!filtered.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj për këtë kategori.</p>';
@@ -281,7 +277,7 @@
 
     function renderGrid() {
       const g = gs[activeIdx];
-      const services = g?.services || [];
+      const services = sortServicesByAdminOrder(g?.services || []);
       gridEl.innerHTML = "";
       if (!services.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka shërbime për këtë kategori.</p>';
@@ -294,9 +290,7 @@
         card.className = "guest-svc-card";
         const photo = guestServicePhotoUrl(s, g);
         card.innerHTML =
-          (photo
-            ? `<img class="guest-svc-photo" src="${photo.replace(/"/g, "&quot;")}" alt="" loading="lazy" onerror="this.style.display='none'">`
-            : `<div class="guest-svc-photo guest-svc-photo-ph">✨</div>`) +
+          guestSvcPhotoImgHtml(photo) +
           `<div class="guest-svc-name">${String(s.name || "").replace(/</g, "&lt;")}</div>` +
           `<div class="guest-svc-price">${String(priceLabel?.(s) || "").replace(/</g, "&lt;")}</div>` +
           `<button type="button" class="guest-svc-add">+ Shto</button>`;
@@ -379,6 +373,7 @@
 
     function renderServiceGrid(services, group) {
       gridEl.innerHTML = "";
+      services = sortServicesByAdminOrder(services);
       if (!services.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka shërbime për këtë kategori.</p>';
         return;
@@ -390,9 +385,7 @@
         card.className = "guest-svc-card";
         const photo = guestServicePhotoUrl(s, group);
         card.innerHTML =
-          (photo
-            ? `<img class="guest-svc-photo" src="${photo.replace(/"/g, "&quot;")}" alt="" loading="lazy" onerror="this.style.display='none'">`
-            : `<div class="guest-svc-photo guest-svc-photo-ph">✨</div>`) +
+          guestSvcPhotoImgHtml(photo) +
           `<div class="guest-svc-name">${String(s.name || "").replace(/</g, "&lt;")}</div>` +
           `<div class="guest-svc-price">${String(priceLabel?.(s) || "").replace(/</g, "&lt;")}</div>` +
           `<button type="button" class="guest-svc-add">+ Shto</button>`;
@@ -404,13 +397,9 @@
 
     function renderRestaurantGrid() {
       gridEl.innerHTML = "";
-      const filtered = menuList
-        .filter((it) => it.category === activeMenuCat)
-        .sort(
-          (a, b) =>
-            (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0)
-            || (Number(a.id) || 0) - (Number(b.id) || 0),
-        );
+      const filtered = sortMenuItemsByAdminOrder(
+        menuList.filter((it) => it.category === activeMenuCat),
+      );
       if (!filtered.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj për këtë kategori.</p>';
         return;
