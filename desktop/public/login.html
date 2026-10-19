@@ -357,9 +357,18 @@
   </div>
 
   <script src="/js/app.js?v=10"></script>
+  <script src="/js/kds-station-session.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
   <script>
-    try { sessionStorage.removeItem("rh_user"); } catch { /* */ }
+    (function () {
+      const p = String(window.location.pathname || "").toLowerCase();
+      const qs = new URLSearchParams(window.location.search);
+      const m = String(qs.get("mode") || "").toLowerCase();
+      const kdsEntry = m === "kuzhina" || m === "banaku" || /\/(kuzhina|banaku)(?:\/\d{3})?\/?$/.test(p);
+      if (!kdsEntry) {
+        try { sessionStorage.removeItem("rh_user"); } catch { /* */ }
+      }
+    })();
 
     let bizPhone = "";
 
@@ -986,6 +995,9 @@
           window.location.href = "/login.html?hub=1";
         });
       }
+      if (staffLoginMode === "kuzhina" || staffLoginMode === "banaku") {
+        void provoKdsStacionAutologin(staffLoginMode);
+      }
     }
 
     if (loginHubPanel) {
@@ -1223,14 +1235,38 @@
     }
 
     async function hyrSiKamarier(data) {
-      ruajSesionin({
+      const sess = {
         emri: data.emri,
         roli: data.roli,
         token: data.token,
         login_time: data.login_time,
         staff_id: data.staff_id || null,
-      });
+      };
+      ruajSesionin(sess);
+      if (typeof KdsStationSession !== "undefined" && KdsStationSession.isKdsRole(data.roli)) {
+        KdsStationSession.save(data.roli, sess);
+      }
       window.location.replace(panelPathForStaffSession(data));
+    }
+
+    async function provoKdsStacionAutologin(mode) {
+      const m = String(mode || "").toLowerCase();
+      if (m !== "kuzhina" && m !== "banaku") return false;
+      if (typeof KdsStationSession === "undefined") return false;
+      const saved = KdsStationSession.load(m);
+      if (!saved?.token) return false;
+      try {
+        const ping = await fetch("/api/session/ping", {
+          headers: { "X-Session-Token": String(saved.token) },
+          cache: "no-store",
+        });
+        if (!ping.ok) return false;
+        sessionStorage.setItem("rh_user", JSON.stringify(saved));
+        window.location.replace(m === "kuzhina" ? "/kitchen.html" : "/bar.html");
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     async function provoPinLogin() {

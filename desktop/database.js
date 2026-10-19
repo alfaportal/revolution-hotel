@@ -223,6 +223,46 @@ function getSetting(key, fallback = null) {
   return row ? row.value : fallback;
 }
 
+/** Sesione stacion KDS (kuzhina/banaku) — mbijetojnë restart serveri. */
+function insertAuthSession({ token, user_id, role, emri, created_at, expires_at }) {
+  sqlite
+    .prepare(
+      `INSERT OR REPLACE INTO sessions (token, user_id, role, emri, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      String(token),
+      user_id != null ? Number(user_id) : null,
+      String(role || ""),
+      String(emri || ""),
+      String(created_at),
+      String(expires_at),
+    );
+}
+
+function getAuthSessionByToken(token) {
+  const t = String(token || "").trim();
+  if (!t) return null;
+  return sqlite.prepare("SELECT * FROM sessions WHERE token = ?").get(t) || null;
+}
+
+function deleteAuthSession(token) {
+  const t = String(token || "").trim();
+  if (!t) return;
+  sqlite.prepare("DELETE FROM sessions WHERE token = ?").run(t);
+}
+
+function deleteExpiredAuthSessions(nowIso = new Date().toISOString()) {
+  const r = sqlite.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(String(nowIso));
+  return Number(r.changes) || 0;
+}
+
+function listActiveAuthSessions(nowIso = new Date().toISOString()) {
+  return sqlite
+    .prepare("SELECT * FROM sessions WHERE expires_at > ? ORDER BY created_at ASC")
+    .all(String(nowIso));
+}
+
 function getMaxRegisters() {
   const n = Math.floor(Number(getSetting("max_registers", "1")));
   if (!Number.isFinite(n) || n < 1) return 1;
@@ -1818,8 +1858,23 @@ function getLicensedClientNameFromDisk() {
   return "";
 }
 
-/** Emri zyrtar për UI — vetëm nga settings (setup / admin), jo slug apo emër klienti licencë. */
+/** p.sh. te-naseri-2-aed709 → "Te Naseri 2" (slug publik, para emrit të gabuar në settings). */
+function displayNameFromKitchenSlug(slugRaw) {
+  const slug = String(slugRaw || "").trim().toLowerCase();
+  if (!slug) return "";
+  const base = slug.replace(/-[a-f0-9]{6,12}$/i, "");
+  const parts = base.split("-").filter(Boolean);
+  if (!parts.length) return "";
+  return parts
+    .map((p) => (/^\d+$/.test(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(" ");
+}
+
+/** Emri zyrtar për UI — slug (Te Naseri 2) para restaurant_name / licencës. */
 function getBusinessDisplayName() {
+  const fromSlug = displayNameFromKitchenSlug(getSetting("kitchen_slug", ""));
+  if (fromSlug) return fromSlug;
+
   const rest = String(getSetting("restaurant_name", "") || "").trim();
   if (rest) return rest;
 
@@ -11116,6 +11171,39 @@ function isCloudPickupOrder(row) {
   return !!(row?.cloud_order_id && String(row.cloud_order_id).trim());
 }
 
+/** PROTECTED (QR/online): pagesë e verifikuar — import shitje të mbyllur ose SSE closed. */
+function isExplicitCloudPaidCloseOpts(opts = {}) {
+  return opts.fromCloudClosedImport === true || opts.fromCloudSseClosed === true;
+}
+
+function isActiveCloudLinkedOrder(row) {
+  if (!isCloudPickupOrder(row)) return false;
+  const st = String(row?.status || "").toLowerCase();
+  return st === "active" || st === "ordered";
+}
+
+/** Gate i vetëm — sync/SSE free NUK mbyll me cash porosi QR/online aktive. */
+function blockAutoCloseActiveCloudLinkedOrder(orderRow, opts = {}) {
+  return isActiveCloudLinkedOrder(orderRow) && !isExplicitCloudPaidCloseOpts(opts);
+}
+
+function findActiveCloudLinkedForFinalize(cloudId, tableNum) {
+  const probeId = String(cloudId || "").trim();
+  if (probeId) {
+    const byCloud = getOrderByCloudId(probeId);
+    if (byCloud && isActiveCloudLinkedOrder(byCloud)) return byCloud;
+  }
+  const n = Number(tableNum) || 0;
+  if (n > 0) {
+    const table = getTableByNumber(n);
+    if (table?.id) {
+      const active = getActiveOrderForTable(table.id);
+      if (active && isActiveCloudLinkedOrder(active)) return active;
+    }
+  }
+  return null;
+}
+
 function isPhysicalRestaurantTableId(tableId) {
   const table = getTableById(tableId);
   return !!table && isPhysicalVenueTable(table);
@@ -15325,6 +15413,15 @@ function normalizeCloudSaleItems(raw) {
 
 function finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total, opts = {}) {
   const cloudCloseConfirmed = opts.cloudCloseConfirmed === true;
+  const activeCloud = findActiveCloudLinkedForFinalize(cloudId, tableNum);
+  if (activeCloud && blockAutoCloseActiveCloudLinkedOrder(activeCloud, opts)) {
+    console.log(
+      `[STATUS-CHANGE][finalizeLocalTableAfterCloudSaleClose] cloudId=${cloudId || activeCloud.cloud_order_id} T${tableNum} ` +
+      "SKIP — gate QR/online aktive; mbyll vetëm Cash/Kartë POS ose import/SSE closed",
+    );
+    return;
+  }
+
   const localOrder = getOrderByCloudId(cloudId);
   if (localOrder) {
     console.log(`[STATUS-CHANGE][finalizeLocalTableAfterCloudSaleClose] cloudId=${cloudId} match-by-cloud-id order#${localOrder.id} T${tableNum} -> orders.status='completed', tables.status='free'`);
@@ -15408,6 +15505,7 @@ function importClosedWebWaiterSaleFromCloud(sale, opts = {}) {
     }
     finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total, {
       cloudCloseConfirmed: true,
+      fromCloudClosedImport: true,
     });
     console.log("[daily_log/sync] SKIP duplikat daily_log T" + tableNum, total.toFixed(2), cloudId);
     return {
@@ -15459,6 +15557,7 @@ function importClosedWebWaiterSaleFromCloud(sale, opts = {}) {
 
     finalizeLocalTableAfterCloudSaleClose(cloudId, tableNum, method, total, {
       cloudCloseConfirmed: true,
+      fromCloudClosedImport: true,
     });
   })();
 
@@ -16413,6 +16512,7 @@ function getVersionInfo() {
     isRestaurantLoginNotifyOrder,
     isCloudOnlinePickupOrder,
     isGuestHotelServiceOrder,
+    isGuestRoomMenuOrder,
     isRecepcionCloudPendingOrder,
     isCloudStaffWaiterOrder,
     parseRoomNumberFromCloudOrder,
@@ -16428,6 +16528,10 @@ function getVersionInfo() {
     findOnlinePickupTableBySlotIndex,
     enrichCloudOrderForWaiter,
     importClosedWebWaiterSaleFromCloud,
+    blockAutoCloseActiveCloudLinkedOrder,
+    isActiveCloudLinkedOrder,
+    isExplicitCloudPaidCloseOpts,
+    finalizeLocalTableAfterCloudSaleClose,
     backfillDailyLogReceiptForOrder,
     findDailyLogIdByCheckoutToken,
     rebuildDailyLogFromCloudSales,
@@ -16609,6 +16713,11 @@ function getVersionInfo() {
     exportAtkPurchaseQuarterlyCsv,
     listPurchaseInvoicesForAtk,
     getSetting,
+    insertAuthSession,
+    getAuthSessionByToken,
+    deleteAuthSession,
+    deleteExpiredAuthSessions,
+    listActiveAuthSessions,
     getMaxRegisters,
     alignCashRegisterWithTerminalRole,
     getStockForTerminal,

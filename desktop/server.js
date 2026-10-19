@@ -2031,6 +2031,7 @@ function isLocalStaffLoginAsset(pathname) {
     || p.startsWith("/api/sherbimi/")
     || p.startsWith("/api/kds/")
     || p === "/api/local-events"
+    || p === "/api/session/ping"
     || p === "/login"
     || p === "/waiter"
     || p === "/recepcion"
@@ -2317,23 +2318,98 @@ function cloudSyncLinksPayload(settings, status) {
 const app = express();
 const PORT = process.env.PORT || 3001;
 const SESSION_TTL = 12 * 60 * 60 * 1000;
+/** Stacion kuzhinë/banak — mbetet i hapur deri mbyllje lokali (jo 12h RAM). */
+const KDS_STATION_SESSION_TTL = 180 * 24 * 60 * 60 * 1000;
 
 const sessions = new Map();
+
+function isKdsStationRole(role) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "kuzhina" || r === "banaku";
+}
+
+function sessionPayloadFromRow(row) {
+  if (!row) return null;
+  const loginAt = Date.parse(row.created_at) || Date.now();
+  const expiresAt = Date.parse(row.expires_at) || loginAt + SESSION_TTL;
+  return {
+    role: row.role,
+    emri: row.emri,
+    staff_id: row.user_id != null ? Number(row.user_id) : null,
+    loginAt,
+    expiresAt,
+  };
+}
+
+function hydrateKdsStationSessionsFromDb() {
+  if (typeof db.deleteExpiredAuthSessions !== "function") return;
+  try {
+    const removed = db.deleteExpiredAuthSessions();
+    const rows = db.listActiveAuthSessions();
+    for (const row of rows) {
+      const s = sessionPayloadFromRow(row);
+      if (!s || !isKdsStationRole(s.role)) continue;
+      if (s.expiresAt <= Date.now()) continue;
+      sessions.set(String(row.token), s);
+    }
+    if (rows.length || removed) {
+      console.log(`[sessions] KDS stacion: ${sessions.size} RAM, ${removed} të skaduara u fshinë`);
+    }
+  } catch (e) {
+    console.warn("[sessions] hydrate KDS:", e.message);
+  }
+}
 
 function createSession(role, emri, staffId = null) {
   const token = crypto.randomBytes(24).toString("hex");
   const loginAt = Date.now();
-  sessions.set(token, { role, emri, staff_id: staffId || null, loginAt });
+  const ttl = isKdsStationRole(role) ? KDS_STATION_SESSION_TTL : SESSION_TTL;
+  const expiresAt = loginAt + ttl;
+  const payload = { role, emri, staff_id: staffId || null, loginAt, expiresAt };
+  sessions.set(token, payload);
+  if (isKdsStationRole(role) && typeof db.insertAuthSession === "function") {
+    try {
+      db.insertAuthSession({
+        token,
+        user_id: staffId,
+        role,
+        emri,
+        created_at: new Date(loginAt).toISOString(),
+        expires_at: new Date(expiresAt).toISOString(),
+      });
+    } catch (e) {
+      console.warn("[sessions] insert KDS:", e.message);
+    }
+  }
   return { token, login_time: new Date(loginAt).toISOString() };
 }
 
 function getSession(token) {
-  if (!token) return null;
-  const s = sessions.get(token);
+  const t = String(token || "").trim();
+  if (!t) return null;
+  const now = Date.now();
+  let s = sessions.get(t);
+  if (!s && typeof db.getAuthSessionByToken === "function") {
+    const row = db.getAuthSessionByToken(t);
+    const loaded = sessionPayloadFromRow(row);
+    if (loaded && isKdsStationRole(loaded.role)) {
+      s = loaded;
+      sessions.set(t, s);
+    }
+  }
   if (!s) return null;
-  if (Date.now() - s.loginAt > SESSION_TTL) {
-    sessions.delete(token);
+  const expiresAt = Number(s.expiresAt) || (Number(s.loginAt) + SESSION_TTL);
+  if (expiresAt <= now) {
+    sessions.delete(t);
+    if (isKdsStationRole(s.role) && typeof db.deleteAuthSession === "function") {
+      try { db.deleteAuthSession(t); } catch { /* ignore */ }
+    }
     return null;
+  }
+  if (isKdsStationRole(s.role)) {
+    s.loginAt = now;
+    s.expiresAt = now + KDS_STATION_SESSION_TTL;
+    sessions.set(t, s);
   }
   return s;
 }
@@ -3576,7 +3652,18 @@ app.post("/api/login/card", async (req, res) => {
 app.post("/api/logout", auth, (req, res) => {
   auditReq(req, "Dalje nga sistemi");
   sessions.delete(req.sessionToken);
+  if (isKdsStationRole(req.session?.role) && typeof db.deleteAuthSession === "function") {
+    try { db.deleteAuthSession(req.sessionToken); } catch { /* ignore */ }
+  }
   res.json({ ok: true });
+});
+
+app.get("/api/session/ping", auth, (req, res) => {
+  res.json({
+    ok: true,
+    roli: req.session?.role || "",
+    emri: req.session?.emri || "",
+  });
 });
 
 /* ─── Kamarier (i mbrojtur) ─── */
@@ -12599,6 +12686,7 @@ const MAX_PORT = START_PORT + 10;
 function onServerListening(server, port) {
   process.env.ACTUAL_PORT = String(port);
   global.__hotelHttpServer = server;
+  hydrateKdsStationSessionsFromDb();
   try {
     attachWaiterWebSocket(server, { getSession });
   } catch (e) {

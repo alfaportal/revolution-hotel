@@ -21,6 +21,12 @@
 
   function readToken() {
     try {
+      const path = String(global.location?.pathname || "").toLowerCase();
+      const kdsRole = path.includes("kitchen") ? "kuzhina" : path.includes("bar") ? "banaku" : "";
+      if (kdsRole && typeof global.KdsStationSession !== "undefined") {
+        const kds = global.KdsStationSession.restoreToSessionStorage(kdsRole);
+        if (kds?.token) return String(kds.token);
+      }
       if (typeof lexoSesionin === "function") {
         const u = lexoSesionin();
         if (u?.token) return String(u.token);

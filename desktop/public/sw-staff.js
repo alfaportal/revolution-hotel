@@ -1,5 +1,5 @@
 /* Revolution HOTEL — PWA stafi (kamarier / recepsion / shërbimi). Network-first + finder offline. */
-const CACHE_NAME = "hotel-staff-role-pwa-v4";
+const CACHE_NAME = "hotel-staff-role-pwa-v5";
 const PRECACHE_URLS = [
   "/login.html",
   "/staff-pos-finder.html",
@@ -18,6 +18,7 @@ const PRECACHE_URLS = [
   "/css/pos-truffle.css",
   "/js/pwa-staff-register.js",
   "/js/staff-auto-connect.js",
+  "/js/kds-station-session.js",
   "/kitchen.html",
   "/bar.html",
 ];
@@ -104,6 +105,15 @@ self.addEventListener("fetch", (event) => {
         const cached = await caches.match(req);
         if (cached) return cached;
         if (req.mode === "navigate") {
+          const p = url.pathname.toLowerCase();
+          if (p.includes("/kuzhina") || p === "/kitchen.html") {
+            const kitchen = await caches.match("/kitchen.html");
+            if (kitchen) return kitchen;
+          }
+          if (p.includes("/banaku") || p === "/bar.html") {
+            const bar = await caches.match("/bar.html");
+            if (bar) return bar;
+          }
           const finder = await openFinderPage();
           if (finder) return finder;
         }

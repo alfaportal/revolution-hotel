@@ -15,13 +15,21 @@
     return "";
   }
 
-  function apiHeaders() {
-    try {
-      const u = JSON.parse(sessionStorage.getItem("rh_user") || "null");
-      if (u?.token) return { "X-Session-Token": String(u.token) };
-    } catch {
-      /* ignore */
+  function readBarSession() {
+    if (typeof KdsStationSession !== "undefined") {
+      const fromStore = KdsStationSession.restoreToSessionStorage("banaku");
+      if (fromStore?.token) return fromStore;
     }
+    try {
+      return JSON.parse(sessionStorage.getItem("rh_user") || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function apiHeaders() {
+    const u = readBarSession();
+    if (u?.token) return { "X-Session-Token": String(u.token) };
     return {};
   }
 
@@ -112,8 +120,18 @@
         fetchOpts({ headers: apiHeaders() }),
       );
       const data = await res.json();
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 403) {
         redirectBarLogin();
+        return;
+      }
+      if (res.status === 401) {
+        try {
+          const ping = await fetch("/api/session/ping", fetchOpts({ headers: apiHeaders() }));
+          if (ping.status === 401) redirectBarLogin();
+          else showError("Sesioni — provoni përsëri pas lidhjes.");
+        } catch {
+          showError("Pa internet — paneli mbetet i hapur.");
+        }
         return;
       }
       if (!res.ok || !data.ok) return;

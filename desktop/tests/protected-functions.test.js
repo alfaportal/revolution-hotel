@@ -226,6 +226,50 @@ test("local orders without cloud_order_id are not cancelled by sync", async () =
   db.cancelActiveOrder(table.id);
 });
 
+// --- QR gate: sync must not cash-close active cloud-linked orders ---
+test("blockAutoCloseActiveCloudLinkedOrder protects active QR until POS or explicit close", () => {
+  const row = { cloud_order_id: "cccccccc-dddd-eeee-ffff-000000000001", status: "active" };
+  assert.strictEqual(
+    db.blockAutoCloseActiveCloudLinkedOrder(row, { cloudCloseConfirmed: true }),
+    true,
+    "sync-style finalize must be blocked",
+  );
+  assert.strictEqual(
+    db.blockAutoCloseActiveCloudLinkedOrder(row, { fromCloudSseClosed: true }),
+    false,
+    "SSE closed may complete",
+  );
+  assert.strictEqual(
+    db.blockAutoCloseActiveCloudLinkedOrder(row, { fromCloudClosedImport: true }),
+    false,
+    "import closed sale may complete",
+  );
+  const waiter = openShiftForNewWaiter("QrGate");
+  const cloudId = "dddddddd-dddd-eeee-ffff-000000000002";
+  const table = db.getTableByNumber(5);
+  const imported = db.importCloudOrderToLocal(
+    {
+      id: cloudId,
+      device_id: "WEB-KIOSK",
+      table_number: table.number,
+      items: [{ name: "QR Test", price: 2.5, quantity: 1 }],
+      total: 2.5,
+      accepted_at: new Date().toISOString(),
+      accepted_by_waiter_name: waiter.name,
+    },
+    waiter.name,
+  );
+  assert.ok(imported?.table_id || imported?.ok !== false, "QR import sanity");
+  const active = db.getActiveOrderForTable(imported.table_id || table.id);
+  assert.ok(active?.cloud_order_id, "expected cloud-linked active order");
+  db.finalizeLocalTableAfterCloudSaleClose(cloudId, table.number, "cash", 2.5, {
+    cloudCloseConfirmed: true,
+  });
+  const still = db.getActiveOrderForTable(imported.table_id || table.id);
+  assert.ok(still && still.status === "active", "QR order must stay active after sync-style finalize");
+  db.cancelActiveOrder(imported.table_id || table.id);
+});
+
 // --- e) paid takeaway cloud order must not reappear via re-import ---
 test("importCloudOrderToLocal does not reactivate a completed cloud order", () => {
   const waiter = openShiftForNewWaiter("Takeaway");
