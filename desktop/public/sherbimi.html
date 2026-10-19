@@ -23,6 +23,8 @@
   <script src="/js/pwa-staff-register.js" defer></script>
 
   <script src="/js/staff-auto-connect.js" defer></script>
+  <link rel="stylesheet" href="/css/lan-status.css">
+  <script src="/js/lan-status-indicator.js" defer></script>
 
   <style>
 
@@ -321,6 +323,11 @@
 </head>
 
 <body>
+
+  <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
+    <span class="lan-status-dot" aria-hidden="true"></span>
+    <span class="lan-status-label">Pa lidhje</span>
+  </div>
 
   <div class="hk-shell">
 
@@ -641,7 +648,11 @@
         window.LocalStaffEvents.connect(() => loadRooms().catch(() => {}));
       }
 
-      setInterval(() => { loadRooms().catch(() => {}); }, 30_000);
+      if (window.LanStatus?.startAdaptivePoll) {
+        window.LanStatus.startAdaptivePoll(() => loadRooms().catch(() => {}), 8000, 30000);
+      } else {
+        setInterval(() => { loadRooms().catch(() => {}); }, 30_000);
+      }
 
     })();
 

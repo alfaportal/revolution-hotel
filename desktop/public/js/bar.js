@@ -172,7 +172,11 @@
     await ensureBarSessionAsync();
     fetchLiveTables();
     connectLocalStaffEvents();
-    setInterval(fetchLiveTables, 30_000);
+    if (window.LanStatus?.startAdaptivePoll) {
+      window.LanStatus.startAdaptivePoll(() => fetchLiveTables(), 8000, 30000);
+    } else {
+      setInterval(fetchLiveTables, 30_000);
+    }
   }
   void bootBar();
   window.addEventListener("staff-pos-reconnected", () => {

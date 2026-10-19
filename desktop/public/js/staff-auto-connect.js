@@ -144,8 +144,20 @@
       return;
     }
     if (state === "reconnecting") {
+      showSearchOverlay(false);
+      statusEl.style.opacity = "1";
       dotEl.style.background = "#f97316";
       if (label) label.textContent = "Duke u lidhur…";
+      return;
+    }
+  }
+
+  function reportHealthOk(ok) {
+    if (typeof window.LanStatus?.setHealthOk === "function") {
+      window.LanStatus.setHealthOk(!!ok);
+    }
+    if (ok) {
+      window.StaffOfflineRetryQueue?.processQueue?.();
     }
   }
 
@@ -325,6 +337,25 @@
     });
   }
 
+  /** SSE u shkëput — health 2s te i njëjti origin; skanim vetëm nëse POS nuk përgjigjet. */
+  async function onSseDisconnected() {
+    if (!shouldRunNetworkDiscovery()) {
+      reportHealthOk(true);
+      setUi("hidden");
+      return;
+    }
+    const origin = normalizeBase(window.location.origin);
+    const hit = await probeServerInfo(origin, 2000);
+    if (hit) {
+      persistFromServerInfo(hit.info, hit.port);
+      reportHealthOk(true);
+      setUi("reconnecting");
+      return;
+    }
+    reportHealthOk(false);
+    void ensureConnected();
+  }
+
   async function discoverPos() {
     if (!shouldRunNetworkDiscovery()) {
       setUi("hidden");
@@ -355,9 +386,11 @@
     const hit = await probeServerInfo(origin, probeMs);
     if (hit) {
       persistFromServerInfo(hit.info, hit.port);
+      reportHealthOk(true);
       setUi("connected", "POS u gjet!");
       return true;
     }
+    reportHealthOk(false);
     if (!shouldRunNetworkDiscovery()) {
       setUi("hidden");
       return false;
@@ -432,9 +465,11 @@
       void probeServerInfo(window.location.origin, probeMs).then((hit) => {
         if (hit) {
           persistFromServerInfo(hit.info, hit.port);
+          reportHealthOk(true);
           setUi("connected");
           return;
         }
+        reportHealthOk(false);
         if (shouldRunNetworkDiscovery()) {
           void ensureConnected();
         } else {
@@ -447,5 +482,7 @@
   window.HotelStaffAutoConnect = {
     ensureConnected,
     discoverPos,
+    onSseDisconnected,
+    setUi,
   };
 })();

@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/pwa-staff-register.js" defer></script>
   <script src="/js/staff-auto-connect.js" defer></script>
+  <link rel="stylesheet" href="/css/lan-status.css">
+  <script src="/js/lan-status-indicator.js" defer></script>
   <link rel="stylesheet" href="/css/waiter-modern.css?v=13">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=2">
@@ -1651,6 +1653,7 @@
   </div>
 
   <script src="/js/app.js?v=10"></script>
+  <script src="/js/offline-retry-queue.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
   <script src="/js/order-alarm-sound.js"></script>
@@ -1829,6 +1832,13 @@
             if (Array.isArray(parsed)) items = parsed;
             else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
               items = parsed.items;
+            } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.service_lines)) {
+              items = parsed.service_lines.map((sl, idx) => ({
+                name: sl.name || `Shërbim #${sl.service_id || idx + 1}`,
+                quantity: sl.quantity,
+                price: sl.amount ?? sl.price,
+                service_id: sl.service_id,
+              }));
             }
           } catch {
             items = [];
@@ -1836,6 +1846,14 @@
         }
       }
       if (!Array.isArray(items)) items = [];
+      if (!items.length && Array.isArray(o?.service_lines) && o.service_lines.length) {
+        items = o.service_lines.map((sl, idx) => ({
+          name: sl.name || `Shërbim #${sl.service_id || idx + 1}`,
+          quantity: sl.quantity,
+          price: sl.amount ?? sl.price,
+          service_id: sl.service_id,
+        }));
+      }
       return items.map((it) => ({
         ...it,
         name: String(it?.name || it?.emri || it?.item_name || it?.title || "").trim(),
@@ -1903,7 +1921,7 @@
       </div>`;
     }
 
-    async function pranoNjëPorosiOnline(acceptNote = "") {
+    function buildWaiterOnlineAcceptBody(acceptNote = "") {
       const first = waiterOnlineOrders[0];
       if (!first?.id) return null;
       const ids = [];
@@ -1929,6 +1947,12 @@
       };
       const note = String(acceptNote || "").trim();
       if (note) body.accept_note = note;
+      return body;
+    }
+
+    async function pranoNjëPorosiOnline(acceptNote = "") {
+      const body = buildWaiterOnlineAcceptBody(acceptNote);
+      if (!body) return null;
       return api("/api/waiter/online-orders/accept", {
         method: "POST",
         body: JSON.stringify(body),
@@ -2016,7 +2040,16 @@
           if (t) klikoTavoline(t);
         }
       } catch (err) {
-        if (msg) {
+        if (window.StaffOfflineRetryQueue?.isNetworkError(err)) {
+          const body = buildWaiterOnlineAcceptBody(acceptNote);
+          if (body) {
+            window.StaffOfflineRetryQueue.enqueueAction("accept", body);
+            window.StaffOfflineRetryQueue.showToast(
+              "Veprimi u ruajt — do kryhet kur të kthehet lidhja",
+              "warn",
+            );
+          }
+        } else if (msg) {
           msg.textContent = err.message || "Nuk u pranua.";
           msg.hidden = false;
         }
@@ -2099,7 +2132,16 @@
         await ngarkoTavolinat(true);
         await ngarkoPorosiOnlineWaiter(true);
       } catch (err) {
-        if (msg) {
+        if (window.StaffOfflineRetryQueue?.isNetworkError(err)) {
+          window.StaffOfflineRetryQueue.enqueueAction("refuse", {
+            order_ids: [String(first.id)],
+            reason,
+          });
+          window.StaffOfflineRetryQueue.showToast(
+            "Veprimi u ruajt — do kryhet kur të kthehet lidhja",
+            "warn",
+          );
+        } else if (msg) {
           msg.textContent = err.message || "Nuk u refuzua.";
           msg.hidden = false;
         }
@@ -6004,9 +6046,24 @@
         kyçKamarierPasPorosise();
         orderOk = true;
       } catch (err) {
-        shfaqGabim(gabimEl, err.message);
-        _btnDergoLastMs = 0;
-        btn.disabled = false;
+        if (window.StaffOfflineRetryQueue?.isNetworkError(err)) {
+          const itemsToSend = mergeOrderItemsClient(artikujNeTavoline, porosia);
+          window.StaffOfflineRetryQueue.enqueueOrder({
+            table_id: tavolinaId,
+            waiter_name: user.emri,
+            items: itemsToSend,
+          });
+          window.StaffOfflineRetryQueue.showToast(
+            "Porosia u ruajt — do dërgohet kur të kthehet lidhja",
+            "warn",
+          );
+          _btnDergoLastMs = 0;
+          btn.disabled = false;
+        } else {
+          shfaqGabim(gabimEl, err.message);
+          _btnDergoLastMs = 0;
+          btn.disabled = false;
+        }
       } finally {
         if (orderOk) {
           setTimeout(() => { btn.disabled = false; }, 5000);
@@ -6499,7 +6556,29 @@
         initCloudStatusIndicator("cloud-status-pill");
         if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
       }
+      window.StaffOfflineRetryQueue?.registerHandlers?.({
+        onOrderSent(detail) {
+          const tid = detail?.table_id;
+          if (tid != null && tavolinaId != null && Number(tid) === Number(tavolinaId)) {
+            if (Array.isArray(detail.items)) artikujNeTavoline = detail.items;
+            porosia = [];
+            fshiDraftPorosieTavoline(tavolinaId);
+            perditesoPorosine();
+            kyçKamarierPasPorosise();
+          }
+          ngarkoTavolinat(true).catch(() => {});
+        },
+        onActionDone() {
+          ngarkoPorosiOnlineWaiter(true).catch(() => {});
+          ngarkoTavolinat(true).catch(() => {});
+        },
+      });
+      window.StaffOfflineRetryQueue?.updateBadge?.();
     })();
   </script>
+  <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
+    <span class="lan-status-dot" aria-hidden="true"></span>
+    <span class="lan-status-label">Pa lidhje</span>
+  </div>
 </body>
 </html>

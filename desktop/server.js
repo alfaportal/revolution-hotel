@@ -774,9 +774,9 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
         /* dhomë e pavlefshme — vazhdo me import QR / takeaway */
       }
     }
-    if (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(order)) {
+    if (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(orderForApply)) {
       try {
-        const applied = db.applyGuestHotelServiceOrder(order);
+        const applied = db.applyGuestHotelServiceOrder(orderForApply);
         imported.push({
           ok: true,
           cloud_id: order.id,
@@ -787,7 +787,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
           applied?.pay_on_site
           && typeof db.enqueuePendingPayOnSiteService === "function"
         ) {
-          db.enqueuePendingPayOnSiteService(order, { accepted_by: waiterName });
+          db.enqueuePendingPayOnSiteService(orderForApply, { accepted_by: waiterName });
         }
       } catch (e) {
         imported.push({ ok: false, cloud_id: order.id, error: e.message });
@@ -4728,7 +4728,11 @@ app.get("/api/waiter/shift/peers", auth, waiterOrRecepsion, (req, res) => {
   }
 });
 
-app.post("/api/waiter/shift/accept-handover", auth, waiterOnly, (req, res) => {
+function hasActiveRecepcionShift() {
+  return typeof db.hasActiveRecepcionShift === "function" ? db.hasActiveRecepcionShift() : false;
+}
+
+app.post("/api/waiter/shift/accept-handover", auth, waiterOrRecepsion, (req, res) => {
   try {
     const staffId = resolveWaiterStaffId(req.session);
     if (!staffId) {
@@ -4755,6 +4759,84 @@ app.post("/api/waiter/shift/open", auth, waiterOrRecepsion, (req, res) => {
     const summary = db.openWaiterShiftWithCash(staffId, req.body?.opening_cash);
     auditReq(req, "Hapje nderrimi", `${summary.waiter_name}: ${summary.opening_cash} EUR`);
     res.json({ ok: true, ...summary });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+/** Recepsion — validon PIN recepsionisti (pa ndërruar sesionin). */
+app.post("/api/waiter/shift/validate-recepsion-pin", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    if (String(req.session?.role || "").toLowerCase() !== "recepsion") {
+      return res.status(403).json({ gabim: "Vetëm recepsioni." });
+    }
+    const pin = String(req.body?.pin ?? "").trim();
+    if (!staffPinPolicy.acceptsLoginPin(pin, "recepsion")) {
+      return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra." });
+    }
+    const staff = db.findStaffByPin(pin);
+    if (!staff) return res.status(401).json({ gabim: "PIN i gabuar." });
+    if (!staffPinAllowedForLoginMode(staff, "recepsion")) {
+      return res.status(401).json({ gabim: "Ky PIN nuk është recepsionist." });
+    }
+    res.json({ ok: true, staff_id: staff.id, emri: staff.name });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+/** Recepsion 24/7 — pas mbylljes, recepsionisti tjetër (PIN) pranon arkën dhe hap ndërrimin. */
+app.post("/api/waiter/shift/reception-successor", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    if (String(req.session?.role || "").toLowerCase() !== "recepsion") {
+      return res.status(403).json({ gabim: "Vetëm recepsioni." });
+    }
+    const closingStaffId = resolveWaiterStaffId(req.session);
+    if (!closingStaffId) {
+      return res.status(400).json({ gabim: "Sesioni i recepsionistit nuk u identifikua." });
+    }
+    const fromShiftId = Number(req.body?.from_shift_id);
+    if (!fromShiftId) return res.status(400).json({ gabim: "Ndërrimi i mbyllur mungon." });
+
+    const closedShift = db.db
+      .prepare("SELECT * FROM waiter_shifts WHERE id = ? AND staff_id = ?")
+      .get(fromShiftId, closingStaffId);
+    if (!closedShift?.closed_at) {
+      return res.status(400).json({ gabim: "Ndërrimi i mbyllur nuk u gjet për këtë recepsionist." });
+    }
+
+    const pin = String(req.body?.pin ?? "").trim();
+    if (!staffPinPolicy.acceptsLoginPin(pin, "recepsion")) {
+      return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra." });
+    }
+    const toStaff = db.findStaffByPin(pin);
+    if (!toStaff) return res.status(401).json({ gabim: "PIN i gabuar." });
+    if (!staffPinAllowedForLoginMode(toStaff, "recepsion")) {
+      return res.status(401).json({ gabim: "Ky PIN nuk është recepsionist." });
+    }
+
+    const handover = db.ensureRecepsionHandoverForClosedShift(fromShiftId, toStaff.id);
+    const openingCash =
+      req.body?.opening_cash != null
+        ? req.body.opening_cash
+        : closedShift.closing_cash_actual ?? closedShift.expected_closing_cash;
+
+    const summary = db.acceptShiftHandover(toStaff.id, handover.id, openingCash);
+    const sess = createSession("recepsion", toStaff.name, toStaff.id);
+    auditReq(req, "Dorëzim recepsion", `${closedShift.waiter_name} → ${toStaff.name}`);
+
+    res.json({
+      ok: true,
+      roli: "recepsion",
+      emri: toStaff.name,
+      staff_id: toStaff.id,
+      token: sess.token,
+      login_time: sess.login_time,
+      handover_id: handover.id,
+      from_shift_id: fromShiftId,
+      has_active_recepcion_shift: hasActiveRecepcionShift(),
+      ...summary,
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -4816,6 +4898,22 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
 
     auditReq(req, "Mbyllje nderrimi", `${closed.waiter_name}: ${closed.closing_cash_actual} EUR`);
 
+    const staffRoleNorm = String(req.session.role || "").trim().toLowerCase();
+    emitLocalStaffEvent("shift-closed", {
+      staff_name: closed.waiter_name,
+      staff_role: staffRoleNorm === "recepsion" ? "recepsion" : "kamarier",
+      shift_start: closed.shift?.opened_at || null,
+      shift_end: closed.shift?.closed_at || null,
+      total_sales: Number(closed.total_sales) || 0,
+      cash_amount: Number(closed.cash_total) || 0,
+      card_amount: Number(closed.card_total) || 0,
+      order_count: Number(closed.order_count) || 0,
+      shift_id: closed.shift?.id || null,
+    });
+
+    const sessionRoleClose = String(req.session.role || "").trim().toLowerCase();
+    const receptionClose = sessionRoleClose === "recepsion";
+
     res.json({
       ok: true,
       ...closed,
@@ -4824,6 +4922,8 @@ app.post("/api/waiter/shift/close", auth, waiterOrRecepsion, async (req, res) =>
       shift_ended: true,
       printed: false,
       printMessage: req.session.shift_close_summary.printMessage,
+      reception_needs_handover: receptionClose,
+      has_active_recepcion_shift: receptionClose ? hasActiveRecepcionShift() : undefined,
     });
 
     setImmediate(() => {
@@ -4928,6 +5028,18 @@ app.get("/api/admin/shift-reports", auth, adminOnly, (req, res) => {
     res.json({ ok: true, shifts: rows });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.get("/api/admin/daily-balance", auth, adminOnly, (req, res) => {
+  try {
+    const date =
+      String(req.query.date || req.query.from || "").slice(0, 10) ||
+      businessTodayYmd();
+    const report = db.getDailyBalanceReport(date);
+    res.json({ ok: true, ...report });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
   }
 });
 
@@ -8095,7 +8207,11 @@ app.post("/api/admin/reports/fiscal-periodic/print", auth, adminOnly, async (req
 app.get("/api/admin/reports/z/closed-shifts", auth, adminOnly, (req, res) => {
   try {
     const limit = Number(req.query?.limit) || 30;
-    res.json({ ok: true, shifts: db.listRecentClosedShifts(limit) });
+    const staffRole = String(req.query?.staff_role || "").trim();
+    res.json({
+      ok: true,
+      shifts: db.listRecentClosedShifts(limit, staffRole ? { staff_role: staffRole } : {}),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, gabim: e.message });
   }

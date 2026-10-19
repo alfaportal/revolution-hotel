@@ -759,7 +759,11 @@
     await ensureKitchenSessionAsync();
     fetchOrders();
     connectLocalStaffEvents();
-    setInterval(fetchOrders, 30_000);
+    if (window.LanStatus?.startAdaptivePoll) {
+      window.LanStatus.startAdaptivePoll(() => fetchOrders(), 8000, 30000);
+    } else {
+      setInterval(fetchOrders, 30_000);
+    }
   }
   void bootKitchen();
   window.addEventListener("staff-pos-reconnected", () => {

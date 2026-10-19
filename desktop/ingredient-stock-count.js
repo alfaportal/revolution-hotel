@@ -173,6 +173,7 @@ function createIngredientStockCountApi(db) {
         AND NOT (
           UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
           OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+          OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
         )
     `,
       )

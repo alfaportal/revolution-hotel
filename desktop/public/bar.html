@@ -17,6 +17,8 @@
   <link rel="stylesheet" href="/css/pin-modal.css">
   <script src="/js/pwa-staff-register.js" defer></script>
   <script src="/js/staff-auto-connect.js" defer></script>
+  <link rel="stylesheet" href="/css/lan-status.css">
+  <script src="/js/lan-status-indicator.js" defer></script>
 </head>
 <body>
   <div class="staff-app-bar">
@@ -32,6 +34,11 @@
       <span id="last-sync">—</span>
     </div>
   </header>
+
+  <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
+    <span class="lan-status-dot" aria-hidden="true"></span>
+    <span class="lan-status-label">Pa lidhje</span>
+  </div>
 
   <main class="bar-main">
     <div id="error-box" class="error-state hidden"></div>

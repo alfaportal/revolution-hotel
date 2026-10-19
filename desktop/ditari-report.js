@@ -80,11 +80,16 @@ function buildDitariReportHtml(ditari, fiscal, restaurantName) {
       <div class="receipt-meta">${escHtml(t("Deri:"))} ${escHtml(ditari.dateTo)} ${escHtml(ditari.timeTo || "23:59:59")}</div>
       <div class="receipt-rule">--------------------------------</div>
       <div class="receipt-item"><span>${escHtml(t("Restorant"))}</span><span>${formatEuro((ditari.by_source || {}).restaurant ?? ditari.restaurantSales ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Recepsion"))}</span><span>${formatEuro((ditari.by_source || {}).reception ?? ditari.receptionSales ?? 0)}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Netë hotel"))}</span><span>${formatEuro((ditari.by_source || {}).nights ?? ditari.hotelNights ?? 0)}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Shërbime / RS"))}</span><span>${formatEuro((ditari.by_source || {}).services ?? ditari.hotelServices ?? 0)}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Shitjet totale"))}</span><span>${formatEuro(ditari.totalSales)}</span></div>
-      <div class="receipt-item"><span>${escHtml(t("Cash"))} (${escHtml(t("restorant"))})</span><span>${formatEuro(ditari.totalCash)}</span></div>
-      <div class="receipt-item"><span>${escHtml(t("Kartë"))} (${escHtml(t("restorant"))})</span><span>${formatEuro(ditari.totalKarte)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Cash"))} (${escHtml(t("Restorant"))})</span><span>${formatEuro(ditari.restaurantCash ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Cash"))} (${escHtml(t("Recepsion"))})</span><span>${formatEuro(ditari.receptionCash ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Cash"))} (${escHtml(t("Total"))})</span><span>${formatEuro(ditari.totalCash)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Kartë"))} (${escHtml(t("Restorant"))})</span><span>${formatEuro(ditari.restaurantKarte ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Kartë"))} (${escHtml(t("Recepsion"))})</span><span>${formatEuro(ditari.receptionKarte ?? 0)}</span></div>
+      <div class="receipt-item"><span>${escHtml(t("Kartë"))} (${escHtml(t("Total"))})</span><span>${formatEuro(ditari.totalKarte)}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Porosi"))}</span><span>${ditari.orderCount}</span></div>
       <div class="receipt-item"><span>${escHtml(t("Tavolina"))}</span><span>${ditari.tablesServed}</span></div>
       <div class="receipt-rule">================================</div>

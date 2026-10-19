@@ -298,14 +298,49 @@ function purgeCloudResolvedOrders(db, orderIds) {
 function normalizePendingOrder(o) {
   if (!o?.id) return null;
   let items = o.items;
-  if (!items?.length && o.items_json) {
+  let service_lines = Array.isArray(o.service_lines) ? o.service_lines : [];
+  if ((!Array.isArray(items) || !items.length) && o.items_json != null) {
     try {
-      items = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+      const parsed = typeof o.items_json === "string" ? JSON.parse(o.items_json) : o.items_json;
+      if (Array.isArray(parsed)) {
+        items = parsed;
+      } else if (parsed && typeof parsed === "object") {
+        if (Array.isArray(parsed.items) && parsed.items.length) items = parsed.items;
+        if (!service_lines.length && Array.isArray(parsed.service_lines)) {
+          service_lines = parsed.service_lines;
+        }
+        if ((!Array.isArray(items) || !items.length) && service_lines.length) {
+          items = service_lines.map((sl, idx) => ({
+            name: String(sl.name || `Shërbim #${sl.service_id || idx + 1}`).trim(),
+            quantity: Math.max(1, Number(sl.quantity) || 1),
+            price: Number(sl.amount ?? sl.price ?? 0) || 0,
+            service_id: sl.service_id,
+          }));
+        }
+      }
     } catch {
       items = [];
     }
   }
-  return { ...o, items: items || [] };
+  if (items && typeof items === "object" && !Array.isArray(items)) {
+    if (Array.isArray(items.items)) items = items.items;
+    else if (Array.isArray(items.service_lines)) {
+      service_lines = items.service_lines;
+      items = items.service_lines.map((sl, idx) => ({
+        name: String(sl.name || `Shërbim #${sl.service_id || idx + 1}`).trim(),
+        quantity: Math.max(1, Number(sl.quantity) || 1),
+        price: Number(sl.amount ?? sl.price ?? 0) || 0,
+        service_id: sl.service_id,
+      }));
+    } else {
+      items = [];
+    }
+  }
+  return {
+    ...o,
+    items: Array.isArray(items) ? items : [],
+    service_lines: service_lines.length ? service_lines : o.service_lines,
+  };
 }
 
 function orderSortKey(o) {

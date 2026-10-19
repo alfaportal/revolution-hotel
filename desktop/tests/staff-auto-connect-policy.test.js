@@ -24,5 +24,31 @@ assert.ok(
   "mos nis discoverPos për çdo HTTP error",
 );
 assert.ok(js.includes("isLikelyNetworkFailure"), "vetëm dështime rrjeti në fetch wrap");
+assert.ok(js.includes("onSseDisconnected"), "SSE drop → reconnecting pa skanim automatik");
+assert.ok(js.includes('setUi("reconnecting")'), "reconnecting UI");
+
+const lanJs = fs.readFileSync(
+  path.join(__dirname, "..", "public", "js", "lan-status-indicator.js"),
+  "utf8",
+);
+assert.ok(lanJs.includes("isLanConnected"), "LanStatus.isLanConnected");
+assert.ok(lanJs.includes("lan-status-dot"), "lan-status-dot");
+
+const sseJs = fs.readFileSync(
+  path.join(__dirname, "..", "public", "js", "local-staff-events.js"),
+  "utf8",
+);
+assert.ok(sseJs.includes("onSseDisconnected"), "SSE mos discoverPos direkt");
+assert.ok(sseJs.includes("fallbackIntervalMs"), "fallbackIntervalMs LAN");
+assert.ok(sseJs.includes("RECONNECT_MS_MAX"), "SSE backoff max 30s");
+assert.ok(sseJs.includes("scheduleReconnect"), "SSE exponential backoff");
+assert.ok(
+  !sseJs.match(/es\.onerror[\s\S]{0,500}discoverPos/),
+  "SSE onerror mos thërras discoverPos direkt",
+);
+assert.ok(
+  js.includes("probeServerInfo(origin, 2000)"),
+  "SSE drop: health 2s para discovery",
+);
 
 console.log("ok - staff-auto-connect policy\n");

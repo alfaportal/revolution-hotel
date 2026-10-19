@@ -43,6 +43,7 @@ function aggregateRestaurantPaymentsForDay(db, date) {
       AND NOT (
         UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
         OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+        OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
       )
   `).get(date);
   return {
@@ -64,6 +65,7 @@ function aggregateRecepsionPaymentsForDay(db, date) {
       AND (
         UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
         OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+        OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
       )
   `).all(date);
   let cash = 0;
@@ -189,6 +191,7 @@ function countTablesServedForDay(db, date) {
       AND NOT (
         UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
         OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+        OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
       )
   `,
       )
@@ -248,6 +251,22 @@ function buildOwnerDailySnapshot(db, reportDate) {
 
   const totalSales = fixRound(rep.totalSales ?? totalDept);
 
+  const dailyBalanceRaw =
+    typeof db.getDailyBalanceReport === "function" ? db.getDailyBalanceReport(date) : null;
+  const daily_balance = dailyBalanceRaw
+    ? {
+        restaurant: dailyBalanceRaw.restaurant,
+        reception: dailyBalanceRaw.reception,
+        grand_total_cash: dailyBalanceRaw.grand_total_cash,
+        grand_total_card: dailyBalanceRaw.grand_total_card,
+        grand_total: dailyBalanceRaw.grand_total,
+        fiscal_z_total: dailyBalanceRaw.fiscal_z_total,
+        difference: dailyBalanceRaw.difference,
+      }
+    : null;
+  const fiscal_z_total =
+    dailyBalanceRaw?.fiscal_z_total != null ? dailyBalanceRaw.fiscal_z_total : undefined;
+
   const payloadCore = {
     report_date: date,
     kpis: buildDailyKpis(db, date, rep, totalSales),
@@ -276,6 +295,8 @@ function buildOwnerDailySnapshot(db, reportDate) {
     gross_profit: fixRound(bilanc.gross_profit || 0),
     net_profit: fixRound(bilanc.profit || 0),
     closed_shifts: listClosedShiftsForDay(db, date),
+    daily_balance,
+    ...(fiscal_z_total != null ? { fiscal_z_total } : {}),
     breakage_loss:
       typeof db.summarizeStockBreakageLoss === "function"
         ? db.summarizeStockBreakageLoss({ from: date, to: date })

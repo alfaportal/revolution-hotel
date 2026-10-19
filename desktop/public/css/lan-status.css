@@ -1,0 +1,38 @@
+/* LAN / POS lidhje — të gjitha panelët e stafit */
+.lan-status-bar {
+  position: fixed;
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  z-index: 99990;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.55rem 0.28rem 0.45rem;
+  border-radius: 999px;
+  font: 600 0.72rem/1.2 system-ui, sans-serif;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.lan-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #f97316;
+}
+
+.lan-status-bar.lan-connected .lan-status-dot {
+  background: #22c55e;
+}
+
+.lan-status-bar.lan-disconnected .lan-status-dot {
+  background: #f97316;
+}
+
+.lan-status-label {
+  white-space: nowrap;
+}

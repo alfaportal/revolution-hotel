@@ -637,6 +637,7 @@ function inferDailyLogSource(receipt_number) {
   const r = String(receipt_number || "").trim().toUpperCase();
   if (r.startsWith("CO-")) return "hotel-recepsion-checkout";
   if (r.startsWith("RC-")) return "hotel-recepsion-kasa";
+  if (r.startsWith("SVC-")) return "recepsion-sherbim";
   return "hotel-restaurant";
 }
 
@@ -2942,6 +2943,7 @@ function purgeTodaySalesData() {
       WHERE date = ?
         AND COALESCE(receipt_number, '') NOT LIKE 'CO-%'
         AND COALESCE(receipt_number, '') NOT LIKE 'RC-%'
+        AND COALESCE(receipt_number, '') NOT LIKE 'SVC-%'
         AND COALESCE(source, '') NOT IN (
           'hotel-recepsion-checkout',
           'hotel-recepsion-kasa',
@@ -5730,15 +5732,31 @@ function applyGuestHotelServiceOrder(order) {
   const roomNum = String(order?.room_number || parseRoomNumberFromCloudOrder(order) || "").trim();
   if (!roomNum) throw new Error("Numri i dhomës mungon.");
   const target = resolveGuestRoomTarget(roomNum);
-  const rawLines = Array.isArray(order?.service_lines) && order.service_lines.length
+  const meta = parseGuestOrderMetaFromCloud(order);
+  let rawLines = Array.isArray(order?.service_lines) && order.service_lines.length
     ? order.service_lines
-    : (Array.isArray(order?.items) ? order.items.map((i) => ({
+    : (Array.isArray(meta.service_lines) && meta.service_lines.length ? meta.service_lines : []);
+  if (!rawLines.length && Array.isArray(order?.items) && order.items.length) {
+    rawLines = order.items.map((i) => ({
       service_id: i.service_id,
       quantity: i.quantity,
       amount: i.price ?? i.amount,
       notes: i.notes,
       name: i.name,
-    })) : []);
+    }));
+  }
+  if (!rawLines.length) {
+    const expanded = expandGuestOrderLineItems(order);
+    if (expanded.length) {
+      rawLines = expanded.map((it) => ({
+        service_id: it.service_id,
+        quantity: it.quantity,
+        amount: it.price,
+        notes: it.notes,
+        name: it.name,
+      }));
+    }
+  }
   if (!rawLines.length) throw new Error("Porosia nuk ka shërbime.");
 
   const hints = guestServiceHintsById(order);
@@ -6673,7 +6691,7 @@ function getHotelRevenueReport(from, to) {
 
   const dailyMap = new Map();
   eachHotelYmd(range.from, range.to, (day) => {
-    dailyMap.set(day, { date: day, nights: 0, services: 0, restaurant: 0, total: 0 });
+    dailyMap.set(day, { date: day, nights: 0, services: 0, restaurant: 0, reception: 0, total: 0 });
   });
 
   const accrued = accrueHotelNightsForRange(range.from, range.to);
@@ -6707,7 +6725,9 @@ function getHotelRevenueReport(from, to) {
     WHERE status = 'completed'
       AND date >= ? AND date <= ?
       AND (receipt_number IS NULL OR (
-        receipt_number NOT LIKE 'CO-%' AND receipt_number NOT LIKE 'RC-%'
+        receipt_number NOT LIKE 'CO-%'
+        AND receipt_number NOT LIKE 'RC-%'
+        AND receipt_number NOT LIKE 'SVC-%'
       ))
     GROUP BY date
   `).all(range.from, range.to);
@@ -6716,16 +6736,35 @@ function getHotelRevenueReport(from, to) {
     if (row) row.restaurant += Number(r.t) || 0;
   }
 
+  const recepRows = sqlite.prepare(`
+    SELECT date AS d, COALESCE(SUM(total), 0) AS t
+    FROM daily_log
+    WHERE status = 'completed'
+      AND date >= ? AND date <= ?
+      AND (
+        receipt_number LIKE 'CO-%'
+        OR receipt_number LIKE 'RC-%'
+        OR receipt_number LIKE 'SVC-%'
+      )
+    GROUP BY date
+  `).all(range.from, range.to);
+  for (const r of recepRows) {
+    const row = dailyMap.get(r.d);
+    if (row) row.reception += Number(r.t) || 0;
+  }
+
   const daily = [...dailyMap.values()].map((row) => {
     const nights = Math.round(row.nights * 100) / 100;
     const services = Math.round(row.services * 100) / 100;
     const restaurant = Math.round(row.restaurant * 100) / 100;
+    const reception = Math.round(row.reception * 100) / 100;
     return {
       date: row.date,
       nights,
       services,
       restaurant,
-      total: Math.round((nights + services + restaurant) * 100) / 100,
+      reception,
+      total: Math.round((nights + services + restaurant + reception) * 100) / 100,
     };
   });
 
@@ -6740,6 +6779,7 @@ function getHotelRevenueReport(from, to) {
         nights: 0,
         services: 0,
         restaurant: 0,
+        reception: 0,
         total: 0,
       });
     }
@@ -6747,6 +6787,7 @@ function getHotelRevenueReport(from, to) {
     w.nights += row.nights;
     w.services += row.services;
     w.restaurant += row.restaurant;
+    w.reception += row.reception;
     w.total += row.total;
     if (row.date < w.from) w.from = row.date;
     if (row.date > w.to) w.to = row.date;
@@ -6758,12 +6799,14 @@ function getHotelRevenueReport(from, to) {
     nights: Math.round(w.nights * 100) / 100,
     services: Math.round(w.services * 100) / 100,
     restaurant: Math.round(w.restaurant * 100) / 100,
+    reception: Math.round(w.reception * 100) / 100,
     total: Math.round(w.total * 100) / 100,
   }));
 
   const nights = Math.round(daily.reduce((s, d) => s + d.nights, 0) * 100) / 100;
   const services = Math.round(daily.reduce((s, d) => s + d.services, 0) * 100) / 100;
   const restaurant = Math.round(daily.reduce((s, d) => s + d.restaurant, 0) * 100) / 100;
+  const reception = Math.round(daily.reduce((s, d) => s + d.reception, 0) * 100) / 100;
 
   return {
     from: range.from,
@@ -6772,7 +6815,8 @@ function getHotelRevenueReport(from, to) {
       nights,
       services,
       restaurant,
-      total: Math.round((nights + services + restaurant) * 100) / 100,
+      reception,
+      total: Math.round((nights + services + restaurant + reception) * 100) / 100,
     },
     daily,
     weekly,
@@ -8282,18 +8326,44 @@ function nestedLineItemsFromCloudField(itemsField) {
   return [];
 }
 
+function readGuestOrderItemsJsonBlob(cloudOrder) {
+  let raw = cloudOrder?.items_json ?? null;
+  if (
+    raw == null
+    && cloudOrder?.items
+    && typeof cloudOrder.items === "object"
+    && !Array.isArray(cloudOrder.items)
+  ) {
+    raw = cloudOrder.items;
+  }
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
+  return null;
+}
+
 function parseGuestOrderMetaFromCloud(cloudOrder) {
   if (!cloudOrder) return {};
+  const blob = readGuestOrderItemsJsonBlob(cloudOrder);
+  const blobLines = Array.isArray(blob?.service_lines) ? blob.service_lines : [];
+  const blobItems = Array.isArray(blob?.items) ? blob.items : [];
   if (cloudOrder.order_kind || cloudOrder.folio_pre_applied != null) {
+    const topLines = Array.isArray(cloudOrder.service_lines) ? cloudOrder.service_lines : [];
+    const topNested = nestedLineItemsFromCloudField(cloudOrder.items);
     return {
-      order_kind: String(cloudOrder.order_kind || "").trim(),
-      room_number: String(cloudOrder.room_number || "").trim(),
-      folio_pre_applied: !!cloudOrder.folio_pre_applied,
-      pay_on_site: !!cloudOrder.pay_on_site,
-      venue_qr: !!cloudOrder.venue_qr,
-      venue_label: String(cloudOrder.venue_label || "").trim(),
-      service_lines: Array.isArray(cloudOrder.service_lines) ? cloudOrder.service_lines : [],
-      nested_items: nestedLineItemsFromCloudField(cloudOrder.items),
+      order_kind: String(cloudOrder.order_kind || blob?.order_kind || "").trim(),
+      room_number: String(cloudOrder.room_number || blob?.room_number || "").trim(),
+      folio_pre_applied: !!(cloudOrder.folio_pre_applied ?? blob?.folio_pre_applied),
+      pay_on_site: !!(cloudOrder.pay_on_site ?? blob?.pay_on_site),
+      venue_qr: !!(cloudOrder.venue_qr ?? blob?.venue_qr),
+      venue_label: String(cloudOrder.venue_label || blob?.venue_label || "").trim(),
+      service_lines: topLines.length ? topLines : blobLines,
+      nested_items: topNested.length ? topNested : blobItems,
     };
   }
   let raw = cloudOrder.items_json ?? cloudOrder.items;
@@ -8674,6 +8744,10 @@ function hydrateCloudOrderForAccept(cloudOrder) {
     }
     if (Array.isArray(raw)) items = raw;
     else if (raw && typeof raw === "object" && Array.isArray(raw.items)) items = raw.items;
+  }
+  if (!items.length) {
+    const expanded = expandGuestOrderLineItems({ ...cloudOrder, items });
+    if (expanded.length) items = expanded;
   }
   const roomNum = String(
     cloudOrder.room_number || meta.room_number || parseRoomNumberFromCloudOrder(cloudOrder) || "",
@@ -9424,6 +9498,31 @@ function dailyLogEntryOtherAmount(e) {
   const cash = dailyLogEntryCashAmount(e);
   const card = dailyLogEntryCardAmount(e);
   return roundDailyLogMoney(Math.max(0, total - cash - card));
+}
+
+/** Cash/kartë nga daily_log — ndarje restorant (POS) vs recepsion (CO-/RC-/SVC-). */
+function aggregateDailyLogPaymentsByRegister(entries) {
+  let restaurantCash = 0;
+  let restaurantKarte = 0;
+  let receptionCash = 0;
+  let receptionKarte = 0;
+  for (const e of entries || []) {
+    const cash = dailyLogEntryCashAmount(e);
+    const card = dailyLogEntryCardAmount(e);
+    if (isRecepsionDailyLogReceipt(e.receipt_number)) {
+      receptionCash += cash;
+      receptionKarte += card;
+    } else {
+      restaurantCash += cash;
+      restaurantKarte += card;
+    }
+  }
+  return {
+    restaurantCash: roundReportMoney(restaurantCash),
+    restaurantKarte: roundReportMoney(restaurantKarte),
+    receptionCash: roundReportMoney(receptionCash),
+    receptionKarte: roundReportMoney(receptionKarte),
+  };
 }
 
 function paymentMethodLabel(method) {
@@ -10358,6 +10457,28 @@ function getCashInRegister(dateFrom, dateTo, registerId = null) {
   return { sales_cash, purchases_cash, cash_in_register };
 }
 
+function buildTopItemsFromDailyLogEntries(entryList) {
+  const itemCounts = {};
+  const itemRevenue = {};
+  for (const e of entryList || []) {
+    for (const it of JSON.parse(e.items_json || "[]")) {
+      const name = String(it.name || "").trim();
+      if (!name) continue;
+      const qty = Number(it.quantity) || 1;
+      itemCounts[name] = (itemCounts[name] || 0) + qty;
+      itemRevenue[name] = (itemRevenue[name] || 0) + (Number(it.price) || 0) * qty;
+    }
+  }
+  return Object.keys(itemCounts)
+    .sort((a, b) => itemCounts[b] - itemCounts[a] || itemRevenue[b] - itemRevenue[a])
+    .slice(0, 15)
+    .map((name) => ({
+      name,
+      quantity: itemCounts[name],
+      revenue: Number((itemRevenue[name] || 0).toFixed(2)),
+    }));
+}
+
 function getReports(dateFrom, dateTo) {
   const from = dateFrom || businessTodayYmd();
   const to   = dateTo   || from;
@@ -10405,25 +10526,18 @@ function getReports(dateFrom, dateTo) {
     .map(p => ({ ...p, discount_total: Number(p.discount_total.toFixed(2)) }))
     .sort((a, b) => b.discount_total - a.discount_total);
 
-  const itemCounts = {};
-  const itemRevenue = {};
-  for (const e of restaurantEntries) {
-    for (const it of JSON.parse(e.items_json || "[]")) {
-      const name = String(it.name || "").trim();
-      if (!name) continue;
-      const qty = Number(it.quantity) || 1;
-      itemCounts[name] = (itemCounts[name] || 0) + qty;
-      itemRevenue[name] = (itemRevenue[name] || 0) + (Number(it.price) || 0) * qty;
-    }
-  }
-  const topItems = Object.keys(itemCounts)
-    .sort((a, b) => itemCounts[b] - itemCounts[a] || itemRevenue[b] - itemRevenue[a])
-    .slice(0, 15)
-    .map(name => ({
-      name,
-      quantity: itemCounts[name],
-      revenue: Number((itemRevenue[name] || 0).toFixed(2)),
-    }));
+  const topItemsRestaurant = buildTopItemsFromDailyLogEntries(restaurantEntries);
+  const topItemsReception = buildTopItemsFromDailyLogEntries(receptionEntries);
+  const topItemsAll = buildTopItemsFromDailyLogEntries([
+    ...restaurantEntries,
+    ...receptionEntries,
+  ]);
+  const topItems = topItemsAll;
+  const topItemsBySection = {
+    all: topItemsAll,
+    restaurant: topItemsRestaurant,
+    reception: topItemsReception,
+  };
 
   const dailyMap = new Map();
   if (from && to && from <= to) {
@@ -10637,6 +10751,7 @@ function getReports(dateFrom, dateTo) {
     orderCount,
     average,
     topItems,
+    topItemsBySection,
     dailySales,
     byRegister,
     dateFrom: from,
@@ -10653,6 +10768,21 @@ function normalizeStaffRole(raw) {
   if (r === "recepsion" || r === "receptionist" || r === "recepsionist") return "recepsion";
   if (r === "pastrim" || r === "pastrimi" || r === "housekeeping" || r === "sherbimi") return "pastrim";
   return "kamarier";
+}
+
+/** Rol ndërrimi për filtër daily_log (recepsion vs kamarier). */
+function sessionRoleForStaffId(staffId) {
+  const id = Number(staffId);
+  if (!id) return "kamarier";
+  const row = sqlite.prepare("SELECT staff_role FROM staff WHERE id = ?").get(id);
+  return normalizeStaffRole(row?.staff_role) === "recepsion" ? "recepsion" : "kamarier";
+}
+
+function resolveShiftSessionRole(staffId, sessionRoleOverride) {
+  if (sessionRoleOverride != null && String(sessionRoleOverride).trim() !== "") {
+    return normalizeStaffRole(sessionRoleOverride) === "recepsion" ? "recepsion" : "kamarier";
+  }
+  return sessionRoleForStaffId(staffId);
 }
 
 function getStaffForAdmin() {
@@ -10811,7 +10941,7 @@ const SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL = `
         ELSE 0
       END), 0) AS room_total`;
 
-/** Ditari / mbyllje ndërrimi — recepsion (CO-/RC-) vs restorant (tavolina). */
+/** Ditari / mbyllje ndërrimi — recepsion (CO-/RC-/SVC-) vs restorant (tavolina). */
 function shiftDailyLogRoleWhereSql(sessionRole, prefix = "AND") {
   const role = String(sessionRole || "").trim().toLowerCase();
   if (role === "recepsion") {
@@ -11023,13 +11153,14 @@ function listOpenShiftsForReports() {
 
 /** "Raporti i Kamarierit" — gjendja e tashme e një nderrimi AKOMA TË HAPUR, e printueshme
  * në çdo kohë nga pronari pa e mbyllur nderrimin e kamarierit. */
-function getOpenShiftReportData(shiftId) {
+function getOpenShiftReportData(shiftId, sessionRoleOverride) {
   const sid = Number(shiftId);
   const shift = sqlite.prepare(`SELECT * FROM waiter_shifts WHERE id = ?`).get(sid);
   if (!shift) throw new Error("Nderrimi nuk u gjet.");
   if (shift.closed_at) throw new Error("Ky nderrim është mbyllur tashmë — përdorni Raportin Z.");
 
-  const totals = computeShiftTotals(shift.id, shift.staff_id, shift.waiter_name);
+  const sessionRole = resolveShiftSessionRole(shift.staff_id, sessionRoleOverride);
+  const totals = computeShiftTotals(shift.id, shift.staff_id, shift.waiter_name, sessionRole);
   const openingCash = Number(shift.opening_cash) || 0;
   const { item_summary } = getShiftSalesDetail(shift.id);
 
@@ -11071,8 +11202,13 @@ function getCategoryBreakdownForShiftIds(shiftIds) {
     .sort((a, b) => b.total - a.total);
 }
 
-/** Raporti X — gjendja e TASHME e nderrimeve HAPUR, pa mbyllur asgjë. */
-function buildXReportData() {
+/** Raporti X — gjendja e TASHME e nderrimeve HAPUR, pa mbyllur asgjë.
+ * @param {string} [sessionRole] — bosh = admin (të gjitha shitjet e ndërrimit); recepsion/kamarier = filtër prefiksi. */
+function buildXReportData(sessionRole = "") {
+  const roleFilter = String(sessionRole || "").trim().toLowerCase();
+  const effectiveRole =
+    roleFilter === "recepsion" || roleFilter === "kamarier" ? roleFilter : "";
+
   const openShifts = sqlite.prepare(`
     SELECT ws.id, ws.staff_id, ws.waiter_name, ws.opened_at, ws.opening_cash
     FROM waiter_shifts ws
@@ -11081,7 +11217,7 @@ function buildXReportData() {
   `).all();
 
   const byWaiter = openShifts.map(s => {
-    const t = computeShiftTotals(s.id, s.staff_id, s.waiter_name);
+    const t = computeShiftTotals(s.id, s.staff_id, s.waiter_name, effectiveRole);
     return {
       shift_id: s.id,
       waiter_name: s.waiter_name,
@@ -11180,20 +11316,27 @@ function markAllPendingShiftZReportsPrinted() {
 }
 
 /** Nderrime të mbyllura, më të fundit së pari — për zgjedhësin e Raportit Z. */
-function listRecentClosedShifts(limit = 30) {
-  return sqlite.prepare(`
-    SELECT id, staff_id, waiter_name, opened_at, closed_at, opening_cash,
-           closing_cash_actual, expected_closing_cash, cash_difference, closing_reason,
-           z_report_printed_at
-    FROM waiter_shifts
-    WHERE closed_at IS NOT NULL
-    ORDER BY closed_at DESC
-    LIMIT ?
-  `).all(Math.max(1, Number(limit) || 30));
+function listRecentClosedShifts(limit = 30, opts = {}) {
+  const lim = Math.max(1, Number(limit) || 30);
+  let sql = `
+    SELECT ws.id, ws.staff_id, ws.waiter_name, ws.opened_at, ws.closed_at, ws.opening_cash,
+           ws.closing_cash_actual, ws.expected_closing_cash, ws.cash_difference, ws.closing_reason,
+           ws.z_report_printed_at, st.staff_role
+    FROM waiter_shifts ws
+    LEFT JOIN staff st ON st.id = ws.staff_id
+    WHERE ws.closed_at IS NOT NULL`;
+  const params = [];
+  if (opts.staff_role) {
+    sql += " AND LOWER(TRIM(COALESCE(st.staff_role, 'kamarier'))) = ?";
+    params.push(normalizeStaffRole(opts.staff_role));
+  }
+  sql += " ORDER BY ws.closed_at DESC LIMIT ?";
+  params.push(lim);
+  return sqlite.prepare(sql).all(...params);
 }
 
 /** Raporti Z — pamja përfundimtare e një nderrimi TASHMË TË MBYLLUR. */
-function buildZReportData(shiftId) {
+function buildZReportData(shiftId, sessionRoleOverride) {
   const sid = Number(shiftId);
   const shift = sqlite.prepare(`
     SELECT * FROM waiter_shifts WHERE id = ?
@@ -11201,7 +11344,8 @@ function buildZReportData(shiftId) {
   if (!shift) throw new Error("Nderrimi nuk u gjet.");
   if (!shift.closed_at) throw new Error("Ky nderrim nuk është mbyllur ende.");
 
-  const totals = computeShiftTotals(shift.id, shift.staff_id, shift.waiter_name);
+  const sessionRole = resolveShiftSessionRole(shift.staff_id, sessionRoleOverride);
+  const totals = computeShiftTotals(shift.id, shift.staff_id, shift.waiter_name, sessionRole);
   return {
     shift_id: shift.id,
     waiter_name: shift.waiter_name,
@@ -11254,6 +11398,81 @@ function getPendingHandoverForStaff(staffId) {
     expected_cash: Number(row.expected_cash) || 0,
     closing_discrepancy: Number(row.closing_discrepancy) || 0,
   };
+}
+
+/** Ka ndërrim recepsioni të hapur (opening_cash plotësuar, jo mbyllur). */
+function hasActiveRecepcionShift() {
+  const row = sqlite.prepare(`
+    SELECT ws.id
+    FROM waiter_shifts ws
+    INNER JOIN staff st ON st.id = ws.staff_id
+    WHERE ws.closed_at IS NULL
+      AND ws.opening_cash IS NOT NULL
+      AND LOWER(TRIM(COALESCE(st.staff_role, ''))) = 'recepsion'
+    LIMIT 1
+  `).get();
+  return !!row;
+}
+
+/** Pas mbylljes pa «dorëzo te» — krijon dorëzim pending për recepsionistin tjetër (PIN). */
+function ensureRecepsionHandoverForClosedShift(fromShiftId, toStaffId) {
+  const shiftId = Number(fromShiftId);
+  const toId = Number(toStaffId);
+  if (!shiftId || !toId) throw new Error("Të dhëna të pavlefshme për dorëzimin.");
+  const shift = sqlite.prepare(`
+    SELECT * FROM waiter_shifts WHERE id = ? AND closed_at IS NOT NULL AND TRIM(COALESCE(closed_at, '')) != ''
+  `).get(shiftId);
+  if (!shift) throw new Error("Ndërrimi i mbyllur nuk u gjet.");
+  const toStaff = sqlite.prepare("SELECT id, name, staff_role FROM staff WHERE id = ? AND active = 1").get(toId);
+  if (!toStaff) throw new Error("Recepsionisti nuk u gjet.");
+  if (normalizeStaffRole(toStaff.staff_role) !== "recepsion") {
+    throw new Error("PIN-i duhet të jetë i recepsionistit.");
+  }
+  const fromStaff = sqlite.prepare("SELECT id, name, staff_role FROM staff WHERE id = ?").get(shift.staff_id);
+  if (!fromStaff || normalizeStaffRole(fromStaff.staff_role) !== "recepsion") {
+    throw new Error("Ndërrimi nuk është i recepsionit.");
+  }
+  if (toId === fromStaff.id) throw new Error("Zgjidhni recepsionistin tjetër.");
+
+  const pending = sqlite.prepare(`
+    SELECT * FROM shift_handovers WHERE from_shift_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1
+  `).get(shiftId);
+  if (pending) {
+    if (Number(pending.to_staff_id) !== toId) {
+      throw new Error("Ky ndërrim pret dorëzim te një recepsionist tjetër — përdorni PIN-in e duhur ose «Hyr».");
+    }
+    return pending;
+  }
+
+  const actual = Number(shift.closing_cash_actual) || 0;
+  const expected = Number(shift.expected_closing_cash) || 0;
+  const difference = Number(shift.cash_difference) || 0;
+  const closedAt = shift.closed_at || new Date().toISOString();
+
+  const handoverIns = sqlite.prepare(`
+    INSERT INTO shift_handovers (
+      from_shift_id, from_staff_id, from_waiter_name,
+      to_staff_id, to_waiter_name,
+      handover_cash, expected_cash, closing_discrepancy,
+      status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+  `).run(
+    shift.id,
+    fromStaff.id,
+    fromStaff.name,
+    toStaff.id,
+    toStaff.name,
+    actual,
+    expected,
+    difference,
+    closedAt,
+  );
+
+  sqlite.prepare(`
+    UPDATE waiter_shifts SET handover_id = ?, handed_over_to_staff_id = ? WHERE id = ?
+  `).run(handoverIns.lastInsertRowid, toStaff.id, shift.id);
+
+  return sqlite.prepare("SELECT * FROM shift_handovers WHERE id = ?").get(handoverIns.lastInsertRowid);
 }
 
 function listHandoverPeers(staffId, sessionRole = "") {
@@ -11761,6 +11980,85 @@ function closeWaiterShift(staffId, actualClosingCash, handoverToStaffId, opts = 
       ...totals,
     };
   })();
+}
+
+function readFiscalZTotalForDay(dateYmd) {
+  const date = String(dateYmd || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  try {
+    const { isFiscalEnabled } = require("./fiscal/fiscal-config");
+    if (!isFiscalEnabled()) return null;
+    const row = sqlite.prepare("SELECT last_z_report_date FROM fiscal_settings WHERE id = 1").get();
+    const lastZ = row?.last_z_report_date ? String(row.last_z_report_date).slice(0, 10) : "";
+    if (!lastZ || lastZ < date) return null;
+    const { getDailyFiscalAccumulated } = require("./fiscal/fiscal-numbering");
+    const acc = getDailyFiscalAccumulated(date);
+    if (!acc) return null;
+    return Math.round(Number(acc.total_amount) * 100) / 100;
+  } catch {
+    return null;
+  }
+}
+
+/** Barazim ditor — ndërrime të mbyllura (restorant vs recepsion) vs totali fiskal Z (lexim). */
+function getDailyBalanceReport(dateYmd) {
+  const date = String(dateYmd || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Data e pavlefshme (YYYY-MM-DD).");
+  }
+  const rows = listShiftReports({ from: date, to: date });
+  const sideEmpty = () => ({
+    shifts: [],
+    subtotal_cash: 0,
+    subtotal_card: 0,
+    subtotal: 0,
+  });
+  const restaurant = sideEmpty();
+  const reception = sideEmpty();
+
+  for (const row of rows) {
+    const role = normalizeStaffRole(row.staff_role);
+    const bucket = role === "recepsion" ? reception : restaurant;
+    const cash = Number(row.cash_sales_total) || 0;
+    const card = Number(row.card_sales_total) || 0;
+    const total =
+      Number(row.total_sales) || Math.round((cash + card) * 100) / 100;
+    bucket.shifts.push({
+      staff_name: row.waiter_name,
+      opened_at: row.opened_at,
+      closed_at: row.closed_at,
+      cash_amount: cash,
+      card_amount: card,
+      total,
+      order_count: Number(row.order_count_total) || 0,
+    });
+    bucket.subtotal_cash = Math.round((bucket.subtotal_cash + cash) * 100) / 100;
+    bucket.subtotal_card = Math.round((bucket.subtotal_card + card) * 100) / 100;
+    bucket.subtotal = Math.round((bucket.subtotal + total) * 100) / 100;
+  }
+
+  const grand_total_cash =
+    Math.round((restaurant.subtotal_cash + reception.subtotal_cash) * 100) / 100;
+  const grand_total_card =
+    Math.round((restaurant.subtotal_card + reception.subtotal_card) * 100) / 100;
+  const grand_total = Math.round((restaurant.subtotal + reception.subtotal) * 100) / 100;
+
+  const fiscal_z_total = readFiscalZTotalForDay(date);
+  const difference =
+    fiscal_z_total != null
+      ? Math.round((grand_total - fiscal_z_total) * 100) / 100
+      : null;
+
+  return {
+    date,
+    restaurant,
+    reception,
+    grand_total_cash,
+    grand_total_card,
+    grand_total,
+    fiscal_z_total,
+    difference,
+  };
 }
 
 function listShiftReports({ from, to, staff_id, staff_role } = {}) {
@@ -14229,7 +14527,15 @@ function getSalesLedger({ from, to } = {}) {
       ORDER BY g.check_out_date ASC, g.id ASC
     `).all(fromDate, toDate);
 
+    const checkoutGuestIdsWithCo = loadCheckoutGuestIdsInReportRange({
+      from: fromDate,
+      to: toDate,
+    });
+
     for (const g of checkouts) {
+      if (checkoutGuestIdsWithCo.has(Number(g.id))) {
+        continue;
+      }
       const paid = computeGuestPaidTotal(g);
       const roomAmt = Number(paid.room_total) || 0;
       if (roomAmt > 0) {
@@ -15876,10 +16182,25 @@ function getDitari(opts = {}) {
   const range = resolveDitariRange(opts);
   const entries = sqlite.prepare(`
     SELECT * FROM daily_log
-    WHERE date >= ?
-      AND date <= ?
+    WHERE (
+      (
+        TRIM(COALESCE(time, '')) != ''
+        AND datetime(date || ' ' || time) >= datetime(?)
+        AND datetime(date || ' ' || time) <= datetime(?)
+      )
+      OR (
+        TRIM(COALESCE(time, '')) = ''
+        AND date >= ?
+        AND date <= ?
+      )
+    )
     ORDER BY date DESC, time DESC
-  `).all(range.dateFrom, range.dateTo);
+  `).all(
+    range.fromDatetime,
+    range.toDatetime,
+    range.dateFrom,
+    range.dateTo,
+  );
 
   const parsed = entries.map(e => ({
     ...e,
@@ -15941,6 +16262,7 @@ function getDitari(opts = {}) {
   const totalKarte = roundReportMoney(
     paymentEntries.reduce((s, e) => s + dailyLogEntryCardAmount(e), 0),
   );
+  const paymentByRegister = aggregateDailyLogPaymentsByRegister(paymentEntries);
   const totalTjera = roundReportMoney(
     paymentEntries.reduce((s, e) => s + dailyLogEntryOtherAmount(e), 0),
   );
@@ -15982,6 +16304,10 @@ function getDitari(opts = {}) {
     },
     totalCash,
     totalKarte,
+    restaurantCash: paymentByRegister.restaurantCash,
+    restaurantKarte: paymentByRegister.restaurantKarte,
+    receptionCash: paymentByRegister.receptionCash,
+    receptionKarte: paymentByRegister.receptionKarte,
     totalTjera,
     totalRoom: roundReportMoney(totalRoom),
     orderCount: completedRestOnly.length,
@@ -16058,14 +16384,22 @@ function getDashboardOverview() {
     SELECT COALESCE(SUM(total), 0) AS t
     FROM daily_log
     WHERE date = ? AND status = 'completed'
-      AND (receipt_number IS NULL OR (receipt_number NOT LIKE 'CO-%' AND receipt_number NOT LIKE 'RC-%'))
+      AND (receipt_number IS NULL OR (
+        receipt_number NOT LIKE 'CO-%'
+        AND receipt_number NOT LIKE 'RC-%'
+        AND receipt_number NOT LIKE 'SVC-%'
+      ))
   `).get(today)?.t) || 0;
 
   const receptionRevenue = Number(sqlite.prepare(`
     SELECT COALESCE(SUM(total), 0) AS t
     FROM daily_log
     WHERE date = ? AND status = 'completed'
-      AND (receipt_number LIKE 'CO-%' OR receipt_number LIKE 'RC-%')
+      AND (
+        receipt_number LIKE 'CO-%'
+        OR receipt_number LIKE 'RC-%'
+        OR receipt_number LIKE 'SVC-%'
+      )
   `).get(today)?.t) || 0;
 
   const nightsServicesRevenue =
@@ -16220,11 +16554,16 @@ function exportDitariText(opts = {}) {
   txt += `${"=".repeat(50)}\n`;
   const src = d.by_source || {};
   txt += `Restorant: ${(src.restaurant ?? d.restaurantSales ?? 0).toFixed(2)} €\n`;
+  txt += `Recepsion: ${(src.reception ?? d.receptionSales ?? 0).toFixed(2)} €\n`;
   txt += `Netë hotel: ${(src.nights ?? d.hotelNights ?? 0).toFixed(2)} €\n`;
   txt += `Shërbime / RS: ${(src.services ?? d.hotelServices ?? 0).toFixed(2)} €\n`;
   txt += `Totali: ${d.totalSales.toFixed(2)} €\n`;
-  txt += `  Cash (restorant): ${d.totalCash.toFixed(2)} €\n`;
-  txt += `  Kartë (restorant): ${d.totalKarte.toFixed(2)} €\n`;
+  txt += `  Cash (Restorant): ${(d.restaurantCash ?? 0).toFixed(2)} €\n`;
+  txt += `  Cash (Recepsion): ${(d.receptionCash ?? 0).toFixed(2)} €\n`;
+  txt += `  Cash (Total): ${d.totalCash.toFixed(2)} €\n`;
+  txt += `  Kartë (Restorant): ${(d.restaurantKarte ?? 0).toFixed(2)} €\n`;
+  txt += `  Kartë (Recepsion): ${(d.receptionKarte ?? 0).toFixed(2)} €\n`;
+  txt += `  Kartë (Total): ${d.totalKarte.toFixed(2)} €\n`;
   txt += `Porosi restorant: ${d.orderCount}\n`;
   txt += `Tavolina te sherbyera: ${d.tablesServed}\n\n`;
   for (const e of d.entries) {
@@ -16729,7 +17068,11 @@ function getVersionInfo() {
     closeWaiterShift,
     acceptShiftHandover,
     getPendingHandoverForStaff,
+    hasActiveRecepcionShift,
+    ensureRecepsionHandoverForClosedShift,
     listHandoverPeers,
+    getDailyBalanceReport,
+    readFiscalZTotalForDay,
     listShiftReports,
     getShiftSalesDetail,
     buildDailySummaryData,

@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/pwa-staff-register.js" defer></script>
   <script src="/js/staff-auto-connect.js" defer></script>
+  <link rel="stylesheet" href="/css/lan-status.css">
+  <script src="/js/lan-status-indicator.js" defer></script>
   <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <link rel="stylesheet" href="/css/recepcion-truffle.css?v=2">
@@ -76,6 +78,37 @@
     #recep-online-pop #recep-online-accept-msg:not([hidden]) {
       margin-top: 0.5rem;
       font-weight: 700;
+    }
+
+    .rc-successor-pin {
+      width: 100%;
+      max-width: 14rem;
+      margin: 0.35rem auto 0.75rem;
+      display: block;
+      text-align: center;
+      font-size: 1.35rem;
+      letter-spacing: 0.35em;
+      padding: 0.55rem 0.75rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(15, 23, 42, 0.55);
+      color: #f8fafc;
+    }
+    .rc-successor-timeout {
+      margin: 0.65rem 0 0;
+      font-size: 0.88rem;
+      color: #fde68a;
+      text-align: center;
+    }
+    .rc-successor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 0.75rem;
+    }
+    #modal-rc-shift-end.rc-shift-report-only .rc-shift-close-interactive {
+      display: none !important;
     }
 
     .recep-main-tabs {
@@ -887,6 +920,7 @@
         <div><dt>Paratë e nisjes</dt><dd id="rc-shift-opening">0.00 €</dd></div>
         <div class="shift-close-expected"><dt>Paratë e pritshme në arkë</dt><dd id="rc-shift-expected">0.00 €</dd></div>
       </dl>
+      <div class="rc-shift-close-interactive">
       <label class="shift-close-label" for="rc-shift-close-display">Paratë e numëruar</label>
       <div class="shift-amount-display" id="rc-shift-close-display">€0</div>
       <div class="shift-keypad" id="rc-shift-close-keypad">
@@ -915,6 +949,46 @@
       <div id="rc-shift-close-msg" class="alert alert-error shift-close-msg" hidden></div>
       <button type="button" class="shift-start-btn" id="btn-rc-shift-close-confirm">Mbyll ndërrimin</button>
       <button type="button" class="btn btn-ghost shift-close-cancel" id="btn-rc-shift-close-cancel">Anulo</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-recep-successor" class="shift-overlay" hidden>
+    <div class="shift-start-card shift-close-card">
+      <h2 class="shift-start-title shift-close-title">Ndërrimi u mbyll. Turni tjetër:</h2>
+      <p class="shift-start-hint" style="text-align:center;margin-bottom:0.65rem">Raporti mbetet pas (mbrapa). Fut PIN-in e recepsionistit që vjen.</p>
+      <dl class="shift-close-summary rc-successor-mini-summary">
+        <div><dt>Porosi / transaksione</dt><dd id="rc-successor-order-count">0</dd></div>
+        <div><dt>Totali</dt><dd id="rc-successor-total">0.00 €</dd></div>
+        <div><dt>Cash / Kartë</dt><dd id="rc-successor-cash-card">—</dd></div>
+        <div><dt>Paratë në arkë (numëruar)</dt><dd id="rc-successor-closing-cash">0.00 €</dd></div>
+      </dl>
+      <label class="shift-close-label" for="rc-successor-pin">PIN recepsionistit (6 shifra)</label>
+      <input type="password" class="rc-successor-pin" id="rc-successor-pin" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]*" placeholder="••••••">
+      <label class="shift-close-label">Paratë në kuletë (fillimi i ndërrimit)</label>
+      <div class="shift-amount-display" id="rc-successor-open-display">€0</div>
+      <div class="shift-keypad" id="rc-successor-open-keypad">
+        <button type="button" class="shift-key" data-digit="1">1</button>
+        <button type="button" class="shift-key" data-digit="2">2</button>
+        <button type="button" class="shift-key" data-digit="3">3</button>
+        <button type="button" class="shift-key" data-digit="4">4</button>
+        <button type="button" class="shift-key" data-digit="5">5</button>
+        <button type="button" class="shift-key" data-digit="6">6</button>
+        <button type="button" class="shift-key" data-digit="7">7</button>
+        <button type="button" class="shift-key" data-digit="8">8</button>
+        <button type="button" class="shift-key" data-digit="9">9</button>
+        <button type="button" class="shift-key" data-digit=".">.</button>
+        <button type="button" class="shift-key" data-digit="0">0</button>
+        <button type="button" class="shift-key shift-key-back" data-action="back" aria-label="Fshi">⌫</button>
+      </div>
+      <button type="button" class="shift-start-btn" id="btn-rc-successor-open">Hap ndërrimin e ri</button>
+      <p id="rc-successor-timeout-msg" class="rc-successor-timeout" hidden>
+        Fut PIN-in për të hapur ndërrimin e ri, ose kliko «Hyr» për login
+      </p>
+      <div class="rc-successor-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-rc-successor-login" hidden>Hyr</button>
+      </div>
+      <div id="rc-successor-msg" class="alert alert-error" hidden></div>
     </div>
   </div>
 
@@ -1065,6 +1139,7 @@
   </style>
 
   <script src="/js/app.js?v=10"></script>
+  <script src="/js/offline-retry-queue.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
@@ -1204,6 +1279,13 @@
             if (Array.isArray(parsed)) items = parsed;
             else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
               items = parsed.items;
+            } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.service_lines)) {
+              items = parsed.service_lines.map((sl) => ({
+                name: sl.name || `Shërbim #${sl.service_id || "?"}`,
+                quantity: sl.quantity,
+                price: sl.amount ?? sl.price,
+                service_id: sl.service_id,
+              }));
             }
           } catch {
             items = [];
@@ -1670,7 +1752,19 @@
           await ngarkoDhomat().catch(() => {});
         }
       } catch (err) {
-        if (msg) {
+        if (
+          !first.is_public_service_request
+          && window.StaffOfflineRetryQueue?.isNetworkError(err)
+        ) {
+          window.StaffOfflineRetryQueue.enqueueAction("accept", {
+            order_ids: [String(first.id)],
+            orders: recepGuestServiceOrders.filter((o) => !o.is_public_service_request),
+          });
+          window.StaffOfflineRetryQueue.showToast(
+            "Veprimi u ruajt — do kryhet kur të kthehet lidhja",
+            "warn",
+          );
+        } else if (msg) {
           msg.textContent = err.message || "Nuk u pranua.";
           msg.hidden = false;
         }
@@ -1717,7 +1811,19 @@
         }
         await ngarkoPorosiSherbimiRecep();
       } catch (err) {
-        if (msg) {
+        if (
+          !first.is_public_service_request
+          && window.StaffOfflineRetryQueue?.isNetworkError(err)
+        ) {
+          window.StaffOfflineRetryQueue.enqueueAction("refuse", {
+            order_ids: [String(first.id)],
+            reason,
+          });
+          window.StaffOfflineRetryQueue.showToast(
+            "Veprimi u ruajt — do kryhet kur të kthehet lidhja",
+            "warn",
+          );
+        } else if (msg) {
           msg.textContent = err.message || "Nuk u refuzua.";
           msg.hidden = false;
         }
@@ -1728,8 +1834,13 @@
     }
 
     function startRecepGuestServicePolling() {
-      ngarkoPorosiSherbimiRecep().catch(() => {});
-      setInterval(() => ngarkoPorosiSherbimiRecep().catch(() => {}), 6_000);
+      const pollFn = () => ngarkoPorosiSherbimiRecep().catch(() => {});
+      if (window.LanStatus?.startAdaptivePoll) {
+        window.LanStatus.startAdaptivePoll(pollFn, 8000, 30000);
+      } else {
+        pollFn();
+        setInterval(pollFn, 6_000);
+      }
     }
 
     /* ── Njoftim "faturë në dhomë" — SQLite, mbetet derisa recepsioni konfirmon ── */
@@ -3326,6 +3437,8 @@
     }
 
     let pendingRcHandoverData = null;
+    let lastRecepClosedShiftId = null;
+    let recepSuccessorTimer = null;
 
     const rcShiftOpenPad = createCashKeypad({
       displayEl: document.getElementById("rc-shift-open-display"),
@@ -3370,6 +3483,157 @@
         val.textContent = (diff >= 0 ? "+" : "") + formatEuro(diff);
         lbl.textContent = Math.abs(diff) < 0.005 ? "Barazim" : diff < 0 ? "Mungesë" : "Tepricë";
       },
+    });
+
+    const rcSuccessorOpenPad = createCashKeypad({
+      displayEl: document.getElementById("rc-successor-open-display"),
+      keypadEl: document.getElementById("rc-successor-open-keypad"),
+      onChange: (n) => {
+        const btn = document.getElementById("btn-rc-successor-open");
+        if (btn) btn.textContent = `Hap ndërrimin e ri (${formatEuro(n)} në kuletë)`;
+      },
+      initial: "0",
+    });
+
+    function clearRecepSuccessorTimer() {
+      if (recepSuccessorTimer) {
+        clearTimeout(recepSuccessorTimer);
+        recepSuccessorTimer = null;
+      }
+    }
+
+    function fillRcShiftReportFromClosed(closed) {
+      const oc = Number(closed.order_count) || 0;
+      const total = Number(closed.total_sales) || 0;
+      const cash = Number(closed.cash_total) || 0;
+      const card = Number(closed.card_total) || 0;
+      const opening = Number(closed.opening_cash) || 0;
+      const expected = Number(closed.expected_closing_cash) || 0;
+      const counted = Number(closed.closing_cash_actual) || 0;
+      document.getElementById("rc-shift-order-count").textContent = String(oc);
+      document.getElementById("rc-shift-total-sales").textContent = formatEuro(total);
+      document.getElementById("rc-shift-cash-sales").textContent = formatEuro(cash);
+      document.getElementById("rc-shift-card-sales").textContent = formatEuro(card);
+      document.getElementById("rc-shift-occupied").textContent = String(countOccupiedRooms());
+      document.getElementById("rc-shift-opening").textContent = formatEuro(opening);
+      document.getElementById("rc-shift-expected").textContent = formatEuro(expected);
+      rcShiftClosePad.setValue(counted || expected);
+      document.getElementById("rc-successor-order-count").textContent = String(oc);
+      document.getElementById("rc-successor-total").textContent = formatEuro(total);
+      document.getElementById("rc-successor-cash-card").textContent =
+        `${formatEuro(cash)} / ${formatEuro(card)}`;
+      document.getElementById("rc-successor-closing-cash").textContent = formatEuro(counted);
+    }
+
+    const RECEP_SUCCESSOR_STORAGE_KEY = "recep_successor_pending_v1";
+
+    function showRecepSuccessorModal(closed) {
+      lastRecepClosedShiftId = closed?.shift?.id ?? closed?.shift_id ?? null;
+      try {
+        sessionStorage.setItem(RECEP_SUCCESSOR_STORAGE_KEY, JSON.stringify(closed));
+      } catch { /* ignore */ }
+      const closingCash =
+        Number(closed?.closing_cash_actual) ||
+        Number(closed?.expected_closing_cash) ||
+        0;
+      fillRcShiftReportFromClosed(closed);
+      const endModal = document.getElementById("modal-rc-shift-end");
+      if (endModal) {
+        endModal.classList.add("rc-shift-report-only");
+        endModal.hidden = false;
+      }
+      const pinEl = document.getElementById("rc-successor-pin");
+      if (pinEl) pinEl.value = "";
+      rcSuccessorOpenPad.setValue(closingCash);
+      const msg = document.getElementById("rc-successor-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      const timeoutMsg = document.getElementById("rc-successor-timeout-msg");
+      const loginBtn = document.getElementById("btn-rc-successor-login");
+      if (timeoutMsg) timeoutMsg.hidden = true;
+      if (loginBtn) loginBtn.hidden = true;
+      document.getElementById("modal-rc-recep-successor").hidden = false;
+      clearRecepSuccessorTimer();
+      recepSuccessorTimer = setTimeout(() => {
+        if (timeoutMsg) timeoutMsg.hidden = false;
+        if (loginBtn) loginBtn.hidden = false;
+      }, 60_000);
+    }
+
+    function hideRecepSuccessorModal() {
+      clearRecepSuccessorTimer();
+      document.getElementById("modal-rc-recep-successor").hidden = true;
+    }
+
+    function resetRcShiftEndModalUi() {
+      const endModal = document.getElementById("modal-rc-shift-end");
+      if (endModal) endModal.classList.remove("rc-shift-report-only");
+    }
+
+    async function hapNderriminRecepPasardhes() {
+      const msg = document.getElementById("rc-successor-msg");
+      const btn = document.getElementById("btn-rc-successor-open");
+      const pin = String(document.getElementById("rc-successor-pin")?.value || "").trim();
+      if (!lastRecepClosedShiftId) {
+        if (msg) {
+          msg.textContent = "Ndërrimi i mbyllur nuk u gjet — përdorni «Hyr».";
+          msg.hidden = false;
+        }
+        return;
+      }
+      if (pin.length !== 6) {
+        if (msg) {
+          msg.textContent = "PIN duhet të jetë 6 shifra.";
+          msg.hidden = false;
+        }
+        return;
+      }
+      if (msg) msg.hidden = true;
+      if (btn) btn.disabled = true;
+      try {
+        await api("/api/waiter/shift/validate-recepsion-pin", {
+          method: "POST",
+          body: JSON.stringify({ pin }),
+        });
+        const res = await api("/api/waiter/shift/reception-successor", {
+          method: "POST",
+          body: JSON.stringify({
+            pin,
+            opening_cash: rcSuccessorOpenPad.getValue(),
+            from_shift_id: lastRecepClosedShiftId,
+          }),
+        });
+        const nextUser = {
+          token: res.token,
+          roli: res.roli || "recepsion",
+          emri: res.emri,
+          staff_id: res.staff_id,
+          login_time: res.login_time,
+        };
+        if (typeof ruajSesionin === "function") ruajSesionin(nextUser);
+        window.__recepUser = nextUser;
+        document.getElementById("hdr-staff-top").textContent = nextUser.emri || "Recepsion";
+        lastRecepClosedShiftId = null;
+        try { sessionStorage.removeItem(RECEP_SUCCESSOR_STORAGE_KEY); } catch { /* ignore */ }
+        hideRecepSuccessorModal();
+        hideRcShiftEndModal();
+        resetRcShiftEndModalUi();
+        recepShiftOpen = true;
+        syncRcShiftCloseButton();
+        syncSidebarZReportWarn(null);
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message || "Ndërrimi i ri nuk u hap.";
+          msg.hidden = false;
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    document.getElementById("btn-rc-successor-open")?.addEventListener("click", hapNderriminRecepPasardhes);
+    document.getElementById("btn-rc-successor-login")?.addEventListener("click", () => {
+      hideRecepSuccessorModal();
+      if (typeof dil === "function") dil();
     });
 
     function zgjidhRcHandoverPeer(staffId) {
@@ -3447,6 +3711,7 @@
     function hideRcShiftEndModal() {
       document.getElementById("modal-rc-shift-end").hidden = true;
       rcShiftClosePreview = null;
+      resetRcShiftEndModalUi();
     }
 
     function syncRcShiftCloseButton() {
@@ -3645,9 +3910,19 @@
 
       syncSidebarZReportWarn(s);
 
-      if (s.shift_ended) {
-        recepShiftOpen = !!s.open;
+      if (s.shift_ended && !s.open) {
+        recepShiftOpen = false;
         syncRcShiftCloseButton();
+        try {
+          const raw = sessionStorage.getItem(RECEP_SUCCESSOR_STORAGE_KEY);
+          if (raw) {
+            const pending = JSON.parse(raw);
+            if (pending?.shift?.id || pending?.shift_id) {
+              showRecepSuccessorModal(pending);
+              return;
+            }
+          }
+        } catch { /* ignore */ }
         return;
       }
 
@@ -3711,19 +3986,25 @@
       const msgEl = document.getElementById("rc-shift-close-msg");
       if (msgEl) { msgEl.hidden = true; msgEl.textContent = ""; }
       const btn = document.getElementById("btn-rc-shift-close-confirm");
-      const handoverTo = document.getElementById("rc-shift-handover-to")?.value;
       if (btn) { btn.disabled = true; btn.textContent = "Duke mbyllur…"; }
       try {
-        await api("/api/waiter/shift/close", {
+        const closed = await api("/api/waiter/shift/close", {
           method: "POST",
           body: JSON.stringify({
             actual_closing_cash: rcShiftClosePad.getValue(),
-            handover_to_staff_id: handoverTo ? Number(handoverTo) : null,
+            handover_to_staff_id: null,
           }),
         });
-        hideRcShiftEndModal();
         recepShiftOpen = false;
-        if (typeof dil === "function") dil();
+        syncRcShiftCloseButton();
+        if (closed.reception_needs_handover) {
+          showRecepSuccessorModal(closed);
+        } else if (typeof dil === "function") {
+          hideRcShiftEndModal();
+          dil();
+        } else {
+          hideRcShiftEndModal();
+        }
       } catch (err) {
         if (msgEl) {
           msgEl.textContent = err.message;
@@ -4128,7 +4409,19 @@
       startRoomChargePolling();
       startHousekeepingUpdatesPolling();
       startLocalStaffEventsRecep();
+      window.StaffOfflineRetryQueue?.registerHandlers?.({
+        onActionDone() {
+          ngarkoPorosiSherbimiRecep().catch(() => {});
+          if (recepView === "orders") ngarkoPorositeRecep().catch(() => {});
+          if (recepView === "rooms") ngarkoDhomat().catch(() => {});
+        },
+      });
+      window.StaffOfflineRetryQueue?.updateBadge?.();
     })();
   </script>
+  <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
+    <span class="lan-status-dot" aria-hidden="true"></span>
+    <span class="lan-status-label">Pa lidhje</span>
+  </div>
 </body>
 </html>

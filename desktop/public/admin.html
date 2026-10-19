@@ -2369,6 +2369,10 @@
     body.admin-app .dash-col-bar,
     body.admin-app .dash-bar-fill-product,
     body.admin-app .dash-col-bar-reports { background: #FF6B35 !important; }
+    body.admin-app .dash-bar-fill-nights { background: #22c55e !important; }
+    body.admin-app .dash-bar-fill-services { background: #a855f7 !important; }
+    body.admin-app .dash-bar-fill-restaurant { background: #3b82f6 !important; }
+    body.admin-app .dash-bar-fill-reception { background: #f97316 !important; }
     body.admin-app .dash-bar-track { background: #252538 !important; }
     body.admin-app table th { background: #12121f !important; color: #a0a0b8 !important; }
     body.admin-app table td { color: #e8e8ef !important; border-color: #2e2e45 !important; }
@@ -2513,10 +2517,50 @@
       box-shadow: 0 0 0 2px #1a1a2e;
     }
     .fiscal-z-reminder-modal .table-modal-content { max-width: 520px; }
+    .shift-close-toast {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9998;
+      margin: 0;
+      padding: 0.7rem 1rem;
+      background: linear-gradient(90deg, rgba(22, 163, 74, 0.92), rgba(21, 128, 61, 0.88));
+      border-bottom: 1px solid rgba(134, 239, 172, 0.5);
+      color: #f0fdf4;
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+    .shift-close-toast[hidden] { display: none !important; }
+    .daily-balance-card .daily-balance-section-title {
+      font-weight: 800;
+      font-size: 0.82rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ngjyr-muted, #64748b);
+      margin: 1rem 0 0.45rem;
+    }
+    .daily-balance-card .daily-balance-section-title:first-of-type { margin-top: 0.35rem; }
+    .daily-balance-subtotal td { font-weight: 800; background: rgba(15, 23, 42, 0.04); }
+    .daily-balance-footer td { font-weight: 800; font-size: 0.95rem; }
+    .daily-balance-diff-ok td { background: rgba(34, 197, 94, 0.18); color: #14532d; }
+    .daily-balance-diff-bad td { background: rgba(239, 68, 68, 0.16); color: #7f1d1d; }
+    .daily-balance-z-pending {
+      margin: 0.65rem 0 0;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      background: rgba(234, 88, 12, 0.15);
+      color: #9a3412;
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
   </style>
 </head>
 <body class="admin-app">
   <div id="master-only-banner" class="master-only-banner" hidden role="status" aria-live="polite"></div>
+  <div id="shift-close-toast" class="shift-close-toast" hidden role="status" aria-live="polite"></div>
   <div class="admin-shell">
     <header class="admin-topbar">
       <div class="admin-topbar-left">
@@ -2634,6 +2678,30 @@
         <p id="dash-register-total-line" style="margin:0.35rem 0 0;font-weight:800;font-size:1.05rem"></p>
       </div>
 
+      <div class="card shift-reports-card" id="dash-today-shifts-card" style="margin-bottom:1rem">
+        <div class="card-title">Ndërrimet e sotme</div>
+        <p class="settings-field-hint" style="margin:0 0 0.5rem;font-size:0.85rem">Ndërrime të mbyllura sot (restorant + recepsion) — përditësohen automatikisht kur stafi mbyll ndërrimin.</p>
+        <div class="dashboard-top-table-wrap">
+          <table class="dashboard-top-table">
+            <thead>
+              <tr>
+                <th>Roli</th>
+                <th>Emri</th>
+                <th>Fillimi</th>
+                <th>Fundi</th>
+                <th>Cash</th>
+                <th>Kartë</th>
+                <th>Total</th>
+                <th>Porosi</th>
+              </tr>
+            </thead>
+            <tbody id="dash-today-shifts-body">
+              <tr><td colspan="8" style="color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="dashboard-grid-2 hotel-pasqyra-lists">
         <div class="card">
           <div class="card-title">Mbërritjet e sotme</div>
@@ -2679,7 +2747,15 @@
             <input type="time" id="ditari-to-time" step="1" value="23:59:59">
           </div>
         </div>
-        <div class="ditari-actions">
+        <div class="ditari-actions" style="flex-wrap:wrap;align-items:flex-end;gap:0.5rem">
+          <div>
+            <label for="ditari-section-filter" style="font-size:0.85rem;font-weight:600;color:var(--ngjyr-muted,#64748b)">Seksioni</label>
+            <select id="ditari-section-filter" class="btn btn-ghost btn-sm" style="display:block;margin-top:0.25rem;min-width:11rem;padding:0.45rem 0.65rem">
+              <option value="all">Të gjitha</option>
+              <option value="restaurant">Restoranti</option>
+              <option value="reception">Recepsioni</option>
+            </select>
+          </div>
           <button type="button" class="btn btn-primary" id="btn-ditari-kerko">Kërko</button>
           <button type="button" class="btn btn-primary" id="btn-ditari-print">Printo raportin</button>
           <button type="button" class="btn btn-ghost" id="btn-ditari-preview">Parapamje faturë</button>
@@ -3389,9 +3465,9 @@
           <div class="dashboard-kpi-sub">Pa check-out (CO-)</div>
         </div>
         <div class="dashboard-kpi">
-          <div class="dashboard-kpi-label">RECEPSION</div>
+          <div class="dashboard-kpi-label">Recepsioni</div>
           <div class="dashboard-kpi-val" id="raport-reception">0.00 €</div>
-          <div class="dashboard-kpi-sub">Check-out dhomash (CO-)</div>
+          <div class="dashboard-kpi-sub">Përfshin: check-out, arkë recepsioni, shërbime</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">NETË HOTEL</div>
@@ -3442,6 +3518,14 @@
         <div id="raport-chart-daily" class="dashboard-chart-bars"></div>
       </div>
 
+      <div style="margin:0 0 0.75rem;display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem">
+        <label for="raport-top-products-filter" style="font-size:0.85rem;font-weight:600;color:var(--ngjyr-muted,#64748b)">Top produkte — seksioni</label>
+        <select id="raport-top-products-filter" class="btn btn-ghost btn-sm" style="min-width:11rem;padding:0.45rem 0.65rem">
+          <option value="all">Të gjitha</option>
+          <option value="restaurant">Restoranti</option>
+          <option value="reception">Recepsioni</option>
+        </select>
+      </div>
       <div class="dashboard-grid-2 reports-grid-2">
         <div class="card dashboard-chart-card">
           <div class="card-title">Top shitjet — grafik</div>
@@ -3606,6 +3690,22 @@
               <tr><td colspan="6" class="purchases-empty">Zgjidhni periudhën e raportit</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="card daily-balance-card" id="daily-balance-card">
+        <div class="card-title">Barazimi ditor</div>
+        <p class="tables-panel-sub" style="margin:-0.35rem 0 0.75rem">Restorant + recepsion (ndërrime të mbyllura) krahasuar me totalin fiskal Z</p>
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:0.5rem;margin-bottom:0.75rem">
+          <div>
+            <label for="daily-balance-date" style="font-size:0.85rem;font-weight:600;color:var(--ngjyr-muted,#64748b)">Data</label>
+            <input type="date" id="daily-balance-date" class="btn btn-ghost btn-sm" style="display:block;margin-top:0.25rem;padding:0.45rem 0.65rem">
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-daily-balance-show" style="margin-bottom:1px">Shfaq</button>
+        </div>
+        <div id="daily-balance-head" style="font-weight:800;margin-bottom:0.5rem;font-size:0.95rem"></div>
+        <div id="daily-balance-body">
+          <p style="color:var(--ngjyr-muted);margin:0">Zgjidhni datën dhe klikoni Shfaq.</p>
         </div>
       </div>
 
@@ -6580,6 +6680,7 @@
 
   <script src="/js/hotel-business-date.js?v=1"></script>
   <script src="/js/app.js"></script>
+  <script src="/js/local-staff-events.js?v=2"></script>
   <script src="/js/virt-window.js?v=1"></script>
   <script src="/js/vat-smart-mapping.js"></script>
   <script src="/js/i18n-client.js"></script>
@@ -7153,6 +7254,14 @@
       if (name === "promocione") ngarkoPromocionet();
       if (name === "raportet") {
         if (!document.getElementById("raport-nga").value) applyRaportPreset("sot");
+        const balIn = document.getElementById("daily-balance-date");
+        if (balIn && !balIn.value) {
+          balIn.value =
+            typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
+              ? HotelBusinessDate.businessYmd()
+              : new Date().toISOString().slice(0, 10);
+        }
+        ngarkoBaraziminDitor().catch(() => {});
         ngarkoRaportet();
       }
       if (name === "faturat") window.initAdminSalesInvoices?.();
@@ -7658,9 +7767,10 @@
     }
 
     function renderDitariTables(d) {
-      renderDitariStats("ditari-stats", d);
+      const view = ditariViewFromPayload(d);
+      renderDitariStats("ditari-stats", view);
       const tbody = document.getElementById("ditari-lista");
-      const entryRows = (d.entries || []).map(e => {
+      const entryRows = (view.entries || []).map(e => {
             const cancelled = e.status === "cancelled";
             const rowClass = cancelled ? ' class="ditari-row-cancelled"' : "";
             const statusLabel = cancelled
@@ -7699,7 +7809,7 @@
           : '<tr><td colspan="8" style="color:var(--ngjyr-muted)">Nuk ka transaksione për këtë periudhë</td></tr>';
       }
       document.getElementById("ditari-totali").textContent =
-        "TOTALI (" + d.periodLabel + "): " + formatEuro(d.totalSales);
+        "TOTALI (" + view.periodLabel + "): " + formatEuro(view.totalSales);
 
       lastDitariPayload = d;
       if (ditariActivityVisible) renderDitariActivityRows(d.activity || []);
@@ -7707,7 +7817,69 @@
     }
 
     let lastDitariPayload = null;
+    let ditariSectionFilter = "all";
     let ditariActivityVisible = false;
+
+    function isDitariRecepsionEntry(e) {
+      const rc = String(e?.receipt_number || "").trim().toUpperCase();
+      return rc.startsWith("CO-") || rc.startsWith("RC-") || rc.startsWith("SVC-");
+    }
+
+    function filterDitariEntriesBySection(entries, filter) {
+      const list = Array.isArray(entries) ? entries : [];
+      if (filter === "restaurant") return list.filter((e) => !isDitariRecepsionEntry(e));
+      if (filter === "reception") return list.filter((e) => isDitariRecepsionEntry(e));
+      return list;
+    }
+
+    function computeDitariTotalsFromEntries(entries) {
+      let totalSales = 0;
+      let totalCash = 0;
+      let totalKarte = 0;
+      let orderCount = 0;
+      for (const e of entries) {
+        if (e.status === "cancelled") continue;
+        const t = Number(e.total) || 0;
+        totalSales += t;
+        orderCount += 1;
+        let cash = Number(e.cash_amount);
+        let card = Number(e.card_amount);
+        if (!Number.isFinite(cash)) cash = 0;
+        if (!Number.isFinite(card)) card = 0;
+        const pm = String(e.payment_method || "").toLowerCase();
+        if (cash === 0 && card === 0 && t > 0) {
+          if (pm === "karte" || pm === "debit_card" || pm === "credit_card") card = t;
+          else cash = t;
+        }
+        totalCash += cash;
+        totalKarte += card;
+      }
+      totalSales = Math.round(totalSales * 100) / 100;
+      totalCash = Math.round(totalCash * 100) / 100;
+      totalKarte = Math.round(totalKarte * 100) / 100;
+      const totalTjera = Math.round(Math.max(0, totalSales - totalCash - totalKarte) * 100) / 100;
+      return { totalSales, totalCash, totalKarte, totalTjera, orderCount };
+    }
+
+    function ditariViewFromPayload(d) {
+      if (!d || ditariSectionFilter === "all") return d;
+      const filtered = filterDitariEntriesBySection(d.entries, ditariSectionFilter);
+      const totals = computeDitariTotalsFromEntries(filtered);
+      const filterLabel =
+        ditariSectionFilter === "reception"
+          ? tt("Recepsioni")
+          : tt("Restoranti");
+      return {
+        ...d,
+        entries: filtered,
+        totalSales: totals.totalSales,
+        totalCash: totals.totalCash,
+        totalKarte: totals.totalKarte,
+        totalTjera: totals.totalTjera,
+        orderCount: totals.orderCount,
+        periodLabel: `${d.periodLabel} — ${filterLabel}`,
+      };
+    }
 
     function clearDitariActivityRows() {
       const actBody = document.getElementById("ditari-activity");
@@ -8093,6 +8265,7 @@
         renderLowStockBanner([]);
       }
       await ngarkoRegisterStatusPasqyra();
+      await ngarkoDashSotmeNderrimet();
       } finally {
         ngarkoPasqyra._inFlight = false;
       }
@@ -8186,6 +8359,11 @@
     });
 
     document.getElementById("btn-ditari-kerko").addEventListener("click", () => ngarkoDitarin({ audit: true }));
+
+    document.getElementById("ditari-section-filter")?.addEventListener("change", (ev) => {
+      ditariSectionFilter = String(ev.target?.value || "all");
+      if (lastDitariPayload) renderDitariTables(lastDitariPayload);
+    });
 
     document.getElementById("btn-ditari-print").addEventListener("click", async () => {
       const r = ditariRangeFromInputs();
@@ -15296,6 +15474,268 @@
         : '<tr><td colspan="4" style="color:var(--ngjyr-muted)">Nuk ka të dhëna për këtë periudhë</td></tr>';
     }
 
+    let lastRaportTopItemsBySection = null;
+    let raportTopProductsFilter = "all";
+
+    function raportTopItemsForActiveFilter() {
+      const sec = lastRaportTopItemsBySection;
+      if (!sec) return [];
+      if (raportTopProductsFilter === "restaurant") return sec.restaurant || [];
+      if (raportTopProductsFilter === "reception") return sec.reception || [];
+      return sec.all || [];
+    }
+
+    function refreshRaportTopProductsView() {
+      const rows = raportTopItemsForActiveFilter();
+      renderRaportProductsChart(rows);
+      renderRaportTopTable(rows);
+    }
+
+    document.getElementById("raport-top-products-filter")?.addEventListener("change", (ev) => {
+      raportTopProductsFilter = String(ev.target?.value || "all");
+      refreshRaportTopProductsView();
+    });
+
+    function adminShiftRoleLabel(role) {
+      return role === "recepsion" ? "Recepsion" : "Kamarier";
+    }
+
+    function fmtShiftReportDt(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      return d.toLocaleString("sq-AL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function dashTodayShiftRowHtml(s) {
+      const sid = s.id != null ? s.id : s.shift_id;
+      const total =
+        Number(s.total_sales) ||
+        Math.round(((Number(s.cash_sales_total) || 0) + (Number(s.card_sales_total) || 0)) * 100) / 100;
+      const orders = Number(s.order_count_total ?? s.order_count) || 0;
+      return `<tr data-shift-id="${escHtml(String(sid ?? ""))}">
+            <td>${escHtml(adminShiftRoleLabel(s.staff_role))}</td>
+            <td>${escHtml(s.waiter_name || s.staff_name || "—")}</td>
+            <td>${fmtShiftReportDt(s.opened_at || s.shift_start)}</td>
+            <td>${fmtShiftReportDt(s.closed_at || s.shift_end)}</td>
+            <td>${formatEuro(s.cash_sales_total ?? s.cash_amount ?? 0)}</td>
+            <td>${formatEuro(s.card_sales_total ?? s.card_amount ?? 0)}</td>
+            <td>${formatEuro(total)}</td>
+            <td>${orders}</td>
+          </tr>`;
+    }
+
+    function renderDashTodayShiftsTable(rows) {
+      const body = document.getElementById("dash-today-shifts-body");
+      if (!body) return;
+      if (!rows.length) {
+        body.innerHTML =
+          '<tr><td colspan="8" style="color:var(--ngjyr-muted)">Asnjë ndërrim i mbyllur sot.</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map((s) => dashTodayShiftRowHtml(s)).join("");
+    }
+
+    async function ngarkoDashSotmeNderrimet() {
+      const body = document.getElementById("dash-today-shifts-body");
+      if (!body) return;
+      const today =
+        typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
+          ? HotelBusinessDate.businessYmd()
+          : new Date().toISOString().slice(0, 10);
+      try {
+        const data = await api(
+          `/api/admin/shift-reports?from=${encodeURIComponent(today)}&to=${encodeURIComponent(today)}`,
+        );
+        renderDashTodayShiftsTable(data.shifts || []);
+      } catch (err) {
+        body.innerHTML = `<tr><td colspan="8" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function appendDashTodayShiftFromSse(d) {
+      const body = document.getElementById("dash-today-shifts-body");
+      if (!body || !d || d.shift_id == null) return;
+      const sid = String(d.shift_id);
+      if (body.querySelector(`tr[data-shift-id="${sid}"]`)) return;
+      const placeholder = body.querySelector("td[colspan]");
+      if (placeholder && body.children.length === 1) body.innerHTML = "";
+      body.insertAdjacentHTML(
+        "afterbegin",
+        dashTodayShiftRowHtml({
+          id: d.shift_id,
+          staff_role: d.staff_role,
+          staff_name: d.staff_name,
+          opened_at: d.shift_start,
+          closed_at: d.shift_end,
+          cash_amount: d.cash_amount,
+          card_amount: d.card_amount,
+          total_sales: d.total_sales,
+          order_count: d.order_count,
+        }),
+      );
+    }
+
+    function showShiftCloseToast(d) {
+      const el = document.getElementById("shift-close-toast");
+      if (!el || !d) return;
+      const role = adminShiftRoleLabel(d.staff_role);
+      const total = formatEuro(Number(d.total_sales) || 0);
+      const cash = formatEuro(Number(d.cash_amount) || 0);
+      const card = formatEuro(Number(d.card_amount) || 0);
+      const n = Number(d.order_count) || 0;
+      el.textContent = `Ndërrimi u mbyll — ${d.staff_name || "—"} (${role}) | ${total} (Cash: ${cash}, Kartë: ${card}) | ${n} porosi`;
+      el.hidden = false;
+      clearTimeout(showShiftCloseToast._hideTm);
+      showShiftCloseToast._hideTm = setTimeout(() => {
+        el.hidden = true;
+      }, 12000);
+    }
+
+    function initAdminShiftCloseLive() {
+      if (typeof LocalStaffEvents === "undefined") return;
+      LocalStaffEvents.on("shift-closed", (env) => {
+        const d = env?.data && typeof env.data === "object" ? env.data : env;
+        showShiftCloseToast(d);
+        appendDashTodayShiftFromSse(d);
+        ngarkoPasqyra().catch(() => {});
+        if (document.getElementById("panel-raportet")?.classList.contains("active")) {
+          const nga = document.getElementById("raport-nga")?.value;
+          const deri = document.getElementById("raport-deri")?.value;
+          if (nga && deri) ngarkoShiftRaportet(nga, deri);
+          const balDate = document.getElementById("daily-balance-date")?.value;
+          const today =
+            typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
+              ? HotelBusinessDate.businessYmd()
+              : new Date().toISOString().slice(0, 10);
+          if (balDate === today) ngarkoBaraziminDitor(balDate);
+        }
+      });
+      LocalStaffEvents.connect();
+    }
+
+    function fmtDailyBalanceTime(iso) {
+      if (!iso) return "—";
+      try {
+        return new Date(iso).toLocaleString("sq-AL", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } catch {
+        return String(iso).slice(11, 16) || "—";
+      }
+    }
+
+    function renderDailyBalanceSide(title, side) {
+      const rows = (side?.shifts || [])
+        .map(
+          (s) => `<tr>
+          <td>${escHtml(s.staff_name || "—")}</td>
+          <td>${fmtDailyBalanceTime(s.opened_at)}</td>
+          <td>${fmtDailyBalanceTime(s.closed_at)}</td>
+          <td>${formatEuro(s.cash_amount || 0)}</td>
+          <td>${formatEuro(s.card_amount || 0)}</td>
+          <td>${formatEuro(s.total || 0)}</td>
+        </tr>`,
+        )
+        .join("");
+      const empty =
+        '<tr><td colspan="6" style="color:var(--ngjyr-muted)">Nuk ka ndërrime të mbyllura.</td></tr>';
+      return `
+        <div class="daily-balance-section-title">${escHtml(title)}</div>
+        <div class="reports-table-wrap">
+          <table class="dashboard-top-table">
+            <thead><tr>
+              <th>Emri</th><th>Fillimi</th><th>Fundi</th><th>Cash</th><th>Kartë</th><th>Total</th>
+            </tr></thead>
+            <tbody>${rows || empty}</tbody>
+            <tfoot>
+              <tr class="daily-balance-subtotal">
+                <td colspan="3">Subtotal ${escHtml(title)}</td>
+                <td>${formatEuro(side?.subtotal_cash || 0)}</td>
+                <td>${formatEuro(side?.subtotal_card || 0)}</td>
+                <td>${formatEuro(side?.subtotal || 0)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+    }
+
+    function renderDailyBalanceReport(data) {
+      const head = document.getElementById("daily-balance-head");
+      const body = document.getElementById("daily-balance-body");
+      if (!body) return;
+      if (head) head.textContent = `BARAZIMI DITOR — ${data.date || ""}`;
+      let fiscalHtml = "";
+      if (data.fiscal_z_total == null) {
+        fiscalHtml =
+          '<p class="daily-balance-z-pending">Z raporti nuk është shtypur ende për këtë ditë (ose fiskalizimi është çaktivizuar).</p>';
+      }
+      const diff = data.difference;
+      const diffOk = diff != null && Math.abs(diff) < 0.005;
+      const diffRowClass = diff == null ? "" : diffOk ? "daily-balance-diff-ok" : "daily-balance-diff-bad";
+      const diffLabel =
+        diff == null
+          ? "—"
+          : diffOk
+            ? `${formatEuro(0)} ✅`
+            : `${formatEuro(diff)} ❌`;
+      body.innerHTML =
+        renderDailyBalanceSide("Restoranti", data.restaurant)
+        + renderDailyBalanceSide("Recepsioni", data.reception)
+        + `<div class="reports-table-wrap" style="margin-top:0.75rem">
+          <table class="dashboard-top-table">
+            <tbody>
+              <tr class="daily-balance-footer">
+                <td colspan="3">GRAND TOTAL</td>
+                <td>${formatEuro(data.grand_total_cash || 0)}</td>
+                <td>${formatEuro(data.grand_total_card || 0)}</td>
+                <td>${formatEuro(data.grand_total || 0)}</td>
+              </tr>
+              <tr class="daily-balance-footer">
+                <td colspan="5">Total Z fiskale</td>
+                <td>${data.fiscal_z_total != null ? formatEuro(data.fiscal_z_total) : "—"}</td>
+              </tr>
+              <tr class="daily-balance-footer ${diffRowClass}">
+                <td colspan="5">Diferenca (ndërrime − Z)</td>
+                <td>${diffLabel}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`
+        + fiscalHtml;
+    }
+
+    async function ngarkoBaraziminDitor(dateOverride) {
+      const input = document.getElementById("daily-balance-date");
+      const body = document.getElementById("daily-balance-body");
+      if (!body) return;
+      const today =
+        typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
+          ? HotelBusinessDate.businessYmd()
+          : new Date().toISOString().slice(0, 10);
+      const date = String(dateOverride || input?.value || today).slice(0, 10);
+      if (input && !input.value) input.value = date;
+      try {
+        body.innerHTML = '<p style="color:var(--ngjyr-muted)">Duke ngarkuar…</p>';
+        const data = await api(`/api/admin/daily-balance?date=${encodeURIComponent(date)}`);
+        renderDailyBalanceReport(data);
+      } catch (err) {
+        body.innerHTML = `<p class="purchases-empty">${escHtml(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById("btn-daily-balance-show")?.addEventListener("click", () => {
+      ngarkoBaraziminDitor();
+    });
+
+    document.getElementById("shift-reports-role-filter")?.addEventListener("change", () => {
+      const nga = document.getElementById("raport-nga")?.value;
+      const deri = document.getElementById("raport-deri")?.value;
+      if (nga && deri) ngarkoShiftRaportet(nga, deri).catch(() => {});
+    });
+
     async function ngarkoShiftRaportet(from, to) {
       const body = document.getElementById("shift-reports-body");
       if (!body) return;
@@ -15418,14 +15858,16 @@
           { label: "NETËT", value: formatEuro(src.nights || 0) },
           { label: "SHËRBIMET", value: formatEuro(src.services || 0) },
           { label: "RESTORANTI / BARI", value: formatEuro(src.restaurant || 0) },
+          { label: "RECEPSIONI", value: formatEuro(src.reception || 0) },
         ]);
       }
       const sourceEl = document.getElementById("hotel-rev-source-chart");
       if (sourceEl) {
         const parts = [
-          { category: "Netët e dhomave", total: Number(src.nights) || 0 },
-          { category: "Shërbimet", total: Number(src.services) || 0 },
-          { category: "Restoranti / Bari", total: Number(src.restaurant) || 0 },
+          { category: "Netët e dhomave", total: Number(src.nights) || 0, fill: "dash-bar-fill-nights" },
+          { category: "Shërbimet", total: Number(src.services) || 0, fill: "dash-bar-fill-services" },
+          { category: "Restoranti / Bari", total: Number(src.restaurant) || 0, fill: "dash-bar-fill-restaurant" },
+          { category: "Recepsioni", total: Number(src.reception) || 0, fill: "dash-bar-fill-reception" },
         ];
         const max = Math.max(...parts.map((p) => p.total), 1);
         sourceEl.innerHTML = parts.every((p) => !p.total)
@@ -15434,7 +15876,7 @@
             const pct = Math.round((p.total / max) * 100);
             return `<div class="dash-bar-row">
               <span class="dash-bar-label">${escHtml(p.category)}</span>
-              <div class="dash-bar-track"><div class="dash-bar-fill dash-bar-fill-cat" style="width:${pct}%"></div></div>
+              <div class="dash-bar-track"><div class="dash-bar-fill ${p.fill}" style="width:${pct}%"></div></div>
               <span class="dash-bar-val">${formatEuro(p.total)}</span>
             </div>`;
           }).join("");
@@ -15605,8 +16047,12 @@
       const regPurchEl = document.getElementById("raport-cash-register-purchases");
       if (regPurchEl) regPurchEl.textContent = formatEuro(r.purchases_cash ?? 0);
       renderRaportDailyChart(r.dailySales || []);
-      renderRaportProductsChart(r.topItems || []);
-      renderRaportTopTable(r.topItems || []);
+      lastRaportTopItemsBySection = r.topItemsBySection || {
+        all: r.topItems || [],
+        restaurant: r.topItems || [],
+        reception: [],
+      };
+      refreshRaportTopProductsView();
       const byReg = document.getElementById("raport-by-register");
       if (byReg) {
         const regs = r.byRegister || [];
@@ -20809,6 +21255,7 @@
       } catch { /* ignore */ }
       ngarkoSettings().catch(() => {});
       shfaqShiritinArkaDytesore().catch(() => {});
+      initAdminShiftCloseLive();
       ngarkoPasqyra();
       setInterval(() => {
         if (document.getElementById("panel-pasqyra")?.classList.contains("active")) {

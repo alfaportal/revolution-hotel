@@ -271,8 +271,14 @@ function isWaiterWebSocketOpen() {
   return !!(waiterWsSocket && waiterWsSocket.readyState === 1);
 }
 
-/** Interval polling: i shpejtë pa WS, i ngadaltë (~2–3 min) kur WS është lidhur. */
+/** Interval polling: LAN (SSE+health) 8s/30s; përndryshe WS i shpejtë / i ngadaltë. */
 function waiterPollIntervalMs(fastMs, slowMs = 150000) {
+  if (typeof LocalStaffEvents !== "undefined" && typeof LocalStaffEvents.fallbackIntervalMs === "function") {
+    return LocalStaffEvents.fallbackIntervalMs(
+      Math.max(8000, Number(fastMs) || 8000),
+      Math.min(Number(slowMs) || 30000, 30000),
+    );
+  }
   const fast = Math.max(1000, Number(fastMs) || 6000);
   const slow = Math.max(fast, Number(slowMs) || 150000);
   return isWaiterWebSocketOpen() ? slow : fast;

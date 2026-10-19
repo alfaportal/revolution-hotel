@@ -44,6 +44,7 @@ function buildSalesByItemForDay(db, date) {
       AND NOT (
         UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
         OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+        OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
       )
   `).all(date);
 
@@ -104,6 +105,7 @@ function buildStockRunway(db, date, { paceDays = 30 } = {}) {
       AND NOT (
         UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'CO-%'
         OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'RC-%'
+        OR UPPER(TRIM(COALESCE(receipt_number, ''))) LIKE 'SVC-%'
       )
   `).all(from, date);
 
