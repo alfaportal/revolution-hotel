@@ -792,6 +792,10 @@ async function pushQrWaiterAcceptToCloudKitchen(
 /** POS/kamarier — mos blloko UI; kuzhina merr përditësimin sa më shpejt (sync + retry). */
 function pushWaiterOrderToCloudBackground(db, order, { table_number = 0, ordered_at = "" } = {}) {
   if (!order) return;
+  if (orderMirrorsRemoteCloud(order)) {
+    pushLinkedCloudActiveOrder(db, order, { table_number });
+    return;
+  }
   const opts = {
     table_number,
     ordered_at: ordered_at || order.created_at || new Date().toISOString(),
@@ -897,10 +901,70 @@ function getProtectedPendingTableNumbers(db) {
   return nums;
 }
 
+const linkedCloudPushFingerprint = new Map();
+
+function linkedCloudOrderFingerprint(order) {
+  const items = String(order?.items_json || "").trim();
+  const total = Number(order?.total) || 0;
+  return `${items}|${total}`;
+}
+
+/** POS → cloud: përditëso rreshtin WEB (QR/takeaway) me artikujt aktualë — pronari sheh të njëjtën gjendje. */
+function pushLinkedCloudActiveOrder(db, order, { table_number = 0 } = {}) {
+  if (!order || !isCloudConfigured(db)) return;
+  const cloudUuid = String(order.cloud_order_id || "").trim();
+  if (!cloudUuid) return;
+
+  const fp = linkedCloudOrderFingerprint(order);
+  if (linkedCloudPushFingerprint.get(cloudUuid) === fp) return;
+
+  let cloudTableNum = Number(table_number) || 0;
+  if (order.table_id && typeof db.isTableInOnlinePickupZone === "function" && typeof db.getTableById === "function") {
+    const trow = db.getTableById(order.table_id);
+    if (trow && db.isTableInOnlinePickupZone(trow)) cloudTableNum = 0;
+  }
+
+  const built = buildSalePayload(db, order, {
+    table_number: cloudTableNum,
+    status: "ordered",
+    ordered_at: order.created_at || new Date().toISOString(),
+  });
+  if (!built) return;
+
+  built.payload.pos_keep_acceptance = true;
+  let mapped = false;
+  try {
+    const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
+    const key = map[cloudUuid];
+    if (key?.local_order_id && key?.device_id) {
+      built.payload.device_id = String(key.device_id).trim().toUpperCase();
+      built.payload.local_order_id = String(key.local_order_id).trim();
+      mapped = true;
+    }
+  } catch {
+    /* ignore */
+  }
+  if (!mapped) return;
+
+  requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload)
+    .then(r => {
+      if (r.status >= 400) {
+        console.warn("[cloud] linked order update:", r.status, r.data?.slice?.(0, 120));
+        return;
+      }
+      linkedCloudPushFingerprint.set(cloudUuid, fp);
+      console.log("[cloud] linked order sync OK → pronari/telefon:", cloudUuid.slice(0, 8));
+      attachCloudIdFromSyncResponse(db, order, r);
+    })
+    .catch(err => {
+      console.warn("[cloud] linked order sync:", err.message);
+    });
+}
+
 /**
  * PROTECTED (PROTECTED-FUNCTIONS.md #17) — pre-build test + Cursor rule.
- * Mos heq `orderMirrorsRemoteCloud` skip: reconcile + pushActiveOrderUpdate
- * mbishkruante Supabase me items lokale të vjetra (telefon → zhduket në ~3s).
+ * Porosi me cloud_order_id: pushLinkedCloudActiveOrder (POS autoritativ pas PRANO).
+ * Porosi vetëm lokale: pushActiveOrderUpdate si më parë.
  */
 function reconcileAllTablesWithCloud(db) {
   if (!isCloudConfigured(db)) return;
@@ -913,8 +977,12 @@ function reconcileAllTablesWithCloud(db) {
       const num = Number(t.number);
       if (!num) continue;
       if (t.order) {
-        // PROTECTED: skip push për cloud_order_id — cloud është burimi (telefon/QR).
-        if (orderMirrorsRemoteCloud(t.order)) continue;
+        if (orderMirrorsRemoteCloud(t.order)) {
+          pushLinkedCloudActiveOrder(db, t.order, {
+            table_number: num,
+          });
+          continue;
+        }
         pushActiveOrderUpdate(db, t.order, {
           table_number: num,
           ordered_at: t.order.created_at,
@@ -3513,6 +3581,7 @@ module.exports = {
   pushSaleSync,
   pushActiveOrderUpdate,
   pushActiveOrderUpdateSync,
+  pushLinkedCloudActiveOrder,
   pushWaiterOrderToCloudBackground,
   CLOUD_WAITER_PUSH_TIMEOUT_MS,
   CLOUD_CLOSE_PUSH_TIMEOUT_MS,
