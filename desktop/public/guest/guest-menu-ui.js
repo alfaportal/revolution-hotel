@@ -69,14 +69,38 @@
     );
   }
 
+  function normMenuCategory(name) {
+    return String(name || "").trim();
+  }
+
   /** Si KAFENE / kamarieri: rendi i KATEGORITE nga API (admin sort_order), pastaj orphan. */
   function orderedCategories(items, categoryOrder) {
-    const present = new Set((items || []).map((i) => String(i.category || "").trim()).filter(Boolean));
-    const ordered = (categoryOrder || []).filter((c) => present.has(c));
-    for (const c of present) {
-      if (!ordered.includes(c)) ordered.push(c);
+    const presentList = [
+      ...new Set((items || []).map((i) => normMenuCategory(i.category)).filter(Boolean)),
+    ];
+    const presentNorm = new Set(presentList.map((c) => c.toLowerCase()));
+    const ordered = [];
+    const seen = new Set();
+    for (const raw of categoryOrder || []) {
+      const c = normMenuCategory(raw);
+      if (!c) continue;
+      const hit = presentList.find((p) => p.toLowerCase() === c.toLowerCase()) || (presentNorm.has(c.toLowerCase()) ? c : "");
+      if (hit && !seen.has(hit.toLowerCase())) {
+        seen.add(hit.toLowerCase());
+        ordered.push(hit);
+      }
+    }
+    for (const c of presentList) {
+      if (!seen.has(c.toLowerCase())) {
+        seen.add(c.toLowerCase());
+        ordered.push(c);
+      }
     }
     return ordered;
+  }
+
+  function itemInMenuCategory(item, category) {
+    return normMenuCategory(item?.category).toLowerCase() === normMenuCategory(category).toLowerCase();
   }
 
   function sortMenuItemsByAdminOrder(list) {
@@ -207,7 +231,7 @@
     global.menuPhotoUrl = guestPhotoUrl;
 
     function renderGrid() {
-      const filtered = sortMenuItemsByAdminOrder(list.filter((it) => it.category === active));
+      const filtered = sortMenuItemsByAdminOrder(list.filter((it) => itemInMenuCategory(it, active)));
       gridEl.innerHTML = "";
       if (!filtered.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj për këtë kategori.</p>';
@@ -351,10 +375,7 @@
     );
     const gs = (serviceGroups || []).filter((g) => (g.services || []).length);
 
-    const tabs = [];
-    if (menuList.length) {
-      tabs.push({ kind: "restaurant", label: restaurantLabel, menuCats, menuList });
-    }
+    const tabs = [{ kind: "restaurant", label: restaurantLabel, menuCats, menuList }];
     for (const g of gs) {
       tabs.push({ kind: "service", label: g.name || "Të tjera", group: g, services: g.services || [] });
     }
@@ -397,8 +418,17 @@
 
     function renderRestaurantGrid() {
       gridEl.innerHTML = "";
+      if (!menuList.length) {
+        gridEl.innerHTML =
+          '<p class="menu-empty-msg">Menu restoranti — kontrolloni te pronari (Admin → Menu) ose prisni sinkronizimin cloud.</p>';
+        return;
+      }
+      if (!menuCats.length) {
+        gridEl.innerHTML = '<p class="menu-empty-msg">Menu ka artikuj por mungojnë kategoritë — rifreskoni ose kontrolloni admin.</p>';
+        return;
+      }
       const filtered = sortMenuItemsByAdminOrder(
-        menuList.filter((it) => it.category === activeMenuCat),
+        menuList.filter((it) => itemInMenuCategory(it, activeMenuCat)),
       );
       if (!filtered.length) {
         gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj për këtë kategori.</p>';

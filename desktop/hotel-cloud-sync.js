@@ -647,6 +647,20 @@ async function fullHotelSync(db) {
     qr_venues: await pushHotelQrVenuesToCloud(db),
   };
 
+  /** Menu restorant (QR / faqe publike / takeaway) — e njëjta rrugë si «Sinkronizo gjithçka». */
+  let catalog = { ok: false, skipped: true, message: "Catalog sync nuk u provua." };
+  try {
+    catalog = await cloudSync.pushCatalogAsync(db);
+    if (catalog.skipped) {
+      /* Arka sekondare — menuja shkon vetëm nga Kryesorja. */
+    } else if (!catalog.ok && catalog.message) {
+      console.warn("[hotel-cloud-sync] catalog:", catalog.message);
+    }
+  } catch (err) {
+    catalog = { ok: false, message: err.message || String(err) };
+    console.warn("[hotel-cloud-sync] catalog dështoi:", catalog.message);
+  }
+
   const public_bookings = await applyPublicBookingsPendingFromCloud(db);
   const pull = await pullHotelDataFromCloud(db);
   db.setSetting(LAST_SYNC_KEY, syncStartedAt);
@@ -662,6 +676,7 @@ async function fullHotelSync(db) {
   return {
     ok: true,
     push,
+    catalog,
     public_bookings,
     pull,
     last_hotel_sync: syncStartedAt,
