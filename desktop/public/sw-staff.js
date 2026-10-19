@@ -1,5 +1,5 @@
 /* Revolution HOTEL — PWA stafi (kamarier / recepsion / shërbimi). Network-first + finder offline. */
-const CACHE_NAME = "hotel-staff-role-pwa-v5";
+const CACHE_NAME = "hotel-staff-role-pwa-v6";
 const PRECACHE_URLS = [
   "/login.html",
   "/staff-pos-finder.html",
@@ -19,8 +19,13 @@ const PRECACHE_URLS = [
   "/js/pwa-staff-register.js",
   "/js/staff-auto-connect.js",
   "/js/kds-station-session.js",
+  "/js/kds-station-bootstrap.js",
   "/kitchen.html",
   "/bar.html",
+  "/css/kitchen.css",
+  "/css/bar.css",
+  "/js/kitchen.js",
+  "/js/bar.js",
 ];
 
 function isCacheableGet(url) {

@@ -1908,6 +1908,8 @@ function buildLocalWaiterLanLinkPayload() {
     local_waiter_url: getLocalWaiterUrl(),
     local_recepsion_url: getLocalRecepsionUrl(),
     local_sherbimi_url: getLocalSherbimiUrl(),
+    local_kuzhina_url: getLocalKitchenUrl(),
+    local_banaku_url: getLocalBarUrl(),
     local_waiter_panel_url: getLocalWaiterPanelUrl(),
     local_lan_ip: pickLanIPv4Address() || "",
     local_server_port: getLocalServerPort(),
@@ -1963,8 +1965,23 @@ function localStaffPathSuffix(role, code) {
             : "kamarier";
   let path = `/${tipi}/${slug}/${seg}`;
   const c = String(code ?? "").trim();
-  if (c && /^\d{3}$/.test(c)) path += `/${c}`;
+  const kdsStation = seg === "kuzhina" || seg === "banaku";
+  if (c && /^\d{3}$/.test(c) && !kdsStation) path += `/${c}`;
   return path;
+}
+
+function getLocalKitchenUrl() {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix("kuzhina");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
+function getLocalBarUrl() {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix("banaku");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
 }
 
 function getLocalWaiterUrl() {
@@ -2412,8 +2429,45 @@ function getSession(token) {
     s.loginAt = now;
     s.expiresAt = now + KDS_STATION_SESSION_TTL;
     sessions.set(t, s);
+    if (typeof db.touchAuthSession === "function") {
+      try {
+        db.touchAuthSession(t, new Date(s.expiresAt).toISOString());
+      } catch {
+        /* ignore */
+      }
+    }
   }
   return s;
+}
+
+function getOrCreateKdsStationSession(role) {
+  const r = String(role || "").trim().toLowerCase();
+  if (!isKdsStationRole(r)) {
+    throw new Error("Vetëm kuzhina ose banaku.");
+  }
+  if (typeof db.listActiveAuthSessions === "function") {
+    for (const row of db.listActiveAuthSessions()) {
+      if (String(row.role || "").trim().toLowerCase() !== r) continue;
+      const s = sessionPayloadFromRow(row);
+      if (!s || s.expiresAt <= Date.now()) continue;
+      sessions.set(String(row.token), s);
+      return {
+        token: String(row.token),
+        login_time: row.created_at || new Date(s.loginAt).toISOString(),
+        emri: row.emri || (r === "banaku" ? "Banak" : "Kuzhina"),
+        roli: r,
+        reused: true,
+      };
+    }
+  }
+  const label = r === "banaku" ? "Banak" : "Kuzhina";
+  const created = createSession(r, label, null);
+  return {
+    ...created,
+    emri: label,
+    roli: r,
+    reused: false,
+  };
 }
 
 function auth(req, res, next) {
@@ -2875,10 +2929,15 @@ function handleStaffWifiEntry(req, res, mode) {
   if (!expSlug || reqTipi !== expTipi || reqSlug !== expSlug) {
     return res.status(404).send("404 — lokali nuk u gjet.");
   }
+  if (mode === "kuzhina" || mode === "banaku") {
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const dest = mode === "kuzhina" ? "/kitchen.html" : "/bar.html";
+    return res.redirect(302, `${dest}${qs}`);
+  }
   const kodRaw = req.params.kod != null ? String(req.params.kod).trim() : "";
   const codeRole = mode === "sherbimi"
     ? "pastrim"
-    : (mode === "kuzhina" || mode === "banaku" ? "kamarier" : mode);
+    : mode;
   if (kodRaw) {
     if (!/^\d{3}$/.test(kodRaw)) {
       return res.status(404).type("html").send(renderWaiterCodeErrorPage("Kodi nuk ekziston."));
@@ -3034,6 +3093,8 @@ app.get("/menu/:slug/:tableNumber", (req, res) => {
 for (const role of ["waiter", "bar", "kitchen", "housekeeping", "reception"]) {
   app.get(`/${role}/:slug`, (req, res) => {
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    if (role === "bar") return res.redirect(302, `/bar.html${qs}`);
+    if (role === "kitchen") return res.redirect(302, `/kitchen.html${qs}`);
     res.redirect(302, `/login.html${qs}`);
   });
 }
@@ -3489,6 +3550,31 @@ app.post("/api/login/emergency", async (req, res) => {
     });
   } catch (e) {
     return res.status(500).json({ gabim: e.message });
+  }
+});
+
+/** Stacion kuzhinë/banak — pa PIN; sesion i qëndrueshëm (DB) pas restart POS. */
+app.post("/api/login/kds-station", (req, res) => {
+  if (!db.isSetupDone()) {
+    return res.status(503).json({ ok: false, gabim: "Konfigurimi nuk është përfunduar." });
+  }
+  const role = sessionRoleFromLoginMode(req.body?.role || req.body?.mode || "");
+  if (!isKdsStationRole(role)) {
+    return res.status(400).json({ ok: false, gabim: "Vetëm kuzhina ose banaku." });
+  }
+  try {
+    const out = getOrCreateKdsStationSession(role);
+    auditActivity(out.emri, role, "Hyrje stacion KDS", out.reused ? "ri-përdorim" : "i ri");
+    return res.json({
+      ok: true,
+      station: true,
+      roli: role,
+      emri: out.emri,
+      token: out.token,
+      login_time: out.login_time,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, gabim: e.message || String(e) });
   }
 });
 

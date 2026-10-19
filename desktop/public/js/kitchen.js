@@ -46,15 +46,33 @@
     return {};
   }
 
-  function redirectKitchenLogin() {
-    const ret = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.replace(`/login.html?mode=kuzhina&next=${ret}`);
+  let sessionBootstrapDone = false;
+
+  async function ensureKitchenSessionAsync() {
+    if (apiHeaders()["X-Session-Token"]) return true;
+    if (window.RhKdsStationBootstrap) {
+      try {
+        await window.RhKdsStationBootstrap.ensureKdsStationSession("kuzhina");
+        sessionBootstrapDone = true;
+        return !!apiHeaders()["X-Session-Token"];
+      } catch (e) {
+        showError(e.message || "Nuk u lidh me POS — kontrolloni Wi‑Fi.");
+        return false;
+      }
+    }
+    showError("Paneli i kuzhinës — prit lidhjen me POS.");
+    return false;
   }
 
   function ensureKitchenSession() {
     if (apiHeaders()["X-Session-Token"]) return true;
-    redirectKitchenLogin();
-    return false;
+    if (!sessionBootstrapDone && window.RhKdsStationBootstrap) {
+      void ensureKitchenSessionAsync().then((ok) => {
+        if (ok) fetchOrders();
+      });
+      return false;
+    }
+    return !!apiHeaders()["X-Session-Token"];
   }
 
   function fetchOpts(extra) {
@@ -410,17 +428,10 @@
         fetchOpts({ headers: apiHeaders() }),
       );
       const data = await res.json();
-      if (res.status === 403) {
-        redirectKitchenLogin();
-        return;
-      }
-      if (res.status === 401) {
-        try {
-          const ping = await fetch("/api/session/ping", fetchOpts({ headers: apiHeaders() }));
-          if (ping.status === 401) redirectKitchenLogin();
-          else showError("Sesioni — provoni përsëri pas lidhjes.");
-        } catch {
-          showError("Pa internet — paneli mbetet i hapur.");
+      if (res.status === 403 || res.status === 401) {
+        sessionBootstrapDone = false;
+        if (await ensureKitchenSessionAsync()) {
+          return fetchOrders();
         }
         return;
       }
@@ -744,7 +755,15 @@
     window.LocalStaffEvents.connect(() => fetchOrders());
   }
 
-  fetchOrders();
-  connectLocalStaffEvents();
-  setInterval(fetchOrders, 30_000);
+  async function bootKitchen() {
+    await ensureKitchenSessionAsync();
+    fetchOrders();
+    connectLocalStaffEvents();
+    setInterval(fetchOrders, 30_000);
+  }
+  void bootKitchen();
+  window.addEventListener("staff-pos-reconnected", () => {
+    sessionBootstrapDone = false;
+    void ensureKitchenSessionAsync().then((ok) => { if (ok) fetchOrders(); });
+  });
 })();

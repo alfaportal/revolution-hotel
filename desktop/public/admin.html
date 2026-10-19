@@ -19130,13 +19130,13 @@
       }
       let localKuzhinaUrl = src.local_kuzhina_url || "";
       if (!localKuzhinaUrl && localWaiterUrl) {
-        localKuzhinaUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/kuzhina$1");
+        localKuzhinaUrl = localWaiterUrl.replace(/\/kamarier(?:\/\d{3})?\/?$/i, "/kuzhina");
       } else if (!localKuzhinaUrl && base && slugRaw) {
         localKuzhinaUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/kuzhina`;
       }
       let localBanakuUrl = src.local_banaku_url || "";
       if (!localBanakuUrl && localWaiterUrl) {
-        localBanakuUrl = localWaiterUrl.replace(/\/kamarier(\/\d{3})?\/?$/i, "/banaku$1");
+        localBanakuUrl = localWaiterUrl.replace(/\/kamarier(?:\/\d{3})?\/?$/i, "/banaku");
       } else if (!localBanakuUrl && base && slugRaw) {
         localBanakuUrl = `${base}/${tipi}/${encodeURIComponent(slugRaw)}/banaku`;
       }

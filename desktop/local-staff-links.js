@@ -94,7 +94,8 @@ function localStaffPathSuffix(db, role, code) {
             : "kamarier";
   let path = `/${tipi}/${slug}/${seg}`;
   const c = String(code ?? "").trim();
-  if (c && /^\d{3}$/.test(c)) path += `/${c}`;
+  const kdsStation = seg === "kuzhina" || seg === "banaku";
+  if (c && /^\d{3}$/.test(c) && !kdsStation) path += `/${c}`;
   return path;
 }
 

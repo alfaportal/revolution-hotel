@@ -1,7 +1,7 @@
 {
   "name": "Banak — Revolution HOTEL",
   "short_name": "Banak",
-  "start_url": "/",
+  "start_url": "/bar.html",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

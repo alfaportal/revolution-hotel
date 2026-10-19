@@ -357,7 +357,8 @@
   </div>
 
   <script src="/js/app.js?v=10"></script>
-  <script src="/js/kds-station-session.js?v=1"></script>
+  <script src="/js/kds-station-session.js?v=2"></script>
+  <script src="/js/kds-station-bootstrap.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
   <script>
     (function () {
@@ -996,7 +997,24 @@
         });
       }
       if (staffLoginMode === "kuzhina" || staffLoginMode === "banaku") {
-        void provoKdsStacionAutologin(staffLoginMode);
+        const pinPanelEl = document.getElementById("pin-panel");
+        const numpadEl = document.getElementById("numpad");
+        if (pinPanelEl) pinPanelEl.hidden = true;
+        if (numpadEl) numpadEl.hidden = true;
+        void (async () => {
+          try {
+            if (typeof RhKdsStationBootstrap !== "undefined") {
+              await RhKdsStationBootstrap.ensureKdsStationSession(staffLoginMode);
+              window.location.replace(
+                staffLoginMode === "kuzhina" ? "/kitchen.html" : "/bar.html",
+              );
+              return;
+            }
+            await provoKdsStacionAutologin(staffLoginMode);
+          } catch (err) {
+            shfaqGabim(gabimEl, err.message || "Nuk u lidh stacioni me POS.");
+          }
+        })();
       }
     }
 

@@ -252,6 +252,14 @@ function deleteAuthSession(token) {
   sqlite.prepare("DELETE FROM sessions WHERE token = ?").run(t);
 }
 
+function touchAuthSession(token, expires_at) {
+  const t = String(token || "").trim();
+  if (!t || !expires_at) return;
+  sqlite
+    .prepare("UPDATE sessions SET expires_at = ? WHERE token = ?")
+    .run(String(expires_at), t);
+}
+
 function deleteExpiredAuthSessions(nowIso = new Date().toISOString()) {
   const r = sqlite.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(String(nowIso));
   return Number(r.changes) || 0;
@@ -16835,6 +16843,7 @@ function getVersionInfo() {
     listPurchaseInvoicesForAtk,
     getSetting,
     insertAuthSession,
+    touchAuthSession,
     getAuthSessionByToken,
     deleteAuthSession,
     deleteExpiredAuthSessions,

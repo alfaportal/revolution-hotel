@@ -33,15 +33,33 @@
     return {};
   }
 
-  function redirectBarLogin() {
-    const ret = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.replace(`/login.html?mode=banaku&next=${ret}`);
+  let sessionBootstrapDone = false;
+
+  async function ensureBarSessionAsync() {
+    if (apiHeaders()["X-Session-Token"]) return true;
+    if (window.RhKdsStationBootstrap) {
+      try {
+        await window.RhKdsStationBootstrap.ensureKdsStationSession("banaku");
+        sessionBootstrapDone = true;
+        return !!apiHeaders()["X-Session-Token"];
+      } catch (e) {
+        showError(e.message || "Nuk u lidh me POS — kontrolloni Wi‑Fi.");
+        return false;
+      }
+    }
+    showError("Paneli i banakut — prit lidhjen me POS.");
+    return false;
   }
 
   function ensureBarSession() {
     if (apiHeaders()["X-Session-Token"]) return true;
-    redirectBarLogin();
-    return false;
+    if (!sessionBootstrapDone && window.RhKdsStationBootstrap) {
+      void ensureBarSessionAsync().then((ok) => {
+        if (ok) fetchLiveTables();
+      });
+      return false;
+    }
+    return !!apiHeaders()["X-Session-Token"];
   }
 
   function fetchOpts(extra) {
@@ -120,17 +138,10 @@
         fetchOpts({ headers: apiHeaders() }),
       );
       const data = await res.json();
-      if (res.status === 403) {
-        redirectBarLogin();
-        return;
-      }
-      if (res.status === 401) {
-        try {
-          const ping = await fetch("/api/session/ping", fetchOpts({ headers: apiHeaders() }));
-          if (ping.status === 401) redirectBarLogin();
-          else showError("Sesioni — provoni përsëri pas lidhjes.");
-        } catch {
-          showError("Pa internet — paneli mbetet i hapur.");
+      if (res.status === 403 || res.status === 401) {
+        sessionBootstrapDone = false;
+        if (await ensureBarSessionAsync()) {
+          return fetchLiveTables();
         }
         return;
       }
@@ -157,7 +168,15 @@
     window.LocalStaffEvents.connect(() => fetchLiveTables());
   }
 
-  fetchLiveTables();
-  connectLocalStaffEvents();
-  setInterval(fetchLiveTables, 30_000);
+  async function bootBar() {
+    await ensureBarSessionAsync();
+    fetchLiveTables();
+    connectLocalStaffEvents();
+    setInterval(fetchLiveTables, 30_000);
+  }
+  void bootBar();
+  window.addEventListener("staff-pos-reconnected", () => {
+    sessionBootstrapDone = false;
+    void ensureBarSessionAsync().then((ok) => { if (ok) fetchLiveTables(); });
+  });
 })();
