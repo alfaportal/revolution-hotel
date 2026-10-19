@@ -1665,23 +1665,17 @@ function categoriesWithMenuItems(categoryNames, menuItems) {
   return (categoryNames || []).filter((c) => present.has(String(c).trim()));
 }
 
-/** I njëjti katalog si paneli pronarit / kamarierit — menu restoranti. */
+/** I njëjti katalog si web/cloud — rend KAFENE (pijet e nxehta para). */
 function buildMenuCatalogPayload(activeOnly = true) {
   ensureMenuCatalogReady();
-  const items = (db.getMenuItems(activeOnly) || []).map(toMenuItemDto);
-  const present = new Set(items.map((it) => String(it.category || "").trim()).filter(Boolean));
-  const merged = [];
-  const seen = new Set();
-  for (const row of db.getCategories() || []) {
-    const name = String(row?.name ?? row ?? "").trim();
-    if (!name || !present.has(name) || seen.has(name)) continue;
-    seen.add(name);
-    merged.push(name);
-  }
-  const orphans = [...present].filter((n) => !seen.has(n));
-  orphans.sort((a, b) => a.localeCompare(b, "sq"));
-  merged.push(...orphans);
-  return { items, categories: categoriesWithMenuItems(merged, items) };
+  const {
+    mergeMenuCategoriesForGuest,
+    sortMenuItemsForGuestDisplay,
+  } = require("./lib/menu-category-guest-order");
+  const itemsRaw = (db.getMenuItems(activeOnly) || []).map(toMenuItemDto);
+  const categories = mergeMenuCategoriesForGuest(db.getCategories(), itemsRaw);
+  const items = sortMenuItemsForGuestDisplay(itemsRaw, categories);
+  return { items, categories: categoriesWithMenuItems(categories, items) };
 }
 
 function buildGuestServicesGroups(catalog) {
@@ -2608,32 +2602,9 @@ function auditActivity(userName, userRole, action, detail = "") {
   }
 }
 
-/** Audit fiskal për login (kush / kur / IP) — pa hapur UI SEF. */
-function logFiscalLoginAudit(req, operatorName, operatorId) {
-  try {
-    const ip =
-      String(req.headers["x-forwarded-for"] || "")
-        .split(",")[0]
-        .trim() ||
-      req.socket?.remoteAddress ||
-      req.ip ||
-      null;
-    fiscalAudit.logFiscalAction(
-      "login",
-      {
-        event: "login",
-        operator_name: operatorName,
-        operator_id: String(operatorId || "POS"),
-        ip,
-        user_agent: String(req.headers["user-agent"] || "").slice(0, 180) || null,
-        at: new Date().toISOString(),
-      },
-      operatorName,
-      String(operatorId || "POS")
-    );
-  } catch (e) {
-    console.warn("[fiscal-audit] login:", e.message);
-  }
+/** Hyrja në program — pa regjistrim në audit fiskal ATK (si Fiskalizimi/KAFENE). */
+function logFiscalLoginAudit(_req, _operatorName, _operatorId) {
+  /* intentionally empty */
 }
 
 function fiscalSettingsAuditOperator(req) {

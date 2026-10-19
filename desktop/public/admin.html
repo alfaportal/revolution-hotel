@@ -4875,7 +4875,7 @@
           </div>
           <div class="sef-audit-box" style="margin-top:1rem">
             <div class="sef-audit-title">Regjistrimet e fundit</div>
-            <p class="settings-field-hint" id="admin-audit-log-status" style="margin:0 0 0.5rem">Vetëm kuponët fiskalë (print / storno) — për inspektimin ATK.</p>
+            <p class="settings-field-hint" id="admin-audit-log-status" style="margin:0 0 0.5rem">Vetëm kuponët fiskalë me NUIKF (print / storno) — jo kupon termik / hyrje në program.</p>
             <div style="overflow-x:auto;max-height:420px;border:1px solid var(--ngjyr-border,#2e2e45);border-radius:8px">
               <table class="inv-lines" id="admin-audit-log-table" style="width:100%;font-size:0.85rem;margin:0">
                 <thead>
@@ -17780,7 +17780,15 @@
         if (from) q.set("from", from);
         if (to) q.set("to", to);
         const data = await api(`/api/admin/audit-log?${q.toString()}`);
-        const entries = Array.isArray(data.entries) ? data.entries : [];
+        const entries = (Array.isArray(data.entries) ? data.entries : []).filter((e) => {
+          const veprim = String(e.veprim || e.receipt_type || "").toLowerCase();
+          if (veprim === "login") return false;
+          const code = String(e.fiscal_code || "")
+            .split("·")[0]
+            .trim()
+            .toUpperCase();
+          return /^[A-Z0-9]{16}$/.test(code);
+        });
         if (!entries.length) {
           body.innerHTML = '<tr><td colspan="6" style="color:var(--ngjyr-muted)">Nuk ka kuponë fiskal për këtë periudhë.</td></tr>';
           if (status) status.textContent = "Lista e zbrazët për intervalin e zgjedhur.";
