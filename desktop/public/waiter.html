@@ -4638,11 +4638,10 @@
       section.appendChild(zoneHead);
       const grid = document.createElement("div");
       grid.className = "table-cards-grid";
-      const slots = filtroSlotetOnlinePaQr(
-        (lastCloudOnlineSlots && lastCloudOnlineSlots.length)
-          ? lastCloudOnlineSlots
-          : defaultCloudOnlineSlots(),
-      );
+      const slotSource = (lastCloudOnlineSlots && lastCloudOnlineSlots.length)
+        ? lastCloudOnlineSlots
+        : defaultCloudOnlineSlots();
+      const slots = filtroSlotetOnlinePaQr(slotSource);
       for (const slot of slots) {
         grid.appendChild(ndertoKartelenCloudOnlineSlot(slot));
       }
@@ -4680,8 +4679,15 @@
       return { section, cards: grid.childElementCount };
     }
 
-    function defaultCloudOnlineSlots() {
-      return Array.from({ length: 6 }, (_, i) => ({
+    const ONLINE_SLOT_MIN = 6;
+    const ONLINE_SLOT_MAX = 16;
+
+    function defaultCloudOnlineSlots(count) {
+      const n = Math.min(
+        ONLINE_SLOT_MAX,
+        Math.max(ONLINE_SLOT_MIN, Number(count) || ONLINE_SLOT_MIN),
+      );
+      return Array.from({ length: n }, (_, i) => ({
         slot: i + 1,
         label: `Online ${i + 1}`,
         status: "free",

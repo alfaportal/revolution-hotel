@@ -3999,7 +3999,7 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
   if (rejectStaffCloud(req, res, {
     ok: true,
     local_only: true,
-    online_slots: Array.from({ length: 6 }, (_, i) => ({ slot: i + 1, status: "free", order: null })),
+    online_slots: Array.from({ length: 16 }, (_, i) => ({ slot: i + 1, status: "free", order: null })),
   })) return;
   try {
     const who = resolveStaffCloudWaiterIdentity(req.session);
@@ -4027,7 +4027,7 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
       if (access.allowed) return slot;
       return { ...slot, status: "free", order: null };
     });
-    const fallback = Array.from({ length: 6 }, (_, i) => ({
+    const fallback = Array.from({ length: 16 }, (_, i) => ({
       slot: i + 1,
       label: `Online ${i + 1}`,
       status: "free",

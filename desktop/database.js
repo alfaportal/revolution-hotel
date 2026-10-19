@@ -8034,6 +8034,9 @@ function getTableByNumber(number) {
   return sqlite.prepare("SELECT * FROM tables WHERE number = ?").get(n);
 }
 
+const ONLINE_PICKUP_SLOT_MIN = 6;
+const ONLINE_PICKUP_SLOT_MAX = 16;
+
 function ensureOnlinePickupZone() {
   let zone = sqlite
     .prepare(
@@ -8080,11 +8083,15 @@ function reconcileOnlinePickupTableLabels() {
   });
 }
 
-function ensureMinimumOnlineSlots(minCount = 5) {
+function ensureMinimumOnlineSlots(minCount = ONLINE_PICKUP_SLOT_MIN) {
   const zone = ensureOnlinePickupZone();
   reconcileOnlinePickupTableLabels();
+  const want = Math.min(
+    ONLINE_PICKUP_SLOT_MAX,
+    Math.max(ONLINE_PICKUP_SLOT_MIN, Number(minCount) || ONLINE_PICKUP_SLOT_MIN),
+  );
   let tables = listOnlinePickupTables();
-  while (tables.length < minCount) {
+  while (tables.length < want) {
     const nextNum = tables.length + 1;
     const label = `Online ${nextNum}`;
     const num = nextTableNumber();
@@ -8108,8 +8115,11 @@ function nextOnlineSlotNumber(zoneId) {
 
 function findOnlinePickupTableBySlotIndex(slotIndex) {
   const zone = ensureOnlinePickupZone();
-  const want = Math.max(1, Number(slotIndex) || 1);
-  ensureMinimumOnlineSlots(Math.max(6, want));
+  const want = Math.min(
+    ONLINE_PICKUP_SLOT_MAX,
+    Math.max(1, Number(slotIndex) || 1),
+  );
+  ensureMinimumOnlineSlots(Math.max(ONLINE_PICKUP_SLOT_MIN, want));
   reconcileOnlinePickupTableLabels();
   const tables = listOnlinePickupTables();
   const byLabel = tables.find(t => onlineSlotNumberFromTable(t) === want);
@@ -8120,12 +8130,15 @@ function findOnlinePickupTableBySlotIndex(slotIndex) {
 
 function findFreeOnlinePickupTable() {
   const zone = ensureOnlinePickupZone();
-  ensureMinimumOnlineSlots(5);
+  ensureMinimumOnlineSlots(ONLINE_PICKUP_SLOT_MIN);
   const tables = listOnlinePickupTables();
   for (const t of tables) {
     if (!getActiveOrderForTable(t.id)) return t;
   }
   const slot = nextOnlineSlotNumber(zone.id);
+  if (slot > ONLINE_PICKUP_SLOT_MAX) {
+    throw new Error(`Maksimum ${ONLINE_PICKUP_SLOT_MAX} porosi online njëkohësisht — mbyllni një Online para se të pranoni tjetër.`);
+  }
   const label = `Online ${slot}`;
   const num = nextTableNumber();
   sqlite.prepare(`
@@ -9000,15 +9013,27 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   };
 }
 
-/** POS: mbush Online 1…6 kur cloud e humb porosinë (table_number 11+ pas sync). */
+/** POS: mbush Online 1…N kur cloud e humb porosinë (table_number 11+ pas sync). */
 function mergeLocalActiveOnlinePickupSlots(slots, waiterName = "") {
-  const maxSlot = 6;
   const out = (Array.isArray(slots) && slots.length)
     ? slots.map((s) => ({
       ...s,
       order: s?.order ? { ...s.order } : null,
     }))
     : [];
+  let needed = ONLINE_PICKUP_SLOT_MIN;
+  for (const s of out) {
+    const n = Number(s?.slot) || 0;
+    if (n > needed && s?.order && s.status !== "free") needed = n;
+  }
+  for (const t of listOnlinePickupTables()) {
+    const slotNum = onlineSlotNumberFromTable(t);
+    if (slotNum > needed && getActiveOrderForTable(t.id)) needed = slotNum;
+  }
+  const maxSlot = Math.min(
+    ONLINE_PICKUP_SLOT_MAX,
+    Math.max(ONLINE_PICKUP_SLOT_MIN, needed, out.length),
+  );
   while (out.length < maxSlot) {
     const n = out.length + 1;
     out.push({ slot: n, label: `Online ${n}`, status: "free", order: null });
