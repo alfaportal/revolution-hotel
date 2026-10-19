@@ -2344,17 +2344,17 @@ function ensureMenuCatalog() {
   return seeded;
 }
 
-/** Një herë — sort_order si KAFENE (pijet para) për panel, QR, cloud. */
+/** Një herë — sort_order si KAFENE (pijet e nxehta para) për panel, QR, POS, cloud. */
 function alignCategorySortOrderLikeKafene() {
-  if (getSetting("hotel_menu_cat_kafene_sort_v1", "") === "1") return;
+  if (getSetting("hotel_menu_cat_kafene_sort_v2", "") === "1") return;
   const names = getCategories().map((c) => c.name);
   if (!names.length) return;
   const { buildCategoryReorderList } = require("./lib/menu-category-guest-order");
   const ordered = buildCategoryReorderList(names);
   if (ordered.length !== names.length) return;
   reorderCategories(ordered);
-  setSetting("hotel_menu_cat_kafene_sort_v1", "1");
-  console.log("[menu] Rend kategorish u harmonizua me KAFENE (pijet para).");
+  setSetting("hotel_menu_cat_kafene_sort_v2", "1");
+  console.log("[menu] Rend kategorish u harmonizua me KAFENE (pijet e nxehta para).");
 }
 
 /**
