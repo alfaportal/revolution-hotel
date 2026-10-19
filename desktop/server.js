@@ -3930,6 +3930,7 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
         db.isRecepcionCloudPendingOrder(o)
         || db.isGuestHotelServiceOrder(o)
         || db.isGuestRoomMenuOrder(o)
+        || (typeof db.isCloudQrTableOrder === "function" && db.isCloudQrTableOrder(o))
       ) {
         return { ...slot, status: "free", order: null };
       }

@@ -2190,6 +2190,17 @@
       return true;
     }
 
+    function qrTableNumFromOrder(o) {
+      let tn = Number(o?.qr_table_number) || Number(o?.table_number) || 0;
+      if (!tn) {
+        const w = String(o?.waiter_name || o?.customer_label || "");
+        const m = w.match(/QR\s*[·•.\-–—]?\s*T\s*(\d+)/i)
+          || w.match(/tavolin[aë]?\s*(\d+)/i);
+        if (m) tn = Number(m[1]) || 0;
+      }
+      return tn;
+    }
+
     function eshtePorosiQrTavoline(o) {
       if (o?.is_staff_waiter) return false;
       if (o?.is_qr_table) return true;
@@ -2197,7 +2208,7 @@
       if (device === "WEB-PUBLIC") return false;
       const blob = `${o?.source_label || ""} ${o?.customer_label || ""} ${o?.waiter_name || ""}`.toLowerCase();
       if (/\btakeaway\b|\bdelivery\b/.test(blob)) return false;
-      const tn = Number(o?.qr_table_number) || Number(o?.table_number) || 0;
+      const tn = qrTableNumFromOrder(o);
       return tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob));
     }
 
@@ -2207,18 +2218,32 @@
     }
 
     function parseTableNumFromCloudOrder(o) {
-      if (eshtePorosiQrTavoline(o)) {
-        return Number(o?.qr_table_number) || Number(o?.table_number) || 0;
-      }
+      if (eshtePorosiQrTavoline(o)) return qrTableNumFromOrder(o);
       return 0;
     }
 
-    function gjejPorosiOnlinePerTavoline(tableNumber) {
+    function gjejPorosiQrNePritjePerTavoline(tableNumber) {
       const n = Number(tableNumber) || 0;
       if (!n) return null;
       return (waiterOnlineOrders || []).find(o =>
         eshtePorosiQrTavoline(o) && parseTableNumFromCloudOrder(o) === n,
       ) || null;
+    }
+
+    function gjejPorosiOnlinePerTavoline(tableNumber) {
+      return gjejPorosiQrNePritjePerTavoline(tableNumber);
+    }
+
+    function filtroSlotetOnlinePaQr(slots) {
+      return (slots || []).map((slot) => {
+        if (!slot?.order || !eshtePorosiQrTavoline(slot.order)) return slot;
+        return {
+          ...slot,
+          status: "free",
+          order: null,
+          label: slot.label || `Online ${slot.slot}`,
+        };
+      });
     }
 
     function numriPorosiveQrPublike(tables, apiCount) {
@@ -4368,11 +4393,20 @@
 
       const hasLocalOrder = Boolean(t.order);
 
-      const cloudLive = (!hasLocalOrder && t.status === "free" && eshteTavolinFizikeLokale(t))
-        ? (cloudTableMap.get(Number(t.number)) || null)
+      const cloudPending = (!hasLocalOrder && eshteTavolinFizikeLokale(t))
+        ? gjejPorosiQrNePritjePerTavoline(t.number)
         : null;
 
-      const isFree = !hasLocalOrder && t.status === "free" && !cloudLive;
+      let cloudLive = (!hasLocalOrder && t.status === "free" && !cloudPending && eshteTavolinFizikeLokale(t))
+        ? (cloudTableMap.get(Number(t.number)) || null)
+        : null;
+      if (cloudLive) {
+        const _d = String(cloudLive.order?.device_id || "").toUpperCase();
+        const _w = String(cloudLive.order?.waiter_name || "").toLowerCase();
+        if ((_d === "WEB-KIOSK" || _w.startsWith("qr")) && !cloudLive.order?.accepted_at) cloudLive = null;
+      }
+
+      const isFree = !hasLocalOrder && t.status === "free" && !cloudPending && !cloudLive;
       const isMine = t.order && t.order.waiter_name === user.emri;
       const isForeign = t.order && t.order.waiter_name !== user.emri;
 
@@ -4381,6 +4415,7 @@
       } else {
         card.className = "table-card " + (isFree ? "free" : "occupied");
       }
+      if (cloudPending) card.classList.add("pending-cloud");
       if (isForeign) card.classList.add("foreign");
       if (t.reserved) card.classList.add("reserved");
 
@@ -4389,7 +4424,8 @@
       if (cloudLive) {
         const clo = cloudLive.order || {};
         statusText = clo.waiter_name ? `${clo.waiter_name} ☁` : tt("E zënë ☁");
-      } else if (t.reserved && isFree) statusText = tt("E rezervuar");
+      } else if (cloudPending) statusText = `QR T${t.number} — ${tt("pritje")}`;
+      else if (t.reserved && isFree) statusText = tt("E rezervuar");
       else if (isForeign) statusText = t.order.waiter_name;
       else if (t.order) statusText = user.emri;
 
@@ -4401,6 +4437,12 @@
         const items = (clo.items || []).slice(0, 2).map(it => `${Number(it.quantity)||1}× ${it.name||"—"}`).join(", ");
         if (items) inner += `<div class="table-card-hint">${items}</div>`;
         inner += `<div class="table-card-hint">${tt("Kliko → hap & mbyll")}</div>`;
+      } else if (cloudPending) {
+        const items = (cloudPending.items || []).slice(0, 3)
+          .map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
+        inner += `<div class="table-card-meta">${formatEuro(cloudPending.total || 0)}</div>`;
+        if (items) inner += `<div class="table-card-hint">${items}</div>`;
+        inner += `<div class="table-card-hint">${tt("Kliko → prano")}</div>`;
       } else if (!isFree && t.order) {
         const count = (t.items || []).reduce((s, i) => s + i.quantity, 0);
         const total = (t.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
@@ -4414,7 +4456,13 @@
       }
       card.innerHTML = inner;
       card.addEventListener("click", () => {
-        if (cloudLive) {
+        if (cloudPending) {
+          vendosPorosiOnlinePrioritet({
+            ...cloudPending,
+            table_number: Number(cloudPending.table_number) || t.number,
+          });
+          hapWaiterOnlinePop();
+        } else if (cloudLive) {
           void (async () => {
             const openImport = confirm(
               `T${t.number} — porosi cloud (☁).\n\nOK = Hap & importo\nAnulo = Pastro porosinë cloud pa import`,
@@ -4532,9 +4580,11 @@
       );
     }
 
-    /** Takeaway + QR tavolinë — të gjitha në pritje (jo në arkë deri PRANO). Si KAFENE. */
+    /** Takeaway në pritje — QR tavolinë shfaqet te kartela T{n}. */
     function porosiOnlineNePritje() {
-      return (waiterOnlineOrders || []).filter((o) => o?.id && !porosiEshteImportuarLokal(o));
+      return (waiterOnlineOrders || []).filter(
+        (o) => o?.id && eshtePorosiOnlineTakeaway(o) && !porosiEshteImportuarLokal(o),
+      );
     }
 
     function ndertoKartelenPorosiTakeaway(o) {
@@ -4650,7 +4700,10 @@
       const wrap = document.getElementById("waiter-zones-wrap");
       if (!wrap) return;
       const pendingIds = porosiOnlineNePritje().map(o => o.id || o.cloud_order_id || o.order_id);
-      const slotSig = (lastCloudOnlineSlots || []).map(s => [s.slot, s.status, s.order && s.order.id]);
+      const qrPendingSig = (waiterOnlineOrders || [])
+        .filter(eshtePorosiQrTavoline)
+        .map(o => [o.id, parseTableNumFromCloudOrder(o), o.total]);
+      const slotSig = filtroSlotetOnlinePaQr(lastCloudOnlineSlots || []).map(s => [s.slot, s.status, s.order && s.order.id]);
       const cloudSig = [...cloudTableMap.keys()].sort((a, b) => a - b).map(n => {
         const t = cloudTableMap.get(n);
         return [n, t?.status, t?.order?.id, t?.order?.total];
@@ -4668,6 +4721,7 @@
           ]),
         ]),
         pendingIds,
+        qrPendingSig,
         slotSig,
         cloudSig,
       });
