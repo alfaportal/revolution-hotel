@@ -889,10 +889,6 @@
       </div>
       <div class="waiter-sidebar-spacer"></div>
       <nav class="waiter-sidebar-nav waiter-sidebar-nav-bottom" aria-label="Veprime">
-        <div id="sidebar-z-report-warn" class="waiter-sidebar-z-warn" hidden role="status" aria-live="polite">
-          <strong class="waiter-sidebar-z-warn-title">Kujtesë: Raporti Z</strong>
-          <span class="waiter-sidebar-z-warn-sub">Opsional — nuk bllokon punën</span>
-        </div>
         <div id="sidebar-porosi-actions" class="waiter-sidebar-porosi" hidden aria-label="Porosi në pritje">
           <span class="waiter-sidebar-porosi-label" id="sidebar-porosi-label">Porosi</span>
           <button type="button" class="waiter-nav-btn waiter-nav-accept" id="btn-sidebar-online-accept" title="Prano porosinë">PRANO</button>
@@ -907,7 +903,6 @@
     <main class="waiter-main">
       <header class="waiter-topbar">
         <div class="waiter-topbar-start">
-          <button type="button" class="btn btn-raporti-z btn-sm" id="btn-topbar-raporti-z" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
           <div class="waiter-topbar-left">
             <span class="waiter-topbar-greeting">Hyrja,</span>
             <strong id="hdr-kamarier-top">Kamarier</strong>
@@ -1870,15 +1865,12 @@
       const qr = eshtePorosiQrTavoline(o);
       const qrRoom = eshtePorosiQrDhome(o);
       const roomNum = String(o?.room_number || "").trim();
-      const src = qrRoom
-        ? `${tt("QR dhomë")} · Dh. ${roomNum || "?"}`
-        : (qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway"));
       const customer = o.customer_label || o.waiter_name || "Klient";
       const table = qrRoom
         ? `${tt("Dhoma")} ${roomNum || "?"}`
-        : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway"));
+        : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : tt("Takeaway / online")));
       const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} ${tt("tjetër në radhë")}</p>` : "";
-      const kindLabel = cloudOrderKindLabel(o);
+      const metaLine = `${cloudOrderKindLabel(o)} · ${table} · ${formatEuro(o.total || 0)}`;
       const itemsBlock = itemRows
         ? `<ul class="waiter-online-pop-items">${itemRows}</ul>`
         : (summaryFallback
@@ -1889,10 +1881,8 @@
         : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <div class="waiter-online-pop-meta">
-          <strong>${src}</strong>
-          <span class="waiter-online-pop-kind">${kindLabel}</span>
-          <span class="waiter-online-pop-customer">${customer}</span>
-          <span class="waiter-online-pop-total">${table} · ${formatEuro(o.total || 0)}</span>
+          <strong>${customer}</strong>
+          <span class="waiter-online-pop-total">${metaLine}</span>
         </div>
         ${itemsBlock}
         ${notesBlock}
@@ -1956,46 +1946,9 @@
       }
     }
 
-    function pickAcceptNoteWaiter() {
-      return new Promise((resolve) => {
-        const existing = document.getElementById("accept-note-modal");
-        if (existing) existing.remove();
-        const wrap = document.createElement("div");
-        wrap.id = "accept-note-modal";
-        wrap.style.cssText = "position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem;";
-        wrap.innerHTML = `
-          <div style="background:#fff;border-radius:14px;max-width:340px;width:100%;padding:1rem 1.1rem">
-            <h3 style="margin:0 0 .5rem;font-size:1.1rem">${tt("Prano porosinë")}</h3>
-            <p style="margin:0 0 .65rem;font-size:.85rem;color:#64748b">${tt("Shënim për klientin (opsional)")}</p>
-            <input id="accept-note-input" type="text" maxlength="300" placeholder="${tt("p.sh. Kohë e pritshme 20 min…")}"
-              style="width:100%;padding:.55rem .7rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box" />
-            <div style="display:flex;gap:.5rem;margin-top:.85rem">
-              <button type="button" id="accept-note-cancel" style="flex:1;padding:.65rem;border:none;border-radius:8px;background:#e5e7eb;font-weight:600">${tt("Anulo")}</button>
-              <button type="button" id="accept-note-ok" style="flex:1;padding:.65rem;border:none;border-radius:8px;background:#16a34a;color:#fff;font-weight:700">${tt("PRANO")}</button>
-            </div>
-          </div>`;
-        document.body.appendChild(wrap);
-        const input = wrap.querySelector("#accept-note-input");
-        input?.focus();
-        const finish = (val) => { wrap.remove(); resolve(val); };
-        wrap.querySelector("#accept-note-cancel").onclick = () => finish(null);
-        wrap.querySelector("#accept-note-ok").onclick = () => {
-          finish(String(input?.value || "").trim());
-        };
-        wrap.addEventListener("click", (e) => { if (e.target === wrap) finish(null); });
-        input?.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            finish(String(input.value || "").trim());
-          }
-        });
-      });
-    }
-
     async function pranoPorosiOnlineWaiter() {
       if (waiterAcceptBusy) return;
-      const acceptNote = await pickAcceptNoteWaiter();
-      if (acceptNote == null) return;
+      const acceptNote = "";
       waiterAcceptBusy = true;
       setWaiterOnlineAcceptButtonsBusy(true);
       const msg = document.getElementById("online-accept-msg");
@@ -4141,37 +4094,23 @@
       return !!(shiftSummary && (shiftSummary.z_report_reminder || shiftSummary.pending_z_shift));
     }
 
-    function syncSidebarZReportWarn(shiftSummary) {
-      const el = document.getElementById("sidebar-z-report-warn");
-      if (!el) return;
-      el.hidden = !shiftHasZReminder(shiftSummary);
+    function syncSidebarZReportWarn(_shiftSummary) {
+      /* Raporti Z — vetëm butoni sidebar; pa kuti njoftimi të dyfishtë. */
     }
 
-    function showShiftOpenModal(zReminder) {
+    function showShiftOpenModal(_zReminder) {
       document.getElementById("shift-open-waiter-name").textContent = user.emri;
       const msg = document.getElementById("shift-open-msg");
       const btn = document.getElementById("btn-shift-open-start");
       const zBtn = document.getElementById("btn-shift-open-z");
       if (btn) btn.disabled = false;
-      if (zReminder && shiftHasZReminder(zReminder)) {
-        msg.textContent =
-          zReminder.z_report_reminder_message
-          || zReminder.z_report_required_message
-          || Z_SHIFT_REMINDER_MSG;
-        msg.hidden = false;
-        msg.classList.remove("alert-error");
-        msg.classList.add("alert-info");
-        if (zBtn) {
-          zBtn.hidden = false;
-          zBtn.disabled = false;
-        }
-      } else {
+      if (msg) {
         msg.hidden = true;
         msg.textContent = "";
         msg.classList.remove("alert-info");
         msg.classList.add("alert-error");
-        if (zBtn) zBtn.hidden = true;
       }
+      if (zBtn) zBtn.hidden = true;
       document.getElementById("modal-shift-open").hidden = false;
       shiftOpenPad.setValue(50);
     }
@@ -4580,7 +4519,7 @@
       );
     }
 
-    /** Takeaway në pritje — QR tavolinë shfaqet te kartela T{n}. */
+    /** Takeaway në pritje — QR tavolinë shfaqet te T{n}, jo te Online 1…6. */
     function porosiOnlineNePritje() {
       return (waiterOnlineOrders || []).filter(
         (o) => o?.id && eshtePorosiOnlineTakeaway(o) && !porosiEshteImportuarLokal(o),
@@ -4627,6 +4566,90 @@
     function eshteZoneOnlinePickup(zone) {
       const n = String(zone?.name || "").trim().toLowerCase();
       return n === "porosi online" || n === "commandes en ligne" || /porosi\s*online/i.test(n);
+    }
+
+    function eshteZoneDeferredVenue(name) {
+      const n = String(name || "").trim().toLowerCase();
+      return /^(bari|bar|barı|terrasa|terrace|terras|terasa|terraca|ballokoni|ballkoni|balcony|ballkon|patio|veranda)\b/.test(n);
+    }
+
+    function ndarjaZonaveTavolinave(zones) {
+      const dining = [];
+      const deferred = [];
+      let onlineZone = null;
+      for (const zone of zones || []) {
+        if (eshteZoneOnlinePickup(zone)) {
+          onlineZone = zone;
+          continue;
+        }
+        if (eshteZoneDeferredVenue(zone.name)) deferred.push(zone);
+        else dining.push(zone);
+      }
+      return { dining, onlineZone, deferred };
+    }
+
+    function ndertoSeksioninPorosiOnline(onlineZone, isFirstSection) {
+      const section = document.createElement("section");
+      section.className = "waiter-zone-section";
+      const zoneHead = document.createElement("div");
+      zoneHead.className = "waiter-zone-head";
+      const zoneTitle = document.createElement("h2");
+      zoneTitle.className = "waiter-zone-title";
+      zoneTitle.textContent = onlineZone?.name || tt("POROSI ONLINE");
+      zoneHead.appendChild(zoneTitle);
+      if (isFirstSection) {
+        const btnDilMobile = document.createElement("button");
+        btnDilMobile.type = "button";
+        btnDilMobile.className = "waiter-mobile-dil-btn";
+        btnDilMobile.textContent = "DIL";
+        btnDilMobile.addEventListener("click", () => {
+          if (typeof dil === "function") dil();
+        });
+        zoneHead.appendChild(btnDilMobile);
+      }
+      section.appendChild(zoneHead);
+      const grid = document.createElement("div");
+      grid.className = "table-cards-grid";
+      const slots = filtroSlotetOnlinePaQr(
+        (lastCloudOnlineSlots && lastCloudOnlineSlots.length)
+          ? lastCloudOnlineSlots
+          : defaultCloudOnlineSlots(),
+      );
+      for (const slot of slots) {
+        grid.appendChild(ndertoKartelenCloudOnlineSlot(slot));
+      }
+      section.appendChild(grid);
+      return section;
+    }
+
+    function ndertoSeksioninZone(zone, isFirstSection) {
+      const section = document.createElement("section");
+      section.className = "waiter-zone-section";
+      const zoneHead = document.createElement("div");
+      zoneHead.className = "waiter-zone-head";
+      const zoneTitle = document.createElement("h2");
+      zoneTitle.className = "waiter-zone-title";
+      zoneTitle.textContent = zone.name || "Zona";
+      zoneHead.appendChild(zoneTitle);
+      if (isFirstSection) {
+        const btnDilMobile = document.createElement("button");
+        btnDilMobile.type = "button";
+        btnDilMobile.className = "waiter-mobile-dil-btn";
+        btnDilMobile.textContent = "DIL";
+        btnDilMobile.addEventListener("click", () => {
+          if (typeof dil === "function") dil();
+        });
+        zoneHead.appendChild(btnDilMobile);
+      }
+      section.appendChild(zoneHead);
+      const grid = document.createElement("div");
+      grid.className = "table-cards-grid";
+      for (const t of zone.tables || []) {
+        if (!tavolinaPerputhetMeKpiFilter(t)) continue;
+        grid.appendChild(ndertoKartelenTavoline(t));
+      }
+      section.appendChild(grid);
+      return { section, cards: grid.childElementCount };
     }
 
     function defaultCloudOnlineSlots() {
@@ -4703,7 +4726,7 @@
       const qrPendingSig = (waiterOnlineOrders || [])
         .filter(eshtePorosiQrTavoline)
         .map(o => [o.id, parseTableNumFromCloudOrder(o), o.total]);
-      const slotSig = filtroSlotetOnlinePaQr(lastCloudOnlineSlots || []).map(s => [s.slot, s.status, s.order && s.order.id]);
+      const slotSig = (lastCloudOnlineSlots || []).map(s => [s.slot, s.status, s.order && s.order.id]);
       const cloudSig = [...cloudTableMap.keys()].sort((a, b) => a - b).map(n => {
         const t = cloudTableMap.get(n);
         return [n, t?.status, t?.order?.id, t?.order?.total];
@@ -4729,38 +4752,20 @@
       ndertoRjetenTavolinave._sig = sig;
       wrap.innerHTML = "";
       const zones = Array.isArray(lastTableZones) ? lastTableZones : [];
+      const { dining, onlineZone, deferred } = ndarjaZonaveTavolinave(zones);
       let totalCards = 0;
-      for (const zone of zones) {
-        const section = document.createElement("section");
-        section.className = "waiter-zone-section";
-        const zoneHead = document.createElement("div");
-        zoneHead.className = "waiter-zone-head";
-        const zoneTitle = document.createElement("h2");
-        zoneTitle.className = "waiter-zone-title";
-        zoneTitle.textContent = zone.name || "Zona";
-        zoneHead.appendChild(zoneTitle);
-        if (!wrap.childElementCount) {
-          const btnDilMobile = document.createElement("button");
-          btnDilMobile.type = "button";
-          btnDilMobile.className = "waiter-mobile-dil-btn";
-          btnDilMobile.textContent = "DIL";
-          btnDilMobile.addEventListener("click", () => {
-            if (typeof dil === "function") dil();
-          });
-          zoneHead.appendChild(btnDilMobile);
-        }
-        section.appendChild(zoneHead);
-        const grid = document.createElement("div");
-        grid.className = "table-cards-grid";
-        /* Porosi në pritje — vetëm popup PRANO (alarm / KPI), jo katrore në grid. */
-        for (const t of zone.tables || []) {
-          if (!tavolinaPerputhetMeKpiFilter(t)) continue;
-          grid.appendChild(ndertoKartelenTavoline(t));
-          totalCards += 1;
-        }
-        section.appendChild(grid);
+      let firstSection = true;
+      const appendZone = (zone) => {
+        const { section, cards } = ndertoSeksioninZone(zone, firstSection);
+        firstSection = false;
+        totalCards += cards;
         wrap.appendChild(section);
-      }
+      };
+      for (const zone of dining) appendZone(zone);
+      wrap.appendChild(ndertoSeksioninPorosiOnline(onlineZone, firstSection));
+      firstSection = false;
+      totalCards += (lastCloudOnlineSlots || []).filter(s => s.status !== "free" && s.order).length;
+      for (const zone of deferred) appendZone(zone);
       if (!totalCards) {
         wrap.innerHTML =
           '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">' +
@@ -4948,7 +4953,6 @@
       anuloPorosiOnlineWaiter();
     });
     document.getElementById("btn-sidebar-raporti-z")?.addEventListener("click", shtypRaportinZWaiter);
-    document.getElementById("btn-topbar-raporti-z")?.addEventListener("click", shtypRaportinZWaiter);
     document.getElementById("waiter-online-backdrop")?.addEventListener("click", mbyllWaiterOnlinePop);
     
     document.getElementById("orders-modal-backdrop")?.addEventListener("click", () => {
