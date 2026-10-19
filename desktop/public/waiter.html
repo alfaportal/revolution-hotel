@@ -4541,17 +4541,9 @@
       ndertoRjetenTavolinave();
     }
 
-    function porosiTakeawayNePritje() {
-      return (waiterOnlineOrders || []).filter(
-        (o) => o?.id && eshtePorosiOnlineTakeaway(o) && !porosiEshteImportuarLokal(o),
-      );
-    }
-
     /** Takeaway në pritje — QR tavolinë shfaqet te T{n}, jo te Online 1…6. */
     function porosiOnlineNePritje() {
-      return (waiterOnlineOrders || []).filter(
-        (o) => o?.id && eshtePorosiOnlineTakeaway(o) && !porosiEshteImportuarLokal(o),
-      );
+      return porosiTakeawayNePritje();
     }
 
     function ndertoKartelenPorosiTakeaway(o) {
