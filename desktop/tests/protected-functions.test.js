@@ -377,6 +377,24 @@ test("importCloudOrderToLocal returns batch_items when same cloud id adds items 
   assert.strictEqual(items[0].quantity, 3);
 });
 
+test("WEB-KIOSK QR T1 with source online is qr_table not takeaway pickup", () => {
+  const cloudOrder = {
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    device_id: "WEB-KIOSK",
+    table_number: 1,
+    source_label: "online",
+    waiter_name: "Mysafir QR",
+    items: [{ name: "Çaj i ftohtë", price: 1.5, quantity: 1 }],
+    total: 1.5,
+  };
+  assert.strictEqual(db.isCloudOnlinePickupOrder(cloudOrder), false);
+  assert.strictEqual(db.isCloudQrTableOrder(cloudOrder), true);
+  const enriched = db.enrichCloudOrderForWaiter(cloudOrder);
+  assert.strictEqual(enriched.is_qr_table, true);
+  assert.strictEqual(enriched.is_online_pickup, false);
+  assert.strictEqual(enriched.qr_table_number, 1);
+});
+
 test("rebuildDailyLogFromCloudSales does not double-decrement stock", () => {
   const waiter = openShiftForNewWaiter("RebuildStock");
   const staff = db.findStaffByName(waiter.name);

@@ -1672,6 +1672,7 @@
     let lastMyExternalOrders = [];
     let lastQrPublicCount = 0;
     let waiterOnlineOrders = [];
+    let waiterOnlinePopMutedUntil = 0;
     let cloudTableMap = new Map();
     let lastCloudOnlineSlots = [];
     let waiterAcceptBusy = false;
@@ -1759,9 +1760,18 @@
       return (orders || []).filter((o) => !eshtePorosiVetemRecepsioni(o));
     }
 
-    function hapWaiterOnlinePop() {
-      if (!waiterOnlineOrders.length) return;
-      renderWaiterOnlinePreview(waiterOnlineOrders);
+    function porosiTakeawayNePritje() {
+      return (waiterOnlineOrders || []).filter(
+        (o) => o?.id && eshtePorosiOnlineTakeaway(o) && !porosiEshteImportuarLokal(o),
+      );
+    }
+
+    function hapWaiterOnlinePop(ordersOverride) {
+      const queue = Array.isArray(ordersOverride) && ordersOverride.length
+        ? ordersOverride
+        : porosiTakeawayNePritje();
+      if (!queue.length) return;
+      renderWaiterOnlinePreview(queue);
       waiterAcceptBusy = false;
       const acceptBtn = document.getElementById("btn-waiter-online-accept");
       const refuseBtn = document.getElementById("btn-waiter-online-cancel");
@@ -1772,9 +1782,9 @@
       waiterOnlinePop?.classList.remove("hidden");
       const title = document.getElementById("waiter-online-pop-title");
       if (title) {
-        title.textContent = waiterOnlineOrders.length === 1
+        title.textContent = queue.length === 1
           ? tt("Porosi e re")
-          : `${waiterOnlineOrders.length} ${tt("porosi të reja")}`;
+          : `${queue.length} ${tt("porosi të reja")}`;
       }
     }
 
@@ -1866,11 +1876,13 @@
       const qrRoom = eshtePorosiQrDhome(o);
       const roomNum = String(o?.room_number || "").trim();
       const customer = o.customer_label || o.waiter_name || "Klient";
+      const src = qrRoom
+        ? `${tt("QR dhomë")} · Dh. ${roomNum || "?"}`
+        : (qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway"));
       const table = qrRoom
         ? `${tt("Dhoma")} ${roomNum || "?"}`
-        : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : tt("Takeaway / online")));
+        : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway"));
       const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} ${tt("tjetër në radhë")}</p>` : "";
-      const metaLine = `${cloudOrderKindLabel(o)} · ${table} · ${formatEuro(o.total || 0)}`;
       const itemsBlock = itemRows
         ? `<ul class="waiter-online-pop-items">${itemRows}</ul>`
         : (summaryFallback
@@ -1881,8 +1893,9 @@
         : "";
       body.innerHTML = `<div class="waiter-online-pop-order">
         <div class="waiter-online-pop-meta">
-          <strong>${customer}</strong>
-          <span class="waiter-online-pop-total">${metaLine}</span>
+          <strong>${src}</strong>
+          <span class="waiter-online-pop-customer">${customer}</span>
+          <span class="waiter-online-pop-total">${table} · ${formatEuro(o.total || 0)}</span>
         </div>
         ${itemsBlock}
         ${notesBlock}
@@ -1957,17 +1970,15 @@
       try {
         const data = await pranoNjëPorosiOnline(acceptNote);
         if (!data) return;
-        if (data.ok === false || data.cloud_ok === false) {
+        if (data.ok === false) {
           if (msg) {
-            msg.textContent = data.gabim || data.cloud_message || "Nuk u pranua në cloud.";
+            msg.textContent = data.gabim || data.cloud_message || "Nuk u pranua.";
             msg.hidden = false;
           }
           return;
         }
-        lastImp = (data.imported || []).find(
-          (r) => r.ok && !r.closed && !r.cancelled && (r.table_id || r.room_menu || r.guest_service),
-        );
-        if (!lastImp) {
+        lastImp = (data.imported || []).find((r) => r.ok);
+        if (!lastImp?.ok) {
           if (msg) {
             msg.textContent = data.gabim || "Porosia nuk u hap në POS — provoni përsëri.";
             msg.hidden = false;
@@ -1975,23 +1986,31 @@
           return;
         }
         if (data.cloud_ok && !lastImp?.table_id && msg) {
-          msg.textContent = "U pranua — rifreskoni tavolinën nëse duhet.";
+          msg.textContent = "Pranuar në cloud — rifreskoni tavolinën nëse duhet.";
           msg.hidden = false;
         } else if (data.cloud_message && !data.cloud_ok && msg) {
           msg.textContent = data.cloud_message;
           msg.hidden = false;
         }
-        const acceptedIds = (data.imported || [])
-          .filter((r) => r?.ok && r?.cloud_id)
-          .map((r) => String(r.cloud_id));
-        if (!acceptedIds.length && waiterOnlineOrders[0]?.id) {
-          acceptedIds.push(String(waiterOnlineOrders[0].id));
-        }
-        heqPorosiNgaPritjeLokale(acceptedIds);
-        aplikoListenPendingPasPranimit(data);
         mbyllWaiterOnlinePop();
-        await ngarkoTavolinat(true);
+        waiterOnlinePopMutedUntil = Date.now() + 5000;
+        if (lastImp?.ok) {
+          const tn = Number(lastImp.table_number) || 0;
+          if (tn > 0) {
+            waiterOnlineOrders = (waiterOnlineOrders || []).filter(
+              (o) => !(eshtePorosiQrTavoline(o) && parseTableNumFromCloudOrder(o) === tn),
+            );
+          } else {
+            waiterOnlineOrders = Array.isArray(data.orders) ? data.orders : [];
+          }
+          lastOnlinePendingWaiter = waiterOnlineOrders.length;
+          if (waiterOnlineOrders.length <= 0 && waiterOnlineAlarmTimer) {
+            clearInterval(waiterOnlineAlarmTimer);
+            waiterOnlineAlarmTimer = null;
+          }
+        }
         await ngarkoPorosiOnlineWaiter(true);
+        await ngarkoTavolinat(true);
         if (lastImp?.table_id) {
           const t = lastTablesFlat.find(x => x.id === lastImp.table_id);
           if (t) klikoTavoline(t);
@@ -2207,8 +2226,8 @@
     function perditesoKpiTavolinaQr(tables, apiCount, pending) {
       const accepted = numriPorosiveQrPublike(tables, apiCount);
       const qrPending = (waiterOnlineOrders || []).filter(eshtePorosiQrTavoline).length;
-      const takePending = (waiterOnlineOrders || []).filter(eshtePorosiOnlineTakeaway).length;
-      const p = (waiterOnlineOrders || []).length || Number(pending) || 0;
+      const takePending = porosiTakeawayNePritje().length;
+      const p = qrPending || takePending || Number(pending) || 0;
       const display = p > 0 ? p : accepted;
       lastQrPublicCount = accepted;
       document.getElementById("kpi-re").textContent = String(display);
@@ -2234,20 +2253,29 @@
         const pending = waiterOnlineOrders.length;
         const myExternal = Number(data.my_external) || lastMyExternalOrders.length;
         const prevPending = lastOnlinePendingWaiter;
-        if (pending <= 0) {
+        const takeawayPending = porosiTakeawayNePritje();
+        const qrPendingNow = (waiterOnlineOrders || []).filter(eshtePorosiQrTavoline).length;
+        if (takeawayPending.length <= 0) {
           mbyllWaiterOnlinePop();
         } else if (waiterOnlinePopOpen) {
-          renderWaiterOnlinePreview(waiterOnlineOrders);
+          renderWaiterOnlinePreview(takeawayPending);
         }
         const isFirstPoll = prevPending === null;
         const isNew = pending > 0 && (
-          (prevPending != null && pending > prevPending)
+          data.has_new
+          || (prevPending != null && pending > prevPending)
           || (isFirstPoll && pending > 0)
         );
         if (isNew && !isWaiterPosPanelOpen()) {
           luajTingullPorosieWaiter();
-          if (!waiterOnlinePopOpen) hapWaiterOnlinePop();
-          if (!waiterOnlineAlarmTimer) {
+          if (
+            takeawayPending.length
+            && Date.now() >= waiterOnlinePopMutedUntil
+            && !waiterOnlinePopOpen
+          ) {
+            hapWaiterOnlinePop();
+          }
+          if (!waiterOnlineAlarmTimer && (takeawayPending.length || qrPendingNow)) {
             waiterOnlineAlarmTimer = setInterval(() => {
               if (waiterOnlineOrders.length) luajTingullPorosieWaiter(true);
             }, 12000);
@@ -4400,7 +4428,7 @@
             ...cloudPending,
             table_number: Number(cloudPending.table_number) || t.number,
           });
-          hapWaiterOnlinePop();
+          hapWaiterOnlinePop([cloudPending]);
         } else if (cloudLive) {
           void (async () => {
             const openImport = confirm(

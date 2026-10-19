@@ -4302,7 +4302,7 @@ function syncPhysicalTableForHotelQrVenue(venueRow) {
   } else {
     sqlite.prepare("UPDATE tables SET display_name = ? WHERE id = ?").run(label, t.id);
   }
-  return getTableByNumber(num);
+  return ensurePhysicalVenueTableForNumber(num);
 }
 
 function createHotelQrVenue({ name, table_number, venue_code, sort_order, active } = {}) {
@@ -8206,7 +8206,7 @@ function ensureTablesForPendingCloudOrders(orders) {
     const n = parseQrTableNumberFromCloudOrder(raw);
     if (n > 0) {
       const before = getTableByNumber(n);
-      ensureTableExistsForNumber(n);
+      ensurePhysicalVenueTableForNumber(n);
       if (!before) changed = true;
     }
   }
@@ -8512,14 +8512,18 @@ function isCloudOnlinePickupOrder(cloudOrder) {
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
   if (isGuestHotelServiceOrder(cloudOrder)) return true;
   const device = orderDeviceId(cloudOrder);
-  if (device === "WEB-PUBLIC" || device === "WEB-PUBLIC-LOCAL") return true;
+  const tn = parseTableNumberFromCloudOrder(cloudOrder);
   const blob = orderTextBlob(cloudOrder);
+  if (tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob))) return false;
+  if (device === "WEB-PUBLIC" || device === "WEB-PUBLIC-LOCAL") {
+    return tn <= 0;
+  }
   if (/\btakeaway\b|\bdelivery\b/.test(blob)) return true;
   const src = String(cloudOrder?.source || cloudOrder?.source_label || "").toLowerCase();
-  if (src === "takeaway" || src === "delivery" || src === "online") return true;
+  if (src === "takeaway" || src === "delivery") return true;
+  if (src === "online" && tn <= 0) return true;
   if (device === "WEB-KIOSK") return false;
-  return (Number(cloudOrder?.table_number) || 0) <= 0
-    && parseTableNumberFromCloudOrder(cloudOrder) <= 0;
+  return tn <= 0 && (Number(cloudOrder?.table_number) || 0) <= 0;
 }
 
 /** Vetëm QR tavolinë restoranti — jo dhomë/shërbime (ato te recepsioni). */
@@ -8584,6 +8588,42 @@ function isTableInOnlinePickupZone(tableRow) {
 
 function isPhysicalVenueTable(tableRow) {
   return !!tableRow && !isTableInOnlinePickupZone(tableRow);
+}
+
+function firstPhysicalVenueZoneId() {
+  const row = sqlite.prepare(`
+    SELECT id FROM table_zones
+    WHERE lower(trim(name)) NOT IN ('porosi online', 'commandes en ligne')
+    ORDER BY sort_order ASC, id ASC
+    LIMIT 1
+  `).get();
+  return row?.id ?? null;
+}
+
+/** Tavolinë fizike T{n} — jo në zonën «Porosi online» (Online 1…6). */
+function ensurePhysicalVenueTableForNumber(tableNum) {
+  const n = Number(tableNum);
+  if (!n || n < 1) return null;
+  let table = getTableByNumber(n);
+  const prefix = localeLayoutLabels().tablePrefix || "Tavolina ";
+  const zoneId = firstPhysicalVenueZoneId();
+  if (!table) {
+    sqlite.prepare(`
+      INSERT INTO tables (number, status, display_name, zone_id, sort_order)
+      VALUES (?, 'free', ?, ?, ?)
+    `).run(n, `${prefix}${n}`, zoneId, n);
+    setSetting("table_count", Math.max(getTableCount(), n));
+    table = getTableByNumber(n);
+  } else if (!isPhysicalVenueTable(table)) {
+    sqlite.prepare("UPDATE tables SET zone_id = ?, display_name = ? WHERE id = ?").run(
+      zoneId,
+      String(table.display_name || "").trim() || `${prefix}${n}`,
+      table.id,
+    );
+    table = getTableByNumber(n);
+  }
+  if (!table || !isPhysicalVenueTable(table)) return null;
+  return table;
 }
 
 /** Para PRANO — siguro artikuj + room_number nga items_json cloud. */
@@ -8708,8 +8748,8 @@ function resolveTableForCloudOrder(cloudOrder, waiterName = "") {
     }
     const existing = getTableByNumber(tableNumDirect);
     if (existing && isPhysicalVenueTable(existing)) return existing;
-    const table = ensureTableExistsForNumber(tableNumDirect);
-    if (!table || !isPhysicalVenueTable(table)) {
+    const table = ensurePhysicalVenueTableForNumber(tableNumDirect);
+    if (!table) {
       throw new Error(`Tavolina T${tableNumDirect} nuk u gjet.`);
     }
     return table;
@@ -8722,10 +8762,8 @@ function resolveTableForCloudOrder(cloudOrder, waiterName = "") {
   if (isCloudQrTableOrder(cloudOrder)) {
     const tableNum = parseQrTableNumberFromCloudOrder(cloudOrder);
     if (!tableNum) throw new Error("Mungon numri i tavolinës QR.");
-    const existing = getTableByNumber(tableNum);
-    if (existing && isPhysicalVenueTable(existing)) return existing;
-    const table = ensureTableExistsForNumber(tableNum);
-    if (!table || !isPhysicalVenueTable(table)) {
+    const table = ensurePhysicalVenueTableForNumber(tableNum);
+    if (!table) {
       throw new Error(`Tavolina T${tableNum} (lokale) nuk u gjet.`);
     }
     return table;
