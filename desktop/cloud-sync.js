@@ -932,19 +932,17 @@ function pushLinkedCloudActiveOrder(db, order, { table_number = 0 } = {}) {
   if (!built) return;
 
   built.payload.pos_keep_acceptance = true;
-  let mapped = false;
+  built.payload.cloud_order_id = cloudUuid;
   try {
     const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
     const key = map[cloudUuid];
     if (key?.local_order_id && key?.device_id) {
       built.payload.device_id = String(key.device_id).trim().toUpperCase();
       built.payload.local_order_id = String(key.local_order_id).trim();
-      mapped = true;
     }
   } catch {
     /* ignore */
   }
-  if (!mapped) return;
 
   requestJson("POST", built.cfg.serverUrl, "/api/v1/sales/update", built.payload)
     .then(r => {

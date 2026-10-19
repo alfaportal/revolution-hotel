@@ -7453,9 +7453,15 @@ function rememberPosAcceptedQrCloudOrders(entries) {
 
 const CLOUD_STAFF_PUSH_KEYS = "cloud_staff_sale_push_keys";
 
-/** Ruaj local_order_id + device_id cloud që POS të mbyllë/përditësojë të njëjtin rresht (telefon, takeaway). */
+/** Ruaj local_order_id + device_id cloud që POS të mbyllë/përditësojë të njëjtin rresht (telefon, takeaway, QR tavolinë). */
 function rememberStaffWaiterCloudPushKey(cloudOrder) {
-  if (!isCloudStaffWaiterOrder(cloudOrder) && !isCloudOnlinePickupOrder(cloudOrder)) return;
+  if (
+    !isCloudStaffWaiterOrder(cloudOrder)
+    && !isCloudOnlinePickupOrder(cloudOrder)
+    && !isCloudQrTableOrder(cloudOrder)
+  ) {
+    return;
+  }
   const cloudId = String(cloudOrder?.id || "").trim();
   const localOrderId = String(cloudOrder?.local_order_id || cloudOrder?.id || "").trim();
   if (!cloudId || !localOrderId) return;
@@ -7465,7 +7471,11 @@ function rememberStaffWaiterCloudPushKey(cloudOrder) {
   } catch {
     map = {};
   }
-  const defaultDev = isCloudStaffWaiterOrder(cloudOrder) ? "WEB-WAITER" : "WEB-PUBLIC";
+  let defaultDev = "WEB-PUBLIC";
+  if (isCloudStaffWaiterOrder(cloudOrder)) defaultDev = "WEB-WAITER";
+  else if (isCloudQrTableOrder(cloudOrder)) {
+    defaultDev = String(cloudOrder.device_id || "WEB-KIOSK").trim().toUpperCase() || "WEB-KIOSK";
+  }
   map[cloudId] = {
     local_order_id: localOrderId,
     device_id: String(cloudOrder.device_id || defaultDev).trim().toUpperCase(),
