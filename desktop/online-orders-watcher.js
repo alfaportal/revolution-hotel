@@ -14,8 +14,9 @@ function isCloudWaiterDisabled(db) {
 }
 
 const POLL_MS = 5000;
-/** Porosi që askush nuk prek — zhduken nga popup pas 60s (jo grace REFUZO 2 min). */
-const UNTOUCHED_PENDING_EXPIRE_MS = 60 * 1000;
+/** Alarm popup — porosi të shkurtra (jo QR/takeaway që presin PRANO 15 min). */
+const UNTOUCHED_POPUP_EXPIRE_MS = 60 * 1000;
+const PENDING_ACCEPT_EXPIRE_MS = 15 * 60 * 1000;
 const PRINTED_KEY = "online_orders_printed_ids";
 const LOCAL_ACK_KEY = "online_orders_local_ack_ids";
 const LOCAL_REFUSED_KEY = "online_orders_staff_refused";
@@ -179,6 +180,17 @@ function buildCloudResolvedIdSet(data, allOrders, db) {
     if (resolved.has(id) || cloudLive.has(id)) continue;
     const cached = findCachedOrderById(id, db, allOrders);
     if (cached && isInRefusalGraceOrder(cached)) continue;
+    if (cached?.local_only === true) continue;
+    const dev = String(cached?.device_id || "").trim().toUpperCase();
+    if (dev === "WEB-PUBLIC-LOCAL") continue;
+    if (
+      typeof db?.isQrTableOrderSubjectToAcceptGate === "function"
+      && cached
+      && db.isQrTableOrderSubjectToAcceptGate(cached)
+      && !isExplicitlyAccepted(cached, db)
+    ) {
+      continue;
+    }
     resolved.add(id);
   }
 
@@ -216,6 +228,29 @@ function pendingFirstSeenMap(db) {
   return new Map();
 }
 
+function pendingAcceptGateOrder(o, db) {
+  if (!o?.id) return false;
+  if (
+    typeof db?.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(o)
+  ) {
+    return true;
+  }
+  if (
+    typeof db?.isCloudOnlinePickupOrder === "function"
+    && db.isCloudOnlinePickupOrder(o)
+  ) {
+    return true;
+  }
+  if (
+    typeof db?.isGuestRoomMenuOrder === "function"
+    && db.isGuestRoomMenuOrder(o)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function splitUntouchedExpiredPending(db, orders) {
   const firstSeenMap = pendingFirstSeenMap(db);
   const nowMs = Date.now();
@@ -227,9 +262,20 @@ function splitUntouchedExpiredPending(db, orders) {
       live.push(o);
       continue;
     }
+    if (pendingAcceptGateOrder(o, db)) {
+      const firstSeenIso = firstSeenMap.get(String(o.id));
+      const firstMs = firstSeenIso ? new Date(firstSeenIso).getTime() : NaN;
+      const ageMs = Number.isFinite(firstMs) ? nowMs - firstMs : 0;
+      if (!Number.isFinite(firstMs) || ageMs <= PENDING_ACCEPT_EXPIRE_MS) {
+        live.push(o);
+      } else {
+        expiredIds.push(String(o.id));
+      }
+      continue;
+    }
     const firstSeenIso = firstSeenMap.get(String(o.id));
     const firstMs = firstSeenIso ? new Date(firstSeenIso).getTime() : NaN;
-    if (!Number.isFinite(firstMs) || nowMs - firstMs <= UNTOUCHED_PENDING_EXPIRE_MS) {
+    if (!Number.isFinite(firstMs) || nowMs - firstMs <= UNTOUCHED_POPUP_EXPIRE_MS) {
       live.push(o);
       continue;
     }

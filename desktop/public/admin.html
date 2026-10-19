@@ -2517,11 +2517,6 @@
 </head>
 <body class="admin-app">
   <div id="master-only-banner" class="master-only-banner" hidden role="status" aria-live="polite"></div>
-  <div id="fiscal-z-reminder-banner" class="fiscal-z-reminder-banner" hidden role="alert" aria-live="assertive">
-    <span id="fiscal-z-reminder-banner-text"></span>
-    <button type="button" class="btn btn-sm btn-warning" id="fiscal-z-reminder-banner-z">Printo Raportin Z</button>
-    <button type="button" class="btn btn-sm btn-ghost" id="fiscal-z-reminder-banner-fiskal">Hap Fiskalizimin</button>
-  </div>
   <div class="admin-shell">
     <header class="admin-topbar">
       <div class="admin-topbar-left">
@@ -2531,9 +2526,6 @@
         <span class="admin-topbar-crumb">Paneli</span>
       </div>
       <div class="admin-topbar-right">
-        <button type="button" class="fiscal-z-bell-btn" id="btn-fiscal-z-bell" hidden title="Raporti Z — ditë pa mbyllur" aria-label="Njoftim Raporti Z">
-          🔔<span class="fiscal-z-bell-dot" id="fiscal-z-bell-dot" hidden></span>
-        </button>
         <span class="app-version-pill" id="hdr-app-version" hidden></span>
         <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Jashtë linje">☁ Jashtë linje</span>
         <span class="admin-topbar-clock" id="admin-clock">--:--</span>
@@ -6845,33 +6837,20 @@
 
     function applyFiscalZReminderUi(data) {
       fiscalZReminderState = data || null;
-      const needed = !!data?.needed;
       const fiscalZNeeded = !!(data?.fiscal_z_needed && data?.fiscal_enabled);
-      const bell = document.getElementById("btn-fiscal-z-bell");
-      const dot = document.getElementById("fiscal-z-bell-dot");
-      const banner = document.getElementById("fiscal-z-reminder-banner");
-      const bannerText = document.getElementById("fiscal-z-reminder-banner-text");
-      const btnBannerZ = document.getElementById("fiscal-z-reminder-banner-z");
-      if (bell) bell.hidden = !data?.fiscal_enabled;
-      if (dot) dot.hidden = !needed;
-      if (banner) banner.hidden = !needed;
-      if (bannerText && needed) bannerText.textContent = data.message || "";
-      if (btnBannerZ) btnBannerZ.hidden = !fiscalZNeeded;
-      if (needed) {
-        window.__fiscalZPendingDate = fiscalZNeeded ? (data.pending_date || "") : "";
+      const needed = !!data?.needed;
+      if (needed && fiscalZNeeded) {
+        window.__fiscalZPendingDate = data.pending_date || "";
       } else {
         window.__fiscalZPendingDate = "";
         fiscalZReminderModalShown = false;
       }
     }
 
-    async function refreshFiscalZReminder(options = {}) {
+    async function refreshFiscalZReminder() {
       try {
         const data = await api("/api/fiscal/z-report/reminder");
         applyFiscalZReminderUi(data);
-        if (data?.needed && options.showModalOnLoad) {
-          shfaqFiscalZReminderModal(false);
-        }
         return data;
       } catch {
         applyFiscalZReminderUi(null);
@@ -6879,23 +6858,16 @@
       }
     }
 
-    document.getElementById("btn-fiscal-z-bell")?.addEventListener("click", () => {
-      shfaqFiscalZReminderModal(true);
-    });
     document.getElementById("fiscal-z-reminder-backdrop")?.addEventListener("click", mbyllFiscalZReminderModal);
     document.getElementById("fiscal-z-reminder-later")?.addEventListener("click", mbyllFiscalZReminderModal);
     document.getElementById("fiscal-z-reminder-open-fiskal")?.addEventListener("click", openFiskalizimiForZReminder);
-    document.getElementById("fiscal-z-reminder-banner-fiskal")?.addEventListener("click", openFiskalizimiForZReminder);
     document.getElementById("fiscal-z-reminder-do-z")?.addEventListener("click", async () => {
       mbyllFiscalZReminderModal();
       await runFiscalZReportDirect({ fromReminder: true });
     });
-    document.getElementById("fiscal-z-reminder-banner-z")?.addEventListener("click", async () => {
-      await runFiscalZReportDirect({ fromReminder: true });
-    });
 
-    refreshFiscalZReminder({ showModalOnLoad: true });
-    setInterval(() => refreshFiscalZReminder({ showModalOnLoad: false }), 120000);
+    refreshFiscalZReminder();
+    setInterval(() => refreshFiscalZReminder(), 120000);
 
     function updateSettingsSubnav(activeName) {
       document.querySelectorAll(".settings-subnav-btn").forEach(btn => {
@@ -17530,7 +17502,7 @@
           true
         );
         window.__fiscalZPendingDate = "";
-        await refreshFiscalZReminder({ showModalOnLoad: false });
+        await refreshFiscalZReminder();
       } catch (e) {
         setFiscalSefReportMsg(msgId, e.message || "Raporti Z dështoi", false);
       }

@@ -116,34 +116,28 @@ async function resolveQrVenueSlug(db) {
   }
 
   const cloud = db.getCloudSettings();
-  const candidates = [
-    cloud.kitchen_slug,
-    status.kitchen_slug,
-    cloud.cloud_client_id,
-    status.client_id,
-  ]
-    .map(s => String(s || "").trim())
-    .filter(Boolean);
-
-  const seen = new Set();
-  for (const slug of candidates) {
-    if (seen.has(slug)) continue;
-    seen.add(slug);
-    const verified = await verifyVenueSlugOnCloud(slug);
-    if (verified.ok) {
-      db.updateKitchenAccess({
-        kitchen_slug: status.kitchen_slug || cloud.kitchen_slug || slug,
-        kitchen_key: status.kitchen_key || cloud.kitchen_key,
-        client_id: status.client_id || cloud.cloud_client_id,
-        client_name: status.client_name || cloud.cloud_client_name,
-      });
-      return slug;
-    }
+  /** Vetëm kitchen_slug i licencës — JO cloud_client_id i vjetër (p.sh. Te Naseri 4 vs 2). */
+  const slug = String(status.kitchen_slug || cloud.kitchen_slug || "").trim();
+  if (!slug) {
+    throw new Error(
+      "Mungon kitchen_slug i licencës — te Admin → Cloud bëni «Sinkronizo gjithçka».",
+    );
   }
 
-  throw new Error(
-    "Lokali nuk u gjet në cloud — ID e vjetër në PC. Te Cloud bëni «Sinkronizo gjithçka», pastaj «Rigjenero QR nga cloud».",
-  );
+  const verified = await verifyVenueSlugOnCloud(slug);
+  if (!verified.ok) {
+    throw new Error(
+      `Lokali «${slug}» nuk u gjet në cloud. Kontrolloni licencën (Te Naseri 2 ≠ Te Naseri 4) dhe «Rigjenero QR».`,
+    );
+  }
+
+  db.updateKitchenAccess({
+    kitchen_slug: slug,
+    kitchen_key: status.kitchen_key || cloud.kitchen_key,
+    client_id: status.client_id || cloud.cloud_client_id,
+    client_name: status.client_name || cloud.cloud_client_name,
+  });
+  return slug;
 }
 
 async function listTableQrs(db, { refreshFromCloud = true } = {}) {
@@ -168,7 +162,10 @@ async function listTableQrs(db, { refreshFromCloud = true } = {}) {
     client_id: cloud.cloud_client_id || "",
     kitchen_slug: cloud.kitchen_slug || "",
     count: tables.length,
-    business_name: settings.restaurant_name || "",
+    business_name:
+      (typeof db.getBusinessDisplayName === "function" ? db.getBusinessDisplayName() : "")
+      || settings.restaurant_name
+      || "",
     tables,
   };
 }
@@ -196,7 +193,10 @@ async function getTableQr(db, tableNumber) {
   const cloud = db.getCloudSettings();
   return {
     slug,
-    business_name: settings.restaurant_name || "",
+    business_name:
+      (typeof db.getBusinessDisplayName === "function" ? db.getBusinessDisplayName() : "")
+      || settings.restaurant_name
+      || "",
     label: row.label || `Tavolina ${table}`,
     ...entry,
   };

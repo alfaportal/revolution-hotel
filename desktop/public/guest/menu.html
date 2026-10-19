@@ -30,8 +30,6 @@
 
     .bar-row { display:flex; gap:0.5rem; align-items:center; }
 
-    .bar-row input { flex:1; padding:0.45rem 0.55rem; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#f1f5f9; }
-
     .bar-row strong { flex:1; }
 
     .bar-row button { background:var(--acc); color:#fff; border:0; border-radius:10px; padding:0.65rem 1rem; font-weight:800; cursor:pointer; min-width:7rem; }
@@ -63,14 +61,6 @@
 
   <div class="bar">
 
-    <div class="bar-row" id="contact-row" hidden>
-
-      <input type="text" id="cust-name" maxlength="80" placeholder="Emri (opsional)">
-
-      <input type="tel" id="cust-phone" maxlength="40" placeholder="Telefoni">
-
-    </div>
-
     <div class="bar-row">
 
       <strong id="cart-label">Shporta: 0.00 €</strong>
@@ -100,8 +90,6 @@
       const cart = G.createCart();
 
       const sub = document.getElementById("sub");
-
-      const contactRow = document.getElementById("contact-row");
 
       const btnSend = document.getElementById("btn-send");
 
@@ -139,10 +127,6 @@
         }
 
       }
-
-      if (!G.room) contactRow.hidden = false;
-
-
 
       function refreshCart() {
 
@@ -228,13 +212,7 @@
 
         try {
 
-          const result = await G.submitMenuCart(cart, {
-
-            name: document.getElementById("cust-name")?.value?.trim() || "",
-
-            phone: document.getElementById("cust-phone")?.value?.trim() || "",
-
-          });
+          const result = await G.submitMenuCart(cart);
 
           cart.clear();
 

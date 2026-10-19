@@ -849,6 +849,21 @@
     });
   }
 
+  function isDeferredVenueAreaName(name) {
+    const n = String(name || "").trim().toLowerCase();
+    return /^(bari|bar|barı|terrasa|terrace|terras|terasa|terraca|ballkoni|balcony|ballkon|patio|veranda)\b/.test(n);
+  }
+
+  function partitionWaiterAreas(areas) {
+    const dining = [];
+    const deferred = [];
+    for (const area of areas || []) {
+      if (isDeferredVenueAreaName(area.name)) deferred.push(area);
+      else dining.push(area);
+    }
+    return { dining, deferred };
+  }
+
   function renderTables() {
     const grid = $("tables-grid");
     if (!grid) return;
@@ -858,18 +873,31 @@
       parts.push('<p class="hint">Nuk ka tavolina. Pronari shton hapësira te Lokal &amp; Stafi në panel.</p>');
     } else {
       const areas = bootstrap.areas?.filter(a => a.tables?.length) || [];
-      if (areas.length > 1) {
-        parts.push(areas.map(area => `
-          <section class="waiter-area-block">
-            <h2 class="waiter-area-title">${escapeHtml(area.name)}</h2>
-            <div class="tables-grid-area">${area.tables.map(renderTableCard).join("")}</div>
-          </section>`).join(""));
-      } else {
-        parts.push(`<div class="tables-grid-area">${tables.map(renderTableCard).join("")}</div>`);
+      const { dining, deferred } = partitionWaiterAreas(areas);
+      if (dining.length > 0) {
+        for (const area of dining) {
+          parts.push(`
+          <section class="waiter-area-block waiter-zone-section">
+            <h2 class="waiter-area-title">${escapeHtml(area.name || "Tavolinat")}</h2>
+            <div class="tables-grid-area table-cards-grid">${area.tables.map(renderTableCard).join("")}</div>
+          </section>`);
+        }
+      } else if (!areas.length) {
+        parts.push(`<section class="waiter-area-block waiter-zone-section">
+          <h2 class="waiter-area-title">TAVOLINAT</h2>
+          <div class="tables-grid-area table-cards-grid">${tables.map(renderTableCard).join("")}</div>
+        </section>`);
       }
-    }
-    if (activeWaiter?.id) {
-      parts.push(renderOnlineZoneSection());
+      if (activeWaiter?.id) {
+        parts.push(renderOnlineZoneSection());
+      }
+      for (const area of deferred) {
+        parts.push(`
+          <section class="waiter-area-block waiter-zone-section">
+            <h2 class="waiter-area-title">${escapeHtml(area.name || "Zona")}</h2>
+            <div class="tables-grid-area table-cards-grid">${area.tables.map(renderTableCard).join("")}</div>
+          </section>`);
+      }
     }
     grid.innerHTML = parts.join("");
     bindTableCards(grid);

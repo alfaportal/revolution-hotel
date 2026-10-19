@@ -39,9 +39,7 @@ function resolveHotelQrSlug(db) {
     const cloud = typeof db.getCloudSettings === "function" ? db.getCloudSettings() : {};
     return String(
       cloud.kitchen_slug
-      || cloud.cloud_client_id
       || db.getSetting?.("kitchen_slug", "")
-      || db.getSetting?.("cloud_client_id", "")
       || "",
     ).trim();
   } catch {

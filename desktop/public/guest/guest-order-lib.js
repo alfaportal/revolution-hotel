@@ -147,8 +147,6 @@
       table: !room && table ? table : undefined,
       venue: !room ? (venue || undefined) : undefined,
       venue_label: !room ? (venueDisplayLabel || venue || undefined) : undefined,
-      customer_name: extra?.name || "",
-      customer_phone: extra?.phone || "",
     };
     return postJson(withSlugQuery("/api/guest/menu-order"), body);
   }

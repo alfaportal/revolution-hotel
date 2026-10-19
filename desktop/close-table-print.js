@@ -244,6 +244,16 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     console.log("[close-print] " + tag + " linked order#" + order.id + " -> " + cloudId);
   }
 
+  if (
+    typeof db.blockAutoCloseActiveCloudLinkedOrder === "function"
+    && db.blockAutoCloseActiveCloudLinkedOrder(order, opts)
+  ) {
+    console.log(
+      "[close-print] " + tag + " SKIP — gate QR/online aktive; pagesë vetëm Cash/Kartë në POS",
+    );
+    return { printed: false, skipped: true, reason: "await_pos_payment" };
+  }
+
   const closeTableId = Number(order.table_id) || Number(table?.id);
   if (!closeTableId) {
     return { printed: false, skipped: true, reason: "table_missing" };
