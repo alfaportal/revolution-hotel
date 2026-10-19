@@ -1265,6 +1265,7 @@ function buildCatalogPayload(db) {
       active: !!m.active,
       photo: String(m.photo || "").trim(),
       description: String(m.description || "").trim().slice(0, 2000),
+      sort_order: Number(m.sort_order) || 0,
       // "Tracked" lidhet me të njëjtin prag që përdor edhe paneli i kamarierit
       // (menu-pos.js) — nëse pronari s'ka vendosur prag, stoku s'gjurmohet.
       track_stock: threshold > 0,

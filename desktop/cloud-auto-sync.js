@@ -371,6 +371,7 @@ async function runHotelFullSync(db) {
   try {
     await hotelCloudSync.fullHotelSync(db);
     console.log("[hotel-auto-sync] fullHotelSync completed");
+    await runCatalogPush(db, { force: true });
   } catch (err) {
     console.warn("[hotel-auto-sync] fullHotelSync failed", err.message || err);
   } finally {
