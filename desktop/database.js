@@ -9000,6 +9000,53 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
   };
 }
 
+/** POS: mbush Online 1…6 kur cloud e humb porosinë (table_number 11+ pas sync). */
+function mergeLocalActiveOnlinePickupSlots(slots, waiterName = "") {
+  const maxSlot = 6;
+  const out = (Array.isArray(slots) && slots.length)
+    ? slots.map((s) => ({
+      ...s,
+      order: s?.order ? { ...s.order } : null,
+    }))
+    : [];
+  while (out.length < maxSlot) {
+    const n = out.length + 1;
+    out.push({ slot: n, label: `Online ${n}`, status: "free", order: null });
+  }
+  const wn = String(waiterName || "").trim().toLowerCase();
+  for (const t of listOnlinePickupTables()) {
+    const slotNum = onlineSlotNumberFromTable(t);
+    if (slotNum < 1 || slotNum > maxSlot) continue;
+    const active = getActiveOrderForTable(t.id);
+    if (!active) continue;
+    const cid = String(active.cloud_order_id || "").trim();
+    if (!cid) continue;
+    const idx = slotNum - 1;
+    const curId = String(out[idx]?.order?.id || "").trim();
+    if (curId && curId !== cid && out[idx].status !== "free") continue;
+    if (curId === cid && out[idx].status !== "free") continue;
+    const ow = String(active.waiter_name || "").trim().toLowerCase();
+    if (wn && ow && ow !== wn) continue;
+    const items = parseOrderItems(active.items_json);
+    out[idx] = {
+      slot: slotNum,
+      label: out[idx].label || `Online ${slotNum}`,
+      status: "accepted",
+      order: {
+        id: cid,
+        items_json: items,
+        items,
+        total: Number(active.total) || 0,
+        waiter_name: active.waiter_name,
+        customer_label: active.source_label,
+        accepted_by_waiter_name: active.waiter_name,
+        status: "ordered",
+      },
+    };
+  }
+  return out;
+}
+
 function listActiveOnlineOrders() {
   const rows = sqlite.prepare(`
     SELECT o.id, o.waiter_name, o.items_json, o.total, o.source_label, o.cloud_order_id, o.created_at,
@@ -16579,6 +16626,7 @@ function getVersionInfo() {
     isCloudWaiterSaleImported,
     ensureTablesForPendingCloudOrders,
     listActiveOnlineOrders,
+    mergeLocalActiveOnlinePickupSlots,
     listActiveOnlineOrdersForWaiter,
     listActiveQrPublicOrdersForWaiter,
     listActiveOnlineOrdersForStaffId,

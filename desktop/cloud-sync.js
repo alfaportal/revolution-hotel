@@ -607,6 +607,7 @@ function buildSalePayload(db, order, opts = {}) {
 
   const cloudUuid = String(order.cloud_order_id || "").trim();
   if (cloudUuid) {
+    payload.cloud_order_id = cloudUuid;
     try {
       const map = JSON.parse(db.getSetting("cloud_staff_sale_push_keys", "{}"));
       const key = map[cloudUuid];
@@ -688,8 +689,24 @@ async function pushQrWaiterAcceptToCloudKitchen(
     batch_items = null,
   } = {},
 ) {
+  const co = cloudOrder && typeof cloudOrder === "object" ? cloudOrder : null;
+  let cloudTableNum = Number(table_number) || 0;
+  if (
+    co
+    && typeof db.isCloudOnlinePickupOrder === "function"
+    && db.isCloudOnlinePickupOrder(co)
+  ) {
+    cloudTableNum = 0;
+  } else if (
+    order?.table_id
+    && typeof db.isTableInOnlinePickupZone === "function"
+    && typeof db.getTableById === "function"
+  ) {
+    const trow = db.getTableById(order.table_id);
+    if (trow && db.isTableInOnlinePickupZone(trow)) cloudTableNum = 0;
+  }
   const built = buildSalePayload(db, order, {
-    table_number,
+    table_number: cloudTableNum,
     status: "ordered",
     ordered_at: order?.created_at || new Date().toISOString(),
   });
@@ -724,7 +741,6 @@ async function pushQrWaiterAcceptToCloudKitchen(
       /* ignore */
     }
   }
-  const co = cloudOrder && typeof cloudOrder === "object" ? cloudOrder : null;
   if (!mappedKeys && co) {
     const dev = String(co.device_id || "WEB-PUBLIC").trim().toUpperCase();
     const cloudLocalId = String(co.local_order_id || "").trim();
@@ -2379,6 +2395,7 @@ async function syncClosedWebWaiterSales(db) {
             order_id: cloudId,
             local_order_id: sale.local_order_id || "",
             device_id: sale.device_id || "",
+            fromCloudClosedImport: true,
           });
           const syncLabel = tableNum >= 1 ? "T" + tableNum : "Online cloudId=" + cloudId.slice(0, 8);
           console.log("[cloud/sync] closing print before import " + syncLabel, {
@@ -2438,6 +2455,31 @@ async function updateCloudReservationStatus(db, reservationId, status) {
     reservation_id: reservationId,
     status,
   });
+}
+
+/** Porosi cloud ende të hapura (ordered/ready) — index sipas UUID. */
+async function fetchCloudOpenOrdersById(db) {
+  const byId = new Map();
+  try {
+    const online = await fetchOnlineOrders(db);
+    for (const o of [...(online.all_orders || []), ...(online.orders || [])]) {
+      const id = String(o?.id || "").trim();
+      if (!id) continue;
+      const st = String(o.status || "ordered").toLowerCase();
+      if (st === "closed" || st === "cancelled" || st === "expired") continue;
+      byId.set(id, o);
+    }
+  } catch {
+    return { byId, fetchOk: false };
+  }
+  return { byId, fetchOk: true };
+}
+
+function isCloudOrderStillOpenInIndex(byId, cloudOrderId) {
+  const id = String(cloudOrderId || "").trim();
+  if (!id || !byId?.has(id)) return false;
+  const st = String(byId.get(id).status || "ordered").toLowerCase();
+  return st === "ordered" || st === "ready";
 }
 
 /**
@@ -2612,6 +2654,9 @@ async function syncLocalCancelledFromCloud(db) {
       /* offline */
     }
 
+    const { byId: cloudOpenById, fetchOk: cloudOpenFetchOk } = await fetchCloudOpenOrdersById(db);
+    for (const openId of cloudOpenById.keys()) cloudOrderedIds.add(openId);
+
     const cloudFreeTableNums = new Set(
       cloudData.tables
         .filter(t => String(t.status || "").toLowerCase() !== "occupied")
@@ -2662,6 +2707,19 @@ async function syncLocalCancelledFromCloud(db) {
       const cId = String(order.cloud_order_id).trim();
       if (cloudOrderedIds.has(cId)) continue; // ekziston ende në cloud → OK (ordered/ready)
 
+      if (isCloudOrderStillOpenInIndex(cloudOpenById, cId)) {
+        console.log(
+          `[sync] T${tableNum} SKIP auto-mbyllje — cloud ${cId.slice(0, 8)} ende ${cloudOpenById.get(cId).status || "ordered"}`,
+        );
+        continue;
+      }
+      if (!cloudOpenFetchOk && ageMs < 5 * 60 * 1000) {
+        console.log(
+          `[sync] T${tableNum} SKIP auto-mbyllje — cloud offline, porosi e re (QR pas PRANO)`,
+        );
+        continue;
+      }
+
       // Sync/print më lart mund ta ketë mbyllur tashmë — mos anulo stub të vjetër.
       try {
         const cur = db.db?.prepare?.(
@@ -2684,44 +2742,11 @@ async function syncLocalCancelledFromCloud(db) {
         continue;
       }
 
-      // Porosia cloud u mbyll — provo faturën e mbylljes para anulimit.
-      // (SSE mund të ketë humbur; syncClosed më lart zakonisht e bën këtë.)
-      try {
-        pendingClosePrintTables.add(tableNum);
-        const { printClosingReceiptIfActiveCloudOrder } = require("./close-table-print");
-        const pr = await printClosingReceiptIfActiveCloudOrder(db, tableNum, {
-          paymentMethod: order.payment_method,
-          order_id: cId,
-          local_order_id: String(order.id || ""),
-        });
-        if (
-          pr?.printed ||
-          pr?.reason === "already_in_daily_log" ||
-          pr?.reason === "printed_after_daily_log"
-        ) {
-          console.log(
-            `[sync] T${tableNum} cloud mbyllur — u trajtua nga close-print (${pr?.reason || "printed"})`,
-          );
-          continue;
-        }
-      } catch (err) {
-        console.warn(`[sync] T${tableNum} close-print:`, err.message || err);
-      } finally {
-        pendingClosePrintTables.delete(tableNum);
-      }
-
+      // Porosi me cloud_order_id (QR/online): sync NUK mbyll me cash — vetëm import
+      // i shitjeve të mbyllura (syncClosedWebWaiterSales) ose Cash/Kartë në POS.
       console.log(
-        `[sync] T${tableNum} cloud porosi mbyllur — kompleto lokalisht order#${order.id} cloudId=${cId}`,
+        `[sync] T${tableNum} SKIP auto-mbyllje+cash — cloudId=${cId.slice(0, 8)} (prit pagesë POS ose import closed)`,
       );
-      if (typeof db.finalizeLocalTableAfterCloudSaleClose === "function") {
-        db.finalizeLocalTableAfterCloudSaleClose(
-          cId,
-          tableNum,
-          order.payment_method || "cash",
-          Number(order.total) || 0,
-          { cloudCloseConfirmed: true },
-        );
-      }
     }
   } catch (err) {
     console.warn("[syncLocalCancelledFromCloud]", err.message);
@@ -3203,6 +3228,7 @@ function freeLocalTableFromCloudEvent(db, tableNumber, opts = {}) {
     );
     db.finalizeLocalTableAfterCloudSaleClose(cloudOrderId, num, paymentMethod, 0, {
       cloudCloseConfirmed: true,
+      fromCloudSseClosed: opts.fromCloudSseClosed === true,
     });
     return;
   }
@@ -3318,6 +3344,7 @@ function handleKdsKitchenSsePayload(db, payload) {
       order_id: payload.order_id || (remoteIds[0] || ""),
       local_order_id: payload.local_order_id || "",
       device_id: payload.device_id || "",
+      fromCloudSseClosed: true,
     }))
       .catch(err => console.warn("[cloud/sse] closing print:", err.message || err))
       .finally(() => {
@@ -3325,6 +3352,7 @@ function handleKdsKitchenSsePayload(db, payload) {
           cloudCloseConfirmed: true,
           paymentMethod: payload.payment_method,
           cloudOrderId: payload.order_id || remoteIds[0] || "",
+          fromCloudSseClosed: true,
         });
         pendingClosePrintTables.delete(num);
         sseFreedTableNums.add(num);
@@ -3344,6 +3372,7 @@ function handleKdsKitchenSsePayload(db, payload) {
       order_id: cloudId,
       local_order_id: payload.local_order_id || "",
       device_id: payload.device_id || "",
+      fromCloudSseClosed: true,
     }))
       .catch(err => console.warn("[cloud/sse] closing print online:", err.message || err))
       .finally(() => {

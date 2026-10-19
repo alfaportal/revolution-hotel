@@ -889,7 +889,9 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       const order = db.getActiveOrderByCloudId(cloudOrder.id)
         || db.getActiveOrderForTable(r.table_id);
       if (!order) continue;
-      const tblNum = Number(r.table_number || cloudOrder.table_number) || 0;
+      const tblNum = isOnlinePickup
+        ? 0
+        : (Number(r.table_number || cloudOrder.table_number) || 0);
       try {
         const pushRes = await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
           cloudOrderId: cloudOrder.id,
@@ -4031,9 +4033,13 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
       status: "free",
       order: null,
     }));
+    const base = slots.length ? slots : fallback;
+    const merged = typeof db.mergeLocalActiveOnlinePickupSlots === "function"
+      ? db.mergeLocalActiveOnlinePickupSlots(base, req.session?.emri)
+      : base;
     res.json({
       ok: true,
-      online_slots: slots.length ? slots : fallback,
+      online_slots: merged,
       online_zone_title: "POROSI ONLINE",
     });
   } catch (e) {
