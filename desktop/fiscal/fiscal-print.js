@@ -1194,17 +1194,20 @@ function legalNameDisplay(name) {
 function formatAtkWorkerLine(operatorName, posId, width = WIDTH) {
   const name = legalNameDisplay(operatorName);
   const pos = String(posId || "-").trim() || "-";
-  const prefix = "PUNETORI: ";
-  const tail = ` - POS ID: ${pos}`;
-  const maxNameLen = Math.max(1, width - prefix.length - tail.length);
-  let shortName = name;
-  if (shortName.length > maxNameLen) {
-    shortName =
-      maxNameLen <= 1
-        ? shortName.slice(0, 1)
-        : `${shortName.slice(0, Math.max(1, maxNameLen - 1))}…`;
+  const left = "OPERATORI:";
+  const right = `POS ID: ${pos}`;
+  const maxName = Math.max(1, width - left.length - right.length - 2);
+  let mid = name;
+  if (mid.length > maxName) {
+    mid =
+      maxName <= 1
+        ? mid.slice(0, 1)
+        : `${mid.slice(0, Math.max(1, maxName - 1))}…`;
   }
-  return `${prefix}${shortName}${tail}`;
+  const inner = Math.max(mid.length, width - left.length - right.length);
+  const padL = Math.max(0, Math.floor((inner - mid.length) / 2));
+  const padR = Math.max(0, inner - mid.length - padL);
+  return `${left}${" ".repeat(padL)}${mid}${" ".repeat(padR)}${right}`.slice(0, width);
 }
 
 function resolveCartDiscountAmount(items, orderDiscount) {
@@ -1267,12 +1270,14 @@ function appendAtkPaymentLines(lines, width, order, fiscal, paymentMethod, total
     return;
   }
   if (splits.length === 1) {
-    lines.push(
-      padLine(t("atk_payment_method"), atkPaymentModeShort(splits[0].method), width)
-    );
+    const money = formatAtkMoneyEuro(totalPay);
+    const mode = pad(atkPaymentModeShort(splits[0].method), money.length, "left");
+    lines.push(padLine(t("atk_payment_method"), mode, width));
     return;
   }
-  lines.push(padLine(t("atk_payment_method"), atkPaymentModeShort(paymentMethod), width));
+  const money = formatAtkMoneyEuro(totalPay);
+  const mode = pad(atkPaymentModeShort(paymentMethod), money.length, "left");
+  lines.push(padLine(t("atk_payment_method"), mode, width));
 }
 
 function appendAtkTotalsBlock(lines, width, block) {
@@ -1301,6 +1306,7 @@ function appendAtkTotalsBlock(lines, width, block) {
 
   atkGap(lines);
   lines.push(padLineBoldLabelNormalAmount(t("atk_total_pay"), formatAtkMoneyEuro(totalPay), width));
+  atkGap(lines);
 
   appendAtkPaymentLines(
     lines,
@@ -1338,7 +1344,6 @@ function appendAtkFooter(lines, width, footer) {
   lines.push(
     `^C${pad(`${t("fiscal_coupon_daily_nr")} ${formatAtkDailyNumber(dailyNumber)}`, width, "center")}`
   );
-  lines.push(`^C${pad(t("e_kuponi"), width, "center")}`);
 }
 
 function buildSaleBlockContext(order, fiscal, items) {

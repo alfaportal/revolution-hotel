@@ -1,5 +1,18 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-10-27 — Kupon fiskal: renditje + QR si BIZNES
+
+| Skedar | Ndryshimi |
+|--------|----------|
+| `fiscal/fiscal-print.js` | OPERATORI + POS ID; hapësirë pas TOTALI; KESH i njëjtë me gjerësinë e parave; pa rresht e-kuponi |
+| `fiscal/atk-model-builder.js` | `mapCouponType`: kthim/return → CANCEL; anulim/storno → RETURN |
+| `fiscal/fiscal-receipt-guard.js` | pranon `OPERATORI:` |
+| `fiscal/fiscal-self-test.js` | pranon OPERATORI/PUNETORI |
+
+**Provë:** `node --check` OK; `mapCouponType` sale=SALE, kthim=CANCEL, anulim=RETURN. QR ishte tashmë 256/128/3. Print i gjallë: vetëm pas restart / Setup të ri.
+
+---
+
 ## 2026-10-18 — Folio check-out: depozitë, për pagesë, NUI
 
 | Skedar | Ndryshimi |

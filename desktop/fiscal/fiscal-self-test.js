@@ -772,7 +772,9 @@ async function testCoupon(opts = {}) {
     if (!/NR\.\s*FISKAL:|FISKALNI BR:/i.test(text)) missing.push("NR. FISKAL");
     if (!/NR\.\s*TVSH:|PDV BR:/i.test(text)) missing.push("NR. TVSH");
     if (!/TVSH|PDV/i.test(text)) missing.push("TVSH");
-    if (!/Operator|Operater/i.test(text)) missing.push("operator");
+    if (!/PUNETORI:|OPERATORI:|Operator:|Operater:|EMRI I PUNETORIT:/i.test(text)) {
+      missing.push("operator");
+    }
     if (!/NUIKF/i.test(text)) missing.push("NUIKF");
     if (!/KUPON FISKAL NR\.|FISKALNI KUPON BR\./i.test(text)) {
       missing.push("KUPON FISKAL NR.");
