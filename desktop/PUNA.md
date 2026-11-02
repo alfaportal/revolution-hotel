@@ -1,5 +1,65 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-02 — Probe RLS (temp, pa SQL live)
+
+Kontroll GET i 6 Supabase. SQL u shkrua te serverat, jo këtu.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `_tmp_rls_probe.js` / `_tmp_rls_probe_result.json` | Probe i përkohshëm (status HTTP, pa rreshta të dhënash) |
+
+**Nuk u ekzekutua** SQL. Nuk u bë build.
+
+## 2026-11-02 — WiFi staff links: kuzhina + bar te cloud sync
+
+`buildStaffLocalLinksSyncPayload` ekzistonte, por dërgonte vetëm kamarier / recepsion / sherbimi. Mungonin kuzhina dhe bar (banaku).
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/local-staff-links.js` | `getLocalKitchenUrl` + `getLocalBarUrl`; payload `local_kitchen_url` / `local_bar_url` + `local_staff_wifi.kuzhina|bar|banaku`; fingerprint; `kitchen_slug` fallback; log IP/port/slug/tipi |
+
+Hotel-server `posSyncService` tashmë ruan të gjithë `staff_local_links` — **nuk u prek**. LAN HOTEL për bar është `/banaku` (jo `/bar`).
+
+**Nuk u bë build.**
+
+---
+
+## 2026-11-02 — Ekran i zi recepsion → restorant / paneli i pronarit
+
+Bug: Dil nga recepsioni, PIN restoranti ose fjalëkalimi i pronarit → ekran navy i ngrirë.
+
+Shkaku:
+1. Tavolinat: `#ekrani-tavolina.hidden { display:none !important }` + `throw new Error("")` pas `kerkonHyrje`; sesioni recepsion (bridge) lexohej si sesion kamarieri.
+2. Pronari: Google Fonts + `qrcode.js` nga interneti bllokonin paint/boot (hoteli offline). Overlay `admin.html` i vjetër mbivendoste Setup-in.
+
+Ndryshimet: `app.js` skipBridge edhe për admin; `login.html` cache-bust `/admin.html?_=`; `waiter.html` CSS flex kur porosia s’është aktive, pa throw; `admin.html` pa Google Fonts, qrcode `defer`, pa throw; `app-paths.js` admin.html jashtë overlay.
+
+**Nuk u bë build.** Hyn në Setup të radhës. Verifikim: `vm.Script` OK për app.js, app-paths, waiter/admin/login inline.
+
+---
+
+## 2026-11-02 — Setup: 1 backup në Desktop (si KAFENE)
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `build/create-desktop-backup.ps1` | Skedar i ri — krijon `Desktop\Revolution Backup\HOTEL` (një Desktop, jo Public) |
+| `build/installer.nsh` | `customInstall` thërret skriptin me `-ProductSubFolder HOTEL` |
+
+**Nuk u bë build.** Hyn në Setup të radhës.
+
+---
+
+## 2026-11-02 — Build Setup 1.0.654
+
+Komanda: `node build-packages.js` (një Setup; `4` nuk ekziston — vetëm pako 3).
+URL NEW `jbunancitlyapvikzwhp` — **0** në kod desktop; asnjë ndryshim URL/key.
+
+**Rezultat:** `dist/Revolution HOTEL Setup.exe` v1.0.654 (~116 MB). Pre-build 72 module + 17 teste OK.
+
+**Nuk preka:** keys, kitchen_key, admin.html, git, hotel-server `.env` NEW_*.
+
+---
+
 ## 2026-10-27 — Kupon fiskal: renditje + QR si BIZNES
 
 | Skedar | Ndryshimi |

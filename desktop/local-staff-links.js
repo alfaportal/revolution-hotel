@@ -73,6 +73,7 @@ function resolveLocalVenueSegments(db) {
   let slug = String(
     db.getSetting("cloud_slug", "")
     || settings.kitchen_slug
+    || db.getSetting("kitchen_slug", "")
     || settings.cloud_client_id
     || "",
   )
@@ -120,6 +121,20 @@ function getLocalSherbimiUrl(db) {
   return `${base}${suffix}`;
 }
 
+function getLocalKitchenUrl(db) {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix(db, "kuzhina");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
+function getLocalBarUrl(db) {
+  const base = getLocalLanBaseUrl();
+  const suffix = localStaffPathSuffix(db, "banaku");
+  if (!base || !suffix) return null;
+  return `${base}${suffix}`;
+}
+
 function getLocalWaiterHostnamePanelUrls(db) {
   const port = getLocalServerPort();
   const staffSuffix = localStaffPathSuffix(db, "kamarier");
@@ -152,6 +167,8 @@ function staffLocalLinksFingerprint(links) {
     kamarier: String(links.local_waiter_url || links.local_staff_wifi?.kamarier || "").trim(),
     recepsion: String(links.local_recepsion_url || links.local_staff_wifi?.recepsion || "").trim(),
     sherbimi: String(links.local_sherbimi_url || links.local_staff_wifi?.sherbimi || "").trim(),
+    kuzhina: String(links.local_kitchen_url || links.local_staff_wifi?.kuzhina || "").trim(),
+    bar: String(links.local_bar_url || links.local_staff_wifi?.banaku || links.local_staff_wifi?.bar || "").trim(),
   });
 }
 
@@ -167,17 +184,27 @@ function storeStaffLocalLinksFingerprint(db, fp) {
 
 /** Payload për sync te cloud (owner panel). */
 function buildStaffLocalLinksSyncPayload(db) {
+  const { tipi, slug } = resolveLocalVenueSegments(db);
+  const ip = pickLanIPv4Address();
+  const port = getLocalServerPort();
   const kamarier = getLocalWaiterUrl(db) || "";
   const recepsion = getLocalRecepsionUrl(db) || "";
   const sherbimi = getLocalSherbimiUrl(db) || "";
+  const kuzhina = getLocalKitchenUrl(db) || "";
+  const bar = getLocalBarUrl(db) || "";
+  console.log("[staff-local-links]", { ip: ip || null, port, slug: slug || null, tipi, kamarier, recepsion, sherbimi, kuzhina, bar });
   return {
     local_waiter_url: kamarier,
     local_recepsion_url: recepsion,
     local_sherbimi_url: sherbimi,
-    local_lan_ip: pickLanIPv4Address() || "",
-    local_server_port: getLocalServerPort(),
+    local_kitchen_url: kuzhina,
+    local_bar_url: bar,
+    local_kuzhina_url: kuzhina,
+    local_banaku_url: bar,
+    local_lan_ip: ip || "",
+    local_server_port: port,
     local_waiter_hostname_urls: getLocalWaiterHostnamePanelUrls(db),
-    local_staff_wifi: { kamarier, recepsion, sherbimi },
+    local_staff_wifi: { kamarier, recepsion, sherbimi, kuzhina, bar, banaku: bar },
     synced_at: new Date().toISOString(),
   };
 }
