@@ -263,14 +263,7 @@ function splitUntouchedExpiredPending(db, orders) {
       continue;
     }
     if (pendingAcceptGateOrder(o, db)) {
-      const firstSeenIso = firstSeenMap.get(String(o.id));
-      const firstMs = firstSeenIso ? new Date(firstSeenIso).getTime() : NaN;
-      const ageMs = Number.isFinite(firstMs) ? nowMs - firstMs : 0;
-      if (!Number.isFinite(firstMs) || ageMs <= PENDING_ACCEPT_EXPIRE_MS) {
-        live.push(o);
-      } else {
-        expiredIds.push(String(o.id));
-      }
+      live.push(o);
       continue;
     }
     const firstSeenIso = firstSeenMap.get(String(o.id));

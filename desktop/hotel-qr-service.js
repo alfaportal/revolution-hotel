@@ -7,6 +7,7 @@ const {
   isLocalOrPrivateServerUrl,
   buildHotelGuestPublicUrl,
   PUBLIC_HOTEL_ORIGIN,
+  normalizeSlug,
 } = require("./cloud-server-url");
 
 function escHtml(s) {
@@ -37,11 +38,13 @@ function resolveQrBaseUrl(db) {
 function resolveHotelQrSlug(db) {
   try {
     const cloud = typeof db.getCloudSettings === "function" ? db.getCloudSettings() : {};
-    return String(
+    const raw = String(
       cloud.kitchen_slug
       || db.getSetting?.("kitchen_slug", "")
+      || db.getSetting?.("cloud_slug", "")
       || "",
     ).trim();
+    return normalizeSlug(raw) || raw;
   } catch {
     return "";
   }

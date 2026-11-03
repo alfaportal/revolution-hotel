@@ -219,8 +219,20 @@
   function renderGuestMenu({ barEl, gridEl, items, categories, onSelect, formatEuro }) {
     if (!barEl || !gridEl) return;
     const fmt = typeof formatEuro === "function" ? formatEuro : (n) => Number(n || 0).toFixed(2) + " €";
-    const list = Array.isArray(items) ? items.slice() : [];
-    const cats = orderedCategories(list, categories);
+    const minibarOnly = (name) => String(name || "").trim().toLowerCase() === "minibar";
+    let list = Array.isArray(items) ? items.slice() : [];
+    let catOrder = Array.isArray(categories) ? categories.slice() : [];
+    const G = global.GuestOrder;
+    const roomMode = Boolean(G && G.room);
+    if (!roomMode) {
+      const noMini = list.filter((it) => !minibarOnly(it.category));
+      const catsNoMini = catOrder.filter((c) => !minibarOnly(c));
+      if (noMini.length > 0) {
+        list = noMini;
+        catOrder = catsNoMini.length ? catsNoMini : catOrder;
+      }
+    }
+    const cats = orderedCategories(list, catOrder);
     if (!cats.length) {
       barEl.innerHTML = "";
       gridEl.innerHTML = '<p class="menu-empty-msg">Nuk ka artikuj në menu.</p>';

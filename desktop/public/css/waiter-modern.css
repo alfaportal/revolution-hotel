@@ -13,7 +13,9 @@ body.waiter-screen {
   background: #e8ecf1;
 }
 
-#ekrani-tavolina.hidden { display: none !important; }
+#ekrani-tavolina { display: flex !important; }
+body.waiter-screen:has(#ekrani-porosia.active) #ekrani-tavolina { display: none !important; }
+#ekrani-porosia:not(.active) { display: none !important; }
 
 /* ─── Layout me sidebar ─── */
 .waiter-shell {

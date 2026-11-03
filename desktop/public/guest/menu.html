@@ -142,7 +142,7 @@
 
       try {
 
-        const r = await fetch(G.withSlugQuery("/api/guest/menu"));
+        const r = await fetch(G.guestMenuApiUrl ? G.guestMenuApiUrl() : G.withSlugQuery("/api/guest/menu"));
 
         const d = await r.json();
 

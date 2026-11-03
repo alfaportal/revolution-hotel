@@ -356,7 +356,7 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=10"></script>
+  <script src="/js/app.js?v=13"></script>
   <script src="/js/kds-station-session.js?v=2"></script>
   <script src="/js/kds-station-bootstrap.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
@@ -366,8 +366,13 @@
       const qs = new URLSearchParams(window.location.search);
       const m = String(qs.get("mode") || "").toLowerCase();
       const kdsEntry = m === "kuzhina" || m === "banaku" || /\/(kuzhina|banaku)(?:\/\d{3})?\/?$/.test(p);
-      if (!kdsEntry) {
+      /* Në iframe (kasa → recepcion) mos prek sessionStorage — fshinte sesionin e PC-së. */
+      if (!kdsEntry && window.parent === window) {
         try { sessionStorage.removeItem("rh_user"); } catch { /* */ }
+        /* Hub: ndërrim recepsion ↔ restorant — mos mbaj sesion recepsioni në bridge. */
+        if (qs.get("hub") === "1") {
+          try { localStorage.removeItem("rh_recep_session_bridge"); } catch { /* */ }
+        }
       }
     })();
 
@@ -944,6 +949,9 @@
     function toggleLoginZone() {
       if (loginZoneLocked || isStaffOnlyLoginMode) return;
       selectedPinLoginMode = selectedPinLoginMode === "recepsion" ? "kamarier" : "recepsion";
+      if (selectedPinLoginMode === "kamarier") {
+        try { localStorage.removeItem("rh_recep_session_bridge"); } catch { /* */ }
+      }
       syncLoginZoneUi();
       resetPin();
       shfaqGabim(gabimEl, "");
@@ -1182,7 +1190,7 @@
         token: data.token,
         login_time: data.login_time,
       });
-      window.location.href = "/admin.html";
+      window.location.replace("/admin.html?_=" + Date.now());
     }
 
     async function provoAdminKarteLogin(cardUid) {
@@ -1264,7 +1272,11 @@
       if (typeof KdsStationSession !== "undefined" && KdsStationSession.isKdsRole(data.roli)) {
         KdsStationSession.save(data.roli, sess);
       }
-      window.location.replace(panelPathForStaffSession(data));
+      let dest = panelPathForStaffSession(data);
+      if (dest === "/waiter.html") {
+        dest += (dest.includes("?") ? "&" : "?") + "_=" + Date.now();
+      }
+      window.location.replace(dest);
     }
 
     async function provoKdsStacionAutologin(mode) {
@@ -1514,13 +1526,7 @@
             fjalekalimi: fjalekalimi,
           }),
         });
-        ruajSesionin({
-          emri: data.emri,
-          roli: data.roli,
-          token: data.token,
-          login_time: data.login_time,
-        });
-        window.location.href = "/admin.html";
+        hyrSiAdmin(data);
       } catch {
         shfaqGabim(gabimEl, "Fjalëkalimi i gabuar!");
       }

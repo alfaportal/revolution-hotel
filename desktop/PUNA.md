@@ -1,5 +1,108 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-03 — Porositë e dhomës vetëm te recepsioni (pa build)
+
+Të gjitha porositë e dhomës (menu, room service, minibar, spa) shkojnë te recepsioni. QR tavolinë restoranti mbetet te kamarieri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `isRecepcionCloudPendingOrder` = true për guest room/service + çdo `room_number` (jo QR tavolinë) |
+| `desktop/server.js` | mesazh 403: dhomë vetëm recepsioni |
+| `desktop/public/waiter.html` | `eshtePorosiVetemRecepsioni` fsheh menu dhomë |
+| `desktop/public/recepcion.html` | `eshtePorosiRecepcionQr` merr menu dhomë |
+
+**Nuk u prek admin.html / waiter.js cloud / fiskal. Git commit/push te ky hap. Nuk u bë build.**
+
+## 2026-11-03 — QR restorant te kamarieri (pa build)
+
+QR tavolinë nuk skadon nga lista e pritjes. Recepsioni mbeti si ishte: spa/minibar/folio vetëm recepsioni; ushqim tavoline te kamarieri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/online-orders-watcher.js` | `pendingAcceptGateOrder` nuk skadon |
+
+**Nuk u prek admin.html / waiter.js / recepcion.html. Nuk u bë build.**
+
+## 2026-11-03 — Build Setup 1.0.656
+
+Komanda: `node build-packages.js` (një Setup, jo të gjitha pakot).
+Version: `package.json` 1.0.655 → 1.0.656 (auto-bump i skriptit).
+Rezultat: `dist/Revolution HOTEL Setup.exe` + arkiv `Setup 1.0.656.exe` + Desktop.
+655/654/653 mbetën. Pre-build 72 module root OK. Obfuskim 178 JS, electron-builder OK.
+
+**Nuk u bë git.** Instalo Setup 656 → mbyll programin plotësisht → hape përsëri.
+
+## 2026-11-03 — Cloud Test/Sync më i shpejtë (pa build)
+
+Njësoj si KAFENE: Test = heartbeat; Sinkronizo = menu+staf pa foto/regjistër. `syncClosedWebWaiterSales` nuk u ndryshua.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/server.js` | test = checkConnection; sync-all i shpejtë |
+| `desktop/cloud-sync.js` | `fullCloudSync(db, opts)` |
+
+**Nuk u bë build / git / admin.html.** Setup 1.0.655 s’e ka.
+
+## 2026-11-03 — public_enabled default true (pa build)
+
+Desktop HOTEL s’ka kolonë `public_enabled` në SQLite. Checkbox `#public-enabled` te admin ishte tashmë `checked`. Default-i i ri u vu te `revolution-hotel-server` (seed + INSERT + migrim 099).
+
+**Nuk u bë build. Nuk u prek admin.html / cloud-sync / fiskal.**
+
+## 2026-11-03 — Nisje më e shpejtë (pa build)
+
+`main.js`: u hoq `netsh` në çdo hapje; splash del menjëherë; licenca (`enforceRevokedBlock` + `bootHotelLicenseLayers`) pas dritares; `waitForLocalHttp` 10s. Backup, fiskal, keys, cloud sync nuk u prekën.
+
+## 2026-11-03 — Firewall LAN në Setup (pa build)
+
+Te `build/installer.nsh` `customInstall`: rregull Windows Firewall TCP 3001 `Revolution HOTEL` (delete+add, nsExec, pa popup). Nuk dështon nëse ekziston. **Nuk u bë build.**
+
+## 2026-11-03 — Dil kasa recepsion (rruga reale e PIN-it)
+
+PIN recepsion hap `kasa-recepcion.html`. Dil te header → `login.html?hub=1` (hyrja e dukshme). Dil nga dhomat në iframe tani i thotë kasës të dalë (`recep-embed-dil`), jo të ringarkojë iframe.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/kasa-recepcion.html` | `dilNgaKasa()` + mesazhi `recep-embed-dil` |
+| `public/recepcion.html` | Dil në iframe → `recep-embed-dil` |
+
+**Provë:** kasa Dil → hyrje. **Nuk u bë build.**
+
+## 2026-11-03 — Dil nga recepsioni (modal ndërrimi, jo restoranti)
+
+Modal-i «Mirë se erdhe» te `recepcion.html` (`.shift-overlay` z-index 2000) mbulonte DIL — kliku nuk kalonte, ekrani mbetej i errët.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/recepcion.html` | Buton Dil te `#modal-rc-shift-open` dhe `#modal-rc-shift-accept` → `dil()` |
+
+**Provë live:** PIN recepsion → `recepcion.html` → Dil në modal → `login.html?hub=1` (hyrja e dukshme, jo zi). Kasa Dil tashmë OK. Restoranti nuk u prek. **Nuk u bë build.** Setup 1.0.655 s’e ka këtë.
+
+## 2026-11-03 — Ekran i zi kur dil nga recepsioni (verifikuar)
+
+DIL nga recepsioni ngrinte faqen navy: `throw new Error("no session")` pas redirect + `#ekrani-tavolina.hidden { display:none !important }`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/js/app.js` | `shfaqHyrjenTani` (cover i çelët) + `dil()`/`kerkonHyrje` me `replace` |
+| `public/recepcion.html` | pa throw; skripti vazhdon vetëm me sesion |
+| `public/kasa-recepcion.html` | pa throw; e njëjta |
+| `public/waiter.html` + `css/waiter-modern.css` | tavolinat `display:flex` kur porosia s’është aktive |
+| `app-paths.js` | overlay i vjetër me throw zëvendësohet |
+| `public/sw-staff.js` / `sw.js` | cache PWA v8 / v2 |
+
+**Provë live `http://127.0.0.1:3001`:** recepcion/waiter/admin pa sesion → login hub i dukshëm (jo zi). Kamarier i vërtetë → tavolinat e gjelbra. DIL → login hub. **Nuk u bë build.**
+
+## 2026-11-02 — Build Setup 1.0.655
+
+Komanda: `node build-packages.js` (një Setup, pako 3). `npm run build` dështoi te `download-menu-stock-photos.mjs` (11 Unsplash HTTP 401) — u anashkalua; fotot ekzistuese mbeten.
+
+Pre-build: 72 module + 17 teste të mbrojtura OK. Version 1.0.654 → 1.0.655. Rollback: `dist/Revolution HOTEL Setup 1.0.654.exe`.
+
+**Rezultat:** `dist/Revolution HOTEL Setup.exe` + kopje Desktop.
+
+**Nuk preka:** git, hotel-server, fiskal, kontabilist, admin.html, keys.
+
 ## 2026-11-02 — Probe RLS (temp, pa SQL live)
 
 Kontroll GET i 6 Supabase. SQL u shkrua te serverat, jo këtu.

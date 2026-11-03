@@ -21,14 +21,11 @@ try {
   icacls $Dir /inheritance:r /Q 2>&1 | Out-File $log -Append
   icacls $Dir /grant:r "SYSTEM:(OI)(CI)F" /grant:r "Administrators:(OI)(CI)F" /grant:r "ALL APPLICATION PACKAGES:(OI)(CI)RX" /grant:r "ALL RESTRICTED APPLICATION PACKAGES:(OI)(CI)RX" /T /Q 2>&1 | Out-File $log -Append
 
-  Get-ChildItem -LiteralPath $Dir -Recurse -File -Force -EA SilentlyContinue | ForEach-Object {
-    icacls $_.FullName /grant:r "Users:(RX)" /grant:r "Authenticated Users:(RX)" /Q | Out-Null
-  }
-  Get-ChildItem -LiteralPath $Dir -Recurse -Directory -Force -EA SilentlyContinue | ForEach-Object {
-    icacls $_.FullName /grant:r "Users:(RX)" /grant:r "Authenticated Users:(RX)" /Q | Out-Null
-  }
+  icacls $Dir /grant:r "Users:(RX)" /T /Q 2>&1 | Out-File $log -Append
+  icacls $Dir /grant:r "Administrators:(F)" /T /Q 2>&1 | Out-File $log -Append
 
   icacls $Dir /grant:r "SYSTEM:(F)" /grant:r "Administrators:(F)" /grant:r "Users:(X)" /grant:r "Authenticated Users:(X)" /grant:r "ALL APPLICATION PACKAGES:(X)" /grant:r "ALL RESTRICTED APPLICATION PACKAGES:(X)" /Q 2>&1 | Out-File $log -Append
+  # Fsheh folderin e instalimit — klienti sheh vetëm shortcut Desktop, jo skedarët brenda.
   attrib +H +S $Dir 2>&1 | Out-File $log -Append
   cmd /c "attrib +H `"$Dir`"" 2>&1 | Out-File $log -Append
 

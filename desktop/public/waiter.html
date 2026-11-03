@@ -14,12 +14,17 @@
   <script src="/js/staff-auto-connect.js" defer></script>
   <link rel="stylesheet" href="/css/lan-status.css">
   <script src="/js/lan-status-indicator.js" defer></script>
-  <link rel="stylesheet" href="/css/waiter-modern.css?v=13">
+  <link rel="stylesheet" href="/css/waiter-modern.css?v=14">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=2">
   <script src="/js/staff-cloud-disabled.js"></script>
   <style>
-    #ekrani-tavolina.hidden { display: none !important; }
+    #ekrani-tavolina { display: flex !important; }
+    body.waiter-screen:has(#ekrani-porosia.active) #ekrani-tavolina { display: none !important; }
+    #ekrani-porosia:not(.active) { display: none !important; }
+    body.waiter-screen:not(:has(#ekrani-porosia.active)) #ekrani-tavolina {
+      display: flex !important;
+    }
 
     .waiter-shell {
       padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -111,13 +116,8 @@
     .orders-board .ord-status.room { background: #dcfce7; color: #166534; }
     .orders-empty { padding: 1.5rem; text-align: center; color: #64748b; font-weight: 600; }
     .waiter-view-toggle { display: none !important; }
-    .waiter-main-tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin: 0 0 0.85rem;
-      padding: 0.15rem 0 0.35rem;
-    }
+    /* Kamarier restorant — jo tab-et e recepsionit (Dhomat / Tavolina…) */
+    .waiter-main-tabs { display: none !important; }
     .waiter-main-tabs .waiter-nav-btn {
       flex: 1 1 auto;
       min-width: 5.5rem;
@@ -915,17 +915,17 @@
         <div class="waiter-topbar-time" id="waiter-clock">--:--</div>
       </header>
 
-      <div class="waiter-kpi-row">
+      <div class="waiter-kpi-row waiter-kpi-row-tables">
         <button type="button" class="waiter-kpi waiter-kpi-open" id="kpi-open-wrap" aria-label="Filtro tavolina të hapura">
-          <span class="waiter-kpi-label" id="kpi-label-1">TË ZËNA</span>
+          <span class="waiter-kpi-label" id="kpi-label-1">E HAPUR</span>
           <span class="waiter-kpi-value" id="kpi-hapur">0</span>
         </button>
         <button type="button" class="waiter-kpi waiter-kpi-free" id="kpi-free-wrap" aria-label="Filtro tavolina të lira">
-          <span class="waiter-kpi-label" id="kpi-label-2">TË LIRA</span>
+          <span class="waiter-kpi-label" id="kpi-label-2">LIRË</span>
           <span class="waiter-kpi-value" id="kpi-lire">0</span>
         </button>
         <button type="button" class="waiter-kpi waiter-kpi-new" id="kpi-re-wrap" aria-label="Porosi QR tavolinë lokale">
-          <span class="waiter-kpi-label" id="kpi-label-3">TË PAPASTRA</span>
+          <span class="waiter-kpi-label" id="kpi-label-3">QR TAVOLINA</span>
           <span class="waiter-kpi-value" id="kpi-re">0</span>
         </button>
         <button
@@ -939,7 +939,7 @@
           <span class="waiter-kpi-value waiter-kpi-loss-icon" aria-hidden="true">＋</span>
         </button>
         <button type="button" class="waiter-kpi waiter-kpi-cash" id="kpi-cash-wrap" aria-label="Monedha në arkë">
-          <span class="waiter-kpi-label" id="kpi-label-4">TË REZERVUARA</span>
+          <span class="waiter-kpi-label" id="kpi-label-4">MONEDHA NË ARKË</span>
           <span class="waiter-kpi-value" id="kpi-arke">0</span>
         </button>
       </div>
@@ -1439,6 +1439,25 @@
     </div>
   </div>
 
+  <script>
+    (function rhWaiterScreenHomeEarly() {
+      function home() {
+        var tables = document.getElementById("ekrani-tavolina");
+        var order = document.getElementById("ekrani-porosia");
+        if (tables) {
+          tables.classList.remove("hidden");
+          tables.removeAttribute("hidden");
+        }
+        if (order) {
+          order.classList.remove("active");
+          order.classList.add("hidden");
+        }
+      }
+      home();
+      window.addEventListener("pageshow", home);
+    })();
+  </script>
+
   <div id="modal-porosi-liste" class="table-modal" hidden>
     <div class="table-modal-backdrop" id="orders-modal-backdrop"></div>
     <div class="table-modal-content">
@@ -1652,7 +1671,7 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=10"></script>
+  <script src="/js/app.js?v=13"></script>
   <script src="/js/offline-retry-queue.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
@@ -1665,8 +1684,47 @@
   <script src="/js/fiscal-mixed-payment.js?v=1"></script>
   <script src="/js/fiscal-offline-status.js?v=2"></script>
   <script>
+    (function showWaiterTablesImmediately() {
+      const tables = document.getElementById("ekrani-tavolina");
+      const orderScreen = document.getElementById("ekrani-porosia");
+      if (tables) {
+        tables.classList.remove("hidden");
+        tables.removeAttribute("hidden");
+        tables.style.removeProperty("display");
+      }
+      if (orderScreen) {
+        orderScreen.classList.remove("active");
+        orderScreen.classList.add("hidden");
+        orderScreen.style.removeProperty("display");
+      }
+    })();
     const user = kerkonHyrje("kamarier");
-    if (!user) throw new Error("");
+    if (user) {
+
+    function resetWaiterScreensToTablesHome() {
+      const tables = document.getElementById("ekrani-tavolina");
+      const orderScreen = document.getElementById("ekrani-porosia");
+      if (tables) {
+        tables.classList.remove("hidden");
+        tables.removeAttribute("hidden");
+        tables.style.removeProperty("display");
+      }
+      if (orderScreen) {
+        orderScreen.classList.remove("active");
+        orderScreen.classList.add("hidden");
+        orderScreen.style.removeProperty("display");
+      }
+    }
+    if (user) resetWaiterScreensToTablesHome();
+    window.addEventListener("pageshow", () => {
+      resetWaiterScreensToTablesHome();
+    });
+    document.addEventListener("DOMContentLoaded", () => {
+      resetWaiterScreensToTablesHome();
+    });
+    window.addEventListener("pagehide", () => {
+      if (typeof stopWaiterWebSocket === "function") stopWaiterWebSocket();
+    });
 
     document.getElementById("hdr-kamarier-top").textContent = user.emri;
 
@@ -1745,9 +1803,18 @@
     /** Spa/sauna/shërbime hoteli — vetëm recepsioni (server: isRecepcionCloudPendingOrder). */
     function eshtePorosiVetemRecepsioni(o) {
       if (eshtePorosiSherbimiHoteliQr(o)) return true;
+      if (o?.is_recepcion_qr || o?.is_guest_room_menu) return true;
       const device = String(o?.device_id || "").toUpperCase();
-      if (device === "WEB-GUEST-SERVICE") return true;
+      if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return true;
       if (String(o?.order_kind || "") === "guest_hotel_service") return true;
+      if (String(o?.order_kind || "") === "guest_room_menu") return true;
+      const room = String(o?.room_number || "").trim();
+      if (room) {
+        const tn = Number(o?.table_number) || Number(o?.qr_table_number) || 0;
+        const blob = `${o?.source_label || ""} ${o?.waiter_name || ""}`.toLowerCase();
+        const isRestTableQr = tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob));
+        if (!isRestTableQr) return true;
+      }
       return false;
     }
 
@@ -2669,6 +2736,10 @@
       else if (waiterView === "orders") ngarkoPorositeWaiter().catch(() => {});
       if (typeof window.__waiterSyncIdleTimers === "function") window.__waiterSyncIdleTimers();
     }
+
+    /* Restorant (kamarier): KPI + panel tavolinash — jo etiketat e dhomave të recepsionit */
+    setKpiLabelsForView("tables");
+    setWaiterView("tables");
 
     function renderWaiterRoomsGrid(rooms, reservations) {
       const grid = document.getElementById("waiter-rooms-grid");
@@ -3681,9 +3752,7 @@
     document.getElementById("btn-view-rooms")?.addEventListener("click", () => setWaiterView("rooms"));
     document.getElementById("btn-view-tables")?.addEventListener("click", () => setWaiterView("tables"));
     function showWaiterMainScreen() {
-      document.getElementById("ekrani-tavolina")?.classList.remove("hidden");
-      document.getElementById("ekrani-porosia")?.classList.add("hidden");
-      document.getElementById("ekrani-porosia")?.classList.remove("active");
+      resetWaiterScreensToTablesHome();
     }
     document.getElementById("btn-nav-dhomat")?.addEventListener("click", () => {
       showWaiterMainScreen();
@@ -4304,8 +4373,10 @@
         lastShiftSummary = res;
         syncSidebarZReportWarn(res);
         hideShiftOpenModal();
+        showWaiterMainScreen();
         await ngarkoPazarin();
         await ngarkoTavolinat();
+        setWaiterView("tables");
         startWaiterPolling();
       } catch (err) {
         msg.textContent = err.message;
@@ -4363,8 +4434,10 @@
         hideShiftAcceptModal();
         shiftReady = true;
         shiftOpen = true;
+        showWaiterMainScreen();
         await ngarkoPazarin();
         await ngarkoTavolinat();
+        setWaiterView("tables");
         startWaiterPolling();
       } catch (err) {
         msg.textContent = err.message;
@@ -5566,11 +5639,16 @@
       rifreskoMenu();
     }
 
-    /** Kategoritë që kanë artikuj aktualë, në rendin e KATEGORITE (admin). */
+    function eshteKategoriMinibar(name) {
+      return String(name || "").trim().toLowerCase() === "minibar";
+    }
+
+    /** Kategoritë që kanë artikuj aktualë, në rendin e KATEGORITE (admin). Minibar = dhoma, jo tavolina. */
     function kategoriteMePorosi() {
       const present = new Set(menuItems.map(it => it.category));
-      const ordered = (KATEGORITE || []).filter(k => present.has(k));
+      const ordered = (KATEGORITE || []).filter(k => present.has(k) && !eshteKategoriMinibar(k));
       for (const c of present) {
+        if (eshteKategoriMinibar(c)) continue;
         if (!ordered.includes(c)) ordered.push(c);
       }
       return ordered;
@@ -5642,11 +5720,10 @@
 
     function rifreskoMenu() {
       const eHuaj = tavolinaAktive?.order && tavolinaAktive.order.waiter_name !== user.emri;
-      /* Si telefon/QR/takeaway: sipas id (seed), jo alfabet — Espresso… pastaj Çaj. */
       const artikujTeKategorise = menuItems
         .filter(it => it.category === menuGroupFilter)
         .slice()
-        .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
       MenuPosUI.renderMenuGrid({
         container: document.getElementById("menu-grid"),
         menuItems: artikujTeKategorise,
@@ -6534,47 +6611,54 @@
     if (typeof initWaiterCalculator === "function") initWaiterCalculator();
 
     (async () => {
-      await ngarkoEmrin();
       try {
-        const warn = sessionStorage.getItem("order_accept_warning");
-        if (warn) {
-          sessionStorage.removeItem("order_accept_warning");
-          console.warn("Porosi online:", warn);
-        }
-      } catch { /* */ }
-      document.getElementById("shift-open-waiter-name").textContent = user.emri;
-      const ready = await kontrolloNderrimin();
-      await ngarkoMenu();
-      if (ready) {
-        await ngarkoPazarin();
-        await ngarkoTavolinat();
-        await ngarkoDhomatWaiter();
-        setWaiterView("tables");
-        startWaiterPolling();
-      }
-      if (!window.STAFF_CLOUD_FEATURES_OFF) {
-        initCloudStatusIndicator("cloud-status-pill");
-        if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
-      }
-      window.StaffOfflineRetryQueue?.registerHandlers?.({
-        onOrderSent(detail) {
-          const tid = detail?.table_id;
-          if (tid != null && tavolinaId != null && Number(tid) === Number(tavolinaId)) {
-            if (Array.isArray(detail.items)) artikujNeTavoline = detail.items;
-            porosia = [];
-            fshiDraftPorosieTavoline(tavolinaId);
-            perditesoPorosine();
-            kyçKamarierPasPorosise();
+        await ngarkoEmrin();
+        try {
+          const warn = sessionStorage.getItem("order_accept_warning");
+          if (warn) {
+            sessionStorage.removeItem("order_accept_warning");
+            console.warn("Porosi online:", warn);
           }
-          ngarkoTavolinat(true).catch(() => {});
-        },
-        onActionDone() {
-          ngarkoPorosiOnlineWaiter(true).catch(() => {});
-          ngarkoTavolinat(true).catch(() => {});
-        },
-      });
-      window.StaffOfflineRetryQueue?.updateBadge?.();
+        } catch { /* */ }
+        document.getElementById("shift-open-waiter-name").textContent = user.emri;
+        resetWaiterScreensToTablesHome();
+        setKpiLabelsForView("tables");
+        setWaiterView("tables");
+        const ready = await kontrolloNderrimin();
+        await ngarkoMenu();
+        await ngarkoTavolinat();
+        if (ready) {
+          await ngarkoPazarin();
+          startWaiterPolling();
+        }
+        if (!window.STAFF_CLOUD_FEATURES_OFF) {
+          initCloudStatusIndicator("cloud-status-pill");
+          if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
+        }
+        window.StaffOfflineRetryQueue?.registerHandlers?.({
+          onOrderSent(detail) {
+            const tid = detail?.table_id;
+            if (tid != null && tavolinaId != null && Number(tid) === Number(tavolinaId)) {
+              if (Array.isArray(detail.items)) artikujNeTavoline = detail.items;
+              porosia = [];
+              fshiDraftPorosieTavoline(tavolinaId);
+              perditesoPorosine();
+              kyçKamarierPasPorosise();
+            }
+            ngarkoTavolinat(true).catch(() => {});
+          },
+          onActionDone() {
+            ngarkoPorosiOnlineWaiter(true).catch(() => {});
+            ngarkoTavolinat(true).catch(() => {});
+          },
+        });
+        window.StaffOfflineRetryQueue?.updateBadge?.();
+      } catch (err) {
+        console.error("[waiter] Boot error:", err);
+        resetWaiterScreensToTablesHome();
+      }
     })();
+    }
   </script>
   <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
     <span class="lan-status-dot" aria-hidden="true"></span>

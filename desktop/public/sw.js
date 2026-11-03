@@ -1,5 +1,5 @@
 /* Revolution HOTEL — service worker stafi (LAN). Network-first, cache fallback. */
-const CACHE_NAME = "hotel-staff-pwa-v1";
+const CACHE_NAME = "hotel-staff-pwa-v2";
 const PRECACHE_URLS = [
   "/login",
   "/login.html",

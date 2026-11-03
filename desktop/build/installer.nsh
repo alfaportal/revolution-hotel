@@ -88,7 +88,6 @@
       Abort
   hotel_skip_usb_used_check:
 
-  ExecWait 'cmd /c icacls "$INSTDIR" /reset /T /Q' $0
   ExecWait 'cmd /c attrib -H -S "$INSTDIR" /S /D' $0
   ExecWait 'cmd /c taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T 2>nul' $0
   ExecWait 'cmd /c taskkill /F /IM "Revolution HOTEL.exe" /T 2>nul' $0
@@ -132,6 +131,9 @@
   StrCpy $launchLink "$newDesktopLink"
   ExecWait 'cmd /c attrib +H "$R7\app.ico"' $0
 
+  ; Backup ne Desktop — nje folder, jo Public.
+  File "/oname=$PLUGINSDIR\create-desktop-backup.ps1" "${BUILD_RESOURCES_DIR}\create-desktop-backup.ps1"
+  ExecWait '"$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$PLUGINSDIR\create-desktop-backup.ps1" -ProductSubFolder HOTEL' $0
   ; Windows Firewall — allow in/out që Windows mos shfaqë dritaren e bllokimit.
   ExecWait 'netsh advfirewall firewall delete rule name="Revolution HOTEL"' $0
   ExecWait 'netsh advfirewall firewall add rule name="Revolution HOTEL" dir=in action=allow program="$INSTDIR\${APP_EXECUTABLE_FILENAME}" enable=yes' $0
@@ -152,4 +154,5 @@
     FileClose $R6
     ExecWait 'cmd /c attrib +H +S +R "$EXEDIR\.installed"' $0
   hotel_skip_usb_mark:
+  nsExec::ExecToLog 'cmd /c netsh advfirewall firewall delete rule name="Revolution HOTEL" protocol=TCP localport=3001 >nul 2>&1 & netsh advfirewall firewall add rule name="Revolution HOTEL" dir=in action=allow protocol=TCP localport=3001 >nul 2>&1'
 !macroend

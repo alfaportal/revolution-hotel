@@ -33,7 +33,6 @@ const PUBLIC_OVERLAY_ALLOW = new Set([
   "kasa-recepcion.html",
   "recepcion.html",
   "login.html",
-  "admin.html",
   "css/recepcion-truffle.css",
   "js/hotel-recipe-workbench-admin.js",
 ]);
@@ -162,37 +161,59 @@ function overlayLoginNeedsRefresh(overlayText, bundledText) {
   const bundledNewZoneUi =
     /id="login-zone-pick"/.test(bundledText) &&
     !/btn-login-role-restaurant/.test(bundledText);
-  return overlayUses4 || (overlayOldZoneUi && bundledNewZoneUi);
+  const overlayMissingCacheBust =
+    bundledText.includes('"_=" + Date.now()') && !overlayText.includes('"_=" + Date.now()');
+  const overlayMissingHubBridge =
+    bundledText.includes("rh_recep_session_bridge") &&
+    !overlayText.includes("rh_recep_session_bridge");
+  const overlayThrowsSession =
+    /throw new Error\("(no session)?"\)/.test(overlayText) &&
+    !/throw new Error\("(no session)?"\)/.test(bundledText);
+  const overlayMissingNavCover =
+    bundledText.includes("rh-hyrje-cover") && !overlayText.includes("rh-hyrje-cover");
+  return (
+    overlayUses4 ||
+    (overlayOldZoneUi && bundledNewZoneUi) ||
+    overlayMissingCacheBust ||
+    overlayMissingHubBridge ||
+    overlayThrowsSession ||
+    overlayMissingNavCover
+  );
 }
 
-/** login.html në overlay — zëvendëso nga Setup kur PIN/zona UI është e vjetër. */
-function refreshStalePinLoginOverlay() {
+function refreshOneOverlayHtml(rel) {
   const overlay = publicOverlayRoot();
   if (!overlay) return;
-  const rel = "login.html";
   const overlayFile = path.join(overlay, rel);
   if (!fs.existsSync(overlayFile)) return;
-
   const bundled = readBundledLoginHtml(rel);
   if (!bundled) return;
-
   try {
     const overlayText = fs.readFileSync(overlayFile, "utf8");
     if (!overlayLoginNeedsRefresh(overlayText, bundled.text)) return;
     fs.copyFileSync(bundled.path, overlayFile);
-    console.warn("[public-overlay] login.html u përditësua nga paketa (PIN/zona hyrje).");
+    console.warn("[public-overlay]", rel, "u përditësua nga paketa.");
   } catch (e) {
-    console.warn("[public-overlay] refresh login.html:", e.message || e);
+    console.warn("[public-overlay] refresh", rel, e.message || e);
     try {
       const overlayText = fs.readFileSync(overlayFile, "utf8");
-      if (/btn-login-role-restaurant/.test(overlayText)) {
+      if (
+        /btn-login-role-restaurant/.test(overlayText) ||
+        /throw new Error\("(no session)?"\)/.test(overlayText)
+      ) {
         fs.unlinkSync(overlayFile);
-        console.warn("[public-overlay] login.html i vjetër u fshi — përdoret Setup.");
+        console.warn("[public-overlay]", rel, "i vjetër u fshi — përdoret Setup.");
       }
     } catch {
       /* ignore */
     }
   }
+}
+
+function refreshStalePinLoginOverlay() {
+  refreshOneOverlayHtml("login.html");
+  refreshOneOverlayHtml("recepcion.html");
+  refreshOneOverlayHtml("kasa-recepcion.html");
 }
 
 function resolvePackagedPublicFile(segments) {
@@ -289,6 +310,13 @@ function listPublicStaticRoots() {
 
 function resolvePublicFile(relativeName) {
   const rel = normalizePublicRel(relativeName);
+  if (rel === "admin.html") {
+    const packagedAdmin = resolvePackagedPublicFile(["public", "admin.html"]);
+    if (packagedAdmin && fs.existsSync(packagedAdmin)) return packagedAdmin;
+    const devAdmin = path.join(__dirname, "public", "admin.html");
+    if (fs.existsSync(devAdmin)) return devAdmin;
+    return joinContent("public", "admin.html");
+  }
   const overlay = publicOverlayRoot();
   if (overlay && isPublicOverlayAllowed(rel)) {
     const overlayFile = path.join(overlay, rel);

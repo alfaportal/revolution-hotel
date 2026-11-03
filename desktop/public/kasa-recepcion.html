@@ -12,8 +12,7 @@
   <title>Kasa recepsion — Revolution HOTEL</title>
   <script src="/js/pwa-staff-register.js" defer></script>
   <script src="/js/staff-auto-connect.js" defer></script>
-  <style>html,body{background:#0a1628}</style>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>html,body{background:#e8ecf1}</style>
   <style>
     :root {
       --bg: #0a1628;
@@ -39,7 +38,7 @@
       min-height: 0;
       background: var(--bg);
       color: var(--text);
-      font-family: Inter, system-ui, sans-serif;
+      font-family: system-ui, "Segoe UI", sans-serif;
     }
     .ui-sr-check {
       position: fixed;
@@ -861,13 +860,13 @@
     <div class="top-left">
       <img src="/img/revolution-logo.png" alt="Revolution" class="top-logo" width="120" height="36" />
       <span class="top-kasa-link">Recepsion</span>
-      <a href="/recepcion.html" class="top-kasa-link" style="font-size:.85rem;font-weight:600;color:var(--muted)">Dhomat · Check-in</a>
+      <button type="button" class="top-kasa-link" id="btn-top-recep-rooms" style="font-size:.85rem;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;font-family:inherit">Dhomat · Check-in</button>
     </div>
     <div class="top-bar-rest">
       <button type="button" class="kasa-btn-exit" id="btn-recep-z-report" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
       <div class="who" id="who"></div>
       <button type="button" class="kasa-btn-exit" id="btn-close-shift" hidden>Mbyll arkën</button>
-      <a href="/login.html?hub=1" class="kasa-btn-exit" data-dil="1">Dil</a>
+      <button type="button" class="kasa-btn-exit" id="btn-kasa-dil">Dil</button>
     </div>
   </header>
 
@@ -1003,21 +1002,36 @@
   </div>
   <div id="print-fature" class="print-receipt"></div>
 
-  <script src="/js/app.js?v=10"></script>
+  <script src="/js/app.js?v=13"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
   <script>
     (function guardRecepsionSession() {
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
       if (!u || u.roli !== "recepsion" || !u.token) {
-        window.location.replace("/login.html?hub=1");
-        throw new Error("no session");
+        if (typeof shfaqHyrjenTani === "function") shfaqHyrjenTani("/login.html?hub=1");
+        else window.location.replace("/login.html?hub=1");
+        return;
       }
       if (typeof ruajSesionin === "function") ruajSesionin(u);
       window.__recepUser = u;
     })();
 
     const user = window.__recepUser;
+    if (user && user.token) {
+    function dilNgaKasa() {
+      const frame = document.getElementById("recep-module-frame");
+      if (frame) {
+        try { frame.src = "about:blank"; } catch { /* iframe */ }
+      }
+      if (typeof dil === "function") dil();
+      else if (typeof shfaqHyrjenTani === "function") shfaqHyrjenTani("/login.html?hub=1");
+      else window.location.replace("/login.html?hub=1");
+    }
+    document.getElementById("btn-kasa-dil")?.addEventListener("click", dilNgaKasa);
+    document.getElementById("btn-top-recep-rooms")?.addEventListener("click", () => {
+      openRecepModule("rooms");
+    });
     const RECEP_MODULES = [
       { id: "rooms", label: "Dhomat" },
       { id: "reservations", label: "Rezervimet" },
@@ -1129,8 +1143,11 @@
       }
     }
 
+    let recepEmbedReloadGuard = 0;
+
     function openRecepModule(view) {
       if (!RECEP_MODULES.some((m) => m.id === view)) view = "rooms";
+      if (activeRecepView === view) return;
       activeRecepView = view;
       renderCategoryNav();
       const col = document.getElementById("col-cart");
@@ -1148,6 +1165,7 @@
         return;
       }
       const onFrameReady = () => {
+        recepEmbedReloadGuard = 0;
         pushRecepSessionIntoFrame();
         frame.removeEventListener("load", onFrameReady);
       };
@@ -1341,14 +1359,24 @@
         if (d.playBell) playKasaRecepOrderBell();
         return;
       }
+      if (d.type === "recep-embed-dil") {
+        dilNgaKasa();
+        return;
+      }
       if (d.type === "recep-embed-session-lost") {
         if (user?.token && typeof ruajSesionin === "function") ruajSesionin(user);
-        if (activeRecepView) {
-          pushRecepSessionIntoFrame();
-          const frame = document.getElementById("recep-module-frame");
-          if (frame?.src && frame.src !== "about:blank") {
-            frame.src = recepModuleUrl(activeRecepView) + "&_=" + Date.now();
-          }
+        if (!activeRecepView) return;
+        if (recepEmbedReloadGuard >= 3) return;
+        recepEmbedReloadGuard += 1;
+        pushRecepSessionIntoFrame();
+        const frame = document.getElementById("recep-module-frame");
+        if (frame?.src && frame.src !== "about:blank") {
+          const onFrameReady = () => {
+            pushRecepSessionIntoFrame();
+            frame.removeEventListener("load", onFrameReady);
+          };
+          frame.addEventListener("load", onFrameReady);
+          frame.src = recepModuleUrl(activeRecepView) + "&_=" + Date.now();
         }
       }
     });
@@ -1498,20 +1526,35 @@
 
         if (!thermal && paperBlockActive) {
           let serialNo = null;
+          let blockCode = null;
           while (true) {
             const entered = window.prompt(
-              "Numri serik i bllokut letër (obligativ para pagesës):",
+              "Numri serik i kuponit (obligativ para pagesës):",
               ""
             );
             if (entered === null) {
-              msg.textContent = "Pagesa u anulua — mungon numri serik.";
+              msg.textContent = "Pagesa u anulua — mungon numri serik i kuponit.";
               return;
             }
             serialNo = String(entered).trim();
             if (serialNo) break;
-            msg.textContent = "Numri serik i bllokut letër është i detyrueshëm.";
+            msg.textContent = "Numri serik i kuponit është i detyrueshëm.";
+          }
+          while (true) {
+            const enteredBlock = window.prompt(
+              "Kodi unik i bllokut (si në fletën ATK):",
+              "BLK-2026-01"
+            );
+            if (enteredBlock === null) {
+              msg.textContent = "Pagesa u anulua — mungon kodi unik i bllokut.";
+              return;
+            }
+            blockCode = String(enteredBlock).trim();
+            if (blockCode) break;
+            msg.textContent = "Kodi unik i bllokut është i detyrueshëm.";
           }
           base.serial_no = serialNo;
+          base.block_code = blockCode;
           let res = await api("/api/fiscal/paper-block/checkout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1658,7 +1701,7 @@
       document.getElementById("msg").textContent = cart.length ? "U hoq rreshti i fundit." : "";
     };
     document.getElementById("btn-close-shift").onclick = () => {
-      window.location.href = "/recepcion.html";
+      openRecepModule("rooms");
     };
 
     document.getElementById("btn-recep-z-report").onclick = async function zReportKasaRecep() {
@@ -1697,6 +1740,7 @@
         document.getElementById("msg").textContent = e.message || "Gabim ngarkimi";
       }
     })();
+    }
   </script>
 </body>
 </html>

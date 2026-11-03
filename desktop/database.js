@@ -2304,6 +2304,93 @@ function seedMenuAndCategories() {
   }
 }
 
+function countNonMinibarMenuItems() {
+  const row = sqlite.prepare(
+    `SELECT COUNT(*) AS c FROM menu_items
+     WHERE active = 1 AND lower(trim(category)) != 'minibar'`,
+  ).get();
+  return Number(row?.c) || 0;
+}
+
+/** Kur vetëm Minibar ekziston (seed hoteli), shto katalogun restoranti si KAFENE — pa fshirë Minibar. */
+function mergeRestaurantMenuSeedIfMissing() {
+  const seed = (VERSION && VERSION.menuSeed) || [];
+  if (!seed.length) return 0;
+  if (countNonMinibarMenuItems() > 0) return 0;
+
+  const catNames = new Set(getCategories().map((c) => c.name));
+  const insCat = sqlite.prepare(
+    "INSERT INTO categories (name, sort_order, active, route) VALUES (?, ?, 1, ?)",
+  );
+  for (const [i, name] of (VERSION.defaultCategories || []).entries()) {
+    if (!name || catNames.has(name)) continue;
+    try {
+      insCat.run(name, i, inferCategoryRouteFromName(name));
+      catNames.add(name);
+    } catch (e) {
+      console.warn("[menu] mergeRestaurantMenuSeedIfMissing category:", name, e.message);
+    }
+  }
+
+  const findItem = sqlite.prepare(
+    `SELECT id FROM menu_items
+     WHERE lower(trim(name)) = lower(?) AND lower(trim(category)) = lower(?)`,
+  );
+  const insItem = sqlite.prepare(
+    "INSERT INTO menu_items (name, category, price, active, sort_order) VALUES (?, ?, ?, 1, ?)",
+  );
+  const sortByCat = new Map();
+  let added = 0;
+  for (const item of seed) {
+    const cat = String(item.category || "").trim();
+    if (!cat || cat.toLowerCase() === "minibar") continue;
+    if (findItem.get(item.name, cat)) continue;
+    const s = sortByCat.get(cat) || 0;
+    insItem.run(item.name, cat, Number(item.price) || 0, s);
+    sortByCat.set(cat, s + 1);
+    added += 1;
+  }
+  if (added > 0) {
+    console.log(
+      `[menu] U shtuan ${added} artikuj restoranti (katalog KAFENE) — mungonte përveç Minibar.`,
+    );
+  }
+  return added;
+}
+
+const MINIBAR_MENU_PRICE_SEED = [
+  ["Ujë 0.5L", 1.5],
+  ["Ujë 1.5L", 2.5],
+  ["Coca-Cola", 2.0],
+  ["Fanta", 2.0],
+  ["Red Bull", 3.5],
+  ["Birra", 3.0],
+  ["Çokollatë", 2.5],
+  ["Biskota", 1.8],
+  ["Snickers", 2.5],
+  ["Chips", 2.0],
+];
+
+/** menu_food_prices_zero_v1 zeroi edhe Minibar — rikthe çmimet default një herë. */
+function restoreMinibarMenuPricesIfZeroed() {
+  if (getSetting("minibar_prices_restore_v1", "") === "1") return 0;
+  const upd = sqlite.prepare(
+    `UPDATE menu_items SET price = ?
+     WHERE lower(trim(name)) = lower(?) AND lower(trim(category)) = 'minibar'
+       AND (price IS NULL OR price = 0)`,
+  );
+  let applied = 0;
+  for (const [name, price] of MINIBAR_MENU_PRICE_SEED) {
+    const r = upd.run(price, name);
+    applied += Number(r.changes) || 0;
+  }
+  setSetting("minibar_prices_restore_v1", "1");
+  if (applied > 0) {
+    console.log(`[menu] U rikthyen ${applied} çmime Minibar (pas zeroimit të gabuar).`);
+  }
+  return applied;
+}
+
 /** Pas setup: menu/kategori starter nëse mungojnë (jo para konfigurimit fillestar). */
 function ensureMenuCatalog() {
   if (!isSetupDone()) return 0;
@@ -2311,6 +2398,7 @@ function ensureMenuCatalog() {
   const beforeMenu = sqlite.prepare("SELECT COUNT(*) AS c FROM menu_items").get().c;
   const beforeCat = sqlite.prepare("SELECT COUNT(*) AS c FROM categories").get().c;
   seedMenuAndCategories();
+  mergeRestaurantMenuSeedIfMissing();
   const afterMenu = sqlite.prepare("SELECT COUNT(*) AS c FROM menu_items").get().c;
   if (afterMenu > beforeMenu) seeded += afterMenu - beforeMenu;
 
@@ -2341,6 +2429,22 @@ function ensureMenuCatalog() {
   } catch (e) {
     console.warn("[menu] alignCategorySortOrderLikeKafene:", e.message);
   }
+  try {
+    ensureMenuStockPhotos();
+  } catch (e) {
+    console.warn("[menu] ensureMenuStockPhotos:", e.message);
+  }
+  try {
+    const { normalizeSlug } = require("./cloud-server-url");
+    const ks = normalizeSlug(
+      getSetting("kitchen_slug", "") || getCloudSettings().kitchen_slug || "",
+    );
+    if (ks && String(getSetting("cloud_slug", "") || "").trim() !== ks) {
+      setSetting("cloud_slug", ks);
+    }
+  } catch {
+    /* ignore */
+  }
   return seeded;
 }
 
@@ -2369,7 +2473,11 @@ function applySeedMenuPrices() {
   if (getSetting("menu_food_prices_zero_v1", "") !== "1") {
     const placeholders = pricedCats.map(() => "?").join(", ");
     sqlite
-      .prepare(`UPDATE menu_items SET price = 0 WHERE category NOT IN (${placeholders})`)
+      .prepare(
+        `UPDATE menu_items SET price = 0
+         WHERE category NOT IN (${placeholders})
+           AND lower(trim(category)) != 'minibar'`,
+      )
       .run(...pricedCats);
     setSetting("menu_food_prices_zero_v1", "1");
     setSetting("menu_prices_reset_zero_v1", "1");
@@ -2418,6 +2526,7 @@ function ensureMenuStockPhotos() {
       console.warn("normalizeMenuCategoriesToAlbanian:", e.message);
     }
     const fromPrices = applySeedMenuPrices();
+    restoreMinibarMenuPricesIfZeroed();
     const menuStockPhotos = require("./menu-stock-photos");
     // Mos mbishkruaj foto ekzistuese (custom/base64) në çdo start — vetëm mungesat.
     const fromStock = menuStockPhotos.applyMissing(
@@ -8588,21 +8697,14 @@ function isGuestRoomMenuKitchenOrder(cloudOrder) {
   return list.some((i) => String(i.category || "").trim().toLowerCase() !== "minibar");
 }
 
-/** Shërbime hoteli (spa, bazen…) — recepsioni; ushqim/pije QR dhomë → kamarier/kuzhinë. */
 function isRecepcionCloudPendingOrder(cloudOrder) {
   if (isGuestHotelServiceOrder(cloudOrder)) return true;
-  if (isGuestRoomMenuOrder(cloudOrder)) {
-    if (cloudOrder.folio_pre_applied) return true;
-    if (!isGuestRoomMenuKitchenOrder(cloudOrder)) return true;
-    return false;
-  }
-  const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
-  if (!roomNum) return false;
-  if (isCloudQrTableOrder(cloudOrder)) return false;
+  if (isGuestRoomMenuOrder(cloudOrder)) return true;
   const device = orderDeviceId(cloudOrder);
-  if (device === "WEB-GUEST-ROOM") return false;
-  if (device === "WEB-GUEST-SERVICE") return true;
-  if (isGuestRoomMenuKitchenOrder(cloudOrder)) return false;
+  if (device === "WEB-GUEST-ROOM" || device === "WEB-GUEST-SERVICE") return true;
+  if (isCloudQrTableOrder(cloudOrder)) return false;
+  const roomNum = parseRoomNumberFromCloudOrder(cloudOrder);
+  if (roomNum) return true;
   const label = String(cloudOrder?.source_label || "").toLowerCase();
   if (label.includes("minibar")) return true;
   return false;
@@ -8611,8 +8713,10 @@ function isRecepcionCloudPendingOrder(cloudOrder) {
 /** Takeaway / delivery / web publike — jo tavolinë fizike me QR */
 function isCloudOnlinePickupOrder(cloudOrder) {
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
-  if (isGuestHotelServiceOrder(cloudOrder)) return true;
+  if (isGuestHotelServiceOrder(cloudOrder)) return false;
+  if (isGuestRoomMenuOrder(cloudOrder)) return false;
   const device = orderDeviceId(cloudOrder);
+  if (device === "WEB-GUEST-ROOM" || device === "WEB-GUEST-SERVICE") return false;
   const tn = parseTableNumberFromCloudOrder(cloudOrder);
   const blob = orderTextBlob(cloudOrder);
   if (tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob))) return false;
@@ -8632,7 +8736,7 @@ function isCloudPosAcceptQueueOrder(cloudOrder) {
   return isCloudQrTableOrder(cloudOrder);
 }
 
-/** Porosi që pranohen te recepsioni (shërbime hoteli, minibar — jo menu ushqim/pije). */
+/** Porosi që pranohen te recepsioni (të gjitha porositë e dhomës). */
 function isRecepcionAcceptPendingOrder(cloudOrder) {
   return isRecepcionCloudPendingOrder(cloudOrder);
 }
@@ -8648,11 +8752,10 @@ function isAnyStaffAcceptPendingOrder(cloudOrder) {
 function isRestaurantLoginNotifyOrder(cloudOrder) {
   if (!cloudOrder?.id) return false;
   if (isGuestHotelServiceOrder(cloudOrder)) return false;
-  if (isGuestRoomMenuOrder(cloudOrder) && isGuestRoomMenuKitchenOrder(cloudOrder)) return true;
+  if (isGuestRoomMenuOrder(cloudOrder)) return false;
   if (isRecepcionCloudPendingOrder(cloudOrder)) return false;
   const device = orderDeviceId(cloudOrder);
-  if (device === "WEB-GUEST-SERVICE") return false;
-  if (device === "WEB-GUEST-ROOM") return isGuestRoomMenuKitchenOrder(cloudOrder);
+  if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return false;
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
   if (isCloudPosAcceptQueueOrder(cloudOrder)) return true;
   if (isCloudOnlinePickupOrder(cloudOrder)) return true;
@@ -8662,8 +8765,10 @@ function isRestaurantLoginNotifyOrder(cloudOrder) {
 /** Porosi nga QR i tavolinës fizike të lokalit (T1…T20) */
 function isCloudQrTableOrder(cloudOrder) {
   if (isCloudStaffWaiterOrder(cloudOrder)) return false;
+  if (isGuestHotelServiceOrder(cloudOrder) || isGuestRoomMenuOrder(cloudOrder)) return false;
   if (isCloudOnlinePickupOrder(cloudOrder)) return false;
   const device = orderDeviceId(cloudOrder);
+  if (device === "WEB-GUEST-ROOM" || device === "WEB-GUEST-SERVICE") return false;
   // Porositë nga POS lokal (device_id nuk fillon me "WEB-") nuk janë QR —
   // kamarieri i ka bërë vetë, nuk duhet pranim me PIN
   if (device && !device.startsWith("WEB-")) return false;

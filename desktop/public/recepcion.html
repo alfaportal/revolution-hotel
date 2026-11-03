@@ -14,7 +14,7 @@
   <script src="/js/staff-auto-connect.js" defer></script>
   <link rel="stylesheet" href="/css/lan-status.css">
   <script src="/js/lan-status-indicator.js" defer></script>
-  <link rel="stylesheet" href="/css/waiter-modern.css?v=12">
+  <link rel="stylesheet" href="/css/waiter-modern.css?v=14">
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <link rel="stylesheet" href="/css/recepcion-truffle.css?v=2">
   <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=1">
@@ -868,6 +868,7 @@
       </div>
       <button type="button" class="shift-start-btn shift-open-z-btn" id="btn-rc-shift-open-z" hidden>Printo Raportin Z</button>
       <button type="button" class="shift-start-btn" id="btn-rc-shift-open-start">Fillo ndërrimin</button>
+      <button type="button" class="btn btn-ghost" id="btn-rc-shift-open-dil" style="width:100%;margin-top:0.65rem">Dil</button>
       <div id="rc-shift-open-msg" class="alert alert-error" hidden></div>
     </div>
   </div>
@@ -903,6 +904,7 @@
         <strong id="rc-shift-accept-diff-value">0.00 €</strong>
       </div>
       <button type="button" class="shift-start-btn" id="btn-rc-shift-accept-confirm">Pranoj ndërrimin</button>
+      <button type="button" class="btn btn-ghost" id="btn-rc-shift-accept-dil" style="width:100%;margin-top:0.65rem">Dil</button>
       <div id="rc-shift-accept-msg" class="alert alert-error" hidden></div>
     </div>
   </div>
@@ -1138,7 +1140,7 @@
     @keyframes rcToastIn { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
   </style>
 
-  <script src="/js/app.js?v=10"></script>
+  <script src="/js/app.js?v=13"></script>
   <script src="/js/offline-retry-queue.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
@@ -1178,6 +1180,11 @@
           if (d?.type === "recep-embed-session" && d.user?.token) {
             if (String(d.user.roli || "").toLowerCase() !== "recepsion") return;
             ruajSesionin(d.user);
+            if (window.__recepEmbedWaitSession) {
+              window.__recepEmbedWaitSession = false;
+              window.location.reload();
+              return;
+            }
             return;
           }
           if (d?.type === "recep-set-view" && typeof setRecepView === "function") {
@@ -1186,7 +1193,7 @@
         });
         window.dil = function recepEmbedNoWaiterLogin() {
           try {
-            window.parent.postMessage({ type: "recep-embed-session-lost" }, window.location.origin);
+            window.parent.postMessage({ type: "recep-embed-dil" }, window.location.origin);
           } catch {
             /* ignore */
           }
@@ -1194,15 +1201,34 @@
       }
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
       if (!u || u.roli !== "recepsion" || !u.token) {
-        window.location.replace("/login.html?hub=1");
-        throw new Error("no session");
+        if (embedKasa && window.parent !== window) {
+          try {
+            window.parent.postMessage({ type: "recep-embed-session-lost" }, window.location.origin);
+          } catch { /* ignore */ }
+          if (!document.getElementById("recep-embed-connecting")) {
+            const ov = document.createElement("div");
+            ov.id = "recep-embed-connecting";
+            ov.style.cssText =
+              "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#eef2f7;color:#334155;font:600 1rem system-ui,sans-serif";
+            ov.textContent = "Duke u lidhur me recepsionin…";
+            document.body.appendChild(ov);
+          }
+          window.__recepEmbedWaitSession = true;
+          window.__recepUser = { emri: "Recepsion", roli: "recepsion", token: "" };
+          return;
+        }
+        if (typeof shfaqHyrjenTani === "function") shfaqHyrjenTani("/login.html?hub=1");
+        else window.location.replace("/login.html?hub=1");
+        return;
       }
-      /* Pa skadim 12h lokale — recepsioni mbetet derisa stafi klikon DIL (sesioni serveri vlen). */
       window.__recepUser = u;
     })();
 
     const user = window.__recepUser;
-    document.getElementById("hdr-staff-top").textContent = user.emri || "Recepsion";
+    if (window.__recepEmbedWaitSession || (user && user.token)) {
+    if (!window.__recepEmbedWaitSession) {
+      document.getElementById("hdr-staff-top").textContent = user.emri || "Recepsion";
+    }
 
     const W_ROOM_STATUS = {
       free: "E Lirë",
@@ -1251,10 +1277,12 @@
     /** Dhomë / room service / shërbime QR — vetëm recepsioni (jo tavolinë restoranti). */
     function eshtePorosiRecepcionQr(o) {
       if (eshtePorosiSherbimiHoteliQr(o)) return true;
-      if (o?.is_recepcion_qr) return true;
+      if (o?.is_recepcion_qr || o?.is_guest_room_menu) return true;
+      const device = String(o?.device_id || "").toUpperCase();
+      if (device === "WEB-GUEST-SERVICE" || device === "WEB-GUEST-ROOM") return true;
+      if (String(o?.order_kind || "") === "guest_room_menu") return true;
       const room = String(o?.room_number || "").trim();
       if (room) {
-        const device = String(o?.device_id || "").toUpperCase();
         const tn = Number(o?.table_number) || Number(o?.qr_table_number) || 0;
         const blob = `${o?.source_label || ""} ${o?.waiter_name || ""}`.toLowerCase();
         const isRestTableQr = tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob));
@@ -3894,9 +3922,17 @@
     document.getElementById("btn-rc-shift-open-start")?.addEventListener("click", filloNderriminRecep);
     document.getElementById("btn-rc-shift-open-z")?.addEventListener("click", shtypRaportinZRecepcion);
     document.getElementById("btn-rc-shift-accept-confirm")?.addEventListener("click", pranoNderriminRecep);
+    function dilNgaRecepsioni() {
+      if (typeof dil === "function") dil();
+      else if (typeof shfaqHyrjenTani === "function") shfaqHyrjenTani("/login.html?hub=1");
+      else window.location.replace("/login.html?hub=1");
+    }
+    document.getElementById("btn-rc-shift-open-dil")?.addEventListener("click", dilNgaRecepsioni);
+    document.getElementById("btn-rc-shift-accept-dil")?.addEventListener("click", dilNgaRecepsioni);
 
     /** Pas login: ndërrimi si kamarieri — kusuri + pranim dorëzimi (jo hapje auto 0 €). */
     async function ensureRecepShiftOpen() {
+      const embedKasa = document.body.classList.contains("recep-embed-kasa");
       let s;
       try {
         s = await api("/api/waiter/shift");
@@ -3909,6 +3945,13 @@
       }
 
       syncSidebarZReportWarn(s);
+
+      /* Brenda kasës recepsion — ndërrimi hapet nga kasa-recepcion.html, jo modal i dyfishtë në iframe. */
+      if (embedKasa) {
+        recepShiftOpen = !!s.open;
+        syncRcShiftCloseButton();
+        return;
+      }
 
       if (s.shift_ended && !s.open) {
         recepShiftOpen = false;
@@ -4390,6 +4433,7 @@
     setInterval(tickClock, 30_000);
 
     (async () => {
+      if (window.__recepEmbedWaitSession) return;
       const urlParams = new URLSearchParams(window.location.search);
       const embedKasa = urlParams.get("embed") === "kasa";
       if (embedKasa) document.body.classList.add("recep-embed-kasa");
@@ -4418,6 +4462,7 @@
       });
       window.StaffOfflineRetryQueue?.updateBadge?.();
     })();
+    }
   </script>
   <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
     <span class="lan-status-dot" aria-hidden="true"></span>

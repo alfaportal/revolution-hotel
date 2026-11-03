@@ -72,7 +72,7 @@ function startupMark(label) {
   return ms;
 }
 
-function waitForLocalHttp(port, timeoutMs = 15000) {
+function waitForLocalHttp(port, timeoutMs = 10000) {
   const http = require("http");
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
@@ -117,7 +117,7 @@ function createSplash() {
       resizable: false,
       movable: true,
       center: true,
-      show: false,
+      show: true,
       alwaysOnTop: false,
       skipTaskbar: true,
       backgroundColor: "#0b1220",
@@ -513,7 +513,7 @@ async function mountHotelMainWindow(started, userData) {
 
   const base = String(started.url || `http://127.0.0.1:${started.port}/`).replace(/\/+$/, "");
   const url = `${base}/login.html`;
-  const httpReady = await waitForLocalHttp(started.port, 15000);
+  const httpReady = await waitForLocalHttp(started.port, 10000);
   if (!httpReady) {
     closeSplash();
     dialog.showErrorBox(APP_NAME, "Serveri nuk u nis në kohë");
@@ -557,12 +557,16 @@ async function mountHotelMainWindow(started, userData) {
     refreshWindowTitle();
     showMainWindow();
   });
-  mainWindow.webContents.on("did-fail-load", (_e, _code, _desc, _failedUrl, isMainFrame) => {
-    if (!isMainFrame || mainShown) return;
+  mainWindow.webContents.on("did-fail-load", (_e, errorCode, _desc, failedUrl, isMainFrame) => {
+    if (!isMainFrame) return;
+    if (errorCode === -3) return; /* ERR_ABORTED — navigim i ri normal */
+    const target = String(failedUrl || "").trim();
     setTimeout(() => {
-      if (!mainShown && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(url).catch(() => {});
-      }
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const retry = target || url;
+      mainWindow.loadURL(retry).catch(() => {
+        if (!mainShown) mainWindow.loadURL(url).catch(() => {});
+      });
     }, 400);
   });
 
@@ -613,15 +617,6 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     try {
-      if (process.platform === "win32") {
-        const { exec } = require("child_process");
-        const fwPort = Number(process.env.PORT) || 3001;
-        exec(
-          `netsh advfirewall firewall add rule name="Revolution HOTEL" dir=in action=allow protocol=tcp localport=${fwPort}`,
-          () => {},
-        );
-      }
-
       createSplash();
       startupMark("splash");
       const userData = path.join(app.getPath("appData"), "Revolution HOTEL");
@@ -833,31 +828,6 @@ if (!gotTheLock) {
       registerLicenseIpc();
       const cloud = loadCloud();
       cloud.registerInstallContext(app);
-      try {
-        const revokeBlock = await cloud.enforceRevokedBlock(app);
-        if (revokeBlock.blocked) {
-          try {
-            cloud.wipeAllActivationData(app);
-          } catch {
-            /* ignore */
-          }
-          if (revokeBlock.code === "NOT_FOUND") {
-            closeSplash();
-            dialog.showErrorBox(
-              "Licenca",
-              "Licenca nuk u gjet. Kontaktoni administratorin.",
-            );
-            app.quit();
-            return;
-          }
-        }
-      } catch {
-        /* vazhdo te aktivizimi HW — pa ErrorBox */
-      }
-
-      if (!(await bootHotelLicenseLayers())) {
-        return;
-      }
 
       try {
         const boot = require(path.join(__dirname, "auto-backup-boot.cjs"));
@@ -1033,6 +1003,32 @@ if (!gotTheLock) {
         global.__hotelAutoRestoreMessage = "";
       }
       await mountHotelMainWindow(started, userData);
+
+      try {
+        const revokeBlock = await cloud.enforceRevokedBlock(app);
+        if (revokeBlock.blocked) {
+          try {
+            cloud.wipeAllActivationData(app);
+          } catch {
+            /* ignore */
+          }
+          if (revokeBlock.code === "NOT_FOUND") {
+            closeSplash();
+            dialog.showErrorBox(
+              "Licenca",
+              "Licenca nuk u gjet. Kontaktoni administratorin.",
+            );
+            app.quit();
+            return;
+          }
+        }
+      } catch {
+        /* vazhdo te aktivizimi HW — pa ErrorBox */
+      }
+
+      if (!(await bootHotelLicenseLayers())) {
+        return;
+      }
 
       /* security-alert: njoftime lokale (queue); cloud post dështon në silent në hotel offline */
       try {

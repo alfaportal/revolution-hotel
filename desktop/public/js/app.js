@@ -42,7 +42,7 @@ async function api(cale, opts = {}) {
   if (res.status === 401) {
     const path = String(cale || "");
     const isLoginCall = path.startsWith("/api/login");
-    if (u?.token && !isLoginCall) {
+    if (u?.token && !isLoginCall && !_dukeDalur) {
       dil();
     }
     throw new Error(data.gabim || (isLoginCall ? "Kredencialet janë të gabuara." : "Sesioni skadoi"));
@@ -117,17 +117,42 @@ function ruajSesionin(s) {
   syncRecepSessionBridge(s);
 }
 
-function lexoSesionin() {
+function lexoSesionin(opts = {}) {
+  const skipBridge = opts.skipBridge === true;
   try {
     const ss = JSON.parse(sessionStorage.getItem("rh_user") || "null");
     if (ss?.token) return ss;
   } catch {
     /* ignore */
   }
+  if (skipBridge) return null;
   return lexoRecepSessionBridge();
 }
 
+let _dukeDalur = false;
+
+function shfaqHyrjenTani(url) {
+  if (_dukeDalur) return;
+  _dukeDalur = true;
+  try {
+    if (document.body) document.body.style.background = "#e8ecf1";
+    if (!document.getElementById("rh-hyrje-cover")) {
+      const el = document.createElement("div");
+      el.id = "rh-hyrje-cover";
+      el.setAttribute("aria-live", "polite");
+      el.style.cssText =
+        "position:fixed;inset:0;z-index:2147483647;background:#e8ecf1;color:#334155;display:flex;align-items:center;justify-content:center;font:600 1.05rem system-ui,'Segoe UI',sans-serif";
+      el.textContent = "Duke hapur…";
+      (document.body || document.documentElement).appendChild(el);
+    }
+  } catch {
+    /* ignore */
+  }
+  window.location.replace(url);
+}
+
 function dil() {
+  if (_dukeDalur) return;
   const u = lexoSesionin();
   if (u?.token) {
     fetch("/api/logout", {
@@ -141,15 +166,18 @@ function dil() {
   } catch {
     /* ignore */
   }
-  window.location.href = loginUrlForRole(u?.roli, { hub: staffRoleUsesLoginHub(u?.roli) });
+  shfaqHyrjenTani(loginUrlForRole(u?.roli, { hub: staffRoleUsesLoginHub(u?.roli) }));
 }
 
 function kerkonHyrje(roliKerkuar) {
-  const u = lexoSesionin();
+  const r = String(roliKerkuar || "").toLowerCase();
+  const skipBridge =
+    r === "kamarier" || r === "kuzhina" || r === "banaku" || r === "admin";
+  const u = lexoSesionin({ skipBridge });
   if (!u || u.roli !== roliKerkuar || !u.token) {
-    window.location.href = loginUrlForRole(roliKerkuar || u?.roli, {
+    shfaqHyrjenTani(loginUrlForRole(roliKerkuar || u?.roli, {
       hub: staffRoleUsesLoginHub(roliKerkuar || u?.roli),
-    });
+    }));
     return null;
   }
   if (u.login_time) {

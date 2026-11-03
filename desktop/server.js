@@ -703,7 +703,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       throw Object.assign(
         new Error(
           "Porosi restoranti (QR tavolinë / takeaway) — vetëm kamarieri i pranon. "
-          + "Recepsioni merr vetëm room service dhe shërbime hoteli nga QR dhomë.",
+          + "Recepsioni merr të gjitha porositë e dhomës.",
         ),
         { status: 403 },
       );
@@ -714,8 +714,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     if (!ordersBefore.length) {
       throw Object.assign(
         new Error(
-          "Porosi shërbimi hoteli (spa/saunë) — pranoni nga recepsioni. "
-          + "Ushqim/pije QR dhomë i pranon kamarieri.",
+          "Porositë e dhomës pranohen vetëm nga recepsioni."
         ),
         { status: 403 },
       );
@@ -1642,10 +1641,37 @@ function sendResolvedPhoto(res, photo) {
 
 function ensureMenuCatalogReady() {
   try {
-    if (typeof db.ensureMenuStockPhotos === "function") db.ensureMenuStockPhotos();
+    if (typeof db.ensureMenuCatalog === "function") {
+      const added = Number(db.ensureMenuCatalog()) || 0;
+      if (added > 0) syncCatalogToCloud();
+    } else if (typeof db.ensureMenuStockPhotos === "function") db.ensureMenuStockPhotos();
   } catch {
     /* ignore */
   }
+}
+
+function isMinibarCategoryName(name) {
+  return String(name || "").trim().toLowerCase() === "minibar";
+}
+
+/** QR tavolinë / takeaway — menu restoranti; Minibar vetëm me ?category=Minibar (dhoma). */
+function applyGuestMenuQueryFilter(items, categories, query = {}) {
+  const categoryFilter = String(query.category || "").trim();
+  let list = Array.isArray(items) ? items.slice() : [];
+  let cats = Array.isArray(categories) ? categories.slice() : [];
+  if (categoryFilter) {
+    const w = categoryFilter.toLowerCase();
+    list = list.filter((it) => String(it.category || "").trim().toLowerCase() === w);
+    cats = cats.filter((c) => String(c || "").trim().toLowerCase() === w);
+    if (!cats.length && list.length) cats = [categoryFilter];
+    return { items: list, categories: cats };
+  }
+  const withoutMinibar = list.filter((it) => !isMinibarCategoryName(it.category));
+  const catsWithout = cats.filter((c) => !isMinibarCategoryName(c));
+  if (withoutMinibar.length > 0) {
+    return { items: withoutMinibar, categories: catsWithout.length ? catsWithout : cats };
+  }
+  return { items: list, categories: cats };
 }
 
 function ensureServicesCatalogReady() {
@@ -1934,13 +1960,17 @@ function resolveLocalVenueSegments() {
   let slug = String(
     db.getSetting("cloud_slug", "")
     || settings.kitchen_slug
+    || db.getSetting("kitchen_slug", "")
     || settings.cloud_client_id
-    || resolveHotelVenueAccess(db).slug
     || "",
   )
     .trim()
     .toLowerCase();
   slug = stripLegacyKitchenSlugSuffix(slug) || slug;
+  if (!slug) {
+    const fallback = resolveHotelVenueAccess(db).slug;
+    slug = stripLegacyKitchenSlugSuffix(fallback) || fallback;
+  }
   return { tipi, slug, rawTipi };
 }
 
@@ -9241,15 +9271,7 @@ app.get("/api/guest/services/:id/photo", mapGuestServicePhoto);
 app.get("/api/guest/menu", (req, res) => {
   try {
     let { items, categories } = buildMenuCatalogPayload(true);
-    const categoryFilter = String(req.query.category || "").trim();
-    if (categoryFilter) {
-      const want = categoryFilter.toLowerCase();
-      items = items.filter(
-        (it) => String(it.category || "").trim().toLowerCase() === want,
-      );
-      categories = categories.filter((c) => String(c || "").trim().toLowerCase() === want);
-      if (!categories.length && items.length) categories = [categoryFilter];
-    }
+    ({ items, categories } = applyGuestMenuQueryFilter(items, categories, req.query));
     const settings = db.getSettings();
     const hotelName =
       db.getBusinessDisplayName?.()
@@ -9556,10 +9578,15 @@ app.put("/api/cloud-sync", auth, adminOnly, async (req, res) => {
 
 app.post("/api/cloud-sync/test", auth, adminOnly, async (_req, res) => {
   try {
-    const sync = await cloudSync.fullCloudSync(db);
-    const settings = db.getCloudSettings();
     const status = await cloudSync.checkConnection(db);
-    res.json(mergeCloudSyncAdminResponse(settings, status, { sync }));
+    const settings = db.getCloudSettings();
+    res.json(mergeCloudSyncAdminResponse(settings, status, {
+      sync: {
+        connected: !!status.connected,
+        message: status.message || "",
+        kitchen_slug: status.kitchen_slug || "",
+      },
+    }));
   } catch (e) {
     res.status(500).json({ gabim: e.message });
   }
@@ -9577,9 +9604,19 @@ app.post("/api/cloud-sync/push-guest-stays", auth, adminOnly, async (_req, res) 
 
 app.post("/api/cloud-sync/sync-all", auth, adminOnly, async (_req, res) => {
   try {
-    const sync = await cloudSync.fullCloudSync(db);
+    const sync = await cloudSync.fullCloudSync(db, {
+      skipPhotos: true,
+      skipRegister: true,
+      skipReservations: true,
+    });
     const settings = db.getCloudSettings();
-    const status = await cloudSync.checkConnection(db);
+    const status = {
+      ok: !!sync.connected,
+      connected: !!sync.connected,
+      message: sync.message || "",
+      kitchen_slug: sync.kitchen_slug || settings.kitchen_slug || "",
+      kitchen_key: settings.kitchen_key || "",
+    };
     res.json(mergeCloudSyncAdminResponse(settings, status, {
       ok: sync.connected || sync.catalog_ok,
       sync,
@@ -10769,8 +10806,19 @@ app.post("/api/fiscal/paper-block/checkout", auth, waiterOrRecepsion, async (req
     if (!serial) {
       return res.status(400).json({
         ok: false,
-        error: "Numri serik i bllokut letër mungon",
-        gabim: "Numri serik i bllokut letër mungon",
+        error: "Numri serik i kuponit mungon",
+        gabim: "Numri serik i kuponit mungon",
+      });
+    }
+
+    const blockCode = String(
+      req.body?.block_code || req.body?.block_batch || ""
+    ).trim();
+    if (!blockCode) {
+      return res.status(400).json({
+        ok: false,
+        error: "Kodi unik i bllokut letër mungon",
+        gabim: "Kodi unik i bllokut letër mungon",
       });
     }
 
@@ -10820,6 +10868,7 @@ app.post("/api/fiscal/paper-block/checkout", auth, waiterOrRecepsion, async (req
 
     const paper = issuePaperBlockCoupon({
       serial_no: serial,
+      block_code: blockCode,
       items: saleItems,
       subtotal: preview.subtotal,
       discount_amount: preview.discount_total || 0,

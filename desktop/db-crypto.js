@@ -125,6 +125,13 @@ function dpapiUnprotect(protectedBuffer) {
       { stdio: "pipe", windowsHide: true }
     );
     return fs.readFileSync(tmpOut);
+  } catch (e) {
+    const detail = String(e?.message || e).trim();
+    const err = new Error(
+      "db-crypto: DPAPI Unprotect dështoi — " + (detail || "çelës i pavlefshëm për këtë përdorues Windows"),
+    );
+    err.cause = e;
+    throw err;
   } finally {
     for (const f of [tmpIn, tmpOut]) {
       try {
@@ -189,6 +196,48 @@ function scryptUnwrapKey(wrapped, dir) {
   return Buffer.concat([decipher.update(enc), decipher.final()]);
 }
 
+function renameDbToUnreadable(dbPath) {
+  if (!dbPath || !fs.existsSync(dbPath)) return;
+  const unreadable = `${dbPath}.unreadable`;
+  const stamp = Date.now();
+  try {
+    const dest = fs.existsSync(unreadable) ? `${dbPath}.unreadable-${stamp}` : unreadable;
+    fs.renameSync(dbPath, dest);
+  } catch (e) {
+    console.error("[db-crypto] rename DB .unreadable:", e.message || e);
+  }
+}
+
+function recoverFromInvalidDpapi(err, dir, dbPath) {
+  console.error("DPAPI key unreadable — creating fresh database");
+  if (err) console.error("[db-crypto]", err.message || err);
+  const dpapiPath = wrappedDpapiPath(dir);
+  try {
+    if (fs.existsSync(dpapiPath)) {
+      const oldPath = `${dpapiPath}.old`;
+      try {
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      } catch {
+        /* ignore */
+      }
+      fs.renameSync(dpapiPath, oldPath);
+    }
+  } catch (e2) {
+    console.error("[db-crypto] rename .db-master.dpapi.old:", e2.message || e2);
+  }
+  renameDbToUnreadable(dbPath || getDbPath());
+  _masterKey = crypto.randomBytes(KEY_LEN);
+  wrapMasterKey(_masterKey, dir);
+  return _masterKey;
+}
+
+function resetMasterKeyAfterUnreadableDb(dbPath, dir) {
+  console.error("DPAPI key unreadable — creating fresh database");
+  renameDbToUnreadable(dbPath);
+  _masterKey = crypto.randomBytes(KEY_LEN);
+  wrapMasterKey(_masterKey, dir);
+}
+
 function wrapMasterKey(masterKey, dir) {
   ensureDir(dir);
   if (isDpapiAvailable()) {
@@ -205,11 +254,16 @@ function wrapMasterKey(masterKey, dir) {
   fs.writeFileSync(wrappedScryptPath(dir), wrapped, { mode: 0o600 });
 }
 
-function unwrapMasterKey(dir) {
+function unwrapMasterKey(dir, dbPath) {
   const dpapiPath = wrappedDpapiPath(dir);
   const scryptPath = wrappedScryptPath(dir);
   if (fs.existsSync(dpapiPath)) {
-    return dpapiUnprotect(fs.readFileSync(dpapiPath));
+    try {
+      return dpapiUnprotect(fs.readFileSync(dpapiPath));
+    } catch (e) {
+      recoverFromInvalidDpapi(e, dir, dbPath);
+      return _masterKey;
+    }
   }
   if (fs.existsSync(scryptPath)) {
     return scryptUnwrapKey(fs.readFileSync(scryptPath), dir);
@@ -217,9 +271,9 @@ function unwrapMasterKey(dir) {
   return null;
 }
 
-function getOrCreateMasterKey(dir) {
+function getOrCreateMasterKey(dir, dbPath) {
   if (_masterKey) return _masterKey;
-  const existing = unwrapMasterKey(dir);
+  const existing = unwrapMasterKey(dir, dbPath);
   if (existing && existing.length === KEY_LEN) {
     _masterKey = existing;
     return _masterKey;
@@ -307,11 +361,11 @@ function encryptBuffer(plaintext, dir) {
   return Buffer.concat([MAGIC, iv, tag, enc]);
 }
 
-function decryptBuffer(ciphertext, dir) {
+function decryptBuffer(ciphertext, dir, dbPath) {
   if (!isEncryptedBuffer(ciphertext)) {
     throw new Error("db-crypto: skedar i palekriptuar ose format i panjohur");
   }
-  const key = getOrCreateMasterKey(dir);
+  const key = getOrCreateMasterKey(dir, dbPath);
   const body = ciphertext.subarray(MAGIC.length);
   if (body.length < IV_LEN + TAG_LEN + 1) {
     throw new Error("db-crypto: blob i shkurtër");
@@ -332,7 +386,17 @@ function loadDatabaseBytes(dbPath) {
   }
   const raw = fs.readFileSync(dbPath);
   if (isEncryptedBuffer(raw)) {
-    return { bytes: decryptBuffer(raw, dir), wasPlain: false, wasLegacy: false };
+    getOrCreateMasterKey(dir, dbPath);
+    if (!fs.existsSync(dbPath)) {
+      return { bytes: null, wasPlain: false, wasLegacy: false };
+    }
+    try {
+      return { bytes: decryptBuffer(raw, dir, dbPath), wasPlain: false, wasLegacy: false };
+    } catch (e) {
+      console.error("[db-crypto]", e.message || e);
+      resetMasterKeyAfterUnreadableDb(dbPath, dir);
+      return { bytes: null, wasPlain: false, wasLegacy: false };
+    }
   }
   if (isLegacyRhdb1(raw)) {
     return { bytes: decryptLegacyRhdb1(raw), wasPlain: false, wasLegacy: true };

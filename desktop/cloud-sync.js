@@ -1569,7 +1569,7 @@ function syncCatalogToCloud(db) {
  * Sinkronizim i plotë: lidhja → slug/linket → menu/staff/tavolina → foto → gjendja tavolinave.
  * Përdoret në nisje, ruajtje cloud dhe butonin «Sinkronizo gjithçka».
  */
-async function fullCloudSync(db) {
+async function fullCloudSync(db, opts = {}) {
   const result = {
     connected: false,
     message: "",
@@ -1606,31 +1606,38 @@ async function fullCloudSync(db) {
       result.message = catalog.message;
     }
 
-    const photos = await pullMenuPhotosFromCloud(db);
-    result.photos_updated = photos.updated || 0;
+    if (opts.skipPhotos) {
+      pullMenuPhotosFromCloud(db).catch(() => {});
+    } else {
+      const photos = await pullMenuPhotosFromCloud(db);
+      result.photos_updated = photos.updated || 0;
+    }
 
     reconcileAllTablesWithCloud(db);
     result.tables_synced = true;
 
-    try {
-      const reservationSync = require("./reservation-sync");
-      result.reservations = await reservationSync.syncPendingReservations(db);
-    } catch (err) {
-      result.reservations = { synced: 0, conflicts: 0, errors: [err.message] };
+    if (!opts.skipReservations) {
+      try {
+        const reservationSync = require("./reservation-sync");
+        result.reservations = await reservationSync.syncPendingReservations(db);
+      } catch (err) {
+        result.reservations = { synced: 0, conflicts: 0, errors: [err.message] };
+      }
     }
 
-    // Sync shitjet e mbyllura nga cloud + rebuild nëse daily_log bosh
-    try {
-      if (typeof db.countDailyLogEntries === "function" && db.countDailyLogEntries() === 0) {
-        const rebuild = await rebuildRegisterFromCloud(db);
-        result.register_rebuilt = true;
-        result.register = rebuild;
-      } else {
-        const waiterSync = await syncClosedWebWaiterSales(db);
-        result.waiter_sales_synced = waiterSync.imported || 0;
+    if (!opts.skipRegister) {
+      try {
+        if (typeof db.countDailyLogEntries === "function" && db.countDailyLogEntries() === 0) {
+          const rebuild = await rebuildRegisterFromCloud(db);
+          result.register_rebuilt = true;
+          result.register = rebuild;
+        } else {
+          const waiterSync = await syncClosedWebWaiterSales(db);
+          result.waiter_sales_synced = waiterSync.imported || 0;
+        }
+      } catch (err) {
+        console.warn("[cloud/sync] fullSync register:", err.message);
       }
-    } catch (err) {
-      console.warn("[cloud/sync] fullSync register:", err.message);
     }
 
     if (result.connected) {

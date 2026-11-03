@@ -44,6 +44,16 @@
     return `${url}${sep}slug=${encodeURIComponent(slug)}`;
   }
 
+  function guestMenuApiUrl() {
+    const q = new URLSearchParams();
+    if (room) q.set("room", room);
+    if (table) q.set("table", table);
+    const base = withSlugQuery("/api/guest/menu");
+    const extra = q.toString();
+    if (!extra) return base;
+    return `${base}${base.includes("?") ? "&" : "?"}${extra}`;
+  }
+
   function fmt(n) {
     return Number(n || 0).toFixed(2) + " €";
   }
@@ -212,6 +222,7 @@
     guestApi,
     guestSlug,
     withSlugQuery,
+    guestMenuApiUrl,
     fmt,
     esc,
     createCart,
