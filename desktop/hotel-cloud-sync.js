@@ -276,8 +276,11 @@ function upsertRoomFromCloud(db, row) {
   const floor = Number(row.floor) || 1;
   const type = String(row.room_type ?? row.type ?? "Single").trim() || "Single";
   const price = Number(row.price_per_night) || 0;
-  const status = String(row.status ?? "free").trim() || "free";
+  let status = String(row.status ?? "free").trim() || "free";
   const existing = db.getRoomById(id);
+  if (existing && typeof db.getActiveGuestForRoom === "function" && db.getActiveGuestForRoom(id)) {
+    status = "occupied";
+  }
   if (existing) {
     db.updateRoom(id, {
       room_number: num,
@@ -419,8 +422,18 @@ function upsertReservationFromCloud(db, row) {
   const notes = String(row.notes ?? "").trim();
   const start = `${inDate} 14:00:00`;
   const end = `${outDate} 11:00:00`;
-  const existing = sql(db).prepare("SELECT id FROM reservations WHERE id = ?").get(id);
+  const existing = sql(db).prepare("SELECT id, status FROM reservations WHERE id = ?").get(id);
+  let nextStatus = status;
   if (existing) {
+    const localStatus = String(existing.status || "").trim().toLowerCase();
+    const cloudStatus = String(status || "").trim().toLowerCase();
+    if (
+      (localStatus === "cancelled" || localStatus === "checked_in")
+      && cloudStatus !== "cancelled"
+      && cloudStatus !== "checked_in"
+    ) {
+      nextStatus = localStatus;
+    }
     sql(db).prepare(`
       UPDATE reservations
       SET reservation_type = 'room', target_id = ?, room_id = ?,
@@ -430,7 +443,7 @@ function upsertReservationFromCloud(db, row) {
       WHERE id = ?
     `).run(
       roomId, roomId, name, phone, name, phone,
-      inDate, outDate, persons, persons, start, end, status, notes, id,
+      inDate, outDate, persons, persons, start, end, nextStatus, notes, id,
     );
   } else {
     sql(db).prepare(`
@@ -747,6 +760,20 @@ async function acceptPublicServiceRequest(db, id, payload = {}) {
   return parseJsonResponse(r);
 }
 
+async function sendGuestServiceEmail(db, { to, subject, text } = {}) {
+  const cfg = getCfg(db);
+  if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
+  const r = await requestJson("POST", "/api/v1/hotel/guest-service-email", {
+    celesi: cfg.celesi,
+    to,
+    subject,
+    text,
+  });
+  const data = parseJsonResponse(r);
+  if (!data?.ok) throw new Error(data?.gabim || "Email nuk u dërgua.");
+  return data;
+}
+
 async function rejectPublicServiceRequest(db, id, payload = {}) {
   const cfg = getCfg(db);
   if (!cfg.celesi) throw new Error("Cloud nuk është konfiguruar.");
@@ -800,6 +827,7 @@ module.exports = {
   listPublicServiceRequestsPending,
   acceptPublicServiceRequest,
   rejectPublicServiceRequest,
+  sendGuestServiceEmail,
   fetchKdsPublicPage,
   updateKdsPublicPage,
   pushRoomsToCloud,

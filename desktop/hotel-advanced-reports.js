@@ -47,6 +47,7 @@ function fetchSales(from, to) {
               waiter_name, receipt_number, discount_total, staff_id
        FROM daily_log
        WHERE status = 'completed' AND date >= date(?) AND date <= date(?)
+         AND ${require("./database").folioSettledRoomDailyLogExcludeSql()}
        ORDER BY date ASC, time ASC`,
     )
     .all(from, to);
@@ -231,9 +232,32 @@ function getStaffReport(from, to) {
       cash: round2(s.cash),
       card: round2(s.card),
       station_label: s.station === "recepsion" ? "Recepsion" : "Kamarier",
+      services: [],
     }))
     .sort((a, b) => b.total - a.total);
-  return { ok: true, from: start, to: end, staff, summary: summarize(rows) };
+  const work = require("./database").listServiceWorkInRange(start, end);
+  const byName = new Map(staff.map((s) => [s.operator, s]));
+  for (const line of work) {
+    const name = String(line.performed_by_name || "").trim();
+    if (!name || line.status !== "completed") continue;
+    let bucket = byName.get(name);
+    if (!bucket) {
+      bucket = {
+        operator: name,
+        station: "sherbim",
+        order_count: 0,
+        total: 0,
+        cash: 0,
+        card: 0,
+        station_label: "Shërbim",
+        services: [],
+      };
+      byName.set(name, bucket);
+      staff.push(bucket);
+    }
+    bucket.services.push(line);
+  }
+  return { ok: true, from: start, to: end, staff, service_work: work, summary: summarize(rows) };
 }
 
 function getShiftsReport(from, to) {

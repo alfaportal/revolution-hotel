@@ -17,9 +17,12 @@ async function pullPublicGuestRequests(db) {
   const hotelCloudSync = require("./hotel-cloud-sync");
   let bookings = [];
   let services = [];
+  let bookingsOk = false;
+  let servicesOk = false;
   try {
     const b = await hotelCloudSync.listPublicBookingRequestsPending(db);
     bookings = Array.isArray(b.requests) ? b.requests : [];
+    bookingsOk = true;
   } catch (err) {
     console.warn("[public-guest-requests] bookings:", err.message || err);
   }
@@ -28,16 +31,20 @@ async function pullPublicGuestRequests(db) {
     const rows = Array.isArray(s.requests) ? s.requests : [];
     services = rows.filter((r) => {
       const st = String(r.status || "pending").toLowerCase();
-      return st === "pending" || st === "new" || st === "open";
+      return st === "pending" || st === "new" || st === "open" || st === "";
     });
+    servicesOk = true;
   } catch (err) {
     console.warn("[public-guest-requests] services:", err.message || err);
   }
-  if (typeof db.reconcilePendingPublicBookingRequests === "function") {
+  if (bookingsOk && typeof db.reconcilePendingPublicBookingRequests === "function") {
     db.reconcilePendingPublicBookingRequests(bookings);
   }
-  if (typeof db.reconcilePendingPublicServiceRequests === "function") {
+  if (servicesOk && typeof db.reconcilePendingPublicServiceRequests === "function") {
     db.reconcilePendingPublicServiceRequests(services);
+  }
+  if (servicesOk && typeof db.rememberPublicServiceRequests === "function") {
+    db.rememberPublicServiceRequests(services);
   }
   return { ok: true, bookings: bookings.length, services: services.length };
 }

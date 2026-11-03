@@ -2054,6 +2054,21 @@ function initSchema() {
   );
 
   runSchemaMigration(
+    "room-charges-performed-by-v1",
+    backupCtx,
+    () => {
+      const cols = sqlAll("PRAGMA table_info(room_charges)");
+      return !cols.some((c) => c.name === "performed_by_name");
+    },
+    () => {
+      sqlRun("ALTER TABLE room_charges ADD COLUMN performed_by_staff_id INTEGER");
+      sqlRun("ALTER TABLE room_charges ADD COLUMN performed_by_name TEXT NOT NULL DEFAULT ''");
+      sqlRun("ALTER TABLE room_charges ADD COLUMN performed_shift_id INTEGER");
+      sqlRun("ALTER TABLE room_charges ADD COLUMN work_status TEXT NOT NULL DEFAULT 'completed'");
+    },
+  );
+
+  runSchemaMigration(
     "waiter-shifts-z-printed-v1",
     backupCtx,
     () => {

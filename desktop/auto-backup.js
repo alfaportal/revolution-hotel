@@ -1,5 +1,5 @@
 /**
- * Backup automatik — Desktop\Revolution Backup\<PRODUKTI> (afër ikonës së programit).
+ * Backup automatik — Desktop\Revolution HOTEL Backup (folder i vet, jo i përbashkët me KAFENE).
  * Minutë (rotacion 3) + ditor (30 ditë) + mujor (12 muaj).
  */
 const fs = require("fs");

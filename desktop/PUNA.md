@@ -1,5 +1,155 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-04 — Klient i jashtëm (pishinë, spa, palestër)
+
+Shërbimi shtohej vetëm te dhoma e zënë. Klienti pa check-in nuk kishte llogari.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` | shërbimi kërkon dhomë të zënë | `hotel_walkin_clients` + rreshta; pagesa një `KL-` në Ditari/raporte, jo te tavolina; rreshtat mbeten `paid` |
+| `desktop/server.js` | — | hapje, shtim, Prano/Refuzo/E kryer, pagesë me të njëjtin kupon fiskal si check-out (ose termik kur fiskalizimi është fikur) |
+| `desktop/public/recepcion.html` | katalogu kërkon check-in | «Klient i jashtëm»; shërbimet te Shërbimet dhe Porositë aktive |
+| `desktop/public/admin.html` | — | ditari: «Klient i jashtëm» |
+| `desktop/tests/walkin-client.test.js` | — | 5+15=20 një herë, pa dhomë, pa porosi restoranti |
+
+**Prova:** `node tests/walkin-client.test.js` kaloi. Pa build. Pa ATK. Kontabilisti i paprekur.
+
+## 2026-11-04 — Porosia publike nuk humbet, email, ditari i hotelit
+
+Kërkesa «Xhakuzi» vinte në popup dhe pastaj fshihej: pull-i i cloud, kur kthente listë bosh, i fshinte të gjitha kërkesat lokale. Pas PRANO nuk mbetej rresht dhe nuk kishte përgjigje të ruajtur.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` | `reconcile` fshinte çdo kërkesë që s’ishte në listën e fundit | shton, nuk fshin; regjistër `hotel_service_register` (Në pritje → Pranuar → E kryer → Paguar); `hotel_diary`; radhë email |
+| `desktop/public-guest-requests-watcher.js` | edhe kur cloud dështonte, pajtonte me listë bosh | pajton vetëm kur leximi shkon; ruan kërkesën |
+| `desktop/server.js` | PRANO/REFUZO e hiqte nga cache | e lë në regjistër; email nëse cloud s’e dërgoi; `GET /api/waiter/service-register`; `GET /api/admin/hotel-diary` |
+| `desktop/hotel-service-email.js` | nuk ekzistonte | dërgon radhën te cloud; nëse s’ka internet, e ruan dhe e provon prapë |
+| `desktop/hotel-cloud-sync.js` | pa dërgim përgjigjeje | `POST /api/v1/hotel/guest-service-email` |
+| `desktop/public/recepcion.html` | Porositë aktive lexonin vetëm cache-in që fshihej | shfaq regjistrin deri sa mysafiri del; Shërbimet: Në pritje / Pranuar / E kryer |
+| `desktop/public/admin.html` | pa ditar ngjarjesh | skeda «Ditari i hotelit», vetëm lexim, filtër datë / dhomë / ngjarje |
+| `desktop/package.json` | — | `hotel-service-email.js` në paketim |
+| `revolution-hotel-server/.../publicServiceRequestService.js` | tekst tjetër, pa radhë | teksti i kërkuar; nëse dërgimi dështon, desktopi e mban në radhë |
+| `revolution-hotel-server/.../hotel-pms-sync.js` | — | `POST /guest-service-email` |
+| `desktop/tests/public-service-stays.test.js` | — | lista bosh nuk e fshin; pas pranimit mbetet; pa email s’ka gabim; pas check-out bëhet Paguar dhe rreshti mbetet |
+
+**Prova:** `node tests/public-service-stays.test.js` kaloi. `node tests/guest-service-flow-e2e.test.js` kaloi (110.50). `node tests/service-work-log.test.js` kaloi pas intervalit 3–4 nëntor. Pa build. Pa ATK. Kontabilisti i paprekur. Nuk duket në Setup 1.0.658 derisa të dalë Setup i ri. Email-i i cloud-it të instaluar merr tekstin e ri vetëm pas deploy të serverit të hotelit.
+
+## 2026-11-03 — Shërbimi ruan kush e kryen
+
+Pranimi i shërbimit shkonte vetëm te fatura e dhomës, pa punonjës.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/db-engine.js` | `room_charges`: kush e kryen, ndërrimi, statusi |
+| `desktop/database.js` | pranimi / shtimi ruan punonjësin; lista deri sa mysafiri del; ndërrimi e tregon punën pa e shtuar te paratë |
+| `desktop/server.js` | `GET /api/waiter/service-work`; pranimi dhe «shto shërbim» kalojnë punonjësin |
+| `desktop/hotel-advanced-reports.js` | punonjësi mban listën e shërbimeve; totali i shitjes mbetet kuponi |
+| `desktop/public/recepcion.html` | Shërbimet: tabela (dhoma, mysafiri, kush, koha, shuma, statusi) + zgjedhja e punonjësit; mbyllja e ndërrimit e tregon punën |
+| `desktop/tests/service-work-log.test.js` | Pastrim prove nga Arben, pastaj check-out 92 një herë |
+
+**Prova:** `node tests/service-work-log.test.js` kaloi (Arben, 12 €, check-out 92 një herë). `node tests/guest-service-flow-e2e.test.js` kaloi (Ditari, Kontabilisti, të avancuarat 110.50). Pa build. Pa ATK. TVSH e paprekur.
+
+## 2026-11-03 — Check-out: 110.50 një herë, jo 141
+
+Pas check-out, kuponi `CO` e mbante të gjithë faturën, por Ditari dhe libri i shitjes i mbanin edhe rreshtat e veçantë (room service, pastrim, biftek në dhomë).
+
+Qasja: rreshtat mbeten në `room_charges` dhe brenda `items_json` të kuponit. Kur ekziston `CO-{mysafir}` në periudhë, ato rreshta dhe pagesa `room` e lidhur me porosinë nuk hyjnë në shumë.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | Ditari, libri i shitjes dhe ndërrimi e kalojnë kuponin një herë |
+| `desktop/hotel-advanced-reports.js` | javore/mujore/qarkullimi lexojnë të njëjtin filtr |
+| `desktop/tests/guest-service-flow-e2e.test.js` | kërkon Ditari, Kontabilisti dhe të avancuarat = 110.50 |
+
+**Para:** Ditari 141, Kontabilisti 141, të avancuarat 119.50.
+**Pas:** të trija 110.50. Kuponi `CO-1` = 110.50. `room_charges` mbeten (5 rreshta).
+**Prova:** `node tests/guest-service-flow-e2e.test.js` kaloi. `sales-ledger-co-dh-dedup` dhe `recepsion-shift-close-registers` kaluan. Pa build. Pa ATK. Formula e TVSH nuk u prek.
+
+## 2026-11-03 — Provë: porosia e mysafirit deri te check-out
+
+Databaza e hotelit të instaluar nuk u prek. Skripti hapi databazë të përkohshme: dhoma 102, Arta Fiktive, 1 netë × 80 €.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/tests/guest-service-flow-e2e.test.js` | Kafe 2.50 + Sanduiç 4.00, minibar 3, pastrim 12, biftek 9 në dhomë, pastaj check-out |
+
+**Prova:** `node tests/guest-service-flow-e2e.test.js` — kaloi. Fatura 110.50. Pas check-out Ditari dhe Kontabilisti tregojnë 141 (kuponit CO iu shtuan edhe rreshtat e veçantë). Raportet e avancuara 119.50 (CO 110.50 + bifteku 9 edhe një herë). Porositë aktive të dhomës 102 pastrohen. Pa build. Pa dërgim ATK.
+
+## 2026-11-03 — Provë fiktive: mbyllja e ndërrimit
+
+Databaza e hotelit të instaluar nuk u prek. Skripti hapi databazë të përkohshme, hapi ndërrimin, futi shitje fiktive, e mbylli, pastaj lexoi Ditari, Raportet, të avancuarat dhe barazimin ditor.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/tests/recepsion-shift-close-registers.test.js` | provë: recepsion 80 + cash 25 + kartë 40, numëruar 100 (diferencë −5); kamarier 40 + cash 15, numëruar 55 |
+
+**Prova:** `node tests/recepsion-shift-close-registers.test.js` — kaloi. Recepsioni dhe kamarieri dolën te Ditari, Raportet dhe të avancuarat. Pa build. Pa të dhëna në hotelin e hapur.
+
+## 2026-11-03 — Nisja e ndërrimit te recepsioni
+
+Hyrja e recepsionit hap `kasa-recepcion.html`. Emri dilte sipër («Pa ndërrim»), por tabela e parave të nisjes ishte vetëm te `recepcion.html`, dhe kasa e kalonte me `embed=kasa`. Hapja `POST /api/waiter/shift/open` shkruan `waiter_shifts`. Ditari (`getDitari`), Raportet (`/api/admin/shift-reports`) dhe të avancuarat (`getShiftsReport`) e lexojnë me `listShiftReports({ include_open: true })`. `date()` e pranon ISO me `T`/`Z` (sql.js: `2026-11-03`).
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/public/kasa-recepcion.html` | pas emrit, tabela «Nisja e ndërrimit» + `POST /api/waiter/shift/open` |
+
+**Prova:** `date()` + `substr` në sql.js kthejnë `2026-11-03`. Pa klik në kasë (programi i hapur është Setup 1.0.658). Pa build.
+
+## 2026-11-03 — Rezervimi pas check-in dhe anulimit
+
+Lista e rezervimeve rifreskohet me pull të plotë nga cloud. Cloud ende e kishte «confirmed», dhe e kthente rreshtin pasi check-in e vinte `checked_in` ose anulimi `cancelled`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/hotel-cloud-sync.js` | pull nuk e zëvendëson `cancelled` / `checked_in` me confirmed |
+| `desktop/server.js` | check-in dërgon edhe rezervimin te cloud |
+
+**Prova:** `node --check`. Pa build. Setup 1.0.658 ende e ka sjelljen e vjetër.
+
+## 2026-11-03 — Porositë aktive të recepsionit
+
+Ekrani lexonte vetëm `room_charges` të sotme, të bashkuara në një rresht për mysafir. Qëndrimi dhe shpenzimet e ditëve të mëparshme nuk dilnin.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `listActiveHotelOrdersForWaiter`: qëndrimi + çdo `room_charges` i mysafirit `active`, pa filtrin e sotëm. Pas check-out (`guests.status` jo active) rreshtat nuk kthehen |
+
+**Prova:** `node --check database.js`. Pa build. Ekrani i hapur është Setup 1.0.658 dhe ende e ka pyetjen e vjetër.
+
+## 2026-11-03 — Pagesa e recepsionit kur dhoma ka mysafir
+
+Check-out i dhomës 102 ndalonte me «vetëm për dhoma të zëna» edhe kur kartela tregonte mysafirin. Statusi në tabelën `rooms` nuk ishte `occupied` (cloud e kthente «free»), ndërsa mysafiri aktiv mbeti. Preview kërkonte statusin, jo mysafirin.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `getCheckoutPreview` lejon pagesën kur ka mysafir aktiv; kartela e tregon të zënë |
+| `desktop/hotel-cloud-sync.js` | sync i dhomës nuk e heq `occupied` sa kohë ka mysafir aktiv |
+
+**Prova:** `node --check` te të dy skedarët. Pa pagesë reale, pa build. Programi i hapur është 1.0.658 dhe ende e ka ndalimin e vjetër.
+
+## 2026-11-03 — PIN 4 pika, ikona e shiritit, backup i ndarë
+
+Hyrja e stafit tregonte 6 pika ndërsa PIN-i është 4. Shiriti i Windows nuk e lidhte dritaren me ikonën e HOTEL-it. Backup-i binte te `Desktop\Revolution Backup` bashkë me KAFENE.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/public/login.html` | 4 pika; hyrja ndalon te 4 shifra. Kodi emergjence mbetet 6 |
+| `desktop/main.js` | `setIcon` + `setAppDetails` që shiriti të tregojë Revolution HOTEL |
+| `desktop/auto-backup-location.cjs` | folder i ri `Desktop\Revolution HOTEL Backup`; rruga e vjetër e përbashkët nuk përdoret |
+| `desktop/scripts/auto-backup-location.cjs` | e njëjta |
+| `desktop/auto-backup.js` | shënim i rrugës |
+
+**Prova:** `resolveBackupDirectory` me rrugën e vjetër kthen `Desktop\Revolution HOTEL Backup`. `node --check main.js` kaloi. Folderi i vjetër nuk u fshi.
+
+**Nuk u bë build.**
+
+## 2026-11-03 — Build Setup 1.0.658
+
+Komanda: `node build-packages.js` (një Setup). Version: `package.json` 1.0.657 → 1.0.658.
+Rezultat: `dist/Revolution HOTEL Setup.exe` + `Desktop\Revolution HOTEL Setup.exe`. ProductVersion 1.0.658. 657–653 mbetën. Pre-build 75 module. electron-builder exit 0. Rreth 5 min.
+
+**Nuk u bë git.** Instalo Setup 658 → mbyll programin plotësisht → hape përsëri.
+
 ## 2026-11-03 — Ndërrimet në Ditar/Raporte + raporte të avancuara
 
 KAFENE nuk i sjell ndërrimet e hapura te Ditari dhe s’ka skedën «Raporte të avancuara». HOTEL i shtoi të dyja.

@@ -13,8 +13,24 @@ function desktopDir() {
   return path.join(os.homedir(), "Desktop");
 }
 
+function backupFolderName(projectName) {
+  const name = String(projectName || "APP").trim();
+  if (name === "HOTEL") return "Revolution HOTEL Backup";
+  if (name === "KAFENE") return "Revolution KAFENE Backup";
+  return `Revolution ${name} Backup`;
+}
+
 function defaultBackupDirectory(projectName) {
-  return path.join(desktopDir(), "Revolution Backup", String(projectName || "APP"));
+  return path.join(desktopDir(), backupFolderName(projectName));
+}
+
+function isSharedBackupParent(dir) {
+  try {
+    const resolved = path.resolve(String(dir || ""));
+    return /[\\/]Revolution Backup([\\/]|$)/i.test(resolved);
+  } catch {
+    return false;
+  }
 }
 
 function legacyDocumentsDirectory(projectName) {
@@ -33,7 +49,7 @@ function resolveBackupDirectory({ projectName, getPersistedDir } = {}) {
   const name = String(projectName || "APP");
   const persisted =
     typeof getPersistedDir === "function" ? String(getPersistedDir() || "").trim() : "";
-  if (persisted) {
+  if (persisted && !isSharedBackupParent(persisted)) {
     try {
       const resolved = path.resolve(persisted);
       if (fs.existsSync(resolved)) return resolved;
@@ -42,7 +58,7 @@ function resolveBackupDirectory({ projectName, getPersistedDir } = {}) {
     }
   }
   const legacy = legacyDocumentsDirectory(name);
-  if (dirHasBackupData(legacy)) return legacy;
+  if (!isSharedBackupParent(legacy) && dirHasBackupData(legacy)) return legacy;
   return defaultBackupDirectory(name);
 }
 
@@ -138,7 +154,7 @@ function revealInExplorerOnce(backupDir) {
   const marker = path.join(backupDir, ".folder-shown-once");
   if (fs.existsSync(marker)) return;
   if (process.platform === "win32") {
-    execFile("explorer.exe", [backupDir], { windowsHide: true }, () => {});
+    execFile("explorer.exe", [`/e,${backupDir}`], { windowsHide: true }, () => {});
   }
   try {
     fs.writeFileSync(marker, new Date().toISOString(), "utf8");

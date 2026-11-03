@@ -949,12 +949,88 @@
       background: #22c55e;
       display: inline-block;
     }
+    .kasa-shift-open {
+      position: fixed;
+      inset: 0;
+      z-index: 30000;
+      background: rgba(2, 8, 20, 0.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .kasa-shift-card {
+      width: min(420px, 100%);
+      background: #132238;
+      border: 1px solid #243b5c;
+      border-radius: 16px;
+      padding: 1.1rem 1.15rem 1.2rem;
+      text-align: center;
+    }
+    .kasa-shift-card h2 { margin: 0 0 0.35rem; font-size: 1.25rem; }
+    .kasa-shift-card p { margin: 0.2rem 0 0.75rem; color: #94a3b8; }
+    #kasa-shift-open-name { color: #f1f5f9; font-weight: 700; font-size: 1.05rem; }
+    #kasa-shift-open-display {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      margin: 0.35rem 0 0.75rem;
+    }
+    #kasa-shift-open-keys {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.45rem;
+      margin-bottom: 0.85rem;
+    }
+    #kasa-shift-open-keys button,
+    #kasa-shift-open-start {
+      min-height: 48px;
+      border-radius: 12px;
+      border: 1px solid #243b5c;
+      background: #1a2d4a;
+      color: #f1f5f9;
+      font: inherit;
+      font-size: 1.15rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #kasa-shift-open-start {
+      width: 100%;
+      background: #22c55e;
+      color: #052e16;
+      border: none;
+    }
+    #kasa-shift-open-msg { margin-top: 0.65rem; color: #fca5a5; font-size: 0.9rem; }
   </style>
 </head>
 <body>
   <div id="waiter-fiscal-alerts">
     <div id="atk-time-alarm" role="alert" aria-live="assertive">ORA NUK ËSHTË E SINKRONIZUAR ME ATK!</div>
     <div class="offline-pending-banner" id="offline-pending-banner" role="status" aria-live="polite" aria-hidden="true"></div>
+  </div>
+  <div id="kasa-shift-open" class="kasa-shift-open" hidden>
+    <div class="kasa-shift-card" role="dialog" aria-modal="true" aria-labelledby="kasa-shift-open-title">
+      <h2 id="kasa-shift-open-title">Nisja e ndërrimit</h2>
+      <p id="kasa-shift-open-name"></p>
+      <p>Sa para keni në kuletë para se të filloni?</p>
+      <div id="kasa-shift-open-display">€50</div>
+      <div id="kasa-shift-open-keys">
+        <button type="button" data-digit="1">1</button>
+        <button type="button" data-digit="2">2</button>
+        <button type="button" data-digit="3">3</button>
+        <button type="button" data-digit="4">4</button>
+        <button type="button" data-digit="5">5</button>
+        <button type="button" data-digit="6">6</button>
+        <button type="button" data-digit="7">7</button>
+        <button type="button" data-digit="8">8</button>
+        <button type="button" data-digit="9">9</button>
+        <button type="button" data-digit=".">.</button>
+        <button type="button" data-digit="0">0</button>
+        <button type="button" data-action="back" aria-label="Fshi">⌫</button>
+      </div>
+      <button type="button" id="kasa-shift-open-start">Fillo ndërrimin</button>
+      <div id="kasa-shift-open-msg" hidden></div>
+    </div>
   </div>
   <header class="top">
     <div class="top-left">
@@ -1557,13 +1633,61 @@
       }
     });
 
+    let kasaOpenRaw = "50";
+    function renderKasaOpenCash() {
+      if (!kasaOpenRaw || kasaOpenRaw === ".") kasaOpenRaw = "0";
+      const parts = kasaOpenRaw.split(".");
+      if (parts.length > 2) kasaOpenRaw = parts[0] + "." + parts.slice(1).join("");
+      if (parts[1]?.length > 2) kasaOpenRaw = parts[0] + "." + parts[1].slice(0, 2);
+      const n = Number(kasaOpenRaw) || 0;
+      const display = document.getElementById("kasa-shift-open-display");
+      const btn = document.getElementById("kasa-shift-open-start");
+      if (display) display.textContent = "€" + (kasaOpenRaw.includes(".") ? n.toFixed(Math.min(2, (kasaOpenRaw.split(".")[1] || "").length || 0)) : String(n));
+      if (btn) btn.textContent = `Fillo me ${euro(n)} në kuletë`;
+      return n;
+    }
+    document.getElementById("kasa-shift-open-keys")?.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button");
+      if (!btn) return;
+      if (btn.dataset.action === "back") {
+        kasaOpenRaw = kasaOpenRaw.length <= 1 ? "0" : kasaOpenRaw.slice(0, -1);
+      } else {
+        const d = btn.dataset.digit;
+        if (d === "." && kasaOpenRaw.includes(".")) return;
+        kasaOpenRaw = kasaOpenRaw === "0" && d !== "." ? d : kasaOpenRaw + d;
+      }
+      renderKasaOpenCash();
+    });
+    document.getElementById("kasa-shift-open-start")?.addEventListener("click", async () => {
+      const msg = document.getElementById("kasa-shift-open-msg");
+      const btn = document.getElementById("kasa-shift-open-start");
+      const amount = renderKasaOpenCash();
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      if (btn) btn.disabled = true;
+      try {
+        await api("/api/waiter/shift/open", {
+          method: "POST",
+          body: JSON.stringify({ opening_cash: amount }),
+        });
+        document.getElementById("kasa-shift-open").hidden = true;
+        await loadShift();
+      } catch (err) {
+        if (msg) {
+          msg.hidden = false;
+          msg.textContent = err.message || "Ndërrimi nuk u hap.";
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+    renderKasaOpenCash();
+
     async function loadShift() {
       try {
         const data = await api("/api/waiter/shift");
         shiftSummary = data;
         const who = document.getElementById("who");
         const open = !!data.open;
-        const oc = data.opening_cash != null ? euro(data.opening_cash) : "—";
         const inTill = open
           ? euro((Number(data.opening_cash) || 0) + (Number(data.cash_total) || 0))
           : "—";
@@ -1574,8 +1698,21 @@
           ` — në arkë ${inTill} — ${sales} shitje`;
         const btnClose = document.getElementById("btn-close-shift");
         btnClose.hidden = !open;
-      } catch {
+        const overlay = document.getElementById("kasa-shift-open");
+        const nameEl = document.getElementById("kasa-shift-open-name");
+        if (nameEl) nameEl.textContent = data.waiter_name || user.emri || "Recepsion";
+        if (overlay) overlay.hidden = open || !!data.needs_handover_acceptance;
+      } catch (err) {
         document.getElementById("who").textContent = user.emri || "Recepsion";
+        const text = String(err?.message || "");
+        if (/identifikua|nuk u gjet/i.test(text)) {
+          const overlay = document.getElementById("kasa-shift-open");
+          const nameEl = document.getElementById("kasa-shift-open-name");
+          const msg = document.getElementById("kasa-shift-open-msg");
+          if (nameEl) nameEl.textContent = user.emri || "Recepsion";
+          if (overlay) overlay.hidden = false;
+          if (msg) { msg.hidden = false; msg.textContent = text; }
+        }
       }
     }
 

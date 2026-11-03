@@ -2597,6 +2597,7 @@
       <button type="button" class="admin-tab-btn" data-panel="raporte-avancuara" id="tab-raporte-avancuara" hidden>Raporte të avancuara</button>
       <button type="button" class="admin-tab-btn" data-panel="faturat">Faturat</button>
       <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
+      <button type="button" class="admin-tab-btn" data-panel="ditari-hoteli">Ditari i hotelit</button>
       <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
       <button type="button" class="admin-tab-btn" data-panel="kuponet-fiskale">Kuponët fiskalë</button>
       <button type="button" class="admin-tab-btn" data-panel="audit">Audit</button>
@@ -2714,6 +2715,59 @@
       <div class="card hotel-pasqyra-dirty">
         <div class="card-title">Dhomat që duhen pastruar</div>
         <div class="hotel-dash-list" id="dash-dirty-list"></div>
+      </div>
+    </section>
+
+    <section id="panel-ditari-hoteli" class="panel">
+      <div class="card">
+        <div class="card-title">Ditari i hotelit</div>
+        <div class="ditari-range-grid">
+          <div>
+            <label for="hd-from">Nga</label>
+            <input type="date" id="hd-from">
+          </div>
+          <div>
+            <label for="hd-to">Deri</label>
+            <input type="date" id="hd-to">
+          </div>
+          <div>
+            <label for="hd-room">Dhoma</label>
+            <input type="text" id="hd-room" placeholder="102">
+          </div>
+          <div>
+            <label for="hd-event">Ngjarja</label>
+            <select id="hd-event">
+              <option value="">Të gjitha</option>
+              <option value="check_in">Check-in</option>
+              <option value="check_out">Check-out</option>
+              <option value="service_order">Porosi shërbimi</option>
+              <option value="service_done">Shërbim i kryer</option>
+              <option value="service_rejected">Shërbim i refuzuar</option>
+              <option value="room_charge">Ngarkesë dhome</option>
+              <option value="payment">Pagesë</option>
+              <option value="walkin_open">Klient i jashtëm</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin:0.75rem 0">
+          <button type="button" class="btn btn-primary" id="hd-load">Shfaq</button>
+        </div>
+        <div style="overflow:auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Data / ora</th>
+                <th>Dhoma</th>
+                <th>Mysafiri</th>
+                <th>Ngjarja</th>
+                <th>Shuma</th>
+                <th>Kush</th>
+              </tr>
+            </thead>
+            <tbody id="hd-body"></tbody>
+          </table>
+        </div>
+        <p id="hd-empty" style="color:#64748b;font-weight:600">Nuk ka ngjarje për këtë filtër.</p>
       </div>
     </section>
 
@@ -7317,6 +7371,53 @@
       });
     }
 
+    const HOTEL_DIARY_LABELS = {
+      check_in: "Check-in",
+      check_out: "Check-out",
+      service_order: "Porosi shërbimi",
+      service_done: "Shërbim i kryer",
+      service_rejected: "Shërbim i refuzuar",
+      room_charge: "Ngarkesë dhome",
+      payment: "Pagesë",
+      walkin_open: "Klient i jashtëm",
+    };
+
+    async function ngarkoDitarinEHotelit() {
+      const q = new URLSearchParams();
+      const from = document.getElementById("hd-from")?.value || "";
+      const to = document.getElementById("hd-to")?.value || "";
+      const room = document.getElementById("hd-room")?.value || "";
+      const event = document.getElementById("hd-event")?.value || "";
+      if (from) q.set("from", from);
+      if (to) q.set("to", to);
+      if (room.trim()) q.set("room", room.trim());
+      if (event) q.set("event", event);
+      const data = await api("/api/admin/hotel-diary?" + q.toString());
+      const body = document.getElementById("hd-body");
+      const empty = document.getElementById("hd-empty");
+      const entries = data.entries || [];
+      if (body) {
+        body.innerHTML = entries.map((row) => {
+          const when = String(row.created_at || "").replace("T", " ").slice(0, 19);
+          const label = HOTEL_DIARY_LABELS[row.event_type] || row.event_type || "—";
+          const amount = Number(row.amount) ? `${Number(row.amount).toFixed(2)} €` : "—";
+          return `<tr>
+            <td>${escHtml(when)}</td>
+            <td>${escHtml(row.room_number || "—")}</td>
+            <td>${escHtml(row.guest_name || "—")}</td>
+            <td>${escHtml(label)}${row.detail ? `<br><small>${escHtml(row.detail)}</small>` : ""}</td>
+            <td>${amount}</td>
+            <td>${escHtml(row.performed_by || "—")}</td>
+          </tr>`;
+        }).join("");
+      }
+      if (empty) empty.hidden = entries.length > 0;
+    }
+
+    document.getElementById("hd-load")?.addEventListener("click", () => {
+      ngarkoDitarinEHotelit().catch((err) => alert(err.message || "Gabim"));
+    });
+
     function switchAdminPanel(name) {
       adminSettingsMode = false;
       showSettingsSubnavBar(false);
@@ -7342,6 +7443,7 @@
         ngarkoRefuzimet();
         if (!ditariInterval) ditariInterval = setInterval(ngarkoDitarin, 45000);
       }
+      if (name === "ditari-hoteli") ngarkoDitarinEHotelit();
       if (name === "raporte-avancuara" && window.HotelAdvancedReports) {
         window.HotelAdvancedReports.load();
       }

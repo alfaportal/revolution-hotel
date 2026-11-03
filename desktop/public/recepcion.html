@@ -690,10 +690,26 @@
       <div id="recep-services-panel" class="waiter-hotel-panel recep-hotel-panel" hidden>
         <div class="rez-toolbar">
           <h2>Shërbimet e hotelit</h2>
+          <button type="button" class="btn btn-primary" id="btn-walkin-open">Klient i jashtëm</button>
         </div>
-        <p style="margin:-0.35rem 0 0.85rem;color:#64748b;font-size:0.88rem;font-weight:600">
-          Bazen, parking, spa, manikyr — katalogu nga admini (shtimi në folio vjen në hapin tjetër).
-        </p>
+        <div id="recep-walkin-wrap"></div>
+        <div class="rez-table-wrap" id="recep-svc-work-wrap">
+          <table class="rez-table">
+            <thead>
+              <tr>
+                <th>Shërbimi</th>
+                <th>Dhoma</th>
+                <th>Mysafiri</th>
+                <th>Kush e kryen</th>
+                <th>Koha</th>
+                <th>Shuma</th>
+                <th>Statusi</th>
+              </tr>
+            </thead>
+            <tbody id="recep-svc-work-body"></tbody>
+          </table>
+          <div id="recep-svc-work-empty" class="rez-empty" hidden>Nuk ka shërbime për mysafirët aktualë.</div>
+        </div>
         <div id="recep-svc-msg"></div>
         <div id="recep-svc-catalog" class="waiter-svc-catalog"></div>
       </div>
@@ -982,6 +998,8 @@
         <div><dt>Totali i pagesave</dt><dd id="rc-shift-total-sales">0.00 €</dd></div>
         <div><dt>Shitje cash</dt><dd id="rc-shift-cash-sales">0.00 €</dd></div>
         <div><dt>Shitje kartë</dt><dd id="rc-shift-card-sales">0.00 €</dd></div>
+        <div><dt>Shërbime të kryera</dt><dd id="rc-shift-service-total">0.00 €</dd></div>
+        <div id="rc-shift-services" style="grid-column:1/-1;font-size:0.88rem;font-weight:600"></div>
         <div><dt>Dhoma ende të zëna</dt><dd id="rc-shift-occupied">0</dd></div>
         <div><dt>Paratë e nisjes</dt><dd id="rc-shift-opening">0.00 €</dd></div>
         <div class="shift-close-expected"><dt>Paratë e pritshme në arkë</dt><dd id="rc-shift-expected">0.00 €</dd></div>
@@ -1066,11 +1084,16 @@
         Shërbimi shtohet te fatura e mysafirit (room charges)
       </p>
       <input type="hidden" id="rc-add-svc-room-id" value="">
+      <input type="hidden" id="rc-add-svc-walkin-id" value="">
       <input type="hidden" id="rc-add-svc-mode" value="fixed">
       <div class="hotel-form-grid">
         <div class="hotel-form-field wide" id="rc-add-svc-room-wrap" hidden>
           <label for="rc-add-svc-room">Dhoma (e zënë)</label>
           <select id="rc-add-svc-room"></select>
+        </div>
+        <div class="hotel-form-field wide" id="rc-add-svc-walkin-wrap" hidden>
+          <label for="rc-add-svc-walkin">Klient i jashtëm</label>
+          <select id="rc-add-svc-walkin"></select>
         </div>
         <div class="hotel-form-field wide">
           <label for="rc-add-svc-service">Shërbimi (katalogu)</label>
@@ -1085,6 +1108,10 @@
           <input type="number" id="rc-add-svc-amount" min="0" step="0.01" value="0">
         </div>
         <div class="hotel-form-field wide">
+          <label for="rc-add-svc-staff">Kush e kryen</label>
+          <select id="rc-add-svc-staff"></select>
+        </div>
+        <div class="hotel-form-field wide">
           <label for="rc-add-svc-notes">Shënime</label>
           <input type="text" id="rc-add-svc-notes" maxlength="200" placeholder="opsionale — p.sh. ora, SPA…">
         </div>
@@ -1093,6 +1120,33 @@
       <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
         <button type="button" class="btn btn-ghost" id="rc-add-svc-cancel">Anulo</button>
         <button type="button" class="btn btn-primary" id="rc-add-svc-save" style="flex:1">Shto te fatura</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-walkin" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-walkin-backdrop"></div>
+    <div class="table-modal-content">
+      <h2>Klient i jashtëm</h2>
+      <p style="margin-top:-0.5rem;margin-bottom:0.85rem;color:var(--ngjyr-muted);font-size:0.9rem">Pa dhomë. Shërbimet mblidhen këtu dhe paguhen në recepsion.</p>
+      <div class="hotel-form-grid">
+        <div class="hotel-form-field wide">
+          <label for="rc-walkin-name">Emri</label>
+          <input type="text" id="rc-walkin-name" maxlength="80">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-walkin-phone">Telefoni</label>
+          <input type="text" id="rc-walkin-phone" maxlength="40">
+        </div>
+        <div class="hotel-form-field">
+          <label for="rc-walkin-email">Email</label>
+          <input type="email" id="rc-walkin-email" maxlength="120">
+        </div>
+      </div>
+      <div id="rc-walkin-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:1rem">
+        <button type="button" class="btn btn-ghost" id="rc-walkin-cancel">Anulo</button>
+        <button type="button" class="btn btn-primary" id="rc-walkin-save" style="flex:1">Hap llogarinë</button>
       </div>
     </div>
   </div>
@@ -2804,11 +2858,13 @@
       const tbody = document.getElementById("rc-orders-tbody");
       const empty = document.getElementById("rc-orders-empty");
       showMsg("recep-orders-msg", "", true);
-      const [activeData, pendingData, svcPendingData, payOnSiteData] = await Promise.all([
+      const [activeData, pendingData, svcPendingData, payOnSiteData, registerData, walkInData] = await Promise.all([
         api("/api/waiter/active-orders"),
         api("/api/waiter/online-orders/pending").catch(() => ({ orders: [] })),
         api("/api/waiter/public-service-requests/pending").catch(() => ({ requests: [] })),
         api("/api/waiter/pay-on-site-services/pending").catch(() => ({ pending: [] })),
+        api("/api/waiter/service-register").catch(() => ({ rows: [] })),
+        api("/api/waiter/walkin-clients").catch(() => ({ clients: [] })),
       ]);
       const payOnSiteRows = payOnSiteData.pending || [];
       const publicSvcRows = (svcPendingData.requests || [])
@@ -2816,9 +2872,22 @@
         .map(mapPublicServiceRequestToRecepQueue);
       const pendingRows = [...publicSvcRows, ...filtroPorosiSherbimiRecep(pendingData.orders || [])];
       const rows = (activeData.orders || []).filter((o) => o.kind !== "table");
+      const pendingIds = new Set(publicSvcRows.map((r) => String(r.id || "")));
+      const walkInLines = [];
+      for (const c of walkInData.clients || []) {
+        for (const line of c.lines || []) {
+          if (!["pending", "accepted", "done"].includes(line.work_status)) continue;
+          walkInLines.push({ client: c, line });
+        }
+      }
+      const registerRows = (registerData.rows || []).filter((r) => {
+        if (r.kind !== "public") return false;
+        const id = String(r.ref_key || "").replace(/^public:/, "");
+        return id && !pendingIds.has(id);
+      });
       if (!tbody) return;
       tbody.innerHTML = "";
-      if (!pendingRows.length && !rows.length && !payOnSiteRows.length) {
+      if (!pendingRows.length && !rows.length && !payOnSiteRows.length && !registerRows.length && !walkInLines.length) {
         if (empty) {
           empty.hidden = false;
           empty.textContent =
@@ -2879,6 +2948,35 @@
           `<td>${escHtml(formatOrderTime(o.created_at))}</td>`;
         tr.title = "Kliko për të hapur pranimin/refuzimin";
         tr.addEventListener("click", () => hapRecepGuestServicePop());
+        tbody.appendChild(tr);
+      }
+      const walkStatus = { pending: "Në pritje", accepted: "Pranuar", done: "E kryer" };
+      for (const entry of walkInLines) {
+        nr += 1;
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${nr}</td>` +
+          `<td><strong>Klient i jashtëm · ${escHtml(entry.client.client_name || "")}</strong></td>` +
+          `<td style="max-width:16rem">${escHtml(entry.line.description || "Shërbim")}</td>` +
+          `<td>${formatEuro(entry.line.amount || 0)}</td>` +
+          `<td><span class="ord-status pending">${escHtml(walkStatus[entry.line.work_status] || "Në pritje")}</span></td>` +
+          `<td>${escHtml(formatOrderTime(entry.line.created_at))}</td>`;
+        tbody.appendChild(tr);
+      }
+      for (const reg of registerRows) {
+        nr += 1;
+        const tr = document.createElement("tr");
+        tr.className = "ord-pending-row";
+        const source = reg.room_number
+          ? `Dhoma ${reg.room_number} · ${reg.guest_name || "Mysafir"}`
+          : `${reg.service_name || "Shërbim"} · ${reg.guest_name || "Mysafir"}`;
+        tr.innerHTML =
+          `<td>${nr}</td>` +
+          `<td><strong>${escHtml(source)}</strong></td>` +
+          `<td style="max-width:16rem">${escHtml(reg.service_name || "Shërbim")}</td>` +
+          `<td>${formatEuro(reg.amount || 0)}</td>` +
+          `<td><span class="ord-status pending">${escHtml(reg.status_label || "Pranuar")}</span></td>` +
+          `<td>${escHtml(formatOrderTime(reg.updated_at || reg.created_at))}</td>`;
         tbody.appendChild(tr);
       }
       for (const o of rows) {
@@ -3264,6 +3362,10 @@
       rcAddSvcRoom = null;
       const roomWrap = document.getElementById("rc-add-svc-room-wrap");
       if (roomWrap) roomWrap.hidden = true;
+      const walkWrap = document.getElementById("rc-add-svc-walkin-wrap");
+      if (walkWrap) walkWrap.hidden = true;
+      const walkId = document.getElementById("rc-add-svc-walkin-id");
+      if (walkId) walkId.value = "";
       const msg = document.getElementById("rc-add-svc-msg");
       if (msg) { msg.hidden = true; msg.textContent = ""; }
     }
@@ -3292,6 +3394,10 @@
         const rid = roomSel.value;
         rcAddSvcRoom = (lastRooms || []).find((r) => String(r.id) === String(rid)) || null;
         document.getElementById("rc-add-svc-room-id").value = rid || "";
+        const walkHidden = document.getElementById("rc-add-svc-walkin-id");
+        if (walkHidden && rid) walkHidden.value = "";
+        const walkSel = document.getElementById("rc-add-svc-walkin");
+        if (walkSel && rid) walkSel.value = "";
         const serviceId = document.getElementById("rc-add-svc-service")?.value;
         applyRcAddServicePricing(serviceId ? findServiceById(serviceId) : null);
       };
@@ -3302,18 +3408,41 @@
       if (!lastRooms?.length) {
         try { await ngarkoDhomat(); } catch { /* */ }
       }
+      await ngarkoWalkInClients().catch(() => {});
       const occ = fillRcOccupiedRoomSelect();
-      if (!occ.length) {
-        showMsg("recep-svc-msg", "Nuk ka dhoma të zëna — bëni check-in fillimisht.", false);
+      const clients = lastWalkInClients || [];
+      if (!occ.length && !clients.length) {
+        showMsg("recep-svc-msg", "Hapni «Klient i jashtëm» ose bëni check-in.", false);
         return;
       }
       const roomWrap = document.getElementById("rc-add-svc-room-wrap");
-      if (roomWrap) roomWrap.hidden = false;
+      if (roomWrap) roomWrap.hidden = !occ.length;
+      const walkWrap = document.getElementById("rc-add-svc-walkin-wrap");
+      const walkSel = document.getElementById("rc-add-svc-walkin");
+      if (walkWrap) walkWrap.hidden = !clients.length;
+      if (walkSel) {
+        walkSel.innerHTML = `<option value="">— dhomë —</option>` + clients.map((c) =>
+          `<option value="${String(c.id)}">${escHtml(c.client_name)}</option>`,
+        ).join("");
+        walkSel.onchange = () => {
+          const id = walkSel.value;
+          document.getElementById("rc-add-svc-walkin-id").value = id || "";
+          if (id) document.getElementById("rc-add-svc-room-id").value = "";
+        };
+      }
+      document.getElementById("rc-add-svc-walkin-id").value = "";
       bindRcAddServiceRoomSelect();
-      rcAddSvcRoom = occ[0];
-      document.getElementById("rc-add-svc-room-id").value = String(occ[0].id);
-      const roomSel = document.getElementById("rc-add-svc-room");
-      if (roomSel) roomSel.value = String(occ[0].id);
+      if (occ.length) {
+        rcAddSvcRoom = occ[0];
+        document.getElementById("rc-add-svc-room-id").value = String(occ[0].id);
+        const roomSel = document.getElementById("rc-add-svc-room");
+        if (roomSel) roomSel.value = String(occ[0].id);
+      } else if (clients.length) {
+        rcAddSvcRoom = null;
+        document.getElementById("rc-add-svc-room-id").value = "";
+        document.getElementById("rc-add-svc-walkin-id").value = String(clients[0].id);
+        if (walkSel) walkSel.value = String(clients[0].id);
+      }
       document.getElementById("rc-add-svc-title").textContent = service.name || "Shërbim";
       document.getElementById("rc-add-svc-qty").value = "1";
       document.getElementById("rc-add-svc-notes").value = "";
@@ -3337,6 +3466,8 @@
       if (roomWrap) roomWrap.hidden = true;
       rcAddSvcRoom = room;
       document.getElementById("rc-add-svc-room-id").value = String(room.id);
+      const walkHidden = document.getElementById("rc-add-svc-walkin-id");
+      if (walkHidden) walkHidden.value = "";
       const guest = room.active_guest?.guest_name || "Mysafir";
       document.getElementById("rc-add-svc-title").textContent =
         `Shto shërbim — Dhoma ${room.room_number}`;
@@ -3437,7 +3568,142 @@
       return "";
     }
 
+    function renderStayServiceWork(work) {
+      const body = document.getElementById("recep-svc-work-body");
+      const empty = document.getElementById("recep-svc-work-empty");
+      if (!body) return;
+      const rows = Array.isArray(work) ? work : [];
+      body.innerHTML = rows.map((row) => {
+        const when = String(row.created_at || "").replace("T", " ").slice(0, 16);
+        const statusMap = {
+          pending: "Në pritje",
+          accepted: "Pranuar",
+          done: "E kryer",
+          completed: "E kryer",
+          paid: "Paguar",
+          rejected: "Refuzuar",
+        };
+        const status = statusMap[row.status] || "E kryer";
+        return `<tr>
+          <td>${escHtml(row.description || "Shërbim")}</td>
+          <td>${escHtml(String(row.room_number || "—"))}</td>
+          <td>${escHtml(row.guest_name || "—")}</td>
+          <td>${escHtml(row.performed_by_name || "—")}</td>
+          <td>${escHtml(when || "—")}</td>
+          <td>${formatEuro(row.amount)}</td>
+          <td>${escHtml(status)}</td>
+        </tr>`;
+      }).join("");
+      if (empty) empty.hidden = rows.length > 0;
+    }
+
+    let lastWalkInClients = [];
+
+    function renderWalkInClients(clients) {
+      const wrap = document.getElementById("recep-walkin-wrap");
+      if (!wrap) return;
+      const list = Array.isArray(clients) ? clients : [];
+      if (!list.length) {
+        wrap.innerHTML = "";
+        return;
+      }
+      const statusLabel = { pending: "Në pritje", accepted: "Pranuar", done: "E kryer" };
+      wrap.innerHTML = list.map((c) => {
+        const lines = (c.lines || []).filter((l) => ["pending", "accepted", "done"].includes(l.work_status));
+        const lineHtml = lines.map((l) => {
+          let actions = "";
+          if (l.work_status === "pending") {
+            actions = `<button type="button" class="btn btn-primary btn-sm" data-walkin-status="${l.id}" data-status="accepted">Prano</button> <button type="button" class="btn btn-ghost btn-sm" data-walkin-status="${l.id}" data-status="rejected">Refuzo</button>`;
+          } else if (l.work_status === "accepted") {
+            actions = `<button type="button" class="btn btn-primary btn-sm" data-walkin-status="${l.id}" data-status="done">E kryer</button>`;
+          }
+          return `<div style="margin:0.25rem 0">${escHtml(l.description)} · ${formatEuro(l.amount)} · ${escHtml(statusLabel[l.work_status] || l.work_status)} ${actions}</div>`;
+        }).join("");
+        return `<div class="rez-table-wrap" style="margin:0 0 0.75rem;padding:0.75rem">
+          <strong>${escHtml(c.client_name)}</strong>
+          <span style="color:#64748b"> ${escHtml([c.phone, c.email].filter(Boolean).join(" · "))}</span>
+          <div>Totali ${formatEuro(c.total || 0)}</div>
+          ${lineHtml || "<div>Pa shërbime ende.</div>"}
+          <div style="margin-top:0.5rem;display:flex;gap:0.4rem">
+            <button type="button" class="btn btn-primary btn-sm" data-walkin-pay="${c.id}" data-method="cash">Cash</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-walkin-pay="${c.id}" data-method="karte">Kartë</button>
+          </div>
+        </div>`;
+      }).join("");
+      wrap.querySelectorAll("[data-walkin-status]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/api/waiter/walkin-lines/${btn.getAttribute("data-walkin-status")}/status`, {
+              method: "POST",
+              body: JSON.stringify({ status: btn.getAttribute("data-status") }),
+            });
+            await ngarkoWalkInClients();
+            await ngarkoSherbimetPune().catch(() => {});
+          } catch (err) {
+            showMsg("recep-svc-msg", err.message || "Gabim", false);
+          }
+        });
+      });
+      wrap.querySelectorAll("[data-walkin-pay]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          try {
+            const data = await api(`/api/waiter/walkin-clients/${btn.getAttribute("data-walkin-pay")}/pay`, {
+              method: "POST",
+              body: JSON.stringify({ payment_method: btn.getAttribute("data-method") }),
+            });
+            showMsg("recep-svc-msg", `U pagua ${formatEuro(data.total)} · ${data.receipt_number || ""}`, true);
+            await ngarkoWalkInClients();
+            await ngarkoSherbimetPune().catch(() => {});
+          } catch (err) {
+            showMsg("recep-svc-msg", err.message || "Gabim", false);
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function ngarkoWalkInClients() {
+      const data = await api("/api/waiter/walkin-clients");
+      lastWalkInClients = data.clients || [];
+      renderWalkInClients(lastWalkInClients);
+      return lastWalkInClients;
+    }
+
+    function hapWalkInModal() {
+      const modal = document.getElementById("modal-rc-walkin");
+      if (!modal) return;
+      document.getElementById("rc-walkin-name").value = "";
+      document.getElementById("rc-walkin-phone").value = "";
+      document.getElementById("rc-walkin-email").value = "";
+      const msg = document.getElementById("rc-walkin-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      modal.hidden = false;
+    }
+
+    function mbyllWalkInModal() {
+      const modal = document.getElementById("modal-rc-walkin");
+      if (modal) modal.hidden = true;
+    }
+
+    async function ngarkoSherbimetPune() {
+      const data = await api("/api/waiter/service-work");
+      renderStayServiceWork(data.work || []);
+      const sel = document.getElementById("rc-add-svc-staff");
+      if (sel) {
+        const staff = data.staff || [];
+        const sessionName = String(user?.emri || "").trim();
+        sel.innerHTML = staff.map((s) =>
+          `<option value="${String(s.id)}">${escHtml(s.name)}</option>`,
+        ).join("");
+        const mine = staff.find((s) => String(s.name) === sessionName);
+        if (mine) sel.value = String(mine.id);
+      }
+    }
+
     async function ngarkoSherbimet() {
+      await ngarkoWalkInClients().catch(() => {});
+      await ngarkoSherbimetPune().catch(() => {});
       const data = await api("/api/waiter/services");
       lastSvcCatalog = {
         groups: data.groups || [],
@@ -3786,6 +4052,17 @@
         formatEuro(preview.cash_total || 0);
       document.getElementById("rc-shift-card-sales").textContent =
         formatEuro(preview.card_total || 0);
+      const svcTotalEl = document.getElementById("rc-shift-service-total");
+      if (svcTotalEl) svcTotalEl.textContent = formatEuro(preview.service_total || 0);
+      const svcBox = document.getElementById("rc-shift-services");
+      if (svcBox) {
+        const lines = preview.services || [];
+        svcBox.textContent = lines.length
+          ? lines.map((row) =>
+            `${row.description} · Dh. ${row.room_number} · ${row.guest_name || ""} · ${row.performed_by_name || "—"} · ${formatEuro(row.amount)}`,
+          ).join("\n")
+          : "";
+      }
       document.getElementById("rc-shift-occupied").textContent =
         String(countOccupiedRooms());
       document.getElementById("rc-shift-opening").textContent =
@@ -4413,16 +4690,49 @@
     document.getElementById("rc-add-svc-backdrop")?.addEventListener("click", mbyllRcAddService);
     document.getElementById("rc-add-svc-cancel")?.addEventListener("click", mbyllRcAddService);
     document.getElementById("rc-add-svc-service")?.addEventListener("change", onRcAddServicePickChange);
+    document.getElementById("btn-walkin-open")?.addEventListener("click", hapWalkInModal);
+    document.getElementById("rc-walkin-cancel")?.addEventListener("click", mbyllWalkInModal);
+    document.getElementById("rc-walkin-backdrop")?.addEventListener("click", mbyllWalkInModal);
+    document.getElementById("rc-walkin-save")?.addEventListener("click", async () => {
+      const msg = document.getElementById("rc-walkin-msg");
+      const btn = document.getElementById("rc-walkin-save");
+      const name = document.getElementById("rc-walkin-name")?.value?.trim() || "";
+      if (!name) {
+        if (msg) { msg.hidden = false; msg.textContent = "Shkruani emrin."; }
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        await api("/api/waiter/walkin-clients", {
+          method: "POST",
+          body: JSON.stringify({
+            client_name: name,
+            phone: document.getElementById("rc-walkin-phone")?.value?.trim() || "",
+            email: document.getElementById("rc-walkin-email")?.value?.trim() || "",
+          }),
+        });
+        mbyllWalkInModal();
+        await ngarkoWalkInClients();
+        showMsg("recep-svc-msg", `Llogaria e ${name} u hap.`, true);
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim"; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
     document.getElementById("rc-add-svc-save")?.addEventListener("click", async () => {
       const msg = document.getElementById("rc-add-svc-msg");
       const btn = document.getElementById("rc-add-svc-save");
       const serviceId = Number(document.getElementById("rc-add-svc-service")?.value);
       const roomId = Number(document.getElementById("rc-add-svc-room-id")?.value);
+      const walkinId = Number(document.getElementById("rc-add-svc-walkin-id")?.value);
       const mode = document.getElementById("rc-add-svc-mode")?.value || "fixed";
       const body = {
         service_id: serviceId,
         quantity: Number(document.getElementById("rc-add-svc-qty")?.value) || 1,
         notes: document.getElementById("rc-add-svc-notes")?.value?.trim() || "",
+        performed_by_staff_id: Number(document.getElementById("rc-add-svc-staff")?.value) || undefined,
       };
       if (mode === "variable" || mode === "room_rate" || mode === "fixed") {
         body.amount = Number(document.getElementById("rc-add-svc-amount")?.value);
@@ -4431,8 +4741,8 @@
         if (msg) { msg.hidden = false; msg.textContent = "Zgjidhni një shërbim."; }
         return;
       }
-      if (!roomId) {
-        if (msg) { msg.hidden = false; msg.textContent = "Dhoma mungon."; }
+      if (!roomId && !walkinId) {
+        if (msg) { msg.hidden = false; msg.textContent = "Zgjidhni dhomën ose klientin e jashtëm."; }
         return;
       }
       if (mode === "variable" && (!Number.isFinite(body.amount) || body.amount < 0)) {
@@ -4441,11 +4751,23 @@
       }
       if (btn) btn.disabled = true;
       try {
+        if (walkinId) {
+          await api(`/api/waiter/walkin-clients/${walkinId}/services`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          mbyllRcAddService();
+          await ngarkoWalkInClients().catch(() => {});
+          ngarkoSherbimetPune().catch(() => {});
+          showMsg("recep-svc-msg", "Shërbimi u shtua te klienti i jashtëm.", true);
+          return;
+        }
         const result = await api(`/api/waiter/rooms/${roomId}/add-service`, {
           method: "POST",
           body: JSON.stringify(body),
         });
         mbyllRcAddService();
+        ngarkoSherbimetPune().catch(() => {});
         const roomNo = result?.room?.room_number || roomId;
         const amt = formatEuro(result?.charge?.amount || 0);
         const svcName = result?.service?.name || "Shërbimi";

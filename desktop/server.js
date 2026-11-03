@@ -527,6 +527,60 @@ function ensurePublicGuestRequestsWatcher() {
   if (publicGuestRequestsWatcherStarted) return;
   publicGuestRequestsWatcher.ensurePublicGuestRequestsWatcher(db);
   publicGuestRequestsWatcherStarted = true;
+  const guestEmail = require("./hotel-service-email");
+  setInterval(() => {
+    guestEmail.flushGuestServiceEmails(db).catch(() => {});
+  }, 20000);
+}
+
+function queueGuestServiceDecision(order, kind, staffName) {
+  if (!order || typeof db.queueGuestServiceReply !== "function") return;
+  const guestOrder = (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(order))
+    || (typeof db.isGuestRoomMenuOrder === "function" && db.isGuestRoomMenuOrder(order));
+  if (!guestOrder) return;
+  const items = Array.isArray(order.items) ? order.items : [];
+  const serviceName = items.map((it) => String(it?.name || "").trim()).filter(Boolean).join(", ")
+    || String(order.source_label || "Shërbim");
+  try {
+    if (typeof db.answerCloudGuestService === "function") {
+      db.answerCloudGuestService(order, kind === "rejected" ? "rejected" : "accepted", staffName);
+    }
+    db.queueGuestServiceReply({
+      kind: kind === "rejected" ? "rejected" : "accepted",
+      service_name: serviceName,
+      room_number: order.room_number || "",
+      email: order.guest_email || order.email || "",
+      guest_id: order.guest_id || null,
+      guest_name: order.customer_name || order.guest_name || "",
+      ref_key: `order:${order.id}`,
+    });
+    require("./hotel-service-email").flushGuestServiceEmails(db).catch(() => {});
+  } catch (err) {
+    console.warn("[service-email]", err?.message || err);
+  }
+}
+
+function queuePublicServiceDecision(id, kind, staffName, source, cloudEmail) {
+  const src = source && typeof source === "object" ? source : {};
+  try {
+    if (typeof db.answerPublicServiceRequest === "function") {
+      db.answerPublicServiceRequest(id, kind === "rejected" ? "rejected" : "accepted", staffName, src);
+    }
+    if (cloudEmail && cloudEmail.sent) return;
+    if (typeof db.queueGuestServiceReply === "function") {
+      db.queueGuestServiceReply({
+        kind: kind === "rejected" ? "rejected" : "accepted",
+        service_name: src.service_name || src.name || "Shërbim",
+        room_number: src.room_number || "",
+        email: src.guest_email || "",
+        guest_name: src.guest_name || "",
+        ref_key: `public:${id}`,
+      });
+    }
+    require("./hotel-service-email").flushGuestServiceEmails(db).catch(() => {});
+  } catch (err) {
+    console.warn("[service-email]", err?.message || err);
+  }
 }
 
 function resolvePendingPublicBookingRow(dbRef, id) {
@@ -760,8 +814,9 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       : order;
     if (typeof db.tryApplyCloudRoomMenuOrder === "function") {
       try {
-        const roomResult = db.tryApplyCloudRoomMenuOrder(orderForApply);
+        const roomResult = db.tryApplyCloudRoomMenuOrder(orderForApply, staff);
         if (roomResult?.ok && !roomResult.pending) {
+          queueGuestServiceDecision(orderForApply, "accepted", waiterName);
           imported.push({
             ok: true,
             cloud_id: order.id,
@@ -776,7 +831,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
     }
     if (typeof db.isGuestHotelServiceOrder === "function" && db.isGuestHotelServiceOrder(orderForApply)) {
       try {
-        const applied = db.applyGuestHotelServiceOrder(orderForApply);
+        const applied = db.applyGuestHotelServiceOrder(orderForApply, staff);
         imported.push({
           ok: true,
           cloud_id: order.id,
@@ -789,6 +844,7 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
         ) {
           db.enqueuePendingPayOnSiteService(orderForApply, { accepted_by: waiterName });
         }
+        queueGuestServiceDecision(orderForApply, "accepted", waiterName);
       } catch (e) {
         imported.push({ ok: false, cloud_id: order.id, error: e.message });
       }
@@ -1053,6 +1109,7 @@ async function refusePendingOnlineOrdersFlow(orderIds, options = {}) {
   if (staff?.id && cloudResult.ok) {
     onlineOrdersWatcher.persistStaffRefusal(db, staff.id, orderId);
   }
+  if (pendingLocal) queueGuestServiceDecision(pendingLocal, "rejected", waiterName);
 
   for (const id of ids) {
     const active = db.getActiveOrderByCloudId(id);
@@ -4498,6 +4555,9 @@ app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, 
         if (Array.isArray(data.requests)) {
           requests = data.requests;
           db.reconcilePendingPublicServiceRequests(requests);
+          if (typeof db.rememberPublicServiceRequests === "function") {
+            db.rememberPublicServiceRequests(requests);
+          }
         }
       } catch {
         /* cache */
@@ -4513,6 +4573,10 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
+    const local = (typeof db.listPendingPublicServiceRequests === "function"
+      ? db.listPendingPublicServiceRequests()
+      : []
+    ).find((r) => String(r?.id) === String(req.params.id));
     const data = await hotelCloudSync.acceptPublicServiceRequest(db, req.params.id, {
       staff_name: staffName,
       request_prepayment: req.body?.request_prepayment,
@@ -4520,6 +4584,13 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
     if (typeof db.removePendingPublicServiceRequest === "function") {
       db.removePendingPublicServiceRequest(req.params.id);
     }
+    queuePublicServiceDecision(
+      req.params.id,
+      "accepted",
+      staffName,
+      data?.request || local,
+      data?.email,
+    );
     auditReq(req, "Shërbim publik pranuar", req.params.id);
     res.json(data);
   } catch (e) {
@@ -4531,6 +4602,10 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
   try {
     const hotelCloudSync = require("./hotel-cloud-sync");
     const staffName = String(req.body?.staff_name || req.session?.emri || "Recepsion").trim();
+    const local = (typeof db.listPendingPublicServiceRequests === "function"
+      ? db.listPendingPublicServiceRequests()
+      : []
+    ).find((r) => String(r?.id) === String(req.params.id));
     const data = await hotelCloudSync.rejectPublicServiceRequest(db, req.params.id, {
       staff_name: staffName,
       staff_note: req.body?.staff_note || req.body?.reason || "",
@@ -4538,6 +4613,13 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
     if (typeof db.removePendingPublicServiceRequest === "function") {
       db.removePendingPublicServiceRequest(req.params.id);
     }
+    queuePublicServiceDecision(
+      req.params.id,
+      "rejected",
+      staffName,
+      data?.request || local,
+      data?.email,
+    );
     auditReq(req, "Shërbim publik refuzuar", req.params.id);
     res.json(data);
   } catch (e) {
@@ -4546,6 +4628,39 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
 });
 
 /** Shërbime spa/bazen me pagesë në vend — prit pagesë pas PRANO. */
+app.get("/api/waiter/service-register", auth, waiterOrRecepsion, (_req, res) => {
+  try {
+    const rows = typeof db.listActiveServiceRegister === "function" ? db.listActiveServiceRegister() : [];
+    res.json({
+      ok: true,
+      rows: rows.map((row) => ({
+        ...row,
+        status_label: typeof db.serviceRegisterStatusLabel === "function"
+          ? db.serviceRegisterStatusLabel(row.status)
+          : row.status,
+      })),
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, rows: [] });
+  }
+});
+
+app.get("/api/admin/hotel-diary", auth, adminOnly, (req, res) => {
+  try {
+    const entries = typeof db.listHotelDiary === "function"
+      ? db.listHotelDiary({
+        from: req.query.from || "",
+        to: req.query.to || "",
+        room: req.query.room || "",
+        event_type: req.query.event || req.query.event_type || "",
+      })
+      : [];
+    res.json({ ok: true, entries });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, entries: [] });
+  }
+});
+
 app.get("/api/waiter/pay-on-site-services/pending", auth, waiterOrRecepsion, (req, res) => {
   try {
     const pending = typeof db.listPendingPayOnSiteServices === "function"
@@ -4554,6 +4669,124 @@ app.get("/api/waiter/pay-on-site-services/pending", auth, waiterOrRecepsion, (re
     res.json({ ok: true, pending, count: pending.length });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message, pending: [] });
+  }
+});
+
+app.get("/api/waiter/walkin-clients", auth, waiterOrRecepsion, (_req, res) => {
+  try {
+    const clients = typeof db.listOpenWalkInClients === "function" ? db.listOpenWalkInClients() : [];
+    res.json({ ok: true, clients });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message, clients: [] });
+  }
+});
+
+app.post("/api/waiter/walkin-clients", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    const client = db.openWalkInClient({
+      client_name: req.body?.client_name || req.body?.name,
+      phone: req.body?.phone,
+      email: req.body?.email,
+    });
+    auditReq(req, "Klient i jashtëm", client.client_name);
+    res.status(201).json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/walkin-clients/:id/services", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    const serviceId = Number(req.body?.service_id);
+    if (!serviceId) return res.status(400).json({ gabim: "Shërbimi mungon." });
+    const pickedId = Number(req.body?.performed_by_staff_id);
+    const picked = pickedId ? db.findStaffById(pickedId) : null;
+    const sessionId = resolveWaiterStaffId(req.session);
+    const sessionName = String(req.session?.emri || req.session?.name || "").trim();
+    const performer = picked
+      ? { id: picked.id, name: picked.name }
+      : (sessionId || sessionName ? { id: sessionId, name: sessionName } : null);
+    const result = db.addWalkInService(req.params.id, serviceId, {
+      quantity: req.body?.quantity,
+      notes: req.body?.notes,
+      amount: req.body?.amount,
+      performer,
+    });
+    if (result?.line?.work_status === "accepted") {
+      require("./hotel-service-email").flushGuestServiceEmails(db).catch(() => {});
+    }
+    auditReq(req, "Shërbim klient i jashtëm", `${result.client.client_name} · ${result.service.name}`);
+    res.status(201).json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/walkin-lines/:id/status", auth, waiterOrRecepsion, (req, res) => {
+  try {
+    const staffName = String(req.session?.emri || req.session?.name || "Recepsion").trim();
+    const line = db.setWalkInLineStatus(req.params.id, req.body?.status, staffName);
+    require("./hotel-service-email").flushGuestServiceEmails(db).catch(() => {});
+    res.json({ ok: true, line });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/walkin-clients/:id/pay", auth, waiterOrRecepsion, async (req, res) => {
+  try {
+    const staffId = resolveWaiterStaffId(req.session);
+    const staff = staffId ? db.findStaffById(staffId) : null;
+    const waiterName = String(req.session?.emri || staff?.name || "Recepsion").trim();
+    const shift = staffId && typeof db.getOpenShift === "function" ? db.getOpenShift(staffId) : null;
+    const result = db.payWalkInClient(req.params.id, {
+      payment_method: req.body?.payment_method || "cash",
+      payment_splits: req.body?.payment_splits,
+      waiter_name: waiterName,
+      staff_id: staffId || null,
+      shift_id: shift?.id || null,
+    });
+    let fiscalResult = null;
+    let printed = false;
+    let printMessage = "";
+    let couponType = "fiscal";
+    if (fiscalConfig.isFiscalEnabled()) {
+      fiscalResult = await fiscalizeRecepcionSale({
+        items: result.fiscal_items,
+        total: result.total,
+        payment_method: result.payment_method,
+        payment_splits: req.body?.payment_splits,
+        waiter_name: waiterName,
+        operator_id: String(req.session.userId || req.session.id || "POS"),
+        source_label: "Klient i jashtëm",
+        receipt_number: result.receipt_number,
+        subtotal: result.total,
+      });
+      printed = !!fiscalResult?.printed;
+      printMessage = fiscalResult?.printMessage || "";
+    } else {
+      const printResult = await printRecepcionKasaThermalReceipt(db, {
+        receipt_number: result.receipt_number,
+        total: result.total,
+        payment_method: result.payment_method,
+        items: result.fiscal_items,
+        waiter_name: waiterName,
+      });
+      printed = !!printResult.printed;
+      printMessage = printResult.printMessage || "";
+      couponType = "thermal";
+    }
+    auditReq(req, "Pagesë klient i jashtëm", `${result.client?.client_name} · ${result.total}€ · ${result.receipt_number}`);
+    res.json({
+      ok: true,
+      ...result,
+      printed,
+      printMessage,
+      coupon_type: couponType,
+      fiscal_receipt: fiscalResult,
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
   }
 });
 
@@ -6140,14 +6373,34 @@ app.get("/api/waiter/active-orders", auth, staffOrAdmin, (req, res) => {
   }
 });
 
+app.get("/api/waiter/service-work", auth, staffOrAdmin, (_req, res) => {
+  try {
+    const work = db.listStayServiceWork();
+    const staff = db.getStaff()
+      .filter((s) => Number(s.active) !== 0)
+      .map((s) => ({ id: s.id, name: s.name, staff_role: s.staff_role }));
+    res.json({ ok: true, work, staff });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/rooms/:id/add-service", auth, staffOrAdmin, (req, res) => {
   try {
     const serviceId = Number(req.body?.service_id);
     if (!serviceId) return res.status(400).json({ gabim: "Shërbimi mungon." });
+    const pickedId = Number(req.body?.performed_by_staff_id);
+    const picked = pickedId ? db.findStaffById(pickedId) : null;
+    const sessionId = resolveWaiterStaffId(req.session);
+    const sessionName = String(req.session?.emri || req.session?.name || "").trim();
+    const performer = picked
+      ? { id: picked.id, name: picked.name }
+      : (sessionId || sessionName ? { id: sessionId, name: sessionName } : null);
     const result = db.addServiceChargeToRoom(req.params.id, serviceId, {
       quantity: req.body?.quantity,
       notes: req.body?.notes,
       amount: req.body?.amount,
+      performer,
     });
     auditReq(
       req,
@@ -6358,6 +6611,7 @@ app.post("/api/waiter/room-reservations/:id/check-in", auth, staffOrAdmin, (req,
     const result = db.convertReservationToCheckIn(req.params.id);
     auditReq(req, "Check-in nga rezervimi", `${result.room.room_number} — ${result.guest.guest_name}`);
     pushHotelGuestStayToCloudAsync("recepsion-reservation-check-in");
+    pushHotelReservationsToCloudAsync("recepsion-reservation-check-in");
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(400).json({ gabim: e.message });

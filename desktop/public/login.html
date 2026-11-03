@@ -265,8 +265,6 @@
                 <span class="pin-dot"></span>
                 <span class="pin-dot"></span>
                 <span class="pin-dot"></span>
-                <span class="pin-dot"></span>
-                <span class="pin-dot"></span>
               </div>
               <div class="numpad" id="numpad">
                 <button type="button" class="numpad-btn" data-digit="1">1</button>
@@ -884,8 +882,7 @@
     }
 
     function pinSubmitLengths() {
-      const d = pinDigitsHint();
-      return d === 6 ? [6] : [4, 6];
+      return [pinDigitsHint()];
     }
 
     function staffZoneMeta(mode) {
@@ -1374,7 +1371,7 @@
     }
 
     function shtoShifer(d) {
-      if (pinBusy || pinValue.length >= 6) return;
+      if (pinBusy || pinValue.length >= pinDigitsHint()) return;
       pinValue += d;
       perditesoPinDisplay();
       if (shouldTryPinLogin()) provoPinLogin();
@@ -1396,7 +1393,7 @@
       if (shouldTryPinLogin()) provoPinLogin();
       else {
         const d = pinDigitsHint();
-        shfaqGabim(gabimEl, "Shkruani 4 shifra PIN (ose 6 për PIN të vjetër).");
+        shfaqGabim(gabimEl, "Shkruani 4 shifra PIN.");
       }
     });
 
@@ -1453,7 +1450,7 @@
           e.preventDefault();
           e.stopPropagation();
           kbdBuffer += e.key;
-          if (/^\d$/.test(e.key) && pinValue.length < 6) {
+          if (/^\d$/.test(e.key) && pinValue.length < pinDigitsHint()) {
             pinValue += e.key;
             perditesoPinDisplay();
           }

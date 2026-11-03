@@ -469,6 +469,25 @@ async function mountHotelMainWindow(started, userData) {
     },
   });
   mainWindow.maximize();
+  if (appIcon) {
+    try {
+      mainWindow.setIcon(appIcon);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (process.platform === "win32" && appIcon) {
+    try {
+      mainWindow.setAppDetails({
+        appId: APP_ID,
+        appIconPath: appIcon,
+        appIconIndex: 0,
+        relaunchDisplayName: APP_NAME,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
   try {
     mainWindow.setMenuBarVisibility(false);
   } catch {
