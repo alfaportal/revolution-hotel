@@ -8359,7 +8359,7 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
   try {
     const created = db.addStaff(name, pin, staff_role);
     syncCatalogToCloud();
-    void cloudSync.pushStaffAsync(db);
+    void cloudSync.pushStaffAsync(db, [{ name: String(name).trim(), pin: String(pin).trim(), active: true }]);
     const full = db.getStaff().find(s => Number(s.id) === Number(created.id));
     const waiter_url = resolveStaffWaiterUrl(null, full || { id: created.id, web_token: created.web_token });
     res.json({ ok: true, staff_id: created.id, waiter_url });
@@ -8389,8 +8389,9 @@ app.put("/api/staff/:id/pin", auth, adminOnly, (req, res) => {
   try {
     const id = Number(req.params.id);
     db.updateStaffPin(id, pin);
+    const row = db.getStaff().find((s) => Number(s.id) === id);
     syncCatalogToCloud();
-    void cloudSync.pushStaffAsync(db);
+    void cloudSync.pushStaffAsync(db, row ? [{ name: row.name, pin: String(pin).trim(), active: !!row.active }] : undefined);
     const full = db.getStaff().find(s => Number(s.id) === id);
     res.json({
       ok: true,

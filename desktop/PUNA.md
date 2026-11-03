@@ -1,5 +1,17 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-03 — Linket cloud te paneli i pronarit (telefon)
+
+Paneli Cloud tani shfaq linket e telefonit: owner, kamarier, recepsion, shërbim, kuzhinë, bar. WiFi lokal mbetet veç. PIN i ri dërgohet te cloud (jo hash).
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/public/admin.html` | `vendosLinketCloud` + link personal te Punonjësit |
+| `desktop/cloud-sync.js` | `pinForCloudSync` + override te `pushStaffAsync` |
+| `desktop/server.js` | POST/PUT staff dërgon PIN-in e sapo shkruar |
+
+**Nuk u prek waiter.js / fiskal. Git commit/push te ky hap. Nuk u bë build.**
+
 ## 2026-11-03 — Porositë e dhomës vetëm te recepsioni (pa build)
 
 Të gjitha porositë e dhomës (menu, room service, minibar, spa) shkojnë te recepsioni. QR tavolinë restoranti mbetet te kamarieri.

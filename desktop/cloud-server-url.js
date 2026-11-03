@@ -178,11 +178,14 @@ const HOTEL_PUBLIC_STAFF_SEGMENT = {
 /**
  * Stafi — https://revolution-pos.com/hotel/{slug}/{roli}?key=…
  */
-/** Pronari — paneli cloud (i njëjtë si distributor): https://revolution-pos.com/owner/panel */
-function buildOwnerAccessLink(baseUrl, _slug, _key) {
+function buildOwnerAccessLink(baseUrl, slug, key) {
   const base = trimTrailingSlash(baseUrl || PUBLIC_HOTEL_ORIGIN);
-  if (!base) return "";
-  return `${base}/owner/panel`;
+  const s = normalizeSlug(slug);
+  if (!base || !s) return "";
+  let url = `${base}${HOTEL_WEB_PREFIX}/${encodeURIComponent(s)}/owner`;
+  const k = String(key || "").trim();
+  if (k) url += `?key=${encodeURIComponent(k)}`;
+  return url;
 }
 
 /** Faqja publike e hotelit — https://revolution-pos.com/hotel/{slug} */

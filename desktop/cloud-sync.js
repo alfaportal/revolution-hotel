@@ -1247,6 +1247,11 @@ function getBarScreenUrl(db) {
   return buildAccessLink(getPublicCloudServerUrl(), slug, key, "bar", "", cached.client_tipi || "");
 }
 
+function pinForCloudSync(pin) {
+  const p = String(pin || "").trim();
+  return /^\d{4,6}$/.test(p) ? p : "";
+}
+
 function buildCatalogPayload(db) {
   const cfg = getConfig(db);
   const settings = db.getSettings();
@@ -1276,7 +1281,7 @@ function buildCatalogPayload(db) {
   const staff = db.getStaff().map(s => ({
     name: s.name,
     active: !!s.active,
-    pin: String(s.pin || "").trim(),
+    pin: pinForCloudSync(s.pin),
   }));
 
   let staff_local_links = null;
@@ -1887,7 +1892,7 @@ async function fetchOnlineOrders(db) {
   }
 }
 
-async function pushStaffAsync(db) {
+async function pushStaffAsync(db, staffOverride) {
   if (!isCloudConfigured(db)) {
     return { ok: false, message: "Cloud nuk është konfiguruar." };
   }
@@ -1901,7 +1906,19 @@ async function pushStaffAsync(db) {
     };
   }
   const { cfg, payload } = buildCatalogPayload(db);
-  const localWithPin = (payload.staff || []).filter(s => /^\d{4}$/.test(String(s.pin || ""))).length;
+  let staff = payload.staff || [];
+  if (Array.isArray(staffOverride) && staffOverride.length) {
+    const extra = new Map(
+      staffOverride
+        .map((s) => [String(s.name || "").trim().toLowerCase(), pinForCloudSync(s.pin)])
+        .filter(([name, pin]) => name && pin),
+    );
+    staff = staff.map((s) => {
+      const pin = extra.get(String(s.name || "").trim().toLowerCase());
+      return pin ? { ...s, pin } : s;
+    });
+  }
+  const localWithPin = staff.filter((s) => /^\d{4,6}$/.test(String(s.pin || ""))).length;
   if (!localWithPin) {
     return { ok: false, skipped: true, message: "Nuk ka kamarierë me PIN lokalisht." };
   }
@@ -1913,7 +1930,7 @@ async function pushStaffAsync(db) {
       {
         celesi: cfg.celesi,
         device_id: cfg.deviceId,
-        staff: payload.staff,
+        staff,
       },
       { timeoutMs: 15000 },
     );

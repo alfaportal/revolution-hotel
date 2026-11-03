@@ -6,9 +6,6 @@
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/admin-modern.css?v=20261004tabwrap">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     .table-modal {
       position: fixed;
@@ -4951,9 +4948,15 @@
         </div>
         <div id="paper-block-issue-wrap" class="sef-paper-issue-form" hidden style="margin:0 0 1rem;padding:14px;border:1px solid #2e2e45;border-radius:8px;max-width:920px">
           <h3 style="margin:0 0 10px;font-size:1rem">Regjistro kupon bllok letër</h3>
-          <div class="settings-field" style="max-width:320px">
-            <label for="paper-serial-no">Numri serik i bllokut</label>
-            <input id="paper-serial-no" type="text" placeholder="p.sh. 000123" autocomplete="off" />
+          <div style="display:flex;gap:16px;flex-wrap:wrap;max-width:620px">
+            <div class="settings-field" style="flex:1;min-width:200px">
+              <label for="paper-serial-no">Numri serik i kuponit</label>
+              <input id="paper-serial-no" type="text" placeholder="p.sh. A001" autocomplete="off" />
+            </div>
+            <div class="settings-field" style="flex:1;min-width:200px">
+              <label for="paper-block-code">Kodi unik i bllokut</label>
+              <input id="paper-block-code" type="text" placeholder="p.sh. BLK-2026-01" autocomplete="off" />
+            </div>
           </div>
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;max-width:420px;margin-top:10px">
             <div class="settings-field" style="margin:0">
@@ -5568,7 +5571,7 @@
               <button type="button" class="btn btn-ghost btn-sm" id="btn-open-owner-url">Hap</button>
             </div>
             <p class="links-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--ngjyr-muted)">
-              Admin POS — i njëjti WiFi si PC (http://IP:port/admin.html).
+              Hapeni në telefon me internet — jo WiFi lokal.
             </p>
           </div>
           <div class="fiscal-field-row" id="cloud-row-waiter" hidden>
@@ -6679,7 +6682,7 @@
   <div id="print-fature" class="print-receipt"></div>
 
   <script src="/js/hotel-business-date.js?v=1"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=13"></script>
   <script src="/js/local-staff-events.js?v=2"></script>
   <script src="/js/virt-window.js?v=1"></script>
   <script src="/js/vat-smart-mapping.js"></script>
@@ -6695,10 +6698,10 @@
   <script src="/js/hotel-paper-block-tab.js?v=2"></script>
   <script src="/js/fiscal-receipts-tab.js?v=2"></script>
   <script src="/js/kontabilisti-atk-ui.js?v=6"></script>
-  <script src="https://revolution-pos.com/js/qrcode.js?v=1"></script>
+  <script src="https://revolution-pos.com/js/qrcode.js?v=1" defer></script>
   <script>
     const user = kerkonHyrje("admin");
-    if (!user) throw new Error("");
+    if (user) {
 
     /** pako_1 / pako_2 / pako_3 → tier-rank 1–3 (nuk ka Pako 4) */
     const PACKAGE_TIER_RANK = { pako_1: 1, pako_2: 2, pako_3: 3 };
@@ -16527,9 +16530,41 @@
       if (genBtn) genBtn.hidden = true;
     }
 
-    function refreshStaffModalCloudWaiterUi(_staff) {
+    function refreshStaffModalCloudWaiterUi(staff) {
       const block = document.getElementById("staff-modal-cloud-waiter-block");
-      if (block) block.hidden = true;
+      const input = document.getElementById("staff-modal-cloud-waiter-url");
+      const copyBtn = document.getElementById("staff-modal-copy-cloud-waiter");
+      const regenBtn = document.getElementById("staff-modal-regenerate-cloud");
+      const label = document.getElementById("staff-modal-cloud-waiter-label");
+      const hint = document.getElementById("staff-modal-cloud-waiter-hint");
+      if (!block || !staff) {
+        if (block) block.hidden = true;
+        return;
+      }
+      const isRecepsion = staff.staff_role === "recepsion";
+      const showCloud = !cloudWaiterDisabled;
+      block.hidden = !showCloud;
+      if (!showCloud) return;
+      if (label) {
+        label.textContent = isRecepsion
+          ? "Link recepsion (telefon — cloud)"
+          : "Link kamarier (telefon — cloud)";
+      }
+      const cloudUrl = String(staff.staff_cloud_url || staff.waiter_url || "").trim();
+      if (input) input.value = cloudUrl;
+      if (copyBtn) copyBtn.disabled = !cloudUrl;
+      if (regenBtn) regenBtn.disabled = false;
+      if (hint) {
+        if (!cloudUrl) {
+          hint.hidden = false;
+          hint.textContent = isRecepsion
+            ? "Vendosni PIN, pastaj Cloud → Sinkronizo. Linku hap recepsionin në telefon."
+            : "Vendosni PIN, pastaj Cloud → Sinkronizo. Linku hap kamarierin në telefon.";
+        } else {
+          hint.hidden = true;
+          hint.textContent = "";
+        }
+      }
     }
 
     function mbyllModalStafit() {
@@ -19625,12 +19660,18 @@
 
     function applyOwnerPanelHotelLinks(s) {
       const src = s && typeof s === "object" ? s : {};
-      const slug =
+      let slug =
         src.kitchen_slug
         || src.client_id
-        || src.hotel_slug
-        || src.local_waiter_slug
+        || src.cloud_slug
         || "";
+      if (!slug) {
+        let legacy = src.hotel_slug || src.local_waiter_slug || "";
+        if (String(legacy).toLowerCase().startsWith("hotel-")) {
+          legacy = legacy.slice(6);
+        }
+        slug = legacy;
+      }
       const key = String(src.kitchen_key || "").trim();
       const sl = stripLegacyKitchenSlugSuffix(slug);
       let merged = { ...src };
@@ -19647,8 +19688,8 @@
         } else {
           merged = {
             ...merged,
-            owner_panel_url: "https://revolution-pos.com/owner/panel",
-            owner_url: "https://revolution-pos.com/owner/panel",
+            owner_panel_url: buildOwnerPanelHotelLink(sl, key, "owner"),
+            owner_url: buildOwnerPanelHotelLink(sl, key, "owner"),
             waiter_url: buildOwnerPanelHotelLink(sl, key, "kamarier"),
             reception_url: buildOwnerPanelHotelLink(sl, key, "recepsion"),
             bar_url: buildOwnerPanelHotelLink(sl, key, "bar"),
@@ -19705,8 +19746,14 @@
       const ownerUrl =
         s.owner_panel_url
         || s.owner_url
-        || "https://revolution-pos.com/owner/panel";
-      const localMenuUrl = loc.localMenuUrl || s.local_panel_menu_url || "";
+        || "";
+      const cloudDisabled = !!s.cloud_waiter_disabled;
+      const cloudWaiterUrl = cloudDisabled ? "" : (s.waiter_url || "");
+      const cloudReceptionUrl = cloudDisabled ? "" : (s.reception_url || "");
+      const cloudHkUrl = s.housekeeping_url || "";
+      const cloudKitchenUrl = s.kitchen_url || "";
+      const cloudBarUrl = s.bar_url || "";
+      const cloudKioskUrl = s.kiosk_url || s.public_menu || "";
 
       setVal("cloud-owner-url", ownerUrl, { cloudNormalize: true });
       toggleRow("cloud-row-owner", !!ownerUrl);
@@ -19718,15 +19765,15 @@
       toggleRow("cloud-row-local-recepsion", !!(localRecepsionUrl || localWaiterUrl));
       toggleRow("cloud-row-local-sherbimi", !!(localSherbimiUrl || localRecepsionUrl || localWaiterUrl));
 
-      setVal("cloud-waiter-url", localWaiterUrl);
-      setVal("cloud-reception-url", localRecepsionUrl);
-      setVal("cloud-hk-url", localSherbimiUrl);
-      toggleRow("cloud-row-waiter", false);
-      toggleRow("cloud-row-reception", false);
-      toggleRow("cloud-row-housekeeping", false);
+      setVal("cloud-waiter-url", cloudWaiterUrl, { cloudNormalize: true });
+      setVal("cloud-reception-url", cloudReceptionUrl, { cloudNormalize: true });
+      setVal("cloud-hk-url", cloudHkUrl, { cloudNormalize: true });
+      toggleRow("cloud-row-waiter", !!(cloudWaiterUrl || s.kitchen_slug));
+      toggleRow("cloud-row-reception", !!(cloudReceptionUrl || s.kitchen_slug));
+      toggleRow("cloud-row-housekeeping", !!(cloudHkUrl || s.kitchen_slug));
 
-      setVal("cloud-kiosk-url", localMenuUrl);
-      toggleRow("cloud-row-kiosk", !!localMenuUrl);
+      setVal("cloud-kiosk-url", cloudKioskUrl, { cloudNormalize: true });
+      toggleRow("cloud-row-kiosk", !!cloudKioskUrl);
 
       const takeawayUrl = s.takeaway_url || s.public_order_url || "";
       setVal("cloud-takeaway-url", takeawayUrl, { cloudNormalize: true });
@@ -19735,12 +19782,10 @@
       setVal("cloud-public-url", s.public_page_url, { cloudNormalize: true });
       toggleRow("cloud-row-public", !!s.public_page_url);
 
-      const localKuzhinaUrl = staffLanUrlPreferMdns(loc.localKuzhinaUrl || "", portHint);
-      const localBanakuUrl = staffLanUrlPreferMdns(loc.localBanakuUrl || "", portHint);
-      setVal("cloud-kitchen-url", localKuzhinaUrl);
-      setVal("cloud-bar-url", localBanakuUrl);
-      toggleRow("cloud-row-kitchen", !!localKuzhinaUrl);
-      toggleRow("cloud-row-bar", !!localBanakuUrl);
+      setVal("cloud-kitchen-url", cloudKitchenUrl, { cloudNormalize: true });
+      setVal("cloud-bar-url", cloudBarUrl, { cloudNormalize: true });
+      toggleRow("cloud-row-kitchen", !!cloudKitchenUrl);
+      toggleRow("cloud-row-bar", !!cloudBarUrl);
 
       const recepHint = document.getElementById("cloud-local-recepsion-hint");
       if (recepHint) {
@@ -19767,10 +19812,12 @@
 
       if (hint) {
         hint.hidden = false;
-        if (localWaiterUrl || localRecepsionUrl || localSherbimiUrl) {
-          hint.textContent = "Të gjitha linket e stafit drejtohen te POS lokal (WiFi i hotelit). QR / kopjo → telefon.";
+        if (cloudWaiterUrl || cloudReceptionUrl || ownerUrl) {
+          hint.textContent = "Internet (cloud) për telefon + WiFi lokal (i njëjti rrjet me PC). Link personal te Punonjësit.";
+        } else if (localWaiterUrl || localRecepsionUrl || localSherbimiUrl) {
+          hint.textContent = "Linket WiFi lokale. Vendosni licencën për linket cloud të telefonit.";
         } else if (s.links_ready) {
-          hint.textContent = "Vendosni licencën dhe emrin e hotelit për linke LAN.";
+          hint.textContent = "Vendosni licencën dhe emrin e hotelit për linke.";
         } else {
           hint.textContent = "Vendosni emrin e hotelit dhe çelësin e licencës.";
         }
@@ -21313,6 +21360,7 @@
 
     initCloudStatusIndicator("cloud-status-pill");
     if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
+    }
   </script>
 </body>
 </html>
