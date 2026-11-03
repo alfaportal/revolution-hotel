@@ -232,6 +232,14 @@
       color: var(--text);
     }
     .cart-price-cell { white-space: nowrap; font-weight: 800; color: var(--accent); }
+    .cart-table [data-act="lpv"] {
+      outline: none;
+      border-bottom: 1px dashed currentColor;
+      min-width: 2.4rem;
+      display: inline-block;
+      cursor: text;
+      font-weight: 800;
+    }
     .cart-row button.cart-rm, .cart-row button.qty-btn {
       min-width: var(--touch-min);
       min-height: var(--touch-min);
@@ -590,6 +598,41 @@
       font-family: inherit;
       border: none;
     }
+    .col-pay.market-checkout-panel #btn-paguaj-nopaper,
+    .btn-pay-nopaper {
+      background: #0369a1;
+      color: #f0f9ff;
+      border: none;
+    }
+    #modal-pos-coupon[hidden] { display: none !important; }
+    #modal-pos-coupon {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      background: rgba(15, 23, 42, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #modal-pos-coupon .pos-coupon-card {
+      background: #fff;
+      color: #0f172a;
+      width: min(420px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    #modal-pos-coupon pre {
+      white-space: pre-wrap;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.78rem;
+      background: #f8fafc;
+      padding: 0.6rem;
+      border-radius: 8px;
+    }
+    #modal-pos-coupon img { display: block; margin: 0.5rem auto; width: 180px; height: 180px; }
     .col-pay.market-checkout-panel #btn-paguaj {
       background: linear-gradient(180deg, #4ade80, #16a34a);
       color: #052e16;
@@ -853,9 +896,66 @@
       .wrap { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
       .col-cart { border-right: none; border-bottom: 1px solid var(--border); }
     }
+    #waiter-fiscal-alerts {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 12000;
+    }
+    #atk-time-alarm {
+      display: none;
+      padding: 10px 18px;
+      background: #7f1d1d;
+      color: #fecaca;
+      font-weight: 800;
+      font-size: 1rem;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .offline-pending-banner {
+      display: none;
+      padding: 7px 18px;
+      background: #dc2626;
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1.35;
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+    }
+    .offline-pending-banner.visible { display: block; }
+    .offline-pending-banner-foot {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 12000;
+    }
+    #atk-time-ok {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      margin-right: 8px;
+      font-size: 0.72rem;
+      color: #22c55e;
+      font-weight: 650;
+    }
+    #atk-time-ok .atk-time-ok-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
+  <div id="waiter-fiscal-alerts">
+    <div id="atk-time-alarm" role="alert" aria-live="assertive">ORA NUK ËSHTË E SINKRONIZUAR ME ATK!</div>
+    <div class="offline-pending-banner" id="offline-pending-banner" role="status" aria-live="polite" aria-hidden="true"></div>
+  </div>
   <header class="top">
     <div class="top-left">
       <img src="/img/revolution-logo.png" alt="Revolution" class="top-logo" width="120" height="36" />
@@ -863,6 +963,7 @@
       <button type="button" class="top-kasa-link" id="btn-top-recep-rooms" style="font-size:.85rem;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;font-family:inherit">Dhomat · Check-in</button>
     </div>
     <div class="top-bar-rest">
+      <span id="atk-time-ok"><span class="atk-time-ok-dot" aria-hidden="true"></span>ATK</span>
       <button type="button" class="kasa-btn-exit" id="btn-recep-z-report" title="Mbyll ditën fiskale — Raporti Z">Mbyll raportin Z</button>
       <div class="who" id="who"></div>
       <button type="button" class="kasa-btn-exit" id="btn-close-shift" hidden>Mbyll arkën</button>
@@ -978,6 +1079,7 @@
         </div>
         <div class="checkout-pay-actions">
           <button type="button" class="btn" id="btn-paguaj">Paguaj</button>
+          <button type="button" class="btn btn-pay-nopaper" id="btn-paguaj-nopaper">Paguaj pa letër</button>
           <button type="button" class="btn" id="btn-kupon-termik">Kupon Termik</button>
           <button type="button" class="btn" id="btn-clear-cart">Pastro shportën</button>
         </div>
@@ -1002,9 +1104,11 @@
   </div>
   <div id="print-fature" class="print-receipt"></div>
 
+  <div class="offline-pending-banner offline-pending-banner-foot" id="footer-offline-queue" role="status" aria-live="polite" aria-hidden="true"></div>
   <script src="/js/app.js?v=13"></script>
   <script src="/js/order-alarm-sound.js?v=2"></script>
   <script src="/js/staff-order-alert.js?v=2"></script>
+  <script src="/js/fiscal-offline-status.js?v=3"></script>
   <script>
     (function guardRecepsionSession() {
       const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
@@ -1057,7 +1161,71 @@
 
     function servicePrice(svc) {
       const p = svc?.price ?? svc?.default_price ?? svc?.unit_price;
-      return Math.round((Number(p) || 0) * 100) / 100;
+      const n = Number(p) || 0;
+      return Math.round(n * 10000) / 10000;
+    }
+
+    function formatKasaUnit(n) {
+      const x = Number(n);
+      if (!Number.isFinite(x)) return "0.00";
+      const r = Math.round(x * 10000) / 10000;
+      const s = r.toFixed(4);
+      if (s.endsWith("0000")) return r.toFixed(2);
+      return s.replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function parseKasaUnit(raw) {
+      const n = Number(String(raw || "").replace(",", ".").replace(/[^\d.]/g, ""));
+      if (!Number.isFinite(n) || n < 0) return null;
+      return Math.round(n * 10000) / 10000;
+    }
+
+    function applyKasaUnitPrice(idx, raw) {
+      const p = parseKasaUnit(raw);
+      if (p == null || !cart[idx]) return;
+      cart[idx].price = p;
+    }
+
+    function commitKasaPriceEdits() {
+      document.querySelectorAll("#cart-tbody [data-act=lpv]").forEach((el) => {
+        applyKasaUnitPrice(Number(el.dataset.idx), el.textContent);
+      });
+    }
+
+    function bindKasaPriceEdits() {
+      document.querySelectorAll("#cart-tbody [data-act=lpv]").forEach((el) => {
+        el.addEventListener("focus", () => {
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(r);
+        });
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            el.blur();
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            const i = +el.dataset.idx;
+            el.textContent = formatKasaUnit(cart[i]?.price);
+            el.blur();
+          }
+        });
+        el.addEventListener("blur", () => {
+          const i = +el.dataset.idx;
+          if (!cart[i]) return;
+          applyKasaUnitPrice(i, el.textContent);
+          el.textContent = formatKasaUnit(cart[i].price);
+          const row = el.closest("tr");
+          const tot = row?.querySelector("[data-act=lpt]");
+          if (tot) tot.textContent = euro(cart[i].price * cart[i].qty);
+          document.getElementById("total").textContent = euro(payable());
+          syncPayAmounts();
+          updateChange();
+        });
+      });
     }
 
     function cartTotal() {
@@ -1091,9 +1259,10 @@
             <input class="qty" type="number" min="1" max="99" value="${l.qty}" data-idx="${idx}" style="width:3rem;margin:0 .25rem" />
             <button type="button" class="qty-btn" data-act="plus" data-idx="${idx}">+</button>
           </td>
-          <td>${euro(l.price * l.qty)}</td>
+          <td class="cart-price-cell">${l.qty} × <span data-act="lpv" data-idx="${idx}" contenteditable="true" spellcheck="false">${formatKasaUnit(l.price)}</span> €<br><span data-act="lpt">${euro(l.price * l.qty)}</span></td>
           <td><button type="button" class="cart-rm" data-idx="${idx}" aria-label="Hiq">×</button></td>
         </tr>`).join("");
+      bindKasaPriceEdits();
       syncPayAmounts(t);
       updateChange();
     }
@@ -1103,6 +1272,7 @@
     }
 
     function addServiceToCart(svc, qty = 1) {
+      commitKasaPriceEdits();
       if (!svc || !svc.id) return;
       const price = servicePrice(svc);
       if (price <= 0) {
@@ -1112,7 +1282,13 @@
       const id = Number(svc.id);
       const existing = cart.find((l) => l.service_id === id);
       if (existing) existing.qty += qty;
-      else cart.push({ service_id: id, name: svc.name || "Shërbim", price, qty: Math.max(1, qty) });
+      else cart.push({
+        service_id: id,
+        name: svc.name || "Shërbim",
+        price,
+        qty: Math.max(1, qty),
+        vat_category: svc.vat_category || "18",
+      });
       renderCart();
     }
 
@@ -1404,12 +1580,13 @@
     }
 
     function cartItemsForCheckout() {
+      commitKasaPriceEdits();
       return cart.map((l) => ({
         service_id: l.service_id,
         name: l.name,
         price: l.price,
         quantity: l.qty,
-        vat_norm: "E",
+        vat_category: l.vat_category || "18",
       }));
     }
 
@@ -1492,10 +1669,49 @@
       }
     }
 
+    function showKasaCouponPreview(fiscal) {
+      const modal = document.getElementById("modal-pos-coupon");
+      const text = document.getElementById("pos-coupon-text");
+      const img = document.getElementById("pos-coupon-qr");
+      const msg = document.getElementById("pos-coupon-email-msg");
+      const emailBtn = document.getElementById("btn-pos-coupon-email");
+      const f = fiscal && typeof fiscal === "object" ? fiscal : {};
+      if (text) text.textContent = f.print_text || f.slip_text || "Kuponi fiskal nuk u krijua.";
+      const png = f.qr?.png_base64 || f.qr_png_base64 || "";
+      if (img) {
+        if (png) {
+          img.src = "data:image/png;base64," + png;
+          img.hidden = false;
+        } else {
+          img.removeAttribute("src");
+          img.hidden = true;
+        }
+      }
+      if (msg) msg.textContent = "";
+      const id = Number(f.fiscal_receipt_id);
+      if (emailBtn) {
+        emailBtn.hidden = !(id > 0);
+        emailBtn.dataset.receiptId = id > 0 ? String(id) : "";
+      }
+      if (modal) modal.hidden = false;
+      if (!png && id > 0) {
+        api("/api/staff/fiscal/receipts/" + id + "/preview").then((data) => {
+          if (data?.text && text && !f.print_text) text.textContent = data.text;
+          if (data?.qr_png_base64 && img) {
+            img.src = "data:image/png;base64," + data.qr_png_base64;
+            img.hidden = false;
+          }
+        }).catch(() => {});
+      }
+    }
+
     async function paySale(opts = {}) {
+      commitKasaPriceEdits();
       const thermal = opts.thermal === true;
+      const skipPrint = opts.skipPrint === true;
       const msg = document.getElementById("msg");
       const btnPay = document.getElementById("btn-paguaj");
+      const btnNoPaper = document.getElementById("btn-paguaj-nopaper");
       const btnTermik = document.getElementById("btn-kupon-termik");
       if (!shiftSummary?.open) {
         msg.textContent = "Hap ndërrimin në recepsion para shitjes.";
@@ -1514,6 +1730,7 @@
       }
       msg.textContent = thermal ? "Duke paguar dhe printuar termik…" : "Duke regjistruar…";
       if (btnPay) btnPay.disabled = true;
+      if (btnNoPaper) btnNoPaper.disabled = true;
       if (btnTermik) btnTermik.disabled = true;
       try {
         const items = cartItemsForCheckout();
@@ -1555,6 +1772,7 @@
           }
           base.serial_no = serialNo;
           base.block_code = blockCode;
+          if (skipPrint) base.skip_print = true;
           let res = await api("/api/fiscal/paper-block/checkout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1575,9 +1793,14 @@
             });
           }
           const p = res.paper || {};
+          if (skipPrint) {
+            showKasaCouponPreview({ print_text: p.slip_text || "" });
+            msg.textContent = `Bllok letër · ${euro(res.total)} · serik ${p.serial_no || serialNo} · pa letër`;
+          } else {
           msg.textContent =
             `Bllok letër · ${euro(res.total)} · serik ${p.serial_no || serialNo}` +
             (p.slip_text ? " · print u nis" : " · ruajtur lokalisht, dërgohet te ATK kur lidhet");
+          }
           cart = [];
           setPrimaryPay("cash");
           document.getElementById("pay-received").value = "";
@@ -1590,7 +1813,7 @@
         const res = await api("/api/recepcion/kasa/pay", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...base, print_thermal: thermal }),
+          body: JSON.stringify({ ...base, print_thermal: thermal, skip_print: skipPrint }),
         });
 
         if (thermal) {
@@ -1605,8 +1828,23 @@
               items,
             },
           });
+        } else if (skipPrint) {
+          showKasaCouponPreview(res.fiscal_receipt);
+          msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number} · pa letër`;
+          cart = [];
+          setPrimaryPay("cash");
+          document.getElementById("pay-received").value = "";
+          renderCart();
+          await loadShift();
+          await refreshPaperBlockKasaUi();
         } else {
-          msg.textContent = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+          let line = `U regjistrua ${euro(res.total)} · ${res.receipt_number}`;
+          if (res.fiscal_printed) line += " · kupon fiskal";
+          else if (res.fiscal_receipt?.printMessage) line += " · " + res.fiscal_receipt.printMessage;
+          msg.textContent = line;
+          if (res.coupon_type === "fiscal" && !res.fiscal_printed && res.printMessage) {
+            alert(`Kuponi fiskal NUK u printua.\n\n${res.printMessage}\n\nPagesa u regjistrua në ditari.`);
+          }
           cart = [];
           setPrimaryPay("cash");
           document.getElementById("pay-received").value = "";
@@ -1618,6 +1856,7 @@
         msg.textContent = e.message || "Gabim";
       } finally {
         if (btnPay) btnPay.disabled = false;
+        if (btnNoPaper) btnNoPaper.disabled = false;
         if (btnTermik) btnTermik.disabled = false;
       }
     }
@@ -1625,6 +1864,7 @@
     document.getElementById("cart-tbody").addEventListener("click", (e) => {
       const btn = e.target.closest("button");
       if (!btn) return;
+      commitKasaPriceEdits();
       const idx = Number(btn.dataset.idx);
       if (Number.isNaN(idx) || !cart[idx]) return;
       if (btn.classList.contains("cart-rm")) {
@@ -1641,6 +1881,7 @@
     });
 
     document.getElementById("cart-tbody").addEventListener("change", (e) => {
+      commitKasaPriceEdits();
       const inp = e.target.closest("input.qty");
       if (!inp) return;
       const idx = Number(inp.dataset.idx);
@@ -1674,6 +1915,35 @@
     document.getElementById("pay-cash").onclick = () => { setPrimaryPay("cash"); paySale(); };
     document.getElementById("pay-card").onclick = () => { setPrimaryPay("credit_card"); paySale(); };
     document.getElementById("btn-paguaj").onclick = () => paySale();
+    document.getElementById("btn-paguaj-nopaper").onclick = () => paySale({ skipPrint: true });
+    document.getElementById("btn-pos-coupon-close")?.addEventListener("click", () => {
+      const modal = document.getElementById("modal-pos-coupon");
+      if (modal) modal.hidden = true;
+    });
+    document.getElementById("btn-pos-coupon-email")?.addEventListener("click", async () => {
+      const emailBtn = document.getElementById("btn-pos-coupon-email");
+      const msg = document.getElementById("pos-coupon-email-msg");
+      const id = Number(emailBtn?.dataset.receiptId);
+      if (!(id > 0)) return;
+      const email = window.prompt("Email i konsumatorit:");
+      if (!email) return;
+      if (emailBtn) emailBtn.disabled = true;
+      if (msg) msg.textContent = "Duke dërguar email…";
+      try {
+        const data = await api("/api/staff/fiscal/receipts/" + id + "/email", {
+          method: "POST",
+          body: JSON.stringify({ email, operator_name: user?.emri || "Recepsion" }),
+        });
+        const line = data.queued
+          ? (data.message || "Email u ruajt në radhë — dërgohet automatikisht kur kthehet interneti.")
+          : (data.message || "Kuponi u dërgua me email.");
+        if (msg) msg.textContent = line;
+      } catch (e) {
+        if (msg) msg.textContent = e.message || "Dërgimi i emailit dështoi.";
+      } finally {
+        if (emailBtn) emailBtn.disabled = false;
+      }
+    });
     document.getElementById("btn-kupon-termik").onclick = () => paySale({ thermal: true });
     document.getElementById("kasa-btn-shtyp-kupon-termik")?.addEventListener("click", () => {
       shtypKasaKuponTermikPasPagese();
@@ -1695,6 +1965,7 @@
       document.getElementById("msg").textContent = "";
     };
     document.getElementById("btn-undo-line").onclick = () => {
+      commitKasaPriceEdits();
       if (!cart.length) return;
       cart.pop();
       renderCart();
@@ -1736,11 +2007,24 @@
         setPrimaryPay("cash");
         renderCart();
         renderCategoryNav();
+        if (typeof initAtkTimeSyncUi === "function") initAtkTimeSyncUi();
       } catch (e) {
         document.getElementById("msg").textContent = e.message || "Gabim ngarkimi";
       }
     })();
     }
   </script>
+  <div id="modal-pos-coupon" hidden>
+    <div class="pos-coupon-card" role="dialog" aria-modal="true" aria-labelledby="pos-coupon-title">
+      <h2 id="pos-coupon-title" style="margin:0 0 0.4rem;font-size:1.05rem">Kuponi</h2>
+      <pre id="pos-coupon-text"></pre>
+      <img id="pos-coupon-qr" alt="QR" hidden>
+      <p id="pos-coupon-email-msg" style="min-height:1.2rem;margin:0.4rem 0"></p>
+      <div style="display:flex;gap:0.5rem">
+        <button type="button" class="btn btn-pay-nopaper" id="btn-pos-coupon-email" hidden>Dërgo email</button>
+        <button type="button" class="btn" id="btn-pos-coupon-close">Mbyll</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

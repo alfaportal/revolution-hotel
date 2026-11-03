@@ -47,6 +47,7 @@ const PAKO3_ADMIN_PANELS = new Set([
   "qr-tavolinat",
   "kontabilisti",
   "ai",
+  "raporte-avancuara",
 ]);
 
 /** Alias — i njëjti set si Pako 3 (nuk ka Pako 4). */
@@ -135,6 +136,7 @@ function featuresForNewTier(newTier) {
       qrTables: false,
       cloudSync: false,
       cloudWaiterPhone: false,
+      advancedReports: false,
       testOverride: false,
     };
   }
@@ -152,6 +154,7 @@ function featuresForNewTier(newTier) {
       diary: true,
       accountant: false,
       ai: false,
+      advancedReports: false,
       testOverride: false,
     };
   }
@@ -169,6 +172,7 @@ function featuresForNewTier(newTier) {
     diary: true,
     accountant: true,
     ai: true,
+    advancedReports: true,
     testOverride: false,
   };
 }

@@ -246,18 +246,13 @@ async function runFiscalExchange(db, body, operator, deps) {
     operator_id: operator.operator_id,
   });
 
-  const { generateFiscalQR } = require("./fiscal-qr");
+  const { generateFiscalQR, buildFiscalQrReceiptData } = require("./fiscal-qr");
   const { isAtkTransmissionBlocked } = require("./fiscal-test-mode-store");
 
   let qr = null;
   try {
     const settings = getFiscalSettings();
-    qr = await generateFiscalQR({
-      nuikf: ret.nuikf,
-      total_amount: ret.total_amount,
-      fiscal_date: ret.fiscal_date,
-      taxpayer_nui: settings.taxpayer_nui,
-    });
+    qr = await generateFiscalQR(buildFiscalQrReceiptData(ret, settings));
   } catch {
     /* */
   }

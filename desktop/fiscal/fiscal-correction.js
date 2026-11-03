@@ -17,6 +17,7 @@ const { insertFiscalReceipt, getFiscalReceiptById } = require("./fiscal-db");
 const { getFiscalTodayParts } = require("./fiscal-time-sync");
 const { attachChainToFiscalData } = require("./fiscal-hash-chain");
 const { ATK_CORRECTION_REF_ERROR } = require("./atk-model-builder");
+const { getOfflineStatus } = require("./fiscal-offline");
 
 const CORRECTION_TYPES = Object.freeze(["cancel", "return", "storno"]);
 const CORRECTABLE_ORIGINAL_TYPES = Object.freeze(["regular", "paper_block"]);
@@ -411,6 +412,16 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   const itemsJson = JSON.stringify(correctionItems);
   const vatJson = JSON.stringify(vatBreak);
 
+  let printOfflineBanner = opts.no_internet === true || opts.print_offline_banner === true;
+  if (!printOfflineBanner) {
+    try {
+      const st = getOfflineStatus();
+      printOfflineBanner = !!(st && st.online === false);
+    } catch {
+      printOfflineBanner = false;
+    }
+  }
+
   const insertedId = insertFiscalReceipt({
     sale_id: original.sale_id || 0,
     nuikf,
@@ -437,7 +448,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     currency: "EUR",
     qr_code_data: qrPayload,
     digital_signature: null,
-    is_offline: 0,
+    is_offline: printOfflineBanner ? 1 : 0,
     sent_to_atk: 0,
   });
 
@@ -475,7 +486,8 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     receipt_type: type,
     original_nuikf: original.nuikf,
     correction_reason: reasonText,
-    is_offline: false,
+    is_offline: !!printOfflineBanner,
+    print_offline_banner: !!printOfflineBanner,
     fiscal_date,
     fiscal_time,
     vat_breakdown: vatBreak,
@@ -539,6 +551,8 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     currency: "EUR",
     correction_reason: reasonText,
     sent_to_atk: false,
+    is_offline: !!printOfflineBanner,
+    print_offline_banner: !!printOfflineBanner,
     print_text: printText,
   };
 }

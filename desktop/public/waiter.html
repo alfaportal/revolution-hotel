@@ -774,6 +774,41 @@
       gap: 0.45rem;
     }
 
+    #ekrani-porosia .btn-pay-nopaper {
+      background: #0369a1;
+      color: #f0f9ff;
+      border: none;
+      font-weight: 700;
+    }
+    #modal-pos-coupon[hidden] { display: none !important; }
+    #modal-pos-coupon {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      background: rgba(15, 23, 42, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #modal-pos-coupon .pos-coupon-card {
+      background: #fff;
+      color: #0f172a;
+      width: min(420px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    #modal-pos-coupon pre {
+      white-space: pre-wrap;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.78rem;
+      background: #f8fafc;
+      padding: 0.6rem;
+      border-radius: 8px;
+    }
+    #modal-pos-coupon img { display: block; margin: 0.5rem auto; width: 180px; height: 180px; }
     #ekrani-porosia .btn-payment-cash,
     #ekrani-porosia .btn-payment-karte {
       background: #111827;
@@ -878,10 +913,76 @@
       text-align: center;
     }
 
+    #lista-porosia .order-row-meta [data-act="lpv"] {
+      outline: none;
+      border-bottom: 1px dashed currentColor;
+      min-width: 2.4rem;
+      display: inline-block;
+      cursor: text;
+      font-weight: 700;
+    }
+    #waiter-fiscal-alerts {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 12000;
+    }
+    #atk-time-alarm {
+      display: none;
+      padding: 10px 18px;
+      background: #7f1d1d;
+      color: #fecaca;
+      font-weight: 800;
+      font-size: 1rem;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .offline-pending-banner {
+      display: none;
+      padding: 7px 18px;
+      background: #dc2626;
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1.35;
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+    }
+    .offline-pending-banner.visible { display: block; }
+    .offline-pending-banner-foot {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 12000;
+    }
+    #atk-time-ok {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      margin-right: 8px;
+      font-size: 0.72rem;
+      color: #22c55e;
+      font-weight: 650;
+    }
+    #atk-time-ok .atk-time-ok-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: inline-block;
+    }
+
   </style>
   <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=1">
 </head>
-<body class="waiter-screen staff-cloud-ui-off">
+<body class="waiter-screen">
+  <div id="waiter-fiscal-alerts">
+    <div id="atk-time-alarm" role="alert" aria-live="assertive">ORA NUK ËSHTË E SINKRONIZUAR ME ATK!</div>
+    <div class="offline-pending-banner" id="offline-pending-banner" role="status" aria-live="polite" aria-hidden="true"></div>
+  </div>
   <div id="ekrani-tavolina" class="waiter-shell">
     <aside class="waiter-sidebar">
       <div class="waiter-sidebar-top">
@@ -912,6 +1013,7 @@
         </div>
         <span class="app-version-pill" id="waiter-app-version" hidden></span>
         <span class="cloud-status-pill cloud-status-offline" id="cloud-status-pill" title="Jashtë linje">☁ Jashtë linje</span>
+        <span id="atk-time-ok"><span class="atk-time-ok-dot" aria-hidden="true"></span>ATK</span>
         <div class="waiter-topbar-time" id="waiter-clock">--:--</div>
       </header>
 
@@ -1430,6 +1532,7 @@
             <button type="button" class="btn btn-payment-cash pos-pay-btn" id="btn-mbyll-cash">Cash</button>
             <button type="button" class="btn btn-payment-karte pos-pay-btn" id="btn-mbyll-karte">Kartë</button>
             <button type="button" class="btn btn-primary pos-pay-btn" id="btn-paguaj-fiskal">Paguaj Fiskal</button>
+            <button type="button" class="btn btn-pay-nopaper pos-pay-btn" id="btn-paguaj-nopaper">Paguaj pa letër</button>
             <button type="button" class="btn btn-ghost pos-pay-btn" id="btn-paguaj-termik">Paguaj (Termik)</button>
             <button type="button" class="btn btn-ghost btn-split-bill pos-pay-btn" id="btn-nda-faturen">Nda faturën</button>
           </div>
@@ -1671,6 +1774,7 @@
     </div>
   </div>
 
+  <div class="offline-pending-banner offline-pending-banner-foot" id="footer-offline-queue" role="status" aria-live="polite" aria-hidden="true"></div>
   <script src="/js/app.js?v=13"></script>
   <script src="/js/offline-retry-queue.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
@@ -1682,7 +1786,7 @@
   <script src="/js/waiter-calculator.js?v=3"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
   <script src="/js/fiscal-mixed-payment.js?v=1"></script>
-  <script src="/js/fiscal-offline-status.js?v=2"></script>
+  <script src="/js/fiscal-offline-status.js?v=3"></script>
   <script>
     (function showWaiterTablesImmediately() {
       const tables = document.getElementById("ekrani-tavolina");
@@ -5829,7 +5933,35 @@
 
     document.getElementById("btn-kthehu").addEventListener("click", mbyllEkraninPorosise);
 
+    function formatWaiterUnit(n) {
+      const x = Number(n);
+      if (!Number.isFinite(x)) return "0.00";
+      const r = Math.round(x * 10000) / 10000;
+      const s = r.toFixed(4);
+      if (s.endsWith("0000")) return r.toFixed(2);
+      return s.replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function parseWaiterUnit(raw) {
+      const n = Number(String(raw || "").replace(",", ".").replace(/[^\d.]/g, ""));
+      if (!Number.isFinite(n) || n < 0) return null;
+      return Math.round(n * 10000) / 10000;
+    }
+
+    function applyWaiterUnitPrice(idx, raw) {
+      const p = parseWaiterUnit(raw);
+      if (p == null || !porosia[idx]) return;
+      porosia[idx].price = p;
+    }
+
+    function commitWaiterPriceEdits() {
+      document.querySelectorAll("#lista-porosia [data-act=lpv]").forEach((el) => {
+        applyWaiterUnitPrice(Number(el.dataset.i), el.textContent);
+      });
+    }
+
     function shtoArtikull(item) {
+      commitWaiterPriceEdits();
       const ekz = porosia.find(p => p.menu_item_id === item.id);
       if (ekz) {
         ekz.quantity++;
@@ -5852,12 +5984,14 @@
     }
 
     function ndryshoSasi(idx, delta) {
+      commitWaiterPriceEdits();
       porosia[idx].quantity += delta;
       if (porosia[idx].quantity <= 0) porosia.splice(idx, 1);
       perditesoPorosine();
     }
 
     function hiqArtikull(idx) {
+      commitWaiterPriceEdits();
       porosia.splice(idx, 1);
       perditesoPorosine();
     }
@@ -5894,7 +6028,7 @@
           <div class="order-row">
             <div class="order-row-main">
               <span class="order-row-name">${it.name}</span>
-              <span class="order-row-meta">${it.quantity} × ${formatEuro(it.price)} · TVSH ${it.vat_letter || "E"} · ${Number(it.vat_percent ?? it.vat_category ?? 18)}%</span>
+              <span class="order-row-meta">${it.quantity} × <span data-act="lpv" data-i="${idx}" contenteditable="true" spellcheck="false">${formatWaiterUnit(it.price)}</span> € · TVSH ${it.vat_letter || "E"} · ${Number(it.vat_percent ?? it.vat_category ?? 18)}%</span>
             </div>
             <div class="order-row-right">
               <span class="order-row-total">${formatEuro(it.price * it.quantity)}</span>
@@ -5906,9 +6040,50 @@
               </div>
             </div>
           </div>`).join("");
-        lista.querySelectorAll("[data-m]").forEach(b => b.addEventListener("click", () => ndryshoSasi(+b.dataset.m, -1)));
-        lista.querySelectorAll("[data-p]").forEach(b => b.addEventListener("click", () => ndryshoSasi(+b.dataset.p, 1)));
-        lista.querySelectorAll("[data-r]").forEach(b => b.addEventListener("click", () => hiqArtikull(+b.dataset.r)));
+        lista.querySelectorAll("[data-m]").forEach(b => b.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          ndryshoSasi(+b.dataset.m, -1);
+        }));
+        lista.querySelectorAll("[data-p]").forEach(b => b.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          ndryshoSasi(+b.dataset.p, 1);
+        }));
+        lista.querySelectorAll("[data-r]").forEach(b => b.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          hiqArtikull(+b.dataset.r);
+        }));
+        lista.querySelectorAll("[data-act=lpv]").forEach((el) => {
+          el.addEventListener("focus", () => {
+            const r = document.createRange();
+            r.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(r);
+          });
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              el.blur();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              const i = +el.dataset.i;
+              el.textContent = formatWaiterUnit(porosia[i]?.price);
+              el.blur();
+            }
+          });
+          el.addEventListener("blur", () => {
+            const i = +el.dataset.i;
+            if (!porosia[i]) return;
+            applyWaiterUnitPrice(i, el.textContent);
+            el.textContent = formatWaiterUnit(porosia[i].price);
+            const row = el.closest(".order-row");
+            const tot = row?.querySelector(".order-row-total");
+            if (tot) tot.textContent = formatEuro(porosia[i].price * porosia[i].quantity);
+            document.getElementById("totali").textContent = formatEuro(llogaritTotalin(porosia));
+            schedulePricingPreview();
+          });
+        });
       }
       document.getElementById("totali").textContent = formatEuro(llogaritTotalin(porosia));
       if (!porosia.length && tavolinaId != null && tavolinaId !== "") {
@@ -6092,6 +6267,7 @@
     document.getElementById("btn-dergo").addEventListener("click", async () => {
       const gabimEl = document.getElementById("gabim-porosi");
       shfaqGabim(gabimEl, "");
+      commitWaiterPriceEdits();
       if (!porosia.length) {
         shfaqGabim(gabimEl, "Shtoni të paktën një artikull");
         return;
@@ -6201,12 +6377,14 @@
       const btnFiskal = document.getElementById("btn-kupon-fiskal");
       const btnPaguajFiskal = document.getElementById("btn-paguaj-fiskal");
       const btnPaguajTermik = document.getElementById("btn-paguaj-termik");
+      const btnPaguajNoPaper = document.getElementById("btn-paguaj-nopaper");
       btnCash.disabled = true;
       btnKarte.disabled = true;
       btnTermik.disabled = true;
       btnFiskal.disabled = true;
       if (btnPaguajFiskal) btnPaguajFiskal.disabled = true;
       if (btnPaguajTermik) btnPaguajTermik.disabled = true;
+      if (btnPaguajNoPaper) btnPaguajNoPaper.disabled = true;
       const prevCash = btnCash.textContent;
       const prevKarte = btnKarte.textContent;
       if (method === "cash") btnCash.textContent = "Duke mbyllur...";
@@ -6220,7 +6398,8 @@
           items: itemsToClose,
           checkout_token,
           coupon_type: couponTypeOpt,
-          fiscal_skip: couponTypeOpt === "thermal",
+          fiscal_skip: opts.skipPrint ? false : couponTypeOpt === "thermal",
+          skip_print: !!opts.skipPrint,
           promotion_id: selectedPromotionId === "" ? "none" : selectedPromotionId,
           ...(Array.isArray(paymentMethod)
             ? { payment_method: paymentMethod[0].method, payment_splits: paymentMethod }
@@ -6232,7 +6411,10 @@
           body: JSON.stringify(closeBody),
         });
         document.getElementById("print-fature").innerHTML = res.html || "";
-        const fiscalWanted = couponTypeOpt === "fiscal" && !fiscalSkip;
+        if (opts.skipPrint) {
+          openPosCouponPreview(res.fiscal_receipt);
+        }
+        const fiscalWanted = !opts.skipPrint && couponTypeOpt === "fiscal" && !fiscalSkip;
         const fiscalOk = !!res.fiscal_printed;
         if (fiscalWanted && !fiscalOk) {
           const msg =
@@ -6317,6 +6499,7 @@
         btnFiskal.disabled = false;
         if (btnPaguajFiskal) btnPaguajFiskal.disabled = false;
         if (btnPaguajTermik) btnPaguajTermik.disabled = false;
+        if (btnPaguajNoPaper) btnPaguajNoPaper.disabled = false;
         btnCash.textContent = prevCash;
         btnKarte.textContent = prevKarte;
       }
@@ -6419,12 +6602,84 @@
       }
     }
 
+    function openPosCouponPreview(fiscal) {
+      const modal = document.getElementById("modal-pos-coupon");
+      const text = document.getElementById("pos-coupon-text");
+      const img = document.getElementById("pos-coupon-qr");
+      const msg = document.getElementById("pos-coupon-email-msg");
+      const emailBtn = document.getElementById("btn-pos-coupon-email");
+      const f = fiscal && typeof fiscal === "object" ? fiscal : {};
+      if (text) text.textContent = f.print_text || "Kuponi fiskal nuk u krijua.";
+      const png = f.qr?.png_base64 || f.qr_png_base64 || "";
+      if (img) {
+        if (png) {
+          img.src = "data:image/png;base64," + png;
+          img.hidden = false;
+        } else {
+          img.removeAttribute("src");
+          img.hidden = true;
+        }
+      }
+      if (msg) msg.textContent = "";
+      const id = Number(f.fiscal_receipt_id);
+      if (emailBtn) {
+        emailBtn.hidden = !(id > 0);
+        emailBtn.dataset.receiptId = id > 0 ? String(id) : "";
+      }
+      if (modal) modal.hidden = false;
+      if (!png && id > 0) {
+        api("/api/staff/fiscal/receipts/" + id + "/preview").then((data) => {
+          if (data?.text && text && !f.print_text) text.textContent = data.text;
+          if (data?.qr_png_base64 && img) {
+            img.src = "data:image/png;base64," + data.qr_png_base64;
+            img.hidden = false;
+          }
+        }).catch(() => {});
+      }
+    }
+
+    document.getElementById("btn-pos-coupon-close")?.addEventListener("click", () => {
+      const modal = document.getElementById("modal-pos-coupon");
+      if (modal) modal.hidden = true;
+    });
+    document.getElementById("btn-pos-coupon-email")?.addEventListener("click", async () => {
+      const emailBtn = document.getElementById("btn-pos-coupon-email");
+      const msg = document.getElementById("pos-coupon-email-msg");
+      const id = Number(emailBtn?.dataset.receiptId);
+      if (!(id > 0)) return;
+      const email = window.prompt("Email i konsumatorit:");
+      if (!email) return;
+      if (emailBtn) emailBtn.disabled = true;
+      if (msg) msg.textContent = "Duke dërguar email…";
+      try {
+        const data = await api("/api/staff/fiscal/receipts/" + id + "/email", {
+          method: "POST",
+          body: JSON.stringify({ email, operator_name: user?.emri || "Kamarier" }),
+        });
+        const line = data.queued
+          ? (data.message || "Email u ruajt në radhë — dërgohet automatikisht kur kthehet interneti.")
+          : (data.message || "Kuponi u dërgua me email.");
+        if (msg) msg.textContent = line;
+      } catch (e) {
+        if (msg) msg.textContent = e.message || "Dërgimi i emailit dështoi.";
+      } finally {
+        if (emailBtn) emailBtn.disabled = false;
+      }
+    });
+
     document.getElementById("btn-paguaj-fiskal")?.addEventListener("click", async () => {
       const method = window.FiscalPaymentModal
         ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
         : "cash";
       if (method == null) return;
       mbyllMePagese(method, { checkout: true, fiscalSkip: false, couponType: "fiscal" });
+    });
+    document.getElementById("btn-paguaj-nopaper")?.addEventListener("click", async () => {
+      const method = window.FiscalPaymentModal
+        ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
+        : "cash";
+      if (method == null) return;
+      mbyllMePagese(method, { checkout: true, fiscalSkip: false, couponType: "fiscal", skipPrint: true });
     });
     document.getElementById("btn-paguaj-termik")?.addEventListener("click", async () => {
       const method = window.FiscalPaymentModal
@@ -6635,6 +6890,7 @@
           initCloudStatusIndicator("cloud-status-pill");
           if (typeof initFiscalNetIndicator === "function") initFiscalNetIndicator("cloud-status-pill");
         }
+        if (typeof initAtkTimeSyncUi === "function") initAtkTimeSyncUi();
         window.StaffOfflineRetryQueue?.registerHandlers?.({
           onOrderSent(detail) {
             const tid = detail?.table_id;
@@ -6663,6 +6919,18 @@
   <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
     <span class="lan-status-dot" aria-hidden="true"></span>
     <span class="lan-status-label">Pa lidhje</span>
+  </div>
+  <div id="modal-pos-coupon" hidden>
+    <div class="pos-coupon-card" role="dialog" aria-modal="true" aria-labelledby="pos-coupon-title">
+      <h2 id="pos-coupon-title" style="margin:0 0 0.4rem;font-size:1.05rem">Kuponi</h2>
+      <pre id="pos-coupon-text"></pre>
+      <img id="pos-coupon-qr" alt="QR" hidden>
+      <p id="pos-coupon-email-msg" style="min-height:1.2rem;margin:0.4rem 0"></p>
+      <div style="display:flex;gap:0.5rem">
+        <button type="button" class="btn btn-pay-nopaper" id="btn-pos-coupon-email" hidden>Dërgo email</button>
+        <button type="button" class="btn btn-ghost" id="btn-pos-coupon-close">Mbyll</button>
+      </div>
+    </div>
   </div>
 </body>
 </html>

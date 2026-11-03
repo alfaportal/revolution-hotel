@@ -2594,6 +2594,7 @@
       <button type="button" class="admin-tab-btn" data-panel="pastrimi">Pastrimi</button>
       <button type="button" class="admin-tab-btn" data-panel="qr-tavolinat">QR Kodet</button>
       <button type="button" class="admin-tab-btn" data-panel="raportet">Raportet</button>
+      <button type="button" class="admin-tab-btn" data-panel="raporte-avancuara" id="tab-raporte-avancuara" hidden>Raporte të avancuara</button>
       <button type="button" class="admin-tab-btn" data-panel="faturat">Faturat</button>
       <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
       <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
@@ -2772,6 +2773,19 @@
           </table>
         </div>
         <div id="ditari-totali" style="margin-top:1rem;font-size:1.25rem;font-weight:800;text-align:right"></div>
+        <div class="card" id="ditari-shifts-card" style="margin-top:1rem">
+          <div class="card-title">Ndërrimet <span id="ditari-shift-count"></span></div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Stafi</th><th>Stacioni</th><th>Hapur</th><th>Mbyllur</th><th>Shitje</th><th>Cash i numëruar</th><th>Diferenca</th>
+                </tr>
+              </thead>
+              <tbody id="ditari-shifts"></tbody>
+            </table>
+          </div>
+        </div>
         <div style="margin-top:1rem">
           <button type="button" class="btn btn-ghost btn-sm" id="btn-ditari-toggle-activity" aria-expanded="false">
             Shfaq
@@ -2877,7 +2891,7 @@
           </div>
           <div style="flex:0;min-width:110px">
             <label for="prod-shto-cmim">Çmimi shitjes (€)</label>
-            <input type="number" id="prod-shto-cmim" min="0" step="0.01" placeholder="2.50" required>
+            <input type="number" id="prod-shto-cmim" min="0" step="0.0001" placeholder="2.50" required>
           </div>
           <div style="flex:0;min-width:120px">
             <label for="prod-shto-kosto">Çmimi i blerjes (kosto)</label>
@@ -3744,6 +3758,68 @@
     </section>
 
     <!-- FATURAT A4 -->
+    <section id="panel-raporte-avancuara" class="panel">
+      <div class="reports-panel-header">
+        <h2 class="reports-panel-title">Raporte të avancuara</h2>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-adv-load">Ngarko</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-adv-csv">CSV</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-adv-pdf">PDF</button>
+        </div>
+      </div>
+      <p id="adv-reports-msg" style="min-height:1.2rem;margin:0.4rem 0"></p>
+      <div class="card" style="margin-bottom:0.75rem">
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">
+          <div><label for="adv-date">Data (javore)</label><input type="date" id="adv-date"></div>
+          <div><label for="adv-month">Muaji</label><input type="month" id="adv-month"></div>
+          <div><label for="adv-month1">Krahasim 1</label><input type="month" id="adv-month1"></div>
+          <div><label for="adv-month2">Krahasim 2</label><input type="month" id="adv-month2"></div>
+          <div><label for="adv-from">Nga</label><input type="date" id="adv-from"></div>
+          <div><label for="adv-to">Deri</label><input type="date" id="adv-to"></div>
+        </div>
+      </div>
+      <div class="reports-period-btns" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.75rem">
+        <button type="button" class="adv-subtab btn btn-primary btn-sm active" data-adv-pane="javore">Javore</button>
+        <button type="button" class="adv-subtab btn btn-ghost btn-sm" data-adv-pane="mujore">Mujore</button>
+        <button type="button" class="adv-subtab btn btn-ghost btn-sm" data-adv-pane="krahasime">Krahasime</button>
+        <button type="button" class="adv-subtab btn btn-ghost btn-sm" data-adv-pane="trende">Trende</button>
+        <button type="button" class="adv-subtab btn btn-ghost btn-sm" data-adv-pane="qarkullimi">Qarkullimi</button>
+        <button type="button" class="adv-subtab btn btn-ghost btn-sm" data-adv-pane="punonjesit">Punonjësit</button>
+        <button type="button" class="adv-subtab btn btn-ghost btn-sm" data-adv-pane="nderrimet">Ndërrimet</button>
+      </div>
+      <div class="card adv-pane" data-adv-pane="javore">
+        <div class="card-title">Javore</div>
+        <p id="adv-javore-sum"></p>
+        <div style="overflow-x:auto"><table><thead><tr><th>Data</th><th>Dita</th><th>Porosi</th><th>Totali</th><th>Cash</th><th>Kartë</th><th>Kamarier</th><th>Recepsion</th></tr></thead><tbody id="adv-javore-body"></tbody></table></div>
+      </div>
+      <div class="card adv-pane" data-adv-pane="mujore" hidden>
+        <div class="card-title">Mujore</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Data</th><th>Porosi</th><th>Totali</th><th>Cash</th><th>Kartë</th><th>Kamarier</th><th>Recepsion</th></tr></thead><tbody id="adv-mujore-body"></tbody></table></div>
+      </div>
+      <div class="card adv-pane" data-adv-pane="krahasime" hidden>
+        <div class="card-title">Krahasime</div>
+        <p id="adv-krahasime-sum"></p>
+        <div style="overflow-x:auto"><table><thead><tr><th>Muaji</th><th>Porosi</th><th>Totali</th><th>Cash</th><th>Kartë</th><th>Kamarier</th><th>Recepsion</th></tr></thead><tbody id="adv-krahasime-body"></tbody></table></div>
+      </div>
+      <div class="card adv-pane" data-adv-pane="trende" hidden>
+        <div class="card-title">Trende</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Nga</th><th>Deri</th><th>Porosi</th><th>Totali</th><th>Cash</th><th>Kartë</th></tr></thead><tbody id="adv-trende-body"></tbody></table></div>
+      </div>
+      <div class="card adv-pane" data-adv-pane="qarkullimi" hidden>
+        <div class="card-title">Qarkullimi</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Kategoria</th><th>Sasia</th><th>Të ardhura</th></tr></thead><tbody id="adv-qarkullimi-body"></tbody></table></div>
+      </div>
+      <div class="card adv-pane" data-adv-pane="punonjesit" hidden>
+        <div class="card-title">Punonjësit</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Punonjësi</th><th>Stacioni</th><th>Porosi</th><th>Totali</th><th>Cash</th><th>Kartë</th></tr></thead><tbody id="adv-punonjesit-body"></tbody></table></div>
+      </div>
+      <div class="card adv-pane" data-adv-pane="nderrimet" hidden>
+        <div class="card-title">Ndërrimet</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Stafi</th><th>Roli</th><th>Mbyllur</th><th>Shitje</th><th>Cash i numëruar</th><th>Diferenca</th><th>Cash shitje</th></tr></thead><tbody id="adv-nderrimet-body"></tbody></table></div>
+      </div>
+      <iframe id="adv-print-frame" title="PDF" hidden></iframe>
+    </section>
+
     <section id="panel-faturat" class="panel">
       <div class="reports-panel-header">
         <div>
@@ -4619,6 +4695,14 @@
             </p>
           </div>
           <div class="settings-field">
+            <label for="cil-biz-logo">Logo e biznesit (opsionale)</label>
+            <input type="file" id="cil-biz-logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg">
+            <div id="cil-biz-logo-preview-wrap" hidden style="margin-top:0.5rem">
+              <img id="cil-biz-logo-preview" alt="Logo e biznesit" style="max-width:180px;max-height:80px;background:#fff;padding:4px;border-radius:4px">
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="cil-biz-logo-remove" hidden style="margin-top:0.5rem">Hiq logon</button>
+          </div>
+          <div class="settings-field">
             <label for="cil-fjalekalimi">Fjalëkalimi i ri i adminit</label>
             <input type="password" id="cil-fjalekalimi" placeholder="Lëreni bosh për të mos ndryshuar">
           </div>
@@ -4782,6 +4866,14 @@
               <option value="sr" data-fi18n="lang_sr">Serbisht</option>
             </select>
           </div>
+          <div class="settings-field" style="grid-column:1/-1">
+            <label for="sef-biz-logo">Logo e biznesit (opsionale)</label>
+            <input type="file" id="sef-biz-logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg">
+            <div id="sef-biz-logo-preview-wrap" hidden style="margin-top:0.5rem">
+              <img id="sef-biz-logo-preview" alt="Logo e biznesit" style="max-width:180px;max-height:80px;background:#fff;padding:4px;border-radius:4px">
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="sef-biz-logo-remove" hidden style="margin-top:0.5rem">Hiq logon</button>
+          </div>
         </div>
 
         <div class="settings-form-actions settings-form-actions-inline">
@@ -4811,7 +4903,7 @@
           <div class="settings-field">
             <label for="sef-application-id">Application ID (nga ATK pas certifikimit)</label>
             <div class="sef-secret-field-wrap">
-              <input type="text" id="sef-application-id" inputmode="numeric" placeholder="p.sh. 756192120167" autocomplete="new-password" spellcheck="false" autocapitalize="off" data-form-type="other">
+              <input type="text" id="sef-application-id" inputmode="numeric" placeholder="p.sh. 756.192.120.167" autocomplete="new-password" spellcheck="false" autocapitalize="off" data-form-type="other">
               <button type="button" id="btn-sef-application-id-eye" class="sef-secret-eye" aria-label="Shfaq numrin" title="Shfaq / fsheh numrin" disabled>👁</button>
             </div>
           </div>
@@ -4901,7 +4993,7 @@
           <div class="sef-audit-actions">
             <button type="button" class="btn btn-sm btn-sef-audit" id="btn-fiscal-x-report">Printo / shiko Raportin X</button>
             <button type="button" class="btn btn-sm btn-warning" id="btn-fiscal-z-report">Printo Raportin Z</button>
-            <button type="button" class="btn btn-sm btn-primary" id="btn-fiscal-z-send-atk">Dërgo Z te ATK</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-fiscal-z-send-atk">Dërgo Raportin Z te ATK</button>
           </div>
           <div class="fiscal-save-msg" id="msg-fiscal-x-report"></div>
           <div class="fiscal-save-msg" id="msg-fiscal-z-report"></div>
@@ -5968,7 +6060,7 @@
         </div>
         <div class="purchase-form-field">
           <label for="stock-add-sell">Sa e shet copën? — çmimi në menu (€)</label>
-          <input type="number" id="stock-add-sell" min="0" step="0.01" placeholder="p.sh. 1.50">
+          <input type="number" id="stock-add-sell" min="0" step="0.0001" placeholder="p.sh. 1.50">
         </div>
       </div>
       <p class="fiscal-save-msg" id="stock-add-cost-hint">
@@ -6698,6 +6790,7 @@
   <script src="/js/hotel-paper-block-tab.js?v=2"></script>
   <script src="/js/fiscal-receipts-tab.js?v=2"></script>
   <script src="/js/kontabilisti-atk-ui.js?v=6"></script>
+  <script src="/js/hotel-advanced-reports-ui.js?v=1"></script>
   <script src="https://revolution-pos.com/js/qrcode.js?v=1" defer></script>
   <script>
     const user = kerkonHyrje("admin");
@@ -6728,6 +6821,13 @@
       document.body.classList.toggle("qr-package-tier", !!hasQrTier);
       const hasAiTier = t === "pako_3" || (features && features.ai === true);
       document.body.classList.toggle("ai-package-tier", !!hasAiTier);
+      const advTab = document.getElementById("tab-raporte-avancuara");
+      if (advTab) {
+        const allowAdv = features && typeof features.advancedReports === "boolean"
+          ? features.advancedReports
+          : rank >= 3;
+        advTab.hidden = !allowAdv;
+      }
       if (t && t !== _lastAppliedPackageTier) {
         console.log("[admin] Pako:", t || "(bosh)", "→ tier-rank-" + rank, "accountant=", features?.accountant, "qrTables=", hasQrTier);
         _lastAppliedPackageTier = t;
@@ -7241,6 +7341,9 @@
         ngarkoDitarin();
         ngarkoRefuzimet();
         if (!ditariInterval) ditariInterval = setInterval(ngarkoDitarin, 45000);
+      }
+      if (name === "raporte-avancuara" && window.HotelAdvancedReports) {
+        window.HotelAdvancedReports.load();
       }
       if (name === "dhomat") ngarkoDhomat();
       if (name === "mysafiret") ngarkoCrmMysafiret();
@@ -7769,9 +7872,46 @@
       document.getElementById("ditari-to-time").value = "23:59:59";
     }
 
+    function renderDitariShifts(shifts, filter) {
+      const body = document.getElementById("ditari-shifts");
+      const countEl = document.getElementById("ditari-shift-count");
+      if (!body) return;
+      const list = (shifts || []).filter((sh) => {
+        if (filter === "reception") return sh.staff_role === "recepsion";
+        if (filter === "restaurant") return sh.staff_role !== "recepsion";
+        return true;
+      });
+      if (countEl) countEl.textContent = list.length ? `(${list.length})` : "";
+      const fmt = (iso) => {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "—";
+        return d.toLocaleString("sq-AL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      };
+      body.innerHTML = list.length
+        ? list.map((sh) => {
+            const open = !!sh.is_open;
+            const diff = sh.cash_difference;
+            const diffText = open || diff == null
+              ? "—"
+              : (Math.abs(diff) < 0.005 ? "Barazim" : formatEuro(diff));
+            return `<tr>
+              <td>${escHtml(sh.waiter_name || "—")}</td>
+              <td>${escHtml(sh.staff_role === "recepsion" ? "Recepsion" : "Kamarier")}</td>
+              <td>${fmt(sh.opened_at)}</td>
+              <td>${open ? "Hapur" : fmt(sh.closed_at)}</td>
+              <td>${formatEuro(sh.total_sales || 0)}</td>
+              <td>${open || sh.closing_cash_actual == null ? "—" : formatEuro(sh.closing_cash_actual)}</td>
+              <td>${diffText}</td>
+            </tr>`;
+          }).join("")
+        : '<tr><td colspan="7" style="color:var(--ngjyr-muted)">Nuk ka ndërrime për këtë periudhë</td></tr>';
+    }
+
     function renderDitariTables(d) {
       const view = ditariViewFromPayload(d);
       renderDitariStats("ditari-stats", view);
+      renderDitariShifts(d.shifts || [], ditariSectionFilter);
       const tbody = document.getElementById("ditari-lista");
       const entryRows = (view.entries || []).map(e => {
             const cancelled = e.status === "cancelled";
@@ -8686,6 +8826,9 @@
       );
       applyAppVersionBadge(s, "hdr-app-version");
       document.getElementById("cil-emri").value = s.business_name || s.restaurant_name || "";
+      if (typeof refreshBusinessLogoPreview === "function") {
+        refreshBusinessLogoPreview().catch(() => {});
+      }
       const staticIpEl = document.getElementById("cil-staff-pos-static-ip");
       if (staticIpEl) staticIpEl.value = s.staff_pos_static_ip || "";
       const adminCardStatus = document.getElementById("cil-admin-card-status");
@@ -8802,7 +8945,7 @@
       const costEl = document.getElementById("stock-add-cost");
       const sellEl = document.getElementById("stock-add-sell");
       if (costEl) costEl.value = storedCost > 0 ? storedCost.toFixed(2) : "";
-      if (sellEl) sellEl.value = sellPrice > 0 ? sellPrice.toFixed(2) : "";
+      if (sellEl) sellEl.value = sellPrice > 0 ? formatMenuPriceInput(sellPrice) : "";
       const msg = document.getElementById("stock-add-msg");
       if (msg) msg.textContent = "";
       const modal = document.getElementById("modal-stock-add");
@@ -8890,6 +9033,17 @@
         .replace(/&/g, "&amp;")
         .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;");
+    }
+
+    function formatMenuPriceInput(price) {
+      const n = Number(price);
+      if (!Number.isFinite(n)) return "0.00";
+      let s = (Math.round(n * 10000) / 10000).toFixed(4);
+      s = s.replace(/0+$/, "").replace(/\.$/, "");
+      const i = s.indexOf(".");
+      if (i < 0) return s + ".00";
+      if (s.length - i - 1 === 1) return s + "0";
+      return s;
     }
 
     const MENU_ATK_UNIT_OPTS = [
@@ -9173,7 +9327,7 @@
               <div class="product-card-edit-fields">
                 <input type="text" class="menu-in-name" value="${escMenuAttr(it.name)}" placeholder="Emri">
                 <select class="menu-in-cat">${catOpts}</select>
-                <input type="number" class="menu-in-price" min="0" step="0.01" value="${Number(it.price).toFixed(2)}">
+                <input type="number" class="menu-in-price" min="0" step="0.0001" value="${formatMenuPriceInput(it.price)}">
                 <input type="number" class="menu-in-stock" min="0" step="1" value="${Number(it.stock_qty ?? 0)}" title="Stoku aktual — ndryshimet regjistrohen për verifikimin e stokut (jo te Kontabilisti)" placeholder="Stoku">
                 <input type="number" class="menu-in-threshold" min="0" step="1" value="${Number(it.low_stock_threshold || 0)}" title="Pragu i stokut të ulët (0 = alarm vetëm kur stoku=0)" placeholder="Prag stoku">
                 <div class="menu-vat-row">
@@ -11619,7 +11773,7 @@
       }
       body.innerHTML = menuScanItems.map((item, idx) => `<tr>
         <td><input type="text" class="menu-scan-name" data-idx="${idx}" value="${escAttr(item.name)}"></td>
-        <td><input type="number" class="menu-scan-price" data-idx="${idx}" min="0" step="0.01" value="${Number(item.price || 0).toFixed(2)}"></td>
+        <td><input type="number" class="menu-scan-price" data-idx="${idx}" min="0" step="0.0001" value="${formatMenuPriceInput(item.price || 0)}"></td>
       </tr>`).join("");
       results.hidden = false;
     }
@@ -15748,8 +15902,8 @@
         if (roleFilter) shiftQs += `&staff_role=${encodeURIComponent(roleFilter)}`;
         const data = await api(`/api/admin/shift-reports?${shiftQs}`);
         const rows = data.shifts || [];
-        if (!rows.length) {
-          body.innerHTML = '<tr><td colspan="12" class="purchases-empty">Nuk ka nderrime të mbyllura për këtë periudhë</td></tr>';
+          if (!rows.length) {
+          body.innerHTML = '<tr><td colspan="12" class="purchases-empty">Nuk ka ndërrime për këtë periudhë</td></tr>';
           return;
         }
         const shiftRoleLabel = (role) => (role === "recepsion" ? "Recepsion" : "Kamarier");
@@ -15775,7 +15929,7 @@
             <td>${escHtml(s.waiter_name)}</td>
             <td>${escHtml(shiftRoleLabel(s.staff_role))}</td>
             <td>${fmtDt(s.opened_at)}</td>
-            <td>${fmtDt(s.closed_at)}</td>
+            <td>${s.is_open ? "Hapur" : fmtDt(s.closed_at)}</td>
             <td>${formatEuro(s.opening_cash || 0)}</td>
             <td>${formatEuro(s.cash_sales_total || 0)}</td>
             <td>${formatEuro(s.card_sales_total || 0)}</td>
@@ -16699,7 +16853,7 @@
       if (lab) lab.textContent = rules.label;
       if (inp) {
         inp.placeholder = rules.placeholder;
-        inp.maxLength = role === "recepsion" ? 6 : 4;
+        inp.maxLength = 4;
         inp.value = "";
       }
       if (status && s) {
@@ -16831,20 +16985,10 @@
       ngarkoStafin();
     });
 
-    function staffPinRulesForRole(role) {
-      const r = String(role || "kamarier").trim().toLowerCase();
-      if (r === "recepsion" || r === "pastrim") {
-        return {
-          re: /^\d{6}$/,
-          msg: "PIN duhet të jetë 6 shifra",
-          label: "PIN (6 shifra)",
-          placeholder: "123456",
-          mask: "••••••",
-        };
-      }
+    function staffPinRulesForRole(_role) {
       return {
         re: /^\d{4}$/,
-        msg: "PIN duhet të jetë 4 shifra (restorant)",
+        msg: "PIN duhet të jetë 4 shifra",
         label: "PIN (4 shifra)",
         placeholder: "1234",
         mask: "••••",
@@ -16859,7 +17003,7 @@
       if (lab) lab.textContent = rules.label;
       if (inp) {
         inp.placeholder = rules.placeholder;
-        inp.maxLength = role === "recepsion" || role === "pastrim" ? 6 : 4;
+        inp.maxLength = 4;
       }
     }
     document.getElementById("staf-roli")?.addEventListener("change", syncStaffAddPinUi);
@@ -16873,7 +17017,7 @@
       const input = document.createElement("input");
       input.type="text";
       input.inputMode = "numeric";
-      input.maxLength = role === "recepsion" || role === "pastrim" ? 6 : 4;
+      input.maxLength = 4;
       input.className = "pin-edit-input";
       input.placeholder = rules.placeholder;
       cell.textContent = "";
@@ -17058,7 +17202,7 @@
       }
     }
 
-    function setupSefMaskedInput({ inputId, eyeBtnId }) {
+    function setupSefMaskedInput({ inputId, eyeBtnId, groupDots }) {
       let revealed = false;
       let realValue = "";
 
@@ -17072,7 +17216,14 @@
       function normalize(raw) {
         const v = String(raw ?? "").trim();
         if (!v || v.includes("•")) return "";
-        return v.replace(/\s+/g, "");
+        return groupDots ? v.replace(/[\s.]+/g, "") : v.replace(/\s+/g, "");
+      }
+
+      function formatDots(raw) {
+        const d = normalize(raw);
+        if (!d) return "";
+        const rev = d.split("").reverse().join("");
+        return rev.replace(/(\d{3})(?=\d)/g, "$1.").split("").reverse().join("");
       }
 
       function mask(raw) {
@@ -17094,7 +17245,9 @@
         if (!el) return realValue;
         if (!el.readOnly) {
           syncCache(el.value);
-          if (revealed && realValue !== String(el.value ?? "").trim()) {
+          if (revealed && groupDots) {
+            el.value = formatDots(realValue);
+          } else if (revealed && realValue !== String(el.value ?? "").trim()) {
             el.value = realValue;
           }
         } else if (!realValue && el.dataset.realValue) {
@@ -17126,7 +17279,7 @@
           return;
         }
         if (revealed) {
-          el.value = real;
+          el.value = groupDots ? formatDots(real) : real;
           el.readOnly = false;
         } else {
           el.value = mask(real);
@@ -17175,7 +17328,10 @@
           }
         });
         el.addEventListener("blur", () => {
-          if (!el.readOnly) syncCache(el.value);
+          if (!el.readOnly) {
+            syncCache(el.value);
+            if (groupDots && revealed) el.value = formatDots(realValue);
+          }
         });
         el.addEventListener("paste", (e) => {
           if (el.readOnly) e.preventDefault();
@@ -17207,9 +17363,129 @@
     const sefApplicationIdField = setupSefMaskedInput({
       inputId: "sef-application-id",
       eyeBtnId: "btn-sef-application-id-eye",
+      groupDots: true,
     });
     sefFiscalizationNumberField.init();
     sefApplicationIdField.init();
+
+    let _bizLogoBlobUrl = "";
+    function setBusinessLogoPreview(has) {
+      const wraps = ["sef-biz-logo-preview-wrap", "cil-biz-logo-preview-wrap"];
+      const imgs = ["sef-biz-logo-preview", "cil-biz-logo-preview"];
+      const rms = ["sef-biz-logo-remove", "cil-biz-logo-remove"];
+      wraps.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = !has;
+      });
+      rms.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = !has;
+      });
+      if (!has) {
+        imgs.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.removeAttribute("src");
+        });
+        return;
+      }
+      const u = lexoSesionin();
+      fetch("/api/fiscal/business-logo/file?t=" + Date.now(), {
+        headers: u?.token ? { "X-Session-Token": u.token } : {},
+      }).then(async (res) => {
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (_bizLogoBlobUrl) URL.revokeObjectURL(_bizLogoBlobUrl);
+        _bizLogoBlobUrl = URL.createObjectURL(blob);
+        imgs.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.src = _bizLogoBlobUrl;
+        });
+      }).catch(() => {});
+    }
+
+    async function refreshBusinessLogoPreview() {
+      try {
+        const data = await api("/api/fiscal/business-logo");
+        setBusinessLogoPreview(!!data.has_logo);
+      } catch {
+        setBusinessLogoPreview(false);
+      }
+    }
+
+    function fileToPngDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const maxW = 384;
+          const maxH = 160;
+          let w = img.naturalWidth || 1;
+          let h = img.naturalHeight || 1;
+          const s = Math.min(1, maxW / w, maxH / h);
+          w = Math.max(1, Math.round(w * s));
+          h = Math.max(1, Math.round(h * s));
+          const c = document.createElement("canvas");
+          c.width = w;
+          c.height = h;
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL("image/png"));
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Fotoja nuk lexohet"));
+        };
+        img.src = url;
+      });
+    }
+
+    async function uploadBusinessLogoFile(file) {
+      if (!file) return;
+      if (file.size > 2000000) {
+        alert("Fotoja është shumë e madhe");
+        return;
+      }
+      const png = await fileToPngDataUrl(file);
+      await api("/api/fiscal/business-logo", {
+        method: "PUT",
+        body: JSON.stringify({ png_base64: png }),
+      });
+      setBusinessLogoPreview(true);
+    }
+
+    function bindBusinessLogoUi() {
+      ["sef-biz-logo", "cil-biz-logo"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("change", async () => {
+          const file = el.files && el.files[0];
+          el.value = "";
+          if (!file) return;
+          try {
+            await uploadBusinessLogoFile(file);
+          } catch (e) {
+            alert(e.message || "Logo nuk u ruajt");
+          }
+        });
+      });
+      ["sef-biz-logo-remove", "cil-biz-logo-remove"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("click", async () => {
+          try {
+            await api("/api/fiscal/business-logo", { method: "DELETE" });
+            setBusinessLogoPreview(false);
+          } catch (e) {
+            alert(e.message || "Logo nuk u hoq");
+          }
+        });
+      });
+    }
+
+    bindBusinessLogoUi();
 
     function applySefFieldsEditable() {
       const ids = [
@@ -17562,6 +17838,7 @@
           if (sel && pm.mode) sel.value = pm.mode === "replace" ? "replace" : "addon";
         } catch (_e) { /* */ }
         await loadFiscalKeysDir();
+        await refreshBusinessLogoPreview();
         // Default date range: muaji aktual
         const fromEl = document.getElementById("sef-audit-from");
         const toEl = document.getElementById("sef-audit-to");

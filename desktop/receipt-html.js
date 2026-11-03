@@ -78,7 +78,8 @@ function buildReceiptHtml({
     ? `<div class="receipt-item"><span>TVSh (${f.tvsh_percent}%):</span><span>${formatEuro(totals.vat)}</span></div>`
     : "";
   const footer = f.biz_footer || "Faleminderit!";
-  const paymentLabel = paymentMethod === "karte" ? "Karte" : paymentMethod ? "Cash" : "";
+  const { thermalPaymentDisplay } = require("./receipt-text");
+  const paymentLabel = thermalPaymentDisplay(paymentMethod);
   const paymentLine = paymentLabel
     ? `<div class="receipt-meta">Pagesa: ${paymentLabel}</div>`
     : "";

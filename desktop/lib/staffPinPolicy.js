@@ -1,5 +1,3 @@
-/** Gjatësia e PIN-it sipas rolit — restorant 4 (legacy 6), recepsion/pastrim 6. */
-
 const RESTAURANT_ROLES = new Set(["kamarier", "waiter", "kitchen", "kuzhina", "bar", "banak"]);
 const SIX_DIGIT_ROLES = new Set(["recepsion", "receptionist", "housekeeping", "pastrim", "pastrimi", "sherbimi"]);
 
@@ -17,45 +15,40 @@ function loginModeForStaffRole(staffRole) {
   return "kamarier";
 }
 
-function pinDigitsForStaffRole(staffRole) {
-  const k = normalizeStaffRoleKey(staffRole);
-  if (k === "recepsion" || k === "housekeeping") return 6;
+function pinDigitsForStaffRole(_staffRole) {
   return 4;
 }
 
-function pinDigitsForLoginMode(loginMode) {
-  const m = String(loginMode || "").trim().toLowerCase();
-  if (m === "recepsion" || m === "pastrim" || m === "sherbimi" || m === "housekeeping") return 6;
+function pinDigitsForLoginMode(_loginMode) {
   return 4;
 }
 
-/** Pranon 6 shifra për restorant vetëm legacy (pa ndryshuar DB pa miratim ops). */
-function acceptsStaffPin(pin, staffRole) {
+function pinLookupCandidates(pin) {
   const p = String(pin ?? "").trim();
-  const k = normalizeStaffRoleKey(staffRole);
-  if (k === "recepsion" || k === "housekeeping") {
-    return /^\d{6}$/.test(p);
+  const out = [];
+  if (/^\d{4}$/.test(p)) {
+    out.push(p);
+    out.push(p.padStart(6, "0"));
+  } else if (/^\d{6}$/.test(p)) {
+    out.push(p);
+    if (p.startsWith("00")) out.push(p.slice(2));
   }
+  return [...new Set(out)];
+}
+
+function acceptsStaffPin(pin, _staffRole) {
+  const p = String(pin ?? "").trim();
   return /^\d{4}$/.test(p) || /^\d{6}$/.test(p);
 }
 
-function acceptsLoginPin(pin, loginMode) {
-  const mode = String(loginMode || "kamarier").trim().toLowerCase();
+function acceptsLoginPin(pin, _loginMode) {
   const p = String(pin ?? "").trim();
-  if (mode === "recepsion" || mode === "pastrim" || mode === "sherbimi" || mode === "housekeeping") {
-    return /^\d{6}$/.test(p);
-  }
   return /^\d{4}$/.test(p) || /^\d{6}$/.test(p);
 }
 
-function validateNewStaffPin(pin, staffRole) {
+function validateNewStaffPin(pin, _staffRole) {
   const p = String(pin ?? "").trim();
-  const need = pinDigitsForStaffRole(staffRole);
-  if (need === 6) {
-    if (!/^\d{6}$/.test(p)) throw new Error("PIN duhet të jetë 6 shifra");
-    return p;
-  }
-  if (!/^\d{4}$/.test(p)) throw new Error("PIN duhet të jetë 4 shifra (restorant / kuzhinë / bar)");
+  if (!/^\d{4}$/.test(p)) throw new Error("PIN duhet të jetë 4 shifra");
   return p;
 }
 
@@ -100,5 +93,6 @@ module.exports = {
   validateNewStaffPin,
   validateStaffPinChange,
   isStaffPinSyncable,
+  pinLookupCandidates,
   wrongZoneMessage,
 };

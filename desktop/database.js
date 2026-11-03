@@ -404,6 +404,10 @@ function replaceStaffFromMaster(staffList) {
   return { ok: true, added, updated, deactivated };
 }
 
+function round4(n) {
+  return Math.round((Number(n) || 0) * 10000) / 10000;
+}
+
 /** Arka 2+ — menu/kategori nga Kryesorja; stoku nuk preket këtu. */
 function replaceMenuFromMaster(data) {
   const categories = Array.isArray(data?.categories) ? data.categories : [];
@@ -428,7 +432,7 @@ function replaceMenuFromMaster(data) {
     incomingItems.set(`${name}\u0000${category}`, {
       name,
       category,
-      price: Number.isFinite(price) && price >= 0 ? price : 0,
+      price: Number.isFinite(price) && price >= 0 ? round4(price) : 0,
       active: m.active !== 0 && m.active !== false ? 1 : 0,
       sort_order: Number(m.sort_order) || 0,
       vat_category: VAT_CATEGORIES.includes(String(m.vat_category)) ? String(m.vat_category) : "18",
@@ -2841,7 +2845,7 @@ function addMenuItem({
   const barcodeVal = barcode != null ? String(barcode).trim() : "";
   const r = sqlite.prepare(
     "INSERT INTO menu_items (name, category, price, active, vat_category, sort_order, barcode) VALUES (?, ?, ?, 1, ?, ?, ?)",
-  ).run(name.trim(), category, Number(price), vat, sortOrder, barcodeVal || null);
+  ).run(name.trim(), category, round4(price), vat, sortOrder, barcodeVal || null);
   const id = r.lastInsertRowid;
   if (stock_qty != null && Number.isFinite(Number(stock_qty))) {
     setMenuItemStockAbsolute(
@@ -2890,7 +2894,7 @@ function reorderMenuItems(ids) {
 }
 
 function updateMenuPrice(id, price) {
-  sqlite.prepare("UPDATE menu_items SET price = ? WHERE id = ?").run(Number(price), id);
+  sqlite.prepare("UPDATE menu_items SET price = ? WHERE id = ?").run(round4(price), id);
 }
 
 function updateMenuItem(id, {
@@ -2901,7 +2905,7 @@ function updateMenuItem(id, {
   const vals = [];
   if (name != null)   { fields.push("name = ?");     vals.push(name.trim()); }
   if (category != null) { fields.push("category = ?"); vals.push(category); }
-  if (price != null)  { fields.push("price = ?");    vals.push(Number(price)); }
+  if (price != null)  { fields.push("price = ?");    vals.push(round4(price)); }
   if (low_stock_threshold != null) {
     const t = Number(low_stock_threshold);
     if (!Number.isFinite(t) || t < 0) throw new Error("Pragu i stokut duhet të jetë 0 ose më shumë.");
@@ -3082,7 +3086,7 @@ function purgeTodaySalesData() {
 }
 
 function getTableCount() {
-  return Number(sqlite.prepare("SELECT COUNT(*) AS c FROM tables").get().c) || 0;
+  return Number(sqlite.prepare("SELECT COUNT(*) AS c FROM tables WHERE number > 0").get().c) || 0;
 }
 
 /** Tavolina fizike (pa sllotet «Porosi online» / «Commandes en ligne») — për sync me telefon/cloud. */
@@ -3091,8 +3095,11 @@ function getPhysicalTableCount() {
     SELECT COUNT(*) AS c
     FROM tables t
     LEFT JOIN table_zones z ON z.id = t.zone_id
-    WHERE z.name IS NULL
-       OR lower(trim(z.name)) NOT IN ('porosi online', 'commandes en ligne')
+    WHERE t.number > 0
+      AND (
+        z.name IS NULL
+        OR lower(trim(z.name)) NOT IN ('porosi online', 'commandes en ligne')
+      )
   `).get();
   const n = Number(row?.c) || 0;
   if (n > 0) return n;
@@ -4775,6 +4782,52 @@ function buildCheckoutLogItems(bill, room) {
     });
   }
   return items;
+}
+
+function buildCheckoutFiscalItems(bill, room) {
+  const items = [];
+  const nights = Number(bill.nights) || 0;
+  const persons = Number(bill.persons) || 1;
+  const roomTotal = Number(bill.room_total) || 0;
+  const unitNight = Number(bill.price_per_night) || 0;
+  if (roomTotal > 0) {
+    items.push({
+      name: `Dhoma ${room.room_number || "—"} — ${nights} netë × ${persons} persona`,
+      quantity: nights > 0 ? nights * persons : persons,
+      price: nights > 0 && unitNight > 0 ? unitNight : roomTotal,
+      vat_category: "18",
+    });
+  }
+  for (const c of bill.charges || []) {
+    const amt = Number(c.amount) || 0;
+    if (amt <= 0) continue;
+    items.push({
+      name: String(c.description || "Shërbim").trim(),
+      quantity: 1,
+      price: amt,
+      vat_category: c.vat_category || "18",
+      service_id: c.service_id != null ? Number(c.service_id) : null,
+      menu_item_id: c.menu_item_id != null ? Number(c.menu_item_id) : null,
+    });
+  }
+  const extra = Number(bill.extra_services) || 0;
+  if (extra > 0) {
+    items.push({
+      name: "Shërbime ekstra (check-out)",
+      quantity: 1,
+      price: extra,
+      vat_category: "18",
+    });
+  }
+  const deposit = Number(bill.deposit) || 0;
+  const subtotal = Math.round((Number(bill.total) || 0) * 100) / 100;
+  const totalDue = Math.round((Number(bill.total_due) || 0) * 100) / 100;
+  return {
+    items,
+    subtotal,
+    discount_amount: deposit > 0 ? deposit : 0,
+    total_amount: totalDue,
+  };
 }
 
 function checkOutGuest(roomId, {
@@ -7442,6 +7495,7 @@ function getTablesWithOrders() {
     SELECT t.*, z.name AS zone_name, z.sort_order AS zone_sort
     FROM tables t
     LEFT JOIN table_zones z ON z.id = t.zone_id
+    WHERE t.number > 0
     ORDER BY COALESCE(z.sort_order, 999), z.id, t.sort_order, t.number
   `).all();
   const activeOrders = sqlite.prepare("SELECT * FROM orders WHERE status = 'active'").all();
@@ -8348,9 +8402,9 @@ function mapCloudItemsToLocal(items) {
     const qty = Number(it.quantity ?? it.sasia ?? 1) || 1;
     const rawPrice = Number(it.price ?? it.cmimi);
     const menuPrice = Number(mi?.price);
-    const price = (Number.isFinite(rawPrice) && rawPrice > 0)
+    const price = round4((Number.isFinite(rawPrice) && rawPrice > 0)
       ? rawPrice
-      : (Number.isFinite(menuPrice) && menuPrice > 0 ? menuPrice : (Number.isFinite(rawPrice) ? rawPrice : menuPrice || 0));
+      : (Number.isFinite(menuPrice) && menuPrice > 0 ? menuPrice : (Number.isFinite(rawPrice) ? rawPrice : menuPrice || 0)));
     return {
       menu_item_id: mi?.id ?? (localId != null ? Number(localId) : null),
       name: String(rawName || mi?.name || "Artikull").trim(),
@@ -9447,7 +9501,15 @@ function sendOrder({ table_id, waiter_name, items }) {
   const table = sqlite.prepare("SELECT * FROM tables WHERE id = ?").get(table_id);
   if (!table) throw new Error("Tavolina nuk u gjet");
 
-  const enriched = enrichOrderItemsWithVat(items);
+  const saleItems = (Array.isArray(items) ? items : []).map((it) => {
+    const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
+    const unit = round4(it.base_price ?? it.price ?? it.unit_price ?? 0);
+    const row = { ...it, price: unit, quantity: qty };
+    if (it.unit_price != null) row.unit_price = unit;
+    if (it.base_price != null) row.base_price = round4(it.base_price);
+    return row;
+  });
+  const enriched = enrichOrderItemsWithVat(saleItems);
   const total = enriched.reduce((s, i) => s + i.price * i.quantity, 0);
   const itemsJson = JSON.stringify(enriched);
 
@@ -10372,6 +10434,67 @@ function recordRecepcionKasaSale({
   return { receipt_number, total, payment_method: method };
 }
 
+function ensureRecepcionFiscalTable() {
+  let row = sqlite.prepare("SELECT * FROM tables WHERE number = 0 LIMIT 1").get();
+  if (row) return row;
+  const ins = sqlite.prepare(`
+    INSERT INTO tables (number, status, display_name, zone_id, sort_order)
+    VALUES (0, 'free', 'Recepsion', NULL, 9999)
+  `).run();
+  return sqlite.prepare("SELECT * FROM tables WHERE id = ?").get(ins.lastInsertRowid);
+}
+
+function createCompletedFiscalOrder({
+  items,
+  total,
+  payment_method = "cash",
+  payment_splits = null,
+  waiter_name = "Recepsion",
+  source_label = "Kasa recepsion",
+} = {}) {
+  const lines = Array.isArray(items) ? items : [];
+  if (!lines.length) throw new Error("Porosia nuk ka artikuj për fiskalizim");
+  const tot = Math.round((Number(total) || 0) * 100) / 100;
+  if (!(tot > 0)) throw new Error("Totali duhet të jetë më i madh se zero.");
+  const table = ensureRecepcionFiscalTable();
+  const method = normalizePaymentMethod(payment_method, payment_splits);
+  const r = sqlite.prepare(`
+    INSERT INTO orders (
+      table_id, waiter_name, items_json, total, status, payment_method, source_label
+    ) VALUES (?, ?, ?, ?, 'completed', ?, ?)
+  `).run(
+    table.id,
+    String(waiter_name || "Recepsion").trim() || "Recepsion",
+    JSON.stringify(lines),
+    tot,
+    method,
+    String(source_label || "Kasa recepsion"),
+  );
+  return sqlite.prepare("SELECT * FROM orders WHERE id = ?").get(r.lastInsertRowid);
+}
+
+function attachDailyLogOrderId(receiptNumber, orderId) {
+  const oid = Number(orderId);
+  const rn = String(receiptNumber || "").trim();
+  if (!oid || !rn) return 0;
+  try {
+    const r = sqlite.prepare(`
+      UPDATE daily_log SET order_id = ?
+      WHERE id = (
+        SELECT id FROM daily_log
+        WHERE receipt_number = ?
+          AND (order_id IS NULL OR order_id = 0)
+        ORDER BY id DESC
+        LIMIT 1
+      )
+    `).run(oid, rn);
+    return Number(r.changes) || 0;
+  } catch (e) {
+    console.warn("[daily_log] attach order_id:", e.message);
+    return 0;
+  }
+}
+
 /** Netët (akruale) + shërbime/RS — i njëjti burim si getHotelRevenueReport. Kontabilisti përdor check-out. */
 function collectHotelReportRevenue({
   from,
@@ -10861,6 +10984,7 @@ function getReports(dateFrom, dateTo) {
     byRegister,
     dateFrom: from,
     dateTo: to,
+    shifts: listShiftReports({ from, to, include_open: true }),
   };
 }
 
@@ -12166,7 +12290,7 @@ function getDailyBalanceReport(dateYmd) {
   };
 }
 
-function listShiftReports({ from, to, staff_id, staff_role } = {}) {
+function listShiftReports({ from, to, staff_id, staff_role, include_open } = {}) {
   let sql = `
     SELECT ws.*,
       st.staff_role,
@@ -12180,16 +12304,34 @@ function listShiftReports({ from, to, staff_id, staff_role } = {}) {
     FROM waiter_shifts ws
     LEFT JOIN staff st ON st.id = ws.staff_id
     LEFT JOIN shift_handovers h ON h.from_shift_id = ws.id
-    WHERE ws.closed_at IS NOT NULL
+    WHERE 1 = 1
   `;
   const params = [];
-  if (from) {
-    sql += " AND date(ws.closed_at) >= date(?)";
-    params.push(from);
-  }
-  if (to) {
-    sql += " AND date(ws.closed_at) <= date(?)";
-    params.push(to);
+  const fromDay = String(from || "").slice(0, 10);
+  const toDay = String(to || fromDay).slice(0, 10);
+  if (include_open && fromDay && toDay) {
+    sql += ` AND (
+      (ws.closed_at IS NOT NULL AND date(ws.closed_at) >= date(?) AND date(ws.closed_at) <= date(?))
+      OR (date(ws.opened_at) >= date(?) AND date(ws.opened_at) <= date(?))
+      OR (ws.closed_at IS NULL AND date(ws.opened_at) <= date(?))
+      OR ws.id IN (
+        SELECT DISTINCT shift_id FROM daily_log
+        WHERE shift_id IS NOT NULL
+          AND status = 'completed'
+          AND date >= date(?) AND date <= date(?)
+      )
+    )`;
+    params.push(fromDay, toDay, fromDay, toDay, toDay, fromDay, toDay);
+  } else {
+    sql += " AND ws.closed_at IS NOT NULL";
+    if (from) {
+      sql += " AND date(ws.closed_at) >= date(?)";
+      params.push(from);
+    }
+    if (to) {
+      sql += " AND date(ws.closed_at) <= date(?)";
+      params.push(to);
+    }
   }
   if (staff_id) {
     sql += " AND ws.staff_id = ?";
@@ -12200,23 +12342,41 @@ function listShiftReports({ from, to, staff_id, staff_role } = {}) {
     sql += " AND LOWER(TRIM(COALESCE(st.staff_role, 'kamarier'))) = ?";
     params.push(role);
   }
-  sql += " ORDER BY ws.closed_at DESC, ws.id DESC LIMIT 500";
-  return sqlite.prepare(sql).all(...params).map(row => ({
-    ...row,
-    staff_role: normalizeStaffRole(row.staff_role),
-    opening_cash: row.opening_cash != null ? Number(row.opening_cash) : 0,
-    closing_cash_actual: row.closing_cash_actual != null ? Number(row.closing_cash_actual) : null,
-    expected_closing_cash: row.expected_closing_cash != null ? Number(row.expected_closing_cash) : null,
-    cash_difference: row.cash_difference != null ? Number(row.cash_difference) : null,
-    cash_sales_total: Number(row.cash_sales_total) || 0,
-    card_sales_total: Number(row.card_sales_total) || 0,
-    order_count_total: Number(row.order_count_total) || 0,
-    total_sales: Number(row.total_sales) || 0,
-    discount_total: Number(row.discount_total) || 0,
-    handed_over_to_name: row.handed_over_to_name || null,
-    handover_cash: row.handover_cash != null ? Number(row.handover_cash) : null,
-    handover_status: row.handover_status || null,
-  }));
+  sql += " ORDER BY datetime(COALESCE(ws.closed_at, ws.opened_at)) DESC, ws.id DESC LIMIT 500";
+  return sqlite.prepare(sql).all(...params).map(row => {
+    const role = normalizeStaffRole(row.staff_role);
+    const open = !String(row.closed_at || "").trim();
+    let cash = Number(row.cash_sales_total) || 0;
+    let card = Number(row.card_sales_total) || 0;
+    let orders = Number(row.order_count_total) || 0;
+    let total = Number(row.total_sales) || 0;
+    let discount = Number(row.discount_total) || 0;
+    if (open) {
+      const live = computeShiftTotals(row.id, row.staff_id, row.waiter_name, role);
+      cash = Number(live.cash_total) || 0;
+      card = Number(live.card_total) || 0;
+      orders = Number(live.order_count) || 0;
+      total = Number(live.total_sales) || 0;
+      discount = Number(live.discount_total) || 0;
+    }
+    return {
+      ...row,
+      staff_role: role,
+      is_open: open,
+      opening_cash: row.opening_cash != null ? Number(row.opening_cash) : 0,
+      closing_cash_actual: open || row.closing_cash_actual == null ? null : Number(row.closing_cash_actual),
+      expected_closing_cash: open || row.expected_closing_cash == null ? null : Number(row.expected_closing_cash),
+      cash_difference: open || row.cash_difference == null ? null : Number(row.cash_difference),
+      cash_sales_total: cash,
+      card_sales_total: card,
+      order_count_total: orders,
+      total_sales: total,
+      discount_total: discount,
+      handed_over_to_name: row.handed_over_to_name || null,
+      handover_cash: row.handover_cash != null ? Number(row.handover_cash) : null,
+      handover_status: row.handover_status || null,
+    };
+  });
 }
 
 function shiftMetaForWaiter(waiterName) {
@@ -12412,9 +12572,12 @@ function updateStaffProfile(id, { name, staff_role: staffRoleRaw } = {}) {
 }
 
 function findStaffByPin(pin) {
-  const p = String(pin ?? "").trim();
-  if (!/^\d{4}$|^\d{6}$/.test(p)) return null;
-  return sqlite.prepare("SELECT * FROM staff WHERE pin = ? AND active = 1").get(p);
+  const candidates = staffPinPolicy.pinLookupCandidates(pin);
+  for (const c of candidates) {
+    const row = sqlite.prepare("SELECT * FROM staff WHERE pin = ? AND active = 1").get(c);
+    if (row) return row;
+  }
+  return null;
 }
 
 /** Raport: staf restorant me PIN 6-shifror (legacy) — pa ndryshuar PIN pa OK të pronarit. */
@@ -16420,6 +16583,11 @@ function getDitari(opts = {}) {
     tablesServed,
     entries: allEntries,
     activity,
+    shifts: listShiftReports({
+      from: range.dateFrom,
+      to: range.dateTo,
+      include_open: true,
+    }),
   };
 }
 
@@ -17018,6 +17186,9 @@ function getVersionInfo() {
     deleteHotelQrVenue,
     formatHotelQrVenueLabel,
     recordRecepcionKasaSale,
+    buildCheckoutFiscalItems,
+    createCompletedFiscalOrder,
+    attachDailyLogOrderId,
     addServiceChargeToRoom,
     submitGuestRoomMenuOrder,
     submitGuestRoomServiceOrder,

@@ -71,6 +71,22 @@ function formatItemLine(item, width) {
   return `${name}${" ".repeat(gap)}${tail}`;
 }
 
+function thermalPaymentDisplay(paymentMethod) {
+  const p = String(paymentMethod || "").trim().toLowerCase();
+  if (!p) return "";
+  if (p === "debit_card" || p === "debit") return "Kartë Debit";
+  if (p === "credit_card" || p === "credit" || p === "kredit") return "Kartë Kredit";
+  if (p === "karte" || p === "card" || p === "kartë" || p === "kartelë" || p === "pos") return "Kartë";
+  if (p === "mixed" || p === "perzier" || p === "e përzier") return "Përzier";
+  if (p === "bank_account" || p === "transfer bankar") return "Bankë";
+  if (p === "voucher" || p === "vaucer") return "Vauçer";
+  if (p === "check" || p === "cheque" || p === "cek" || p === "çek") return "Çek";
+  if (p === "sms") return "SMS";
+  if (p === "kredi" || p === "borxh") return "Kredi";
+  if (p === "cash" || p === "para" || p === "gotovina" || p === "kesh") return "KESH";
+  return String(paymentMethod);
+}
+
 function formatTotalLine(total, width) {
   const totalLabel = "TOTALI:";
   const totalVal = `${formatMoney(total)} EUR`;
@@ -239,9 +255,7 @@ function buildReceiptLineItems({
   const totalLine = formatTotalLine(total, w);
   lines.push(markedTotal ? `^R^B${totalLine}` : totalLine);
 
-  const paymentLabel = kind === "final"
-    ? (String(paymentMethod || "").toLowerCase() === "karte" ? "Kartë" : paymentMethod ? "Cash" : "")
-    : "";
+  const paymentLabel = kind === "final" ? thermalPaymentDisplay(paymentMethod) : "";
   if (paymentLabel) lines.push(`Pagesa: ${paymentLabel}`);
   lines.push(divider(w));
   lines.push(pad("Faleminderit!", w, "center"));
@@ -345,13 +359,59 @@ function buildEscPosInitChunks(opts = {}) {
   return chunks;
 }
 
-/**
- * Rruga LEGACY (si d9cf2c8) — kupon porositë + kupon normal mbylljeje.
- * latinize + ^B/^R/^L si para ndryshimeve fiskale. Pa fiscalEmphasized.
- */
-function buildEscPosFromMarkedLinesLegacy(lines, opts = {}) {
+function consumeReceiptMarkers(s, chunks, resets, opts = {}) {
   const ESC = 0x1b;
   const GS = 0x1d;
+  const lineEmphasis = !!opts.lineEmphasis;
+  const legacyMarkers = !!opts.legacyMarkers;
+  const allowDouble = legacyMarkers
+    ? true
+    : !!(opts.allowDoubleSize || opts.fiscalEmphasized);
+  const applyBold = legacyMarkers ? true : lineEmphasis;
+  while (/^\^[CRLBH]/.test(s)) {
+    if (s.startsWith("^C")) {
+      chunks.push(Buffer.from([ESC, 0x61, 1]));
+      resets.push(Buffer.from([ESC, 0x61, 0]));
+      s = s.slice(2);
+      continue;
+    }
+    if (s.startsWith("^R")) {
+      chunks.push(Buffer.from([ESC, 0x61, 2]));
+      resets.push(Buffer.from([ESC, 0x61, 0]));
+      s = s.slice(2);
+      continue;
+    }
+    if (s.startsWith("^L")) {
+      if (allowDouble) {
+        chunks.push(Buffer.from([GS, 0x21, 0x11]));
+        resets.unshift(Buffer.from([GS, 0x21, 0x00]));
+      }
+      s = s.slice(2);
+      continue;
+    }
+    if (s.startsWith("^H")) {
+      if (lineEmphasis) {
+        chunks.push(Buffer.from([GS, 0x21, 0x01]));
+        resets.unshift(Buffer.from([GS, 0x21, 0x00]));
+      }
+      s = s.slice(2);
+      continue;
+    }
+    if (s.startsWith("^B")) {
+      if (applyBold) {
+        chunks.push(Buffer.from([ESC, 0x45, 1]));
+        resets.unshift(Buffer.from([ESC, 0x45, 0]));
+      }
+      s = s.slice(2);
+      continue;
+    }
+    break;
+  }
+  return s;
+}
+
+function buildEscPosFromMarkedLinesLegacy(lines, opts = {}) {
+  const ESC = 0x1b;
   const chunks = [Buffer.from([ESC, 0x40]), Buffer.from([ESC, 0x74, 16])];
 
   for (const raw of lines) {
@@ -363,27 +423,7 @@ function buildEscPosFromMarkedLinesLegacy(lines, opts = {}) {
       continue;
     }
 
-    if (s.startsWith("^C")) {
-      chunks.push(Buffer.from([ESC, 0x61, 1]));
-      resets.push(Buffer.from([ESC, 0x61, 0]));
-      s = s.slice(2);
-    } else if (s.startsWith("^R")) {
-      chunks.push(Buffer.from([ESC, 0x61, 2]));
-      resets.push(Buffer.from([ESC, 0x61, 0]));
-      s = s.slice(2);
-    }
-
-    if (s.startsWith("^L")) {
-      chunks.push(Buffer.from([GS, 0x21, 0x11]));
-      resets.unshift(Buffer.from([GS, 0x21, 0x00]));
-      s = s.slice(2);
-    }
-
-    if (s.startsWith("^B")) {
-      chunks.push(Buffer.from([ESC, 0x45, 1]));
-      resets.unshift(Buffer.from([ESC, 0x45, 0]));
-      s = s.slice(2);
-    }
+    s = consumeReceiptMarkers(s, chunks, resets, { ...opts, legacyMarkers: true });
 
     s = latinizeForEscPos(s.replace(/\^b/g, ""));
     chunks.push(encodeCp1252(s), Buffer.from("\n", "ascii"), ...resets);
@@ -404,7 +444,6 @@ function buildEscPosFromMarkedLines(lines, opts = {}) {
   const chunks = buildEscPosInitChunks(opts);
   const keepAlbanian = opts.keepAlbanian !== false;
   const fiscalEmph = true;
-  const allowDouble = !!(opts.allowDoubleSize || opts.fiscalEmphasized);
 
   for (const raw of lines) {
     let s = String(raw ?? "");
@@ -415,33 +454,7 @@ function buildEscPosFromMarkedLines(lines, opts = {}) {
       continue;
     }
 
-    while (/^\^[CRLB]/.test(s)) {
-      if (s.startsWith("^C")) {
-        chunks.push(Buffer.from([ESC, 0x61, 1]));
-        resets.push(Buffer.from([ESC, 0x61, 0]));
-        s = s.slice(2);
-        continue;
-      }
-      if (s.startsWith("^R")) {
-        chunks.push(Buffer.from([ESC, 0x61, 2]));
-        resets.push(Buffer.from([ESC, 0x61, 0]));
-        s = s.slice(2);
-        continue;
-      }
-      if (s.startsWith("^L")) {
-        if (allowDouble) {
-          chunks.push(Buffer.from([GS, 0x21, 0x11]));
-          resets.unshift(Buffer.from([GS, 0x21, 0x00]));
-        }
-        s = s.slice(2);
-        continue;
-      }
-      if (s.startsWith("^B")) {
-        s = s.slice(2);
-        continue;
-      }
-      break;
-    }
+    s = consumeReceiptMarkers(s, chunks, resets, opts);
 
     const rawLine = s.replace(/\^b/g, "");
     const lineText = keepAlbanian
@@ -477,7 +490,7 @@ function buildEscPosFromPlainText(text, opts = {}) {
 
   if (!fiscalMode) {
     // LEGACY — si d9cf2c8: latinize në marked; plain = encodeCp1252 pa prepareCp1252
-    if (/\^[BCRL]/.test(body)) {
+    if (/\^[BCRLH]/.test(body)) {
       return buildEscPosFromMarkedLinesLegacy(body.split("\n"), opts);
     }
     const content = body.endsWith("\n") ? body : `${body}\n`;
@@ -489,7 +502,7 @@ function buildEscPosFromPlainText(text, opts = {}) {
     return opts.cut === false ? buf : appendEscPosCut(buf);
   }
 
-  if (/\^[BCRL]/.test(body)) {
+  if (/\^[BCRLH]/.test(body)) {
     return buildEscPosFromMarkedLines(body.split("\n"), opts);
   }
   const content = body.endsWith("\n") ? body : `${body}\n`;
@@ -535,6 +548,7 @@ module.exports = {
   formatTotalLine,
   formatReceiptDateTime,
   formatMoney,
+  thermalPaymentDisplay,
   resolveVenueLine,
   displayReceiptNumber,
   THERMAL_EURO_CHAR,

@@ -17,6 +17,8 @@ const {
   calculateVatTaxBreakdown,
   money2,
   round2,
+  couponVatLetterForTaxpayer,
+  hasTaxpayerVatNumber,
 } = require("./fiscal-vat");
 const { generateFiscalReceipt } = require("./fiscal-print");
 const { signReceipt, verifyReceiptSignature } = require("./fiscal-crypto");
@@ -390,6 +392,33 @@ function dummyItem(name, qty, price, vatNorm) {
 function testVat() {
   const name = "5. VAT";
   try {
+    if (couponVatLetterForTaxpayer("E", "") !== "C") {
+      return fail(name, "pa numër TVSH duhet C");
+    }
+    if (couponVatLetterForTaxpayer("D", "   ") !== "C") {
+      return fail(name, "TVSH bosh duhet C");
+    }
+    if (couponVatLetterForTaxpayer("E", "-") !== "C") {
+      return fail(name, "TVSH '-' duhet C");
+    }
+    if (couponVatLetterForTaxpayer("C", "") !== "C") {
+      return fail(name, "pa TVSH C duhet C");
+    }
+    if (couponVatLetterForTaxpayer("E", "330012345") !== "E") {
+      return fail(name, "me numër TVSH E duhet të mbetet E");
+    }
+    if (couponVatLetterForTaxpayer("D", "330012345") !== "D") {
+      return fail(name, "me numër TVSH D duhet të mbetet D");
+    }
+    if (couponVatLetterForTaxpayer("C", "330012345") !== "C") {
+      return fail(name, "me numër TVSH C duhet të mbetet C");
+    }
+    if (hasTaxpayerVatNumber("") || hasTaxpayerVatNumber("-")) {
+      return fail(name, "numër TVSH bosh nuk duhet të njihet");
+    }
+    if (!hasTaxpayerVatNumber("330012345")) {
+      return fail(name, "numër TVSH i plotë duhet të njihet");
+    }
     const items = [
       dummyItem("Kafe", 2, 1.5, "D"),
       dummyItem("Ushqim", 1, 10, "E"),
@@ -770,8 +799,10 @@ async function testCoupon(opts = {}) {
     }
     const missing = [];
     if (!/NR\.\s*FISKAL:|FISKALNI BR:/i.test(text)) missing.push("NR. FISKAL");
-    if (!/NR\.\s*TVSH:|PDV BR:/i.test(text)) missing.push("NR. TVSH");
-    if (!/TVSH|PDV/i.test(text)) missing.push("TVSH");
+    if (hasTaxpayerVatNumber(settings.taxpayer_vat_number || settings.taxpayer_vat)) {
+      if (!/NR\.\s*TVSH:|PDV BR:|NUMRI I TVSH/i.test(text)) missing.push("NR. TVSH");
+      if (!/TVSH|PDV/i.test(text)) missing.push("TVSH");
+    }
     if (!/PUNETORI:|OPERATORI:|Operator:|Operater:|EMRI I PUNETORIT:/i.test(text)) {
       missing.push("operator");
     }

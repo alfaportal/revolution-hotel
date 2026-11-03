@@ -1537,6 +1537,60 @@ async function printRecepcionKasaThermalReceipt(db, {
   });
 }
 
+async function fiscalizeRecepcionSale({
+  items,
+  total,
+  payment_method,
+  payment_splits = null,
+  waiter_name,
+  operator_id,
+  source_label,
+  receipt_number,
+  discount_amount = 0,
+  subtotal = null,
+  skip_print = false,
+} = {}) {
+  if (!fiscalConfig.isFiscalEnabled()) return null;
+  const tot = Math.round((Number(total) || 0) * 100) / 100;
+  if (!(tot > 0)) return null;
+  const lines = Array.isArray(items) ? items : [];
+  if (!lines.length) return null;
+  const order = db.createCompletedFiscalOrder({
+    items: lines,
+    total: tot,
+    payment_method,
+    payment_splits,
+    waiter_name,
+    source_label,
+  });
+  if (receipt_number) {
+    db.attachDailyLogOrderId(receipt_number, order.id);
+  }
+  try {
+    return await getFiscalMain().processFiscalReceipt(
+      order.id,
+      payment_method || order.payment_method || "cash",
+      {
+        operator_name: waiter_name,
+        operator_id: String(operator_id || "POS"),
+        payment_splits,
+        total_amount: tot,
+        discount_amount: Number(discount_amount) || 0,
+        subtotal: subtotal != null ? Number(subtotal) : tot,
+        skip_print: !!skip_print,
+      },
+    );
+  } catch (fe) {
+    console.warn("[fiscal-main] recepcion:", fe.message);
+    return {
+      ok: false,
+      printed: false,
+      printMessage: fe.message || "Fiskalizimi dështoi",
+      order_id: order.id,
+    };
+  }
+}
+
 function syncCatalogToCloud() {
   cloudAutoSync.scheduleCatalogPush(db);
   notifyWaitersRealtime("menu", { reason: "catalog" });
@@ -1771,7 +1825,8 @@ function isCloudWaiterDisabledSetting() {
 
 function cloudStaffListKey(name, staffRole) {
   const role = db.normalizeStaffRole(staffRole || "kamarier");
-  const cloudRole = role === "recepsion" ? "receptionist" : "waiter";
+  const cloudRole =
+    role === "recepsion" ? "receptionist" : role === "pastrim" ? "housekeeping" : "waiter";
   return `${normalizeStaffName(name)}:${cloudRole}`;
 }
 
@@ -1780,23 +1835,29 @@ function resolveStaffWaiterUrl(cloudRow, staffRow) {
   const links = buildHotelStaffLinks(db);
   if (!staffRow || staffRow.id == null) {
     const role = db.normalizeStaffRole(staffRow?.staff_role || "kamarier");
-    return role === "recepsion" ? links.reception_url : links.waiter_url;
+    if (role === "recepsion") return links.reception_url;
+    if (role === "pastrim") return links.housekeeping_url;
+    return links.waiter_url;
   }
   const localRole = db.normalizeStaffRole(staffRow.staff_role || "kamarier");
   const fromCloud = String(
-    cloudRow?.waiter_url || cloudRow?.reception_url || "",
+    cloudRow?.waiter_url || cloudRow?.reception_url || cloudRow?.housekeeping_url || "",
   ).trim();
   if (fromCloud && cloudRow) {
     const cloudRole = String(cloudRow.role || "waiter").toLowerCase();
     const localIsRecep = localRole === "recepsion";
     const cloudIsRecep = cloudRole === "receptionist";
-    if (localIsRecep === cloudIsRecep) return fromCloud;
+    const localIsHk = localRole === "pastrim";
+    const cloudIsHk = cloudRole === "housekeeping";
+    if (localIsRecep === cloudIsRecep && localIsHk === cloudIsHk) return fromCloud;
   }
   const token = db.ensureStaffWebToken(staffRow.id);
   const { slug, key } = resolveHotelVenueAccess(db);
   const personal = buildStaffPersonalUrl(slug, key, token, localRole);
   if (personal) return personal;
-  return localRole === "recepsion" ? links.reception_url : links.waiter_url;
+  if (localRole === "recepsion") return links.reception_url;
+  if (localRole === "pastrim") return links.housekeeping_url;
+  return links.waiter_url;
 }
 
 function lanInterfaceKind(ifName) {
@@ -3590,9 +3651,7 @@ app.post("/api/login/pin", async (req, res) => {
   const loginMode = normalizePinLoginMode(req.body.login_mode || req.body.mode || "kamarier");
   if (!staffPinPolicy.acceptsLoginPin(pin, loginMode)) {
     return res.status(400).json({
-      gabim: loginMode === "recepsion" || loginMode === "pastrim"
-        ? "PIN duhet të jetë 6 shifra"
-        : "PIN duhet 4 shifra (ose 6 për PIN të vjetër restoranti)",
+      gabim: "PIN duhet 4 shifra (ose 6 për PIN të vjetër)",
     });
   }
   try {
@@ -4777,7 +4836,7 @@ app.post("/api/waiter/shift/validate-recepsion-pin", auth, waiterOrRecepsion, (r
     }
     const pin = String(req.body?.pin ?? "").trim();
     if (!staffPinPolicy.acceptsLoginPin(pin, "recepsion")) {
-      return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra." });
+      return res.status(400).json({ gabim: "PIN duhet 4 shifra (ose 6 për PIN të vjetër)." });
     }
     const staff = db.findStaffByPin(pin);
     if (!staff) return res.status(401).json({ gabim: "PIN i gabuar." });
@@ -4812,7 +4871,7 @@ app.post("/api/waiter/shift/reception-successor", auth, waiterOrRecepsion, (req,
 
     const pin = String(req.body?.pin ?? "").trim();
     if (!staffPinPolicy.acceptsLoginPin(pin, "recepsion")) {
-      return res.status(400).json({ gabim: "PIN duhet të jetë 6 shifra." });
+      return res.status(400).json({ gabim: "PIN duhet 4 shifra (ose 6 për PIN të vjetër)." });
     }
     const toStaff = db.findStaffByPin(pin);
     if (!toStaff) return res.status(401).json({ gabim: "PIN i gabuar." });
@@ -5029,12 +5088,15 @@ app.get("/api/admin/shift-reports", auth, adminOnly, (req, res) => {
       to: req.query.to,
       staff_id: req.query.staff_id,
       staff_role: req.query.staff_role,
+      include_open: true,
     });
     res.json({ ok: true, shifts: rows });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
 });
+
+require("./hotel-advanced-reports-routes").registerAdvancedReportsRoutes(app, auth, adminOnly);
 
 app.get("/api/admin/daily-balance", auth, adminOnly, (req, res) => {
   try {
@@ -5568,12 +5630,38 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       paymentMethod: payInfo.payment_method,
     };
     let printResult = { printed: false, printMessage: "", html: null, coupon_type: couponType };
-    if (fiscalSkip) {
+    let fiscalResult = null;
+    if (fiscalSkip || !fiscalConfig.isFiscalEnabled()) {
       printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal", ...folioPrintOpts });
-    } else if (fiscalConfig.isFiscalEnabled()) {
-      printResult = await printGuestFolioReceipt(db, folio, { couponType: "fiscal", ...folioPrintOpts });
     } else {
-      printResult = await printGuestFolioReceipt(db, folio, { couponType: "thermal", ...folioPrintOpts });
+      const fiscalPack = db.buildCheckoutFiscalItems(result.bill, result.room);
+      if (!(Number(fiscalPack.total_amount) > 0) || !fiscalPack.items.length) {
+        printResult = {
+          printed: false,
+          printMessage: "Nuk ka shumë për kupon fiskal.",
+          html: null,
+          coupon_type: "fiscal",
+        };
+      } else {
+        fiscalResult = await fiscalizeRecepcionSale({
+          items: fiscalPack.items,
+          total: fiscalPack.total_amount,
+          payment_method: payInfo.payment_method,
+          payment_splits: payInfo.payment_splits,
+          waiter_name: processedBy,
+          operator_id: String(req.session.userId || req.session.id || "POS"),
+          source_label: "Check-out dhome",
+          receipt_number: `CO-${result.guest.id}`,
+          discount_amount: fiscalPack.discount_amount,
+          subtotal: fiscalPack.subtotal,
+        });
+        printResult = {
+          printed: !!fiscalResult?.printed,
+          printMessage: fiscalResult?.printMessage || "",
+          html: null,
+          coupon_type: "fiscal",
+        };
+      }
     }
     auditReq(
       req,
@@ -5601,6 +5689,8 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       printMessage: printResult.printMessage || "",
       html: printResult.html || null,
       fiscal_skipped: fiscalSkip,
+      fiscal_receipt: fiscalResult,
+      fiscal_printed: !!fiscalResult?.printed,
     });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -5959,6 +6049,8 @@ app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, async (req, res) =>
     let printMessage = "";
     let html = null;
     let text = null;
+    let fiscalResult = null;
+    let couponType;
     if (req.body?.print_thermal === true) {
       const printResult = await printRecepcionKasaThermalReceipt(db, {
         receipt_number: result.receipt_number,
@@ -5971,12 +6063,29 @@ app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, async (req, res) =>
       printMessage = printResult.printMessage || "";
       html = printResult.html || null;
       text = printResult.text || null;
+      couponType = "thermal";
+    } else {
+      fiscalResult = await fiscalizeRecepcionSale({
+        items: req.body?.items,
+        total: result.total,
+        payment_method: result.payment_method,
+        payment_splits: req.body?.payment_splits,
+        waiter_name: waiterName,
+        operator_id: String(req.session.userId || req.session.id || "POS"),
+        source_label: "Kasa recepsion",
+        receipt_number: result.receipt_number,
+        subtotal: result.total,
+        skip_print: req.body?.skip_print === true,
+      });
+      printed = !!fiscalResult?.printed;
+      printMessage = fiscalResult?.printMessage || "";
+      couponType = fiscalResult ? "fiscal" : undefined;
     }
     auditReq(
       req,
       "Kasa recepsion",
       `${result.receipt_number} · ${result.total}€ · ${result.payment_method}${
-        req.body?.print_thermal ? " · termik" : ""
+        req.body?.print_thermal ? " · termik" : fiscalResult ? " · fiskal" : ""
       }`,
     );
     res.json({
@@ -5986,7 +6095,9 @@ app.post("/api/recepcion/kasa/pay", auth, waiterOrRecepsion, async (req, res) =>
       printMessage,
       html,
       text,
-      coupon_type: req.body?.print_thermal ? "thermal" : undefined,
+      coupon_type: couponType,
+      fiscal_receipt: fiscalResult,
+      fiscal_printed: !!fiscalResult?.printed,
     });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
@@ -6744,6 +6855,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
 
     const sefOn = fiscalConfig.isFiscalEnabled();
     const sefPrintMode = sefOn ? getFiscalMain().getFiscalPrintMode() : "addon";
+    const skipPrint = req.body?.skip_print === true;
     let printResult = {
       printed: false,
       printMessage: "",
@@ -6754,7 +6866,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
 
     // Termik i zgjedhur → mbyll/printo termik pa kupon fiskal.
     // SEF replace → skip VETËM kuponin normal të MBYLLJES. Order ticket nuk preket këtu.
-    if (fiscalSkip || getFiscalMain().shouldPrintClosingNormalReceipt()) {
+    if (!skipPrint && (fiscalSkip || getFiscalMain().shouldPrintClosingNormalReceipt())) {
       printResult = await printClosedTableReceipt(db, {
         order,
         receipt,
@@ -6780,6 +6892,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
             discount_amount: pricing?.discount_total,
             total_amount: order.total,
             payment_splits: payInfo.payment_splits,
+            skip_print: skipPrint,
           }
         );
       } catch (fe) {
@@ -6814,6 +6927,7 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       receipt_source: printResult.source,
       fiscal_receipt: fiscalResult,
       fiscal_skipped: fiscalSkip,
+      skip_print: skipPrint,
       sef_print_mode: sefPrintMode,
     });
   } catch (e) {
@@ -8326,7 +8440,12 @@ app.get("/api/staff", auth, adminOnly, async (_req, res) => {
     }
   }
   const byStaffKey = new Map(
-    cloudWaiters.map(w => [cloudStaffListKey(w.name, w.role === "receptionist" ? "recepsion" : "kamarier"), w]),
+    cloudWaiters.map(w => {
+      const r = String(w.role || "waiter").toLowerCase();
+      const local =
+        r === "receptionist" ? "recepsion" : r === "housekeeping" ? "pastrim" : "kamarier";
+      return [cloudStaffListKey(w.name, local), w];
+    }),
   );
   const staffRows = db.getStaff();
   const staffById = new Map(staffRows.map((s) => [Number(s.id), s]));
@@ -8359,7 +8478,12 @@ app.post("/api/staff", auth, adminOnly, (req, res) => {
   try {
     const created = db.addStaff(name, pin, staff_role);
     syncCatalogToCloud();
-    void cloudSync.pushStaffAsync(db, [{ name: String(name).trim(), pin: String(pin).trim(), active: true }]);
+    void cloudSync.pushStaffAsync(db, [{
+      name: String(name).trim(),
+      pin: String(pin).trim(),
+      active: true,
+      staff_role,
+    }]);
     const full = db.getStaff().find(s => Number(s.id) === Number(created.id));
     const waiter_url = resolveStaffWaiterUrl(null, full || { id: created.id, web_token: created.web_token });
     res.json({ ok: true, staff_id: created.id, waiter_url });
@@ -8391,7 +8515,12 @@ app.put("/api/staff/:id/pin", auth, adminOnly, (req, res) => {
     db.updateStaffPin(id, pin);
     const row = db.getStaff().find((s) => Number(s.id) === id);
     syncCatalogToCloud();
-    void cloudSync.pushStaffAsync(db, row ? [{ name: row.name, pin: String(pin).trim(), active: !!row.active }] : undefined);
+    void cloudSync.pushStaffAsync(db, row ? [{
+      name: row.name,
+      pin: String(pin).trim(),
+      active: !!row.active,
+      staff_role: row.staff_role,
+    }] : undefined);
     const full = db.getStaff().find(s => Number(s.id) === id);
     res.json({
       ok: true,
@@ -9655,6 +9784,49 @@ function handleGetFiscalSettingsSlash(req, res) {
   }
 }
 
+app.get("/api/fiscal/business-logo", auth, adminOnly, (_req, res) => {
+  try {
+    const { hasBusinessLogo } = require("./fiscal/fiscal-logo");
+    res.json({ ok: true, has_logo: hasBusinessLogo() });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/fiscal/business-logo/file", auth, adminOnly, (_req, res) => {
+  try {
+    const { hasBusinessLogo, getBusinessLogoPath } = require("./fiscal/fiscal-logo");
+    if (!hasBusinessLogo()) {
+      return res.status(404).json({ ok: false, gabim: "Nuk ka logo" });
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.type("png");
+    res.sendFile(getBusinessLogoPath());
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.put("/api/fiscal/business-logo", auth, adminOnly, (req, res) => {
+  try {
+    const { saveBusinessLogoPng } = require("./fiscal/fiscal-logo");
+    const raw = req.body?.png_base64 || req.body?.image_base64 || "";
+    const saved = saveBusinessLogoPng(raw);
+    res.json(saved);
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.delete("/api/fiscal/business-logo", auth, adminOnly, (req, res) => {
+  try {
+    const { removeBusinessLogo } = require("./fiscal/fiscal-logo");
+    res.json(removeBusinessLogo());
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.get("/api/fiscal-settings", auth, adminOnly, handleGetFiscalSettingsLegacy);
 app.get("/api/fiscal/settings", auth, adminOnly, handleGetFiscalSettingsSlash);
 
@@ -9905,7 +10077,7 @@ app.post("/api/fiscal/onboard-atk", auth, adminOnly, async (req, res) => {
         ? { fiscalization_number: String(body.fiscalization_number).trim() }
         : {}),
       ...(body.application_id != null && String(body.application_id).trim() !== ""
-        ? { application_id: String(body.application_id).trim() }
+        ? { application_id: String(body.application_id).replace(/[\s.]+/g, "") }
         : {}),
       ...(body.atk_api_url != null && String(body.atk_api_url).trim() !== ""
         ? { atk_api_url: String(body.atk_api_url).trim() }
@@ -10287,8 +10459,8 @@ app.post("/api/fiscal/short-periodic-report", auth, adminOnly, async (req, res) 
     if (!req.body?.skip_print) {
       try {
         const pr = await getFiscalMain().printFiscalReportText(text, {
-          reportDetails: details,
-          reportMode: "PERIODIC",
+          reportDetails: { ...details, mode: "SHORT_PERIODIC" },
+          reportMode: "SHORT_PERIODIC",
           operatorId,
         });
         printed = !!pr.printed;
@@ -10335,8 +10507,8 @@ app.post("/api/fiscal/monthly-memory-report", auth, adminOnly, async (req, res) 
     if (!req.body?.skip_print) {
       try {
         const pr = await getFiscalMain().printFiscalReportText(text, {
-          reportDetails: { ...details, mode: "MONTHLY" },
-          reportMode: "PERIODIC",
+          reportDetails: { ...details, mode: "MONTHLY_MEMORY" },
+          reportMode: "MONTHLY_MEMORY",
           operatorId,
         });
         printed = !!pr.printed;
@@ -10440,6 +10612,7 @@ async function postFiscalReceiptEmailHandler(req, res) {
     }
     res.json({
       ok: true,
+      queued: !!result.queued,
       nuikf: result.nuikf,
       email: result.email,
       message: result.message || "Kuponi u dërgua me email.",
@@ -10452,6 +10625,7 @@ async function postFiscalReceiptEmailHandler(req, res) {
 
 app.post("/api/fiscal/receipts/:id/email", auth, adminOnly, postFiscalReceiptEmailHandler);
 app.post("/api/fiscal-receipts/:id/email", auth, adminOnly, postFiscalReceiptEmailHandler);
+app.post("/api/staff/fiscal/receipts/:id/email", auth, staffOrAdmin, postFiscalReceiptEmailHandler);
 
 /** Reprint origjinal (pas Preview) — pa INSERT të ri; mbështet print_text nga preview si BIZNES. */
 async function postFiscalReceiptPrintHandler(req, res) {
@@ -10595,7 +10769,7 @@ app.get("/api/fiscal/receipts/lookup", auth, adminOnly, (req, res) => {
 });
 
 /** Print preview + QR (pa printim letre) */
-app.get("/api/fiscal/receipts/:id/preview", auth, adminOnly, async (req, res) => {
+async function getFiscalReceiptPreviewHandler(req, res) {
   try {
     if (!fiscalConfig.isFiscalEnabled()) {
       return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
@@ -10614,7 +10788,10 @@ app.get("/api/fiscal/receipts/:id/preview", auth, adminOnly, async (req, res) =>
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message, gabim: e.message });
   }
-});
+}
+
+app.get("/api/fiscal/receipts/:id/preview", auth, adminOnly, getFiscalReceiptPreviewHandler);
+app.get("/api/staff/fiscal/receipts/:id/preview", auth, staffOrAdmin, getFiscalReceiptPreviewHandler);
 
 /** Kopje kuponi — print me shënimin KOPJE E KUPONIT */
 app.post("/api/fiscal/receipts/:id/print-copy", auth, adminOnly, async (req, res) => {
@@ -10995,6 +11172,48 @@ app.get("/api/fiscal-enabled", auth, (_req, res) => {
   } catch (e) {
     console.warn("[fiscal-enabled] ERROR:", e.message);
     res.json({ enabled: false, language: "sq", methods: [], default: "cash" });
+  }
+});
+
+app.get("/api/fiscal/time-sync", auth, async (_req, res) => {
+  try {
+    const {
+      fetchServerTimeMs,
+      getTimeSyncStatus,
+      startFiscalTimeSyncMonitor,
+    } = require("./fiscal/fiscal-time-sync");
+    startFiscalTimeSyncMonitor();
+    const hit = await fetchServerTimeMs();
+    const wall = Date.now();
+    let driftMs = 0;
+    let reachable = false;
+    let source = null;
+    if (hit && Number.isFinite(hit.ms)) {
+      reachable = true;
+      source = hit.source;
+      driftMs = hit.ms - wall;
+    } else {
+      const st = getTimeSyncStatus();
+      driftMs = Number(st.drift_ms) || 0;
+      source = st.last_sync_source || null;
+      reachable = !!st.synced;
+    }
+    const offsetMin = new Date().getTimezoneOffset();
+    const timezoneOk = offsetMin === -60 || offsetMin === -120;
+    const timeOk = Math.abs(driftMs) <= 2 * 60 * 1000;
+    const alarm = !timeOk || !timezoneOk;
+    res.json({
+      ok: true,
+      alarm,
+      time_ok: timeOk,
+      timezone_ok: timezoneOk,
+      drift_ms: driftMs,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      source,
+      reachable,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, alarm: true });
   }
 });
 

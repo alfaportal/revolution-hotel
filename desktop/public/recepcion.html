@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
   <link rel="stylesheet" href="/css/recepcion-truffle.css?v=2">
   <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=1">
+  <script src="/js/staff-cloud-disabled.js"></script>
   <style>
     .recepcion-shell { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
@@ -515,9 +516,71 @@
       font-weight: 700;
       opacity: 0.95;
     }
+    #waiter-fiscal-alerts {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 12000;
+    }
+    #atk-time-alarm {
+      display: none;
+      padding: 10px 18px;
+      background: #7f1d1d;
+      color: #fecaca;
+      font-weight: 800;
+      font-size: 1rem;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .offline-pending-banner {
+      display: none;
+      padding: 7px 18px;
+      background: #dc2626;
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1.35;
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+    }
+    .offline-pending-banner.visible { display: block; }
+    .offline-pending-banner-foot {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 12000;
+    }
+    #atk-time-ok {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      margin-right: 8px;
+      font-size: 0.72rem;
+      color: #22c55e;
+      font-weight: 650;
+    }
+    #atk-time-ok .atk-time-ok-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: inline-block;
+    }
+    body.recep-embed-kasa #waiter-fiscal-alerts,
+    body.recep-embed-kasa #footer-offline-queue,
+    body.recep-embed-kasa #atk-time-ok {
+      display: none !important;
+    }
   </style>
 </head>
-<body class="waiter-screen staff-cloud-ui-off">
+<body class="waiter-screen">
+  <div id="waiter-fiscal-alerts">
+    <div id="atk-time-alarm" role="alert" aria-live="assertive">ORA NUK ËSHTË E SINKRONIZUAR ME ATK!</div>
+    <div class="offline-pending-banner" id="offline-pending-banner" role="status" aria-live="polite" aria-hidden="true"></div>
+  </div>
   <div id="ekrani-recepcion" class="waiter-shell recepcion-shell">
     <aside class="waiter-sidebar">
       <div class="waiter-sidebar-top">
@@ -572,6 +635,7 @@
           </div>
         </div>
         <span class="app-version-pill" id="recep-app-version" hidden></span>
+        <span id="atk-time-ok"><span class="atk-time-ok-dot" aria-hidden="true"></span>ATK</span>
         <a href="/kasa-recepcion.html" class="btn btn-primary btn-sm">Kasa (arka)</a>
         <button type="button" class="btn btn-shift-close btn-sm" id="btn-rc-mbyll-nderrimin">Mbyll ndërrimin</button>
         <div class="waiter-topbar-time" id="recep-clock">--:--</div>
@@ -965,7 +1029,7 @@
         <div><dt>Cash / Kartë</dt><dd id="rc-successor-cash-card">—</dd></div>
         <div><dt>Paratë në arkë (numëruar)</dt><dd id="rc-successor-closing-cash">0.00 €</dd></div>
       </dl>
-      <label class="shift-close-label" for="rc-successor-pin">PIN recepsionistit (6 shifra)</label>
+      <label class="shift-close-label" for="rc-successor-pin">PIN recepsionistit (4 shifra)</label>
       <input type="password" class="rc-successor-pin" id="rc-successor-pin" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]*" placeholder="••••••">
       <label class="shift-close-label">Paratë në kuletë (fillimi i ndërrimit)</label>
       <div class="shift-amount-display" id="rc-successor-open-display">€0</div>
@@ -1153,6 +1217,7 @@
   <script src="/js/i18n-client.js"></script>
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
   <script src="/js/fiscal-mixed-payment.js?v=1"></script>
+  <script src="/js/fiscal-offline-status.js?v=3"></script>
   <script>
     (function guardRecepsionSession() {
       const embedKasa = new URLSearchParams(window.location.search).get("embed") === "kasa";
@@ -3608,9 +3673,9 @@
         }
         return;
       }
-      if (pin.length !== 6) {
+      if (pin.length !== 4 && pin.length !== 6) {
         if (msg) {
-          msg.textContent = "PIN duhet të jetë 6 shifra.";
+          msg.textContent = "PIN duhet 4 shifra (ose 6 për PIN të vjetër).";
           msg.hidden = false;
         }
         return;
@@ -4461,9 +4526,11 @@
         },
       });
       window.StaffOfflineRetryQueue?.updateBadge?.();
+      if (!embedKasa && typeof initAtkTimeSyncUi === "function") initAtkTimeSyncUi();
     })();
     }
   </script>
+  <div class="offline-pending-banner offline-pending-banner-foot" id="footer-offline-queue" role="status" aria-live="polite" aria-hidden="true"></div>
   <div id="lan-status-bar" class="lan-status-bar lan-disconnected" aria-live="polite">
     <span class="lan-status-dot" aria-hidden="true"></span>
     <span class="lan-status-label">Pa lidhje</span>

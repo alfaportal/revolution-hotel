@@ -333,7 +333,7 @@ async function onboardPosAtAtk(settings) {
     "BranchID"
   );
   const applicationId = parseUIntField(
-    requireSetting(settings, "application_id", "ApplicationID"),
+    String(requireSetting(settings, "application_id", "ApplicationID")).replace(/[\s.]+/g, ""),
     "ApplicationID"
   );
   const baseUrl = normalizeBaseUrl(requireSetting(settings, "atk_api_url", "URL ATK"));

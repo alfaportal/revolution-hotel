@@ -1,4 +1,4 @@
-﻿/**
+/**
  * fiscal/fiscal-print.js — HAPI 6: gjenerimi i tekstit të kuponit fiskal (layout ATK).
  * NUK printon — vetëm kthen stringun. Thirret kur isFiscalEnabled()=true.
  * ESC/POS: ESC E/G (bold) për krejt; emri biznesit bold + madhësi NORMALE (pa GS ! 0x11).
@@ -11,6 +11,7 @@ const {
   normalizeUnitPrice,
   getVatNormLetter,
   calculateVatTaxBreakdown,
+  hasTaxpayerVatNumber,
 } = require("./fiscal-vat");
 const { getSefIdentifier, generateNUIKF } = require("./fiscal-numbering");
 const { formatHashShort } = require("./fiscal-hash-chain");
@@ -161,7 +162,7 @@ function appendAtkCenterLine(lines, text, width) {
 
 /** Çmimi njësi — 2 presje + suffix EUR */
 function formatAtkUnitPrice(price) {
-  return `${moneyPrint(price)}${ATK_EURO_SUFFIX}`;
+  return `${money4Print(price)}${ATK_EURO_SUFFIX}`;
 }
 
 /** Çmimi për shfaqje në kupon — çmimi i raftit / bruto, jo neto 4-presje. */
@@ -170,13 +171,13 @@ function resolveAtkReceiptUnitPrice(item, opts = {}) {
   const ls = Number(item.line_surcharge_amount) || 0;
   const useGross = !!opts.gross || ld > 0 || ls > 0;
   if (useGross) {
-    return round2Print(itemGrossUnit(item));
+    return round4(itemGrossUnit(item));
   }
   const shelf =
     item?.base_price != null && Number(item.base_price) > 0
       ? Number(item.base_price)
       : itemUnit(item);
-  return round2Print(shelf);
+  return round4(shelf);
 }
 
 function paymentLabelSq(method) {
@@ -285,14 +286,25 @@ function moneyPrint(value) {
   return round2Print(n).toFixed(2);
 }
 
+function money4Print(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0.00";
+  let s = round4(n).toFixed(4);
+  s = s.replace(/0+$/, "").replace(/\.$/, "");
+  const i = s.indexOf(".");
+  if (i < 0) return s + ".00";
+  if (s.length - i - 1 === 1) return s + "0";
+  return s;
+}
+
 function formatUnitPricePrint(price) {
-  return moneyPrint(price);
+  return money4Print(price);
 }
 
 function formatQtyPrint(qty) {
   const n = normalizeQty(qty);
   if (Number.isInteger(n)) return String(n);
-  return moneyPrint(n);
+  return n.toFixed(3);
 }
 
 function parseJsonField(raw, fallback) {
@@ -684,7 +696,7 @@ function formatItemRow(item, width = WIDTH, opts = {}) {
   const unitStr = formatUnitPricePrint(unit);
   const valStr = moneyPrint(lineTotal);
   const letter = itemVatLetter(item);
-  const qtyStr = formatQtyPrint(qty);
+  const qtyStr = formatQtyPrint(item?.qty ?? item?.quantity ?? qty);
   const tail = `${qtyStr}  ${unitStr}  ${valStr}  ${letter}`;
   const nameMax = Math.max(4, width - tail.length - 1);
   let name = String(item.name || item.emri || "").trim() || "-";
@@ -865,45 +877,17 @@ function formatAtkMoneyEuro(v) {
 
 /** Etiketë bold (^B) — vetëm markerët ^ (jo ESC raw) që printeri i njeh. */
 function padLineBoldLabelNormalAmount(label, amount, width = WIDTH) {
-  return padLine(label, amount, width);
+  const l = String(label ?? "");
+  const r = String(amount ?? "");
+  const gap = Math.max(1, width - l.length - r.length);
+  return `^B${l}${" ".repeat(gap)}${r}`;
 }
 
 function formatAtkUljeLabel(meta, amount, baseAmount) {
-  const type = meta?.type;
-  const value = Number(meta?.value);
-  if (isPercentDiscountType(type) && value > 0) {
-    return `${t("discount_cart")} ${value}%`;
-  }
-  if (String(type || "").toLowerCase() === "value" && value > 0) {
-    return `${t("discount_cart")} ${moneyAmt(value)}`;
-  }
-  const inferred = inferPercentFromAmount(amount, baseAmount);
-  if (inferred != null) return `${t("discount_cart")} ${inferred}%`;
   return t("discount_cart");
 }
 
 function formatAtkLineUljeLabel(meta, amount, baseAmount) {
-  const type = meta?.type;
-  let value = Number(meta?.value);
-  if (isPercentDiscountType(type) && value > 0) {
-    if (value > 0 && value <= 1) value = Math.round(value * 10000) / 100;
-    const pct =
-      Number.isInteger(value) || Math.abs(value - Math.round(value)) < 0.001
-        ? Math.round(value)
-        : Math.round(value * 100) / 100;
-    return `${t("discount_line_word")} ${pct}%`;
-  }
-  if (String(type || "").toLowerCase() === "value" && value > 0) {
-    return `${t("discount_line_word")} ${moneyAmt(value)}`;
-  }
-  const inferred = inferPercentFromAmount(amount, baseAmount);
-  if (inferred != null) {
-    const pct =
-      Number.isInteger(inferred) || Math.abs(inferred - Math.round(inferred)) < 0.001
-        ? Math.round(inferred)
-        : inferred;
-    return `${t("discount_line_word")} ${pct}%`;
-  }
   return t("discount_line_word");
 }
 
@@ -954,13 +938,13 @@ function couponTitleForReceiptType(rt) {
 }
 
 function formatOriginalCouponRefLine(original, fallback = {}) {
-  const totalNum =
-    original?.total_number ??
-    fallback.original_total_number ??
-    fallback.original_total ??
+  const dailyNum =
+    original?.daily_number ??
+    fallback.original_daily_number ??
+    fallback.original_daily ??
     null;
-  if (totalNum === null || totalNum === "") return "";
-  const nr = formatAtkSerialNumber(totalNum);
+  if (dailyNum === null || dailyNum === "") return "";
+  const nr = formatAtkDailyNumber(dailyNum);
   const d = formatAtkDateSlash(
     original?.fiscal_date ||
       fallback.original_fiscal_date ||
@@ -976,33 +960,9 @@ function formatOriginalCouponRefLine(original, fallback = {}) {
   return `${t("atk_coupon_nr")} ${nr} ${t("atk_date_label")}: ${d} ${tm}`;
 }
 
-/** Kthim — NR. dhe DATE në rreshta të veçantë (Shtojca F). */
-function appendOriginalCouponRefLines(lines, width, original, fallback = {}, opts = {}) {
-  const totalNum =
-    original?.total_number ??
-    fallback.original_total_number ??
-    fallback.original_total ??
-    null;
-  if (totalNum === null || totalNum === "") return;
-  const nr = formatAtkSerialNumber(totalNum);
-  const d = formatAtkDateSlash(
-    original?.fiscal_date ||
-      fallback.original_fiscal_date ||
-      fallback.fiscal_date ||
-      ""
-  );
-  const tm = String(
-    original?.fiscal_time ||
-      fallback.original_fiscal_time ||
-      fallback.fiscal_time ||
-      ""
-  ).slice(0, 5);
-  if (opts.splitDate) {
-    lines.push(`${t("atk_coupon_nr")} ${nr}`);
-    lines.push(padLine(t("atk_date_label"), `${d} ${tm}`, width));
-    return;
-  }
-  lines.push(`${t("atk_coupon_nr")} ${nr} ${t("atk_date_label")}: ${d} ${tm}`);
+function appendOriginalCouponRefLines(lines, width, original, fallback = {}) {
+  const line = formatOriginalCouponRefLine(original, fallback);
+  if (line) lines.push(line);
 }
 
 /** Përmbledhje kthimi — TOTALI I KTHIMIT + TOTALI I MBETUR (origjinali ATK). */
@@ -1064,7 +1024,16 @@ function formatAtkItemRow(item, width = WIDTH, opts = {}) {
   let lineTotal = lineTotalAmount(qty, calcUnit);
   if (opts.negative) lineTotal = -Math.abs(lineTotal);
   const letter = itemVatLetter(item);
-  const qtyStr = formatQtyPrint(Math.abs(qty));
+  const rawQty = item?.qty ?? item?.quantity;
+  const qtyForPrint =
+    rawQty == null || rawQty === ""
+      ? Math.abs(qty)
+      : typeof rawQty === "number"
+        ? Math.abs(rawQty)
+        : typeof rawQty === "string" && rawQty.trim().startsWith("-")
+          ? rawQty.trim().slice(1)
+          : rawQty;
+  const qtyStr = formatQtyPrint(qtyForPrint);
   const mid = `${qtyStr} X ${formatAtkUnitPrice(displayUnit)}`;
   const right = `${moneyPrint(lineTotal)} ${letter}`;
   let name = String(item.name || item.emri || "").trim() || "-";
@@ -1160,7 +1129,7 @@ function resolveSefUnitAndPos(fiscal, order) {
 
 function appendAtkHeader(lines, width, ctx) {
   // ^B mbetet në tekst për guard ATK; me lightPrint nuk shtohet ESC bold i rëndë.
-  lines.push(`${ATK_TITLE_CENTER}^B${pad(String(ctx.brandName).toUpperCase(), width, "center")}`);
+  lines.push(`${ATK_TITLE_CENTER}^H^B${pad(String(ctx.brandName).toUpperCase(), width, "center")}`);
   atkGap(lines, 1);
   appendAtkCenterLine(lines, `${t("atk_taxpayer")}: ${legalNameDisplay(ctx.legalName)}`, width);
   if (ctx.unitName) {
@@ -1172,8 +1141,10 @@ function appendAtkHeader(lines, width, ctx) {
   if (ctx.city) appendAtkCenterLine(lines, `${t("atk_place")}: ${ctx.city}`, width);
   appendAtkCenterLine(lines, `NR. NJESISE: ${ctx.unitNumber || "-"}`, width);
   if (ctx.unitPhone) appendAtkCenterLine(lines, `${t("atk_phone")}: ${ctx.unitPhone}`, width);
-  appendAtkCenterLine(lines, `${t("atk_nf_nui")}: ${ctx.nui || "-"}`, width);
-  appendAtkCenterLine(lines, `${t("atk_vat_number")}: ${ctx.vatNo || "-"}`, width);
+  lines.push(`^C^B${pad(`${t("atk_nf_nui")}: ${ctx.nui || "-"}`, width, "center")}`);
+  if (hasTaxpayerVatNumber(ctx.vatNo)) {
+    lines.push(`^C^B${pad(`${t("atk_vat_number")}: ${ctx.vatNo}`, width, "center")}`);
+  }
   appendAtkRule(lines, width);
 }
 
@@ -1182,7 +1153,7 @@ function appendAtkTitleAndOperator(lines, width, receiptType, operatorName, posI
   lines.push(formatAtkWorkerLine(operatorName, posId, width));
   atkGap(lines, 1);
   lines.push(
-    `${ATK_TITLE_CENTER}${pad(couponTitleForReceiptType(receiptType), width, "center")}`
+    `${ATK_TITLE_CENTER}^H^B${pad(couponTitleForReceiptType(receiptType), width, "center")}`
   );
 }
 
@@ -1257,27 +1228,23 @@ function resolveAtkPaymentSplits(order, fiscal, paymentMethod, totalPay) {
   return splits;
 }
 
-/** Pagesë e vetme: MENYRA E PAGESES | KESH. E përzier: etiketë + një rresht për çdo mënyrë me shumën. */
 function appendAtkPaymentLines(lines, width, order, fiscal, paymentMethod, totalPay) {
   const splits = resolveAtkPaymentSplits(order, fiscal, paymentMethod, totalPay);
+  lines.push(`^C${pad(t("atk_payment_method"), width, "center")}`);
+  const modeLine = (method, amount) => {
+    lines.push(padThreeCol("", atkPaymentModeShort(method), amount || "", width));
+  };
   if (splits.length >= 2) {
-    lines.push(padLine(t("atk_payment_method"), "", width));
     for (const sp of splits) {
-      lines.push(
-        padLine(atkPaymentModeShort(sp.method), formatAtkMoneyEuro(sp.amount), width)
-      );
+      modeLine(sp.method, formatAtkMoneyEuro(sp.amount));
     }
     return;
   }
   if (splits.length === 1) {
-    const money = formatAtkMoneyEuro(totalPay);
-    const mode = pad(atkPaymentModeShort(splits[0].method), money.length, "left");
-    lines.push(padLine(t("atk_payment_method"), mode, width));
+    modeLine(splits[0].method, "");
     return;
   }
-  const money = formatAtkMoneyEuro(totalPay);
-  const mode = pad(atkPaymentModeShort(paymentMethod), money.length, "left");
-  lines.push(padLine(t("atk_payment_method"), mode, width));
+  modeLine(paymentMethod, "");
 }
 
 function appendAtkTotalsBlock(lines, width, block) {
@@ -1305,7 +1272,7 @@ function appendAtkTotalsBlock(lines, width, block) {
   }
 
   atkGap(lines);
-  lines.push(padLineBoldLabelNormalAmount(t("atk_total_pay"), formatAtkMoneyEuro(totalPay), width));
+  lines.push(`^H${padLineBoldLabelNormalAmount(t("atk_total_pay"), formatAtkMoneyEuro(totalPay), width)}`);
   atkGap(lines);
 
   appendAtkPaymentLines(
@@ -1316,8 +1283,17 @@ function appendAtkTotalsBlock(lines, width, block) {
     paymentMethod,
     totalPay
   );
-  appendAtkVatLines(lines, vatBreak, width, items);
-  lines.push(padLine(t("atk_total_no_vat"), formatAtkMoneyEuro(totalWithoutTax), width));
+  const vatNo =
+    block.vatNo ??
+    fiscal?.taxpayer_vat ??
+    fiscal?.taxpayer_vat_number ??
+    order?.taxpayer_vat ??
+    order?.taxpayer_vat_number ??
+    "";
+  if (hasTaxpayerVatNumber(vatNo)) {
+    appendAtkVatLines(lines, vatBreak, width, items);
+    lines.push(padLine(t("atk_total_no_vat"), formatAtkMoneyEuro(totalWithoutTax), width));
+  }
 }
 
 function appendAtkFooter(lines, width, footer) {
@@ -1340,7 +1316,7 @@ function appendAtkFooter(lines, width, footer) {
     padLine(t("atk_date_time"), `${formatAtkDateSlash(dateStr)} ${timeStr}`, width)
   );
   lines.push(padLine(t("atk_sef_id"), sefId || "-", width));
-  lines.push(`NUIKF: ${nuikf || "-"}`);
+  lines.push(`^BNUIKF: ${nuikf || "-"}`);
   lines.push(
     `^C${pad(`${t("fiscal_coupon_daily_nr")} ${formatAtkDailyNumber(dailyNumber)}`, width, "center")}`
   );
@@ -1512,9 +1488,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
 
   if (isReturn || isCancel) {
     if (isReturn) {
-      appendOriginalCouponRefLines(lines, w, originalReceipt, { ...order, ...fiscal }, {
-        splitDate: true,
-      });
+      appendOriginalCouponRefLines(lines, w, originalReceipt, { ...order, ...fiscal });
     } else {
       const refLine = formatOriginalCouponRefLine(originalReceipt, {
         ...order,
@@ -1623,9 +1597,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
       dailyNumber,
     });
   } else if (isReturn) {
-    appendOriginalCouponRefLines(lines, w, originalReceipt, { ...order, ...fiscal }, {
-      splitDate: !!originalReceipt,
-    });
+    appendOriginalCouponRefLines(lines, w, originalReceipt, { ...order, ...fiscal });
     lines.push(`${ATK_TITLE_CENTER}${pad(t("atk_return_items_title"), w, "center")}`);
     appendAtkItemsBlock(lines, w, items, { negative: true, skipLineDiscount: true });
     const returnTotal = Math.abs(saleCtx.totalPay);

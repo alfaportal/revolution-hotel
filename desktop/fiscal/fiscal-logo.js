@@ -569,13 +569,85 @@ function getFiscalLogoForPrint(opts = {}) {
     };
   }
 
-  // Fallback tekst i stilizuar (center + bold)
   const textBody = Buffer.from(`${FALLBACK_TEXT}\n`, "ascii");
   return {
     mode: "text",
     buffer: Buffer.concat([centerOn, boldOn, textBody, boldOff, centerOff]),
     textMarkers,
   };
+}
+
+const BUSINESS_LOGO_FILENAME = "business-logo.png";
+const BUSINESS_LOGO_MAX_BYTES = 350000;
+const BUSINESS_LOGO_MAX_W = 384;
+const BUSINESS_LOGO_MAX_H = 160;
+
+function getBusinessLogoDir() {
+  const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "restaurant.db");
+  return path.dirname(path.resolve(dbPath));
+}
+
+function getBusinessLogoPath() {
+  return path.join(getBusinessLogoDir(), BUSINESS_LOGO_FILENAME);
+}
+
+function hasBusinessLogo() {
+  try {
+    const p = getBusinessLogoPath();
+    if (!fs.existsSync(p)) return false;
+    return fs.statSync(p).size > 32;
+  } catch {
+    return false;
+  }
+}
+
+function parsePngInputBuffer(raw) {
+  let buf = raw;
+  if (typeof raw === "string") {
+    const s = String(raw).trim();
+    const comma = s.indexOf(",");
+    const b64 = s.startsWith("data:") && comma >= 0 ? s.slice(comma + 1) : s;
+    buf = Buffer.from(b64, "base64");
+  }
+  if (!Buffer.isBuffer(buf) || buf.length < 33 || buf.length > BUSINESS_LOGO_MAX_BYTES) {
+    return null;
+  }
+  if (buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
+    return null;
+  }
+  const decoded = decodePngToRgba(buf);
+  if (!decoded || decoded.width < 8 || decoded.height < 8) return null;
+  return buf;
+}
+
+function saveBusinessLogoPng(raw) {
+  const buf = parsePngInputBuffer(raw);
+  if (!buf) {
+    throw new Error("Logo e pavlefshme — përdor PNG ose JPG");
+  }
+  const dest = getBusinessLogoPath();
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, buf);
+  return { ok: true, has_logo: true, bytes: buf.length };
+}
+
+function removeBusinessLogo() {
+  const dest = getBusinessLogoPath();
+  if (fs.existsSync(dest)) {
+    fs.unlinkSync(dest);
+  }
+  return { ok: true, has_logo: false };
+}
+
+function getBusinessLogoForPrint(opts = {}) {
+  if (!hasBusinessLogo()) return null;
+  const decoded = decodePngToRgba(getBusinessLogoPath());
+  if (!decoded) return null;
+  return buildCenteredRasterPrintBuffer(decoded, {
+    printerName: opts.printerName || "",
+    maxWidthDots: BUSINESS_LOGO_MAX_W,
+    maxHeightDots: BUSINESS_LOGO_MAX_H,
+  });
 }
 
 module.exports = {
@@ -598,4 +670,9 @@ module.exports = {
   buildCenteredRasterPrintFromPng,
   getFiscalLogo,
   getFiscalLogoForPrint,
+  getBusinessLogoPath,
+  hasBusinessLogo,
+  saveBusinessLogoPng,
+  removeBusinessLogo,
+  getBusinessLogoForPrint,
 };

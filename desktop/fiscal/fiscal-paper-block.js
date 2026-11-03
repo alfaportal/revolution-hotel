@@ -8,10 +8,9 @@ const { insertFiscalReceipt, getFiscalReceiptById, fiscalReceiptUpdate } = requi
 const {
   generateNUIKF,
   getSefIdentifier,
-  getNextDailyNumber,
   getNextTotalNumber,
 } = require("./fiscal-numbering");
-const { calculateVatTaxBreakdown, round4, lineTotalAmount, normalizeQty, normalizeUnitPrice } = require("./fiscal-vat");
+const { calculateVatTaxBreakdown, round4, lineTotalAmount, normalizeQty, normalizeUnitPrice, couponVatLetterForTaxpayer } = require("./fiscal-vat");
 const { getFiscalTodayParts, getFiscalNowMs } = require("./fiscal-time-sync");
 const { signReceipt } = require("./fiscal-crypto");
 const { generateFiscalQR } = require("./fiscal-qr");
@@ -96,13 +95,16 @@ function assertFiscalOn() {
   }
 }
 
-function normalizeItems(items) {
+function normalizeItems(items, taxpayerVatNumber) {
   const { resolveItemUnitCategory } = require("./fiscal-item-meta");
   return (Array.isArray(items) ? items : []).map((item) => {
     const letter = String(item.vat_norm || item.vat_letter || "E")
       .trim()
       .toUpperCase();
-    const L = /^[A-E]$/.test(letter) ? letter : "E";
+    const L = couponVatLetterForTaxpayer(
+      /^[A-E]$/.test(letter) ? letter : "E",
+      taxpayerVatNumber
+    );
     const qty = normalizeQty(item.quantity ?? item.qty ?? 1);
     const unitPrice = normalizeUnitPrice(item);
     const meta = resolveItemUnitCategory(item, { authoritativeDb: true });
@@ -518,10 +520,23 @@ function issuePaperBlockCoupon(payload) {
 
   const serialNo = String(payload?.serial_no || "").trim();
   if (!serialNo) {
-    throw new Error("Numri serik i bllokut letër mungon");
+    throw new Error("Numri serik i kuponit mungon");
   }
 
-  const items = normalizeItems(payload?.items);
+  const blockCode = String(
+    payload?.block_code || payload?.block_batch || ""
+  ).trim();
+  if (!blockCode) {
+    throw new Error("Kodi unik i bllokut letër mungon");
+  }
+
+  const settingsForVat = getFiscalSettings();
+  const items = normalizeItems(
+    payload?.items,
+    payload?.taxpayer_vat != null && String(payload.taxpayer_vat).trim() !== ""
+      ? payload.taxpayer_vat
+      : settingsForVat.taxpayer_vat_number
+  );
   if (!items.length) {
     throw new Error("Kuponi kërkon të paktën një artikull");
   }
@@ -550,7 +565,6 @@ function issuePaperBlockCoupon(payload) {
   const operatorName = String(payload.operator_name || "Operator").trim() || "Operator";
   const operatorId = String(payload.operator_id || "POS").trim() || "POS";
   const paymentMethod = String(payload.payment_method || "cash").trim() || "cash";
-  const batchId = getSetting(SETTING_BATCH) || "";
 
   const info = sqlite
     .prepare(
@@ -563,7 +577,7 @@ function issuePaperBlockCoupon(payload) {
     )
     .run(
       serialNo,
-      batchId,
+      blockCode,
       fiscal_date,
       fiscal_time,
       operatorName,
@@ -582,7 +596,7 @@ function issuePaperBlockCoupon(payload) {
 
   logFiscalAction(
     "paper_block_issued",
-    { paper_id: rowId, serial_no: serialNo, total: totalAmount, batch_id: batchId },
+    { paper_id: rowId, serial_no: serialNo, block_code: blockCode, total: totalAmount },
     operatorName,
     operatorId
   );
@@ -595,6 +609,7 @@ function issuePaperBlockCoupon(payload) {
   return {
     id: rowId,
     serial_no: serialNo,
+    block_code: blockCode,
     total_amount: totalAmount,
     fiscal_date,
     fiscal_time,
@@ -638,6 +653,10 @@ function generatePaperBlockSlipText(row, copy = "merchant") {
   lines.push(`TOTALI: ${Number(row.total_amount).toFixed(2)} EUR`);
   lines.push(`Pagesa: ${row.payment_method}`);
   lines.push(hr);
+  const serial = String(row.serial_no || "—").trim() || "—";
+  const block = String(row.block_batch || "—").trim() || "—";
+  lines.push(`NR. SERIK I KUPONIT: ${serial}`);
+  lines.push(`KODI UNIK I BLOKUT: ${block}`);
   lines.push("Fiskalizo ne SEF kur pajisja rikthehet.");
   lines.push("(Dy kopje: konsumator + furnizues)");
   return lines.join("\n");
@@ -660,9 +679,33 @@ function listPaperBlockReceipts({ pendingOnly = false } = {}) {
     .all();
 }
 
-/**
- * Konverton një kupon bllok letër → fiscal_receipts + dërgon te ATK.
- */
+function fiscalDateMatchKeys(fiscalDate) {
+  const raw = String(fiscalDate || "").trim();
+  const keys = [];
+  if (raw) keys.push(raw);
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) keys.push(`${iso[3]}.${iso[2]}.${iso[1]}`);
+  const dmy = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dmy) keys.push(`${dmy[3]}-${dmy[2]}-${dmy[1]}`);
+  return [...new Set(keys)];
+}
+
+function nextDailyNumberForPaperDate(sqlite, fiscalDate) {
+  const keys = fiscalDateMatchKeys(fiscalDate);
+  if (!keys.length) return 1;
+  const ph = keys.map(() => "?").join(", ");
+  const row = sqlite
+    .prepare(
+      `SELECT MAX(CAST(daily_number AS INTEGER)) AS m
+       FROM fiscal_receipts
+       WHERE fiscal_date IN (${ph})
+         AND receipt_type = 'paper_block'`
+    )
+    .get(...keys);
+  const next = (Number(row && row.m) || 0) + 1;
+  return next < 1 ? 1 : next;
+}
+
 async function registerPaperBlockInSef(paperId, opts = {}) {
   assertFiscalOn();
   const id = Number(paperId);
@@ -685,7 +728,7 @@ async function registerPaperBlockInSef(paperId, opts = {}) {
 
   const nuikf = generateNUIKF();
   const sefId = getSefIdentifier() || "";
-  const dailyNumber = getNextDailyNumber();
+  const dailyNumber = nextDailyNumberForPaperDate(sqlite, paper.fiscal_date);
   const totalNumber = getNextTotalNumber();
   const taxpayerNui = settings.taxpayer_nui || settings.developer_nui || "";
   const totalAmount = Number(paper.total_amount) || 0;
@@ -711,11 +754,21 @@ async function registerPaperBlockInSef(paperId, opts = {}) {
 
   let qrPayload = JSON.stringify({ paper_block: true, serial: paper.serial_no });
   try {
-    const qr = await generateFiscalQR({
-      ...signPayload,
-      total: totalAmount,
-      nui: taxpayerNui,
-    });
+    const { buildFiscalQrReceiptData } = require("./fiscal-qr");
+    const qr = await generateFiscalQR(
+      buildFiscalQrReceiptData(
+        {
+          ...signPayload,
+          total_without_tax: paper.total_without_tax,
+          items,
+          vat_breakdown: vatBreak,
+          taxpayer_address: settings.taxpayer_address || "",
+          payment_method: paper.payment_method,
+          operator_id: paper.operator_id,
+        },
+        settings
+      )
+    );
     if (qr?.payload) qrPayload = qr.payload;
   } catch (e) {
     console.warn("[fiscal-paper-block] QR:", e.message);
@@ -841,6 +894,7 @@ module.exports = {
   listPaperBlockReceipts,
   registerPaperBlockInSef,
   registerAllPaperBlockInSef,
+  nextDailyNumberForPaperDate,
   recordSefCriticalFailure,
   clearSefFailureStreak,
   probeSefHealth,

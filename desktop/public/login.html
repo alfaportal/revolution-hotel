@@ -880,7 +880,7 @@
     function pinDigitsHint() {
       const fromServer = Number(staffInjected.pin_digits);
       if (staffInjected.locked && Number.isFinite(fromServer) && fromServer > 0) return fromServer;
-      return selectedPinLoginMode === "recepsion" || selectedPinLoginMode === "pastrim" ? 6 : 4;
+      return 4;
     }
 
     function pinSubmitLengths() {
@@ -902,8 +902,8 @@
         };
       }
       const map = {
-        recepsion: { title: "Recepsioni", pinDigits: 6, recepStyle: true },
-        pastrim: { title: "Pastrimi", pinDigits: 6, recepStyle: true },
+        recepsion: { title: "Recepsioni", pinDigits: 4, recepStyle: true },
+        pastrim: { title: "Pastrimi", pinDigits: 4, recepStyle: true },
         kuzhina: { title: "Kuzhina", pinDigits: 4, recepStyle: false },
         banaku: { title: "Banaku", pinDigits: 4, recepStyle: false },
         kamarier: { title: "Restoranti", pinDigits: 4, recepStyle: false },
@@ -914,8 +914,8 @@
     function pinHintForMode(mode, staffName) {
       const meta = staffZoneMeta(mode);
       if (staffName) return `Shkruani PIN-in tuaj (${meta.pinDigits} shifra) — ${staffName}`;
-      if (mode === "recepsion") return "Shkruani PIN-in e recepsionit (6 shifra)";
-      if (mode === "pastrim") return "Shkruani PIN-in e pastrimit (6 shifra)";
+      if (mode === "recepsion") return "Shkruani PIN-in e recepsionit (4 shifra)";
+      if (mode === "pastrim") return "Shkruani PIN-in e pastrimit (4 shifra)";
       if (mode === "kuzhina") return "Shkruani PIN-in e kuzhinës (4 shifra)";
       if (mode === "banaku") return "Shkruani PIN-in e barit (4 shifra)";
       return "Shkruani PIN-in e restorantit (4 shifra) ose skanoni kartelën RFID";
@@ -940,7 +940,9 @@
         hint.textContent = isStaffOnlyLoginMode
           ? pinHintForMode(selectedPinLoginMode, personalStaffName)
           : (selectedPinLoginMode === "recepsion"
-            ? "Shkruani PIN-in e recepsionit (6 shifra) ose skanoni kartelën RFID"
+            ? "Shkruani PIN-in e recepsionit (4 shifra) ose skanoni kartelën RFID"
+            : selectedPinLoginMode === "pastrim"
+            ? "Shkruani PIN-in e pastrimit (4 shifra) ose skanoni kartelën RFID"
             : "Shkruani PIN-in e restorantit (4 shifra) ose skanoni kartelën RFID");
       }
       persistLoginZone();
@@ -983,7 +985,7 @@
         if (sub) {
           sub.textContent =
             bound === "recepsion"
-              ? "Terminal recepsioni — shkruani PIN-in (6 shifra)."
+              ? "Terminal recepsioni — shkruani PIN-in (4 shifra)."
               : "Terminal restorant — shkruani PIN-in (4 shifra).";
         }
       } catch {
@@ -1394,9 +1396,7 @@
       if (shouldTryPinLogin()) provoPinLogin();
       else {
         const d = pinDigitsHint();
-        shfaqGabim(gabimEl, selectedPinLoginMode === "recepsion"
-          ? "Shkruani 6 shifra PIN (ose përdorni tastierën)."
-          : `Shkruani 4 shifra PIN (ose 6 për PIN të vjetër).`);
+        shfaqGabim(gabimEl, "Shkruani 4 shifra PIN (ose 6 për PIN të vjetër).");
       }
     });
 
@@ -1581,7 +1581,7 @@
         personalStaffId = data.staff_id;
         personalStaffName = data.name || "";
         if (hint && personalStaffName) {
-          hint.textContent = `Link personal — ${personalStaffName}. Shkruani PIN-in tuaj (6 shifra).`;
+          hint.textContent = `Link personal — ${personalStaffName}. Shkruani PIN-in tuaj (4 shifra).`;
         }
       } catch {
         personalWebToken = "";
@@ -1593,12 +1593,7 @@
   <script src="/js/staff-order-alert.js"></script>
   <script src="/js/cloud-status.js"></script>
   <script>
-    if (typeof window.isStaffMobileLoginUi === "function" && window.isStaffMobileLoginUi()) {
-      /* Staf — pa cloud UI/poll (riaktivizo: cloud-staff-access.js STAFF_CLOUD_FEATURES_DISABLED). */
-      document.getElementById("cloud-status-pill")?.style.setProperty("display", "none", "important");
-    } else {
-      initCloudStatusIndicator("cloud-status-pill", { delayMs: 2500 });
-    }
+    initCloudStatusIndicator("cloud-status-pill", { delayMs: 2500 });
   </script>
 </body>
 </html>

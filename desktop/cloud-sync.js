@@ -1252,6 +1252,18 @@ function pinForCloudSync(pin) {
   return /^\d{4,6}$/.test(p) ? p : "";
 }
 
+function staffCloudRole(staffRole, db) {
+  const local =
+    db && typeof db.normalizeStaffRole === "function"
+      ? db.normalizeStaffRole(staffRole)
+      : String(staffRole || "kamarier").trim().toLowerCase();
+  if (local === "recepsion" || local === "receptionist") return "receptionist";
+  if (local === "pastrim" || local === "housekeeping" || local === "sherbimi") {
+    return "housekeeping";
+  }
+  return "waiter";
+}
+
 function buildCatalogPayload(db) {
   const cfg = getConfig(db);
   const settings = db.getSettings();
@@ -1282,6 +1294,10 @@ function buildCatalogPayload(db) {
     name: s.name,
     active: !!s.active,
     pin: pinForCloudSync(s.pin),
+    role: staffCloudRole(s.staff_role || s.role, db),
+    staff_role: typeof db.normalizeStaffRole === "function"
+      ? db.normalizeStaffRole(s.staff_role || s.role)
+      : String(s.staff_role || s.role || "kamarier"),
   }));
 
   let staff_local_links = null;
@@ -1910,12 +1926,20 @@ async function pushStaffAsync(db, staffOverride) {
   if (Array.isArray(staffOverride) && staffOverride.length) {
     const extra = new Map(
       staffOverride
-        .map((s) => [String(s.name || "").trim().toLowerCase(), pinForCloudSync(s.pin)])
-        .filter(([name, pin]) => name && pin),
+        .map((s) => {
+          const name = String(s.name || "").trim().toLowerCase();
+          const pin = pinForCloudSync(s.pin);
+          if (!name || !pin) return null;
+          return [name, {
+            pin,
+            role: staffCloudRole(s.staff_role || s.role, db),
+          }];
+        })
+        .filter(Boolean),
     );
     staff = staff.map((s) => {
-      const pin = extra.get(String(s.name || "").trim().toLowerCase());
-      return pin ? { ...s, pin } : s;
+      const patch = extra.get(String(s.name || "").trim().toLowerCase());
+      return patch ? { ...s, pin: patch.pin, role: patch.role || s.role } : s;
     });
   }
   const localWithPin = staff.filter((s) => /^\d{4,6}$/.test(String(s.pin || ""))).length;

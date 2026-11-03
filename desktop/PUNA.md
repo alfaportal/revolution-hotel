@@ -1,5 +1,223 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-03 — Ndërrimet në Ditar/Raporte + raporte të avancuara
+
+KAFENE nuk i sjell ndërrimet e hapura te Ditari dhe s’ka skedën «Raporte të avancuara». HOTEL i shtoi të dyja.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `listShiftReports` me ndërrim të hapur; `shifts` te Ditari dhe Raportet |
+| `desktop/server.js` | `/api/admin/shift-reports` përfshin të hapurit; rrugët `/api/reports/advanced/*` |
+| `desktop/public/admin.html` | tabela e ndërrimeve te Ditari; «Hapur» te Raportet; skeda me 7 nën-skeda |
+| `desktop/public/js/hotel-advanced-reports-ui.js` | ngarkim, CSV, PDF |
+| `desktop/hotel-advanced-reports.js` | javore, mujore, krahasime, trende, qarkullim, punonjës, ndërrime |
+| `desktop/hotel-advanced-reports-export.js` | CSV + HTML për print |
+| `desktop/hotel-advanced-reports-routes.js` | vetëm kur `advancedReports` |
+| `desktop/package-features.js` | `advancedReports` vetëm për pako_3 |
+| `desktop/package.json` | tre modulet në paketim |
+
+**Prova:** `node --check` mbi skedarët e prekur. Pa hapje të databazës. Pa build.
+
+**Nuk u prek:** fiskalizimi, ATK, Kontabilisti, KAFENE. Barazimi ditor mbetet vetëm me ndërrime të mbyllura.
+
+## 2026-11-03 — QR raporteve, pagesa termike, backup
+
+KAFENE ende e shkruan «Cash» te kuponi termik dhe s’e nis backup-in menjëherë. HOTEL mori pagesën reale dhe `tick()` para vonesës 5s. Raporti i shkurtër dhe mujori dërgojnë `reportDetails` me modalitetin e KAFENE.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/server.js` | SHORT_PERIODIC dhe MONTHLY_MEMORY te QR |
+| `desktop/receipt-text.js` | `thermalPaymentDisplay` |
+| `desktop/receipt-html.js` | e njëjta etiketë pagese |
+| `desktop/auto-backup.js` | `tick()` para `setTimeout(tick, 5000)` |
+
+**Prova:** cash→KESH, debit_card→Kartë Debit, sms→SMS. Pa build. Pa git.
+
+**Nuk u prek:** ATK auto-send, KAFENE, Kontabilisti.
+
+## 2026-11-03 — Sasia si BIZNES
+
+`formatQtyPrint` u kthye si BIZNES: numër i plotë pa presje, sasi me presje `toFixed(3)`. BIZNES nuk u prek.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-print.js` | `1` → `1`, `1.5` → `1.500` |
+
+**Prova:** lexim i funksionit. Pa build. Pa git.
+
+## 2026-11-03 — Sasia pa toFixed(3)
+
+`formatQtyPrint` nuk e detyron më sasinë në 3 shifra. Copë `1` mbetet `1`. Tekst i ruajtur `0.500` mbetet `0.500`. Numër `1.5` printohet `1.5`, jo `1.500`. Çmimi i njësisë mbetet `money4Print`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-print.js` | u hoq `toFixed(3)` te sasia |
+
+Email-i në radhë dhe «Paguaj pa letër» ishin tashmë. Pa build. Pa git.
+
+## 2026-11-03 — Sasia 3 shifra, email në radhë, Paguaj pa letër
+
+KAFENE në disk ende e printon sasinë me 2 shifra dhe s’e ka `fiscal-receipt-email.js`. HOTEL mori sjelljen e kërkuar.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-print.js` | sasia jo e plotë → `toFixed(3)` (1.500) |
+| `desktop/fiscal/fiscal-receipt-email.js` | `fiscal_email_queue` kur email-i dështon |
+| `desktop/fiscal/fiscal-offline.js` | timer 60s para kthimit të ATK (ATK mbetet OFF) |
+| `desktop/fiscal/fiscal-main.js` | QR i kuponit përfshin `png_base64` |
+| `desktop/server.js` | `skip_print` te kamarieri dhe kasa; email/preview për stafin |
+| `desktop/public/waiter.html` | butoni «Paguaj pa letër» + dritarja e kuponit |
+| `desktop/public/kasa-recepcion.html` | e njëjta te kasa e recepsionit |
+
+**Prova:** 1 → `1`, 1.5 → `1.500`; timer-i i email-it është para `atk_auto_send OFF`. Pa build. Pa git. Pa klik në app.
+
+**Nuk u prek:** dërgimi automatik ATK, Kontabilisti, KAFENE.
+
+## 2026-11-03 — Mesazhet ATK + butoni Raporti Z
+
+KAFENE dhe HOTEL i kishin tashmë raportin Z (`ATK_Z_REPORT_PATH`, pa HTTP nëse mungon) dhe magjistarin «Riparim SEF (48h)» me rrugët. Dallimi: mesazhi 401 dhe emri i butonit.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-atk-api.js` | 401: certifikata + Application ID, si KAFENE |
+| `desktop/public/admin.html` | butoni «Dërgo Raportin Z te ATK» |
+
+**Prova:** harta e mesazheve 400–504 përputhet me KAFENE; ruta Z dhe wizard mbeten. Pa build. Pa git.
+
+**Nuk u prek:** dërgimi automatik ATK, `ATK_Z_REPORT_PATH` (mbetet bosh = pa HTTP), KAFENE, Kontabilisti.
+
+## 2026-11-03 — e-kuponi + www.revolution-pos.com
+
+Pas logos RKS/MF, i njëjti bllok te kuponi dhe te raporti: rreshti «e-kuponi», pastaj `www.revolution-pos.com` i qendërzuar. Vija `===` nuk ishte. KAFENE ende e printon vijën dhe s’e ka faqen.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-main.js` | `buildEkuponiEscPosAfterLogo` shton rreshtin e faqes |
+
+**Prova:** te kodi, logo pastaj funksioni te `printFiscalBundle` dhe `printFiscalReportText`; rreshti 22 shkronja qendër në 42. Pa build. Pa git.
+
+**Nuk u prek:** ATK, logoja, QR, Kontabilisti, KAFENE.
+
+## 2026-11-03 — Serbishtja + QR i plotë + e-kuponi
+
+KAFENE në disk ende ka `KES`, `PORESKI PLATILAC`, `Ime jedinice`, QR pa artikuj, dhe vijën `===` pas logos. HOTEL mori tekstet e sakta dhe QR me artikuj/TVSH/totale. «e-kuponi» pas logos ishte tashmë te kuponi dhe te raporti; vija `===` nuk ishte.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-i18n.js` | sr: GOTOVINA, PORESKI OBVEZNIK, Naziv jedinice |
+| `desktop/fiscal/fiscal-qr.js` | `buildFiscalQrReceiptData`; raporti e përdor (artikuj + TVSH + totale); hapësira mbetet `\n` |
+| `desktop/fiscal/fiscal-main.js` | QR i shitjes dhe i kuponit provë me të dhëna të plota |
+| `desktop/fiscal/fiscal-paper-block.js` | QR i bllokut të letrës me artikuj dhe TVSH |
+| `desktop/fiscal/fiscal-exchange.js` | QR i kthimit me rreshtin e plotë |
+| `desktop/fiscal/fiscal-receipts-list.js` | preview QR nga `buildFiscalQrReceiptData` |
+
+**Prova:** artikull «Kafe» + TVSH E 1.91 + total 12.50 në objektin e QR; shqipja mbeti KESH; `e-kuponi` thirret te kuponi dhe te raporti; pa `divider`. Pa build. Pa git.
+
+**Nuk u prek:** dërgimi ATK, logoja, çelësat, Kontabilisti, KAFENE.
+
+## 2026-11-03 — Bllok letre: numër ditor i ndarë + ApplicationID me pika
+
+KAFENE në disk ende përdor `getNextDailyNumber()` dhe ApplicationID pa pika. HOTEL mori sjelljen e kërkuar: numër i veçantë vetëm për `paper_block` të datës së shitjes, dhe pika vetëm në ekran.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/fiscal/fiscal-paper-block.js` | `nextDailyNumberForPaperDate(sqlite, paper.fiscal_date)` në vend të `getNextDailyNumber()` |
+| `desktop/fiscal/fiscal-config.js` | `application_id` ruhet/lexohet pa pika dhe pa hapësira |
+| `desktop/fiscal/fiscal-onboarding.js` | ApplicationID te ATK pa pika (parse i plotë) |
+| `desktop/server.js` | onboard heq pikat nga `application_id` para dërgimit |
+| `desktop/public/admin.html` | syri i ApplicationID shfaq `756.192.120.167`; `read()` kthen numrin e thatë |
+
+**Prova:** skript në memorie — data 2026-10-01 me shitje të rregullt 50 dhe paper_block 4 → numri tjetër 5; `756192120167` → `756.192.120.167`; pas heqjes së pikave `parseInt` = 756192120167. Pa build. Pa git.
+
+**Nuk u prek:** dërgimi automatik ATK, closeTable, Kontabilisti, KAFENE, numri i fiskalizimit.
+
+## 2026-11-03 — Cloud ON te stafi (kamarier + recepsion)
+
+Mbetja `staff-cloud-ui-off` / `STAFF_CLOUD_FEATURES_OFF` e fsheh cloud-in te PC. Watchers lexonin ende `cloud_waiter_disabled` nga DB dhe ndalonin push stafi + import WEB-WAITER. Tani OFF=false, pa klasën, watchers gjithmonë ON. Pa build.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/js/staff-cloud-disabled.js` | `STAFF_CLOUD_FEATURES_OFF = false` |
+| `public/waiter.html` | pa `staff-cloud-ui-off` |
+| `public/recepcion.html` | pa `staff-cloud-ui-off` + script |
+| `public/login.html` | pilla cloud edhe te stafi |
+| `online-orders-watcher.js` | `isCloudWaiterDisabled` → false |
+| `cloud-auto-sync.js` | `isCloudWaiterDisabled` → false |
+
+**Nuk u prek:** admin.html, ATK, git, build.
+
+## 2026-11-03 — PIN stafi te cloud: restorant + recepsion + pastrim
+
+Pronari shkruan PIN (4 restorant, 6 recepsion/pastrim) — kaq. Sync dërgon PIN + rolin: waiter / receptionist / housekeeping. Linku personal cloud sipas rolit. Pa build. Pa git.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/cloud-sync.js` | `staff[].role` + PIN 4–6 për krejt punonjësit |
+| `desktop/server.js` | match + URL recepsion / pastrim / kamarier |
+| `desktop/cloud-server-url.js` | link personal `/sherbimi` për pastrim |
+
+**Nuk u prek:** admin.html, ATK, closeTable, Kontabilisti, KAFENE. **Nuk u bë build.**
+
+## 2026-11-03 — 3 fix KAFENE te HOTEL POS (ora ATK + njoftime kuqe + kthim OFFLINE)
+
+Si KAFENE: tregues ore ATK (gjelbër / alarm kuq >2 min), njoftime kuqe #dc2626 sipër+poshtë për kuponë në pritje, kthim/anulim offline → `is_offline: 1` + `print_offline_banner: true` (kupon OFFLINE). Nuk bllokon shitjen. Pa build.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/server.js` | `GET /api/fiscal/time-sync` (`auth`, jo adminOnly) |
+| `desktop/public/js/fiscal-offline-status.js` | bannerat + `initAtkTimeSyncUi` çdo 60s |
+| `desktop/public/waiter.html` | CSS/DOM + init (kamarier) |
+| `desktop/public/kasa-recepcion.html` | CSS/DOM + init (kasa recepsion) |
+| `desktop/public/recepcion.html` | CSS/DOM + init (standalone; fshehur në iframe kasa) |
+| `desktop/fiscal/fiscal-correction.js` | offline → `is_offline` + `print_offline_banner` |
+
+**Nuk u prek:** ATK send, closeTable, Kontabilisti, KAFENE, admin.html, fiscal-print/main. **Nuk u bë build.**
+
+## 2026-11-03 — Recepsioni te printFiscalBundle (kasa + check-out)
+
+Kasa `Paguaj` dhe check-out `Kuponi Fiskal` tani: `createCompletedFiscalOrder` (pa ditari/stok) → `processFiscalReceipt` → `printFiscalBundle`. Ditari mbetet një rresht (RC-/CO-); folio termik veç si dokument hoteli. Pa build.
+
+**Nuk u prek:** closeTable, ATK send, Kontabilisti, KAFENE, waiter.html. **Nuk u bë build.**
+
+## 2026-11-03 — 3 fix kupon si KAFENE: pagesa qendër + ulje pa % + kthim 4 shifra / tipi
+
+Pagesa: `^C` + `pad(..., center)` për MENYRA E PAGESES; mënyrat poshtë me `padThreeCol`. Ulje: vetëm `ULJE` / `Ulje` + shuma me minus, pa %. Referenca kthimit: `daily_number` 4 shifra + DATE në një rresht. `mapCouponType`: return/kthim → RETURN(3), cancel/anulim/storno → CANCEL(2). Pa build.
+
+**Nuk u prek:** ATK send, closeTable, Kontabilisti, KAFENE, waiter/kasa-recepcion, raportet. **Nuk u bë build.**
+
+## 2026-11-03 — Çmim i përkohshëm te arka e recepsionit
+
+`kasa-recepcion.html`: çmim njësi contentEditable (4 presje) te shporta. Vetëm `cart[idx].price` — jo katalog/dhoma. +/− dhe Paguaj thërrasin `commitKasaPriceEdits()`. Kamarieri + kupon/logo ishin. Pa build.
+
+**Nuk u prek:** fiscal-print, ATK send, closeTable, Kontabilisti, KAFENE. **Nuk u bë build.**
+
+## 2026-11-03 — 3 fix KAFENE: çmim i përkohshëm + theksim 6 rreshta + logo biznesi
+
+Çmim njësi contentEditable te waiter (vetëm porosia, jo menu_items; +/− merr çmimin e ri). Kupon fiskal: `lineEmphasis` + ^H/^B te emri, NF-NUI, NUMRI I TVSH, KUPON FISKAL, TOTALI PER PAGESE, NUIKF. Logo biznesi opsionale (SEF + Lokal) → GS v 0 para emrit. Raportet pa theksim/logo biznesi. Pa build.
+
+**Nuk u prek:** ATK send, closeTable, Kontabilisti, KAFENE, FISKALIZIME. **Nuk u bë build.**
+
+## 2026-11-03 — Çmim 4 presje (si KAFENE)
+
+Menu/sendOrder/mapCloud: `round4`. Formë shitjeje `step=0.0001` + `formatMenuPriceInput` (2.50 / 2.5012). Kupon: njësi `money4Print`; SHUMA/TOTALI 2 presje. Pa build.
+
+**Nuk u prek:** ATK send, closeTable, Kontabilisti, KAFENE. **Nuk u bë build.**
+
+## 2026-11-03 — 3 fix TVSH kupon (si KAFENE)
+
+Pa numër TVSH: pa rreshtin NUMRI I TVSH, pa breakdown TVSH, pa TOTALI PA TVSH. Shkronja e kuponit **C** (jo A). `hasTaxpayerVatNumber` + `couponVatLetterForTaxpayer`. Guard + self-test. Pa build.
+
+**Nuk u prek:** ATK send, closeTable, Kontabilisti, KAFENE, FISKALIZIME. **Nuk u bë build.**
+
+## 2026-11-03 — Build Setup 1.0.657
+
+Komanda: `node build-packages.js` (një Setup, jo të gjitha pakot).
+Version: `package.json` 1.0.656 → 1.0.657 (auto-bump).
+Rezultat: `dist/Revolution HOTEL Setup.exe` + arkiv `Setup 1.0.657.exe` + Desktop.
+653/654/655/656 mbetën. Pre-build 72 module root OK. Obfuskim 178 JS, electron-builder OK.
+
+**Nuk u bë git.** Instalo Setup 657 → mbyll programin plotësisht → hape përsëri.
+
 ## 2026-11-03 — Linket cloud te paneli i pronarit (telefon)
 
 Paneli Cloud tani shfaq linket e telefonit: owner, kamarier, recepsion, shërbim, kuzhinë, bar. WiFi lokal mbetet veç. PIN i ri dërgohet te cloud (jo hash).

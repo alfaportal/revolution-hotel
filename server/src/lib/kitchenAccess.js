@@ -1,5 +1,9 @@
 const crypto = require("crypto");
 const { getSupabase } = require("../db");
+const {
+  stripLegacyKitchenSlugSuffix,
+  MIN_KITCHEN_SLUG_LEN,
+} = require("./kitchenSlug");
 const { featuresForTier } = require("./packages");
 const { isShopStorefront, storefrontPrefix } = require("./storefront");
 
@@ -53,6 +57,45 @@ function verifyKitchenKey(client, key) {
   }
 }
 
+function kitchenSlugLookupCandidates(identifier) {
+  const raw = String(identifier || "").trim().toLowerCase();
+  if (!raw) return [];
+  const out = [];
+  const push = (s) => {
+    const v = String(s || "").trim().toLowerCase();
+    if (v && !out.includes(v)) out.push(v);
+  };
+  push(raw);
+  push(stripLegacyKitchenSlugSuffix(raw));
+  if (raw.startsWith("hotel-")) {
+    const rest = raw.slice(6);
+    push(rest);
+    push(stripLegacyKitchenSlugSuffix(rest));
+  }
+  return out;
+}
+
+async function lookupClientByKitchenSlug(db, slug) {
+  let { data, error } = await db.from("clients").select("*").eq("kitchen_slug", slug).maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+
+  ({ data, error } = await db.from("clients").select("*").ilike("kitchen_slug", slug).maybeSingle());
+  if (error) throw error;
+  if (data) return data;
+
+  if (slug.length >= MIN_KITCHEN_SLUG_LEN && !slug.includes(".")) {
+    const { data: rows, error: likeErr } = await db
+      .from("clients")
+      .select("*")
+      .like("kitchen_slug", `${slug}-%`)
+      .limit(2);
+    if (likeErr) throw likeErr;
+    if (rows?.length === 1) return rows[0];
+  }
+  return null;
+}
+
 async function getClientBySlugOrId(identifier) {
   const id = String(identifier || "").trim();
   if (!id) return null;
@@ -64,13 +107,12 @@ async function getClientBySlugOrId(identifier) {
     return data;
   }
 
-  let { data, error } = await db.from("clients").select("*").eq("kitchen_slug", id).maybeSingle();
-  if (error) throw error;
-  if (data) return data;
+  for (const candidate of kitchenSlugLookupCandidates(id)) {
+    const hit = await lookupClientByKitchenSlug(db, candidate);
+    if (hit) return hit;
+  }
 
-  ({ data, error } = await db.from("clients").select("*").ilike("kitchen_slug", id).maybeSingle());
-  if (error) throw error;
-  return data;
+  return null;
 }
 
 async function ensureKitchenCredentials(client) {

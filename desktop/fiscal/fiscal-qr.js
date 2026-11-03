@@ -492,6 +492,56 @@ async function generateQRForPrint(qrData) {
   };
 }
 
+function parseJsonObject(raw, fallback) {
+  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) return raw;
+  if (Array.isArray(raw)) return raw;
+  try {
+    const p = JSON.parse(raw == null ? "" : String(raw));
+    return p != null ? p : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildFiscalQrReceiptData(receiptRow, settings) {
+  const row = receiptRow && typeof receiptRow === "object" ? receiptRow : {};
+  const s = settings && typeof settings === "object" ? settings : {};
+  const items = Array.isArray(row.items)
+    ? row.items
+    : parseJsonObject(row.items_json, []);
+  const vatBreak = parseJsonObject(row.vat_breakdown ?? row.vat_breakdown_json, {});
+  const taxpayerNui = String(
+    row.taxpayer_nui || s.taxpayer_nui || s.developer_nui || ""
+  ).trim();
+  const totalAmount = Number(row.total_amount ?? row.total ?? 0);
+  const fiscalTime = String(row.fiscal_time || "").trim();
+  return {
+    nuikf: row.nuikf,
+    total_amount: totalAmount,
+    total: totalAmount,
+    total_without_tax:
+      row.total_without_tax != null && row.total_without_tax !== ""
+        ? Number(row.total_without_tax)
+        : undefined,
+    fiscal_date: row.fiscal_date,
+    fiscal_time: fiscalTime.length >= 4 ? fiscalTime : undefined,
+    taxpayer_nui: taxpayerNui,
+    nui: taxpayerNui,
+    sef_id: row.sef_id,
+    daily_number: row.daily_number,
+    total_number: row.total_number,
+    receipt_type: row.receipt_type || "regular",
+    original_nuikf: row.original_nuikf,
+    payment_method: row.payment_method || "cash",
+    items_json: JSON.stringify(Array.isArray(items) ? items : []),
+    vat_breakdown_json: JSON.stringify(
+      vatBreak && typeof vatBreak === "object" && !Array.isArray(vatBreak) ? vatBreak : {}
+    ),
+    taxpayer_address: row.taxpayer_address || s.taxpayer_address || "",
+    operator_id: row.operator_id,
+  };
+}
+
 function ymdToFiscalDate(ymd) {
   const s = String(ymd || "").trim().slice(0, 10);
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -537,29 +587,27 @@ async function generateFiscalReportQR(reportDetails, opts = {}) {
   const now = new Date();
   const fiscal_time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
-  const row = {
-    nuikf,
-    total_amount: Number(d.total_amount) || 0,
-    total_without_tax: Number(d.total_without_tax) || 0,
-    vat_breakdown_json: JSON.stringify(d.vat_breakdown || {}),
-    items_json: "[]",
-    receipt_type: "regular",
-    payment_method: "cash",
-    fiscal_date,
-    fiscal_time,
-    sef_id: getSefIdentifier() || "",
-    daily_number: Number(d.coupon_count) || 0,
-    taxpayer_nui: settings.taxpayer_nui || "",
-    taxpayer_address: settings.taxpayer_address || "",
-    operator_id: String(opts.operatorId || "POS"),
-  };
-
-  return generateFiscalQR({
-    ...row,
-    total: row.total_amount,
-    nui: row.taxpayer_nui,
-    taxpayer_nui: row.taxpayer_nui,
-  });
+  return generateFiscalQR(
+    buildFiscalQrReceiptData(
+      {
+        nuikf,
+        total_amount: Number(d.total_amount) || 0,
+        total_without_tax: Number(d.total_without_tax) || 0,
+        vat_breakdown: d.vat_breakdown || {},
+        items: d.items || [],
+        receipt_type: "regular",
+        payment_method: d.payment_method || "cash",
+        fiscal_date,
+        fiscal_time,
+        sef_id: getSefIdentifier() || "",
+        daily_number: Number(d.coupon_count) || 0,
+        taxpayer_nui: settings.taxpayer_nui || "",
+        taxpayer_address: settings.taxpayer_address || "",
+        operator_id: String(opts.operatorId || "POS"),
+      },
+      settings
+    )
+  );
 }
 
 module.exports["SIATK_VERIFY_BASE"] = SIATK_VERIFY_BASE;
@@ -573,6 +621,7 @@ module.exports["resolveQrPngBuffer"] = resolveQrPngBuffer;
 module.exports["buildEscPosQrRasterForPrint"] = buildEscPosQrRasterForPrint;
 module.exports["estimateQrPrintWidthDots"] = estimateQrPrintWidthDots;
 module.exports["buildQrCenterPrefix"] = buildQrCenterPrefix;
+module.exports["buildFiscalQrReceiptData"] = buildFiscalQrReceiptData;
 module.exports["generateFiscalQR"] = generateFiscalQR;
 module.exports["generateFiscalReportQR"] = generateFiscalReportQR;
 module.exports["generateQRForPrint"] = generateQRForPrint;

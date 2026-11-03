@@ -6,11 +6,7 @@
 const cloudSync = require("./cloud-sync");
 
 function isCloudWaiterDisabled(db) {
-  try {
-    return String(db.getSetting("cloud_waiter_disabled", "false")).trim().toLowerCase() === "true";
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 const POLL_MS = 5000;

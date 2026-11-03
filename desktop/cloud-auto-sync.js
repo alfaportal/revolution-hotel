@@ -82,13 +82,7 @@ function scheduleVenueLogoSyncOnce(db) {
 }
 
 function isCloudWaiterDisabled(db) {
-  try {
-    const target = db || boundDb;
-    if (!target?.getSetting) return false;
-    return String(target.getSetting("cloud_waiter_disabled", "false")).trim().toLowerCase() === "true";
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function hasCachedKitchenAccess(db) {

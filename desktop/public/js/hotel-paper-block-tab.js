@@ -79,6 +79,10 @@
     const box = document.getElementById("paper-block-box");
     const list = document.getElementById("paper-block-list");
     const issueWrap = document.getElementById("paper-block-issue-wrap");
+    const blockInput = document.getElementById("paper-block-code");
+    if (blockInput && status && status.batch_id && !String(blockInput.value || "").trim()) {
+      blockInput.value = String(status.batch_id);
+    }
     if (!box) return;
 
     const active = !!(status && status.active);
@@ -396,7 +400,12 @@
     document.getElementById("btn-paper-issue-submit")?.addEventListener("click", async () => {
       const serial = String(document.getElementById("paper-serial-no")?.value || "").trim();
       if (!serial) {
-        setPaperBlockMsg("Numri serik i bllokut letër mungon.", false);
+        setPaperBlockMsg("Numri serik i kuponit mungon.", false);
+        return;
+      }
+      const blockCode = String(document.getElementById("paper-block-code")?.value || "").trim();
+      if (!blockCode) {
+        setPaperBlockMsg("Kodi unik i bllokut mungon.", false);
         return;
       }
       let saleWhen;
@@ -425,6 +434,7 @@
           method: "POST",
           body: JSON.stringify({
             serial_no: serial,
+            block_code: blockCode,
             items,
             fiscal_date: saleWhen.fiscal_date,
             fiscal_time: saleWhen.fiscal_time,
@@ -435,7 +445,7 @@
         });
         const paper = data.paper || {};
         setPaperBlockMsg(
-          `Kuponi u regjistrua: serik ${paper.serial_no || serial} · totali ${Number(paper.total_amount || 0).toFixed(2)} €`,
+          `Kuponi u regjistrua: serik ${paper.serial_no || serial} · bllok ${paper.block_code || blockCode} · totali ${Number(paper.total_amount || 0).toFixed(2)} €`,
           true
         );
         document.getElementById("paper-serial-no").value = "";

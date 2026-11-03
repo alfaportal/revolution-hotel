@@ -100,7 +100,7 @@ function normalizeRow(row) {
     unit_phone: row.unit_phone != null ? String(row.unit_phone) : "",
     pos_id: row.pos_id != null ? String(row.pos_id) : "",
     fiscalization_number: row.fiscalization_number != null ? String(row.fiscalization_number) : "",
-    application_id: row.application_id != null ? String(row.application_id) : "",
+    application_id: row.application_id != null ? String(row.application_id).replace(/[\s.]+/g, "") : "",
     atk_spec_version:
       row.atk_spec_version != null && String(row.atk_spec_version).trim()
         ? String(row.atk_spec_version).trim()
@@ -243,6 +243,11 @@ function saveFiscalSettings(data) {
         throw new Error("NUI duhet të ketë saktësisht 9 shifra");
       }
       next.taxpayer_nui = nui;
+      continue;
+    }
+
+    if (key === "application_id") {
+      next.application_id = String(data[key] ?? "").replace(/[\s.]+/g, "");
       continue;
     }
 

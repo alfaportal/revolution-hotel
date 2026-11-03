@@ -150,10 +150,8 @@
     _busy = true;
     try {
       var pill = _pill || document.getElementById("fiscal-net-pill");
-      if (!pill) return;
       var data = await fetchStatus();
-      // Nëse fetch dështoi por pill ishte i dukshëm, mbaj NUI + enabled dhe shëno offline
-      if (data && data._fetch_failed && !pill.hidden) {
+      if (data && data._fetch_failed && pill && !pill.hidden) {
         applyStatus(pill, {
           enabled: true,
           online: false,
@@ -163,35 +161,116 @@
         });
         return;
       }
-      applyStatus(pill, data);
+      if (pill) applyStatus(pill, data);
+      renderPendingBanners(data);
     } finally {
       _busy = false;
     }
+  }
+
+  function formatPendingBannerText(count) {
+    var n = Math.max(0, Number(count) || 0);
+    if (n <= 0) return "";
+    var noun = n === 1 ? "kupon" : "kuponë";
+    var verb = n === 1 ? "dërgohet" : "dërgohen";
+    return "⚠ " + n + " " + noun + " në pritje — " + verb + " automatikisht kur kthehet interneti";
+  }
+
+  function paintPendingEl(el, text, count) {
+    if (!el) return;
+    if (!text) {
+      el.textContent = "";
+      el.classList.remove("visible");
+      el.setAttribute("aria-hidden", "true");
+      return;
+    }
+    el.textContent = text;
+    el.classList.add("visible");
+    el.setAttribute("aria-hidden", "false");
+    el.title = count + " kupon(ë) në radhë offline për dërgim te ATK";
+  }
+
+  function renderPendingBanners(data) {
+    var enabled = !!(data && data.enabled);
+    var count = enabled ? Number(data.pending_count) || 0 : 0;
+    var text = formatPendingBannerText(count);
+    paintPendingEl(document.getElementById("offline-pending-banner"), text, count);
+    paintPendingEl(document.getElementById("footer-offline-queue"), text, count);
   }
 
   function refreshFiscalNetIndicator() {
     return tick();
   }
 
-  function initFiscalNetIndicator(anchorId) {
-    _pill = ensurePill(anchorId || "cloud-status-pill");
+  var _timeSyncTimer = null;
+
+  async function refreshAtkTimeSyncUi() {
+    var alarm = document.getElementById("atk-time-alarm");
+    var okEl = document.getElementById("atk-time-ok");
+    if (!alarm && !okEl) return;
+    try {
+      var data;
+      if (typeof global.api === "function") {
+        data = await global.api("/api/fiscal/time-sync");
+      } else {
+        var headers = { Accept: "application/json" };
+        try {
+          var raw = localStorage.getItem("sesioni") || sessionStorage.getItem("sesioni");
+          if (raw) {
+            var u = JSON.parse(raw);
+            if (u && u.token) headers["X-Session-Token"] = u.token;
+          }
+        } catch (_e) { /* */ }
+        var res = await fetch("/api/fiscal/time-sync", {
+          credentials: "same-origin",
+          headers: headers,
+        });
+        data = await res.json();
+      }
+      var bad = !!(data && data.alarm);
+      if (alarm) alarm.style.display = bad ? "block" : "none";
+      if (okEl) okEl.style.display = bad ? "none" : "inline-flex";
+    } catch (_err) {
+      if (alarm) alarm.style.display = "block";
+      if (okEl) okEl.style.display = "none";
+    }
+  }
+
+  function bindFiscalNetListeners() {
+    if (global.__fiscalNetListenersBound) return;
+    global.__fiscalNetListenersBound = true;
+    global.addEventListener("online", function () { tick(); });
+    global.addEventListener("offline", function () { tick(); });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") tick();
+    });
+    global.addEventListener("fiscal-receipt-created", function () { tick(); });
+    global.addEventListener("pos-order-closed", function () { tick(); });
+  }
+
+  function startFiscalOfflinePolling() {
     tick();
     if (_timer) clearInterval(_timer);
     _timer = setInterval(tick, POLL_MS);
+    bindFiscalNetListeners();
+  }
 
-    if (!global.__fiscalNetListenersBound) {
-      global.__fiscalNetListenersBound = true;
-      global.addEventListener("online", function () { tick(); });
-      global.addEventListener("offline", function () { tick(); });
-      document.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "visible") tick();
-      });
-      // Pas mbylljes së porosisë / kuponit fiskal
-      global.addEventListener("fiscal-receipt-created", function () { tick(); });
-      global.addEventListener("pos-order-closed", function () { tick(); });
-    }
+  function initAtkTimeSyncUi() {
+    startFiscalOfflinePolling();
+    refreshAtkTimeSyncUi();
+    if (_timeSyncTimer) clearInterval(_timeSyncTimer);
+    _timeSyncTimer = setInterval(function () {
+      refreshAtkTimeSyncUi();
+    }, 60 * 1000);
+  }
+
+  function initFiscalNetIndicator(anchorId) {
+    _pill = ensurePill(anchorId || "cloud-status-pill");
+    startFiscalOfflinePolling();
   }
 
   global.initFiscalNetIndicator = initFiscalNetIndicator;
   global.refreshFiscalNetIndicator = refreshFiscalNetIndicator;
+  global.initAtkTimeSyncUi = initAtkTimeSyncUi;
+  global.refreshAtkTimeSyncUi = refreshAtkTimeSyncUi;
 })(typeof window !== "undefined" ? window : globalThis);

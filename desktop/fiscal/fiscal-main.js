@@ -15,6 +15,7 @@ const {
   distributeCartAdjustment,
   getVatRate,
   getVatNormLetter,
+  couponVatLetterForTaxpayer,
   round4,
   lineTotalAmount,
   normalizeQty,
@@ -256,12 +257,15 @@ function loadMenuVatMap(items) {
   return map;
 }
 
-function normalizeItems(items) {
+function normalizeItems(items, taxpayerVatNumber) {
   const list = items || [];
   const vatByMenuId = loadMenuVatMap(list);
   const { getVatRate } = require("./fiscal-vat");
   return list.map((item) => {
-    const letter = resolveItemVatNorm(item, vatByMenuId);
+    const letter = couponVatLetterForTaxpayer(
+      resolveItemVatNorm(item, vatByMenuId),
+      taxpayerVatNumber
+    );
     const fromLib = getVatRate(letter);
     const rate =
       fromLib != null
@@ -333,12 +337,15 @@ function buildEkuponiEscPosAfterLogo(db) {
   const { pad, prepareCp1252Text, encodeCp1252 } = require("../receipt-text");
   syncLanguageFromSettings(db.getSetting("language", "sq"));
   const w = resolvePrintWidth();
-  const line = prepareCp1252Text(pad(t("e_kuponi"), w, "center"));
+  const ekuponi = prepareCp1252Text(pad(t("e_kuponi"), w, "center"));
+  const site = prepareCp1252Text(pad("www.revolution-pos.com", w, "center"));
   return Buffer.concat([
     Buffer.from([0x1b, 0x4d, 0x00]),
     Buffer.from([0x1d, 0x21, 0x00]),
     Buffer.from([0x1b, 0x61, 0x01]),
-    encodeCp1252(line),
+    encodeCp1252(ekuponi),
+    Buffer.from("\n", "ascii"),
+    encodeCp1252(site),
     Buffer.from("\n", "ascii"),
     Buffer.from([0x1b, 0x61, 0x00]),
   ]);
@@ -352,7 +359,7 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
     appendEscPosCut,
     bufferHasEscPosCut,
   } = require("../receipt-text");
-  const { getFiscalLogoForPrint } = require("./fiscal-logo");
+  const { getFiscalLogoForPrint, getBusinessLogoForPrint } = require("./fiscal-logo");
   const {
     validateReceiptBeforePrint,
   } = require("./fiscal-receipt-guard");
@@ -387,6 +394,14 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
     } catch (e) {
       console.warn("[fiscal-main] Logo:", e.message);
     }
+    let bizLogo = null;
+    try {
+      bizLogo = getBusinessLogoForPrint();
+    } catch (e) {
+      console.warn("[fiscal-main] Logo biznesi:", e.message);
+    }
+    const bizLogoBuf =
+      bizLogo && bizLogo.buffer && bizLogo.buffer.length ? bizLogo.buffer : null;
     const qrAttached = !!(
       qrResult &&
       (qrResult.escpos_base64 || qrResult.payload || qrResult.png_base64 || qrResult.png_buffer)
@@ -442,8 +457,11 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
       fiscalFontA1: true,
       printDensity,
       printerName,
+      lineEmphasis: true,
     });
-    const parts = [textBuf];
+    const parts = [];
+    if (bizLogoBuf) parts.push(bizLogoBuf);
+    parts.push(textBuf);
 
     if (qrAttached) {
       try {
@@ -488,7 +506,7 @@ async function printFiscalBundle(printText, qrResult, printOpts = {}) {
 
 /**
  * Printim Raporti X / Z / periodik — i njëjti fund si kuponi fiskal:
- * tekst ESC/POS → QR (CitizenCoupon + ECDSA) → logo RKS/MF → vijë mbyllëse → cut.
+ * tekst ESC/POS → QR (CitizenCoupon + ECDSA) → logo RKS/MF → e-kuponi → cut.
  */
 async function printFiscalReportText(printText, printOpts = {}) {
   const printer = require("../printer");
@@ -775,7 +793,10 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
   );
   console.log("[fiscal-main] processFiscalReceipt language=", receiptLang);
   const orderPayload = parseOrderPayload(order.items_json);
-  const items = normalizeItems(opts.items || orderPayload.items);
+  const items = normalizeItems(
+    opts.items || orderPayload.items,
+    settings.taxpayer_vat_number
+  );
   if (!items.length) {
     throw new Error("Porosia nuk ka artikuj për fiskalizim");
   }
@@ -887,11 +908,21 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
 
   let qrResult = null;
   try {
-    qrResult = await generateFiscalQR({
-      ...signPayload,
-      total: totalAmount,
-      nui: taxpayerNui,
-    });
+    const { buildFiscalQrReceiptData } = require("./fiscal-qr");
+    qrResult = await generateFiscalQR(
+      buildFiscalQrReceiptData(
+        {
+          ...signPayload,
+          total_without_tax: totalWithoutTax,
+          items: fiscalItems,
+          vat_breakdown: vatTax,
+          taxpayer_address: taxpayerAddress,
+          payment_method: payment,
+          operator_id: operatorId,
+        },
+        settings
+      )
+    );
   } catch (e) {
     console.warn("[fiscal-main] generateFiscalQR:", e.message);
   }
@@ -1368,6 +1399,7 @@ async function processFiscalReceipt(orderId, paymentMethod, opts = {}) {
       ? {
           verify_url: qrResult.verify_url,
           escpos_base64: qrResult.escpos_base64,
+          png_base64: qrResult.png_base64 || null,
         }
       : null,
     offline_queue: (() => {
@@ -1408,7 +1440,7 @@ async function printTestFiscalCoupon() {
   console.log("[fiscal-main] printTestFiscalCoupon language=", receiptLang);
   const rawItems = getAtkTestCouponItems();
   validateInternalTestCouponStructure(rawItems);
-  const items = normalizeItems(rawItems);
+  const items = normalizeItems(rawItems, settings.taxpayer_vat_number);
   const totals = computeAtkTestCouponTotals(items);
   const totalRounded = totals.total;
   const tax = totals.tax;
@@ -1464,12 +1496,25 @@ async function printTestFiscalCoupon() {
 
   let qrResult = null;
   try {
-    qrResult = await generateFiscalQR({
-      nuikf,
-      total_amount: totalRounded,
-      fiscal_date,
-      taxpayer_nui: fiscalData.taxpayer_nui,
-    });
+    const { buildFiscalQrReceiptData } = require("./fiscal-qr");
+    qrResult = await generateFiscalQR(
+      buildFiscalQrReceiptData(
+        {
+          nuikf,
+          total_amount: totalRounded,
+          total_without_tax: totalWithoutTax,
+          fiscal_date,
+          fiscal_time,
+          taxpayer_nui: fiscalData.taxpayer_nui,
+          items,
+          vat_breakdown: tax,
+          payment_method: "cash",
+          operator_id: "0",
+          receipt_type: "regular",
+        },
+        settings
+      )
+    );
   } catch (qe) {
     console.warn("[fiscal-main] QR kupon prove:", qe.message);
   }

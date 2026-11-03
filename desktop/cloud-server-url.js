@@ -369,8 +369,17 @@ function buildStaffPersonalUrl(slug, key, webToken, staffRole) {
   const token = String(webToken || "").trim();
   if (!s || !token) return "";
   const role = String(staffRole || "kamarier").trim().toLowerCase();
-  const cloudRole =
-    role === "recepsion" || role === "receptionist" || role === "reception" ? "reception" : "waiter";
+  let cloudRole = "waiter";
+  if (role === "recepsion" || role === "receptionist" || role === "reception") {
+    cloudRole = "reception";
+  } else if (
+    role === "pastrim" ||
+    role === "pastrimi" ||
+    role === "housekeeping" ||
+    role === "sherbimi"
+  ) {
+    cloudRole = "housekeeping";
+  }
   const extra = `w=${encodeURIComponent(token)}`;
   return buildAccessLink(null, s, key, cloudRole, extra);
 }

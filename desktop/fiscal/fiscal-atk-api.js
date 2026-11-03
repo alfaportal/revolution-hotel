@@ -37,7 +37,7 @@ const ATK_HTTP_TIMEOUT_MS = Math.max(
 /** Mesazhe operatori (sq) sipas kodit HTTP të SIATK — Neni 31. */
 const ATK_ERROR_MESSAGES = Object.freeze({
   400: "Të dhënat e kuponit janë të pavlefshme — kontrolloni artikujt dhe TVSH-në",
-  401: "Certifikata juaj nuk njihet nga ATK — bëni onboarding përsëri",
+  401: "Certifikata juaj nuk njihet nga ATK — kontrolloni signed-certificate.pem dhe Application ID",
   403: "Nuk keni leje për dërgim — kontrolloni Application ID dhe statusin te ATK",
   404: "Endpoint-i ATK nuk u gjet — kontrolloni URL-në TEST/PROD",
   409: "Ky kupon është dërguar tashmë te ATK",

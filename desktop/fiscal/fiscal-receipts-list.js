@@ -293,24 +293,11 @@ function loadReceiptRow(id) {
   return row;
 }
 
-/** Objekt për generateFiscalQR — i njëjti form si shitja normale (signPayload + total/nui). */
 function buildFiscalQrInputFromReceiptRow(row) {
   if (!row || typeof row !== "object") return null;
-  const totalAmount = Number(row.total_amount) || 0;
-  const taxpayerNui = String(row.taxpayer_nui || "").trim();
-  return {
-    nuikf: row.nuikf,
-    total_amount: totalAmount,
-    fiscal_date: row.fiscal_date,
-    fiscal_time: row.fiscal_time,
-    taxpayer_nui: taxpayerNui,
-    sef_id: row.sef_id,
-    daily_number: row.daily_number,
-    total_number: row.total_number,
-    receipt_type: row.receipt_type,
-    total: totalAmount,
-    nui: taxpayerNui,
-  };
+  const { getFiscalSettings } = require("./fiscal-config");
+  const { buildFiscalQrReceiptData } = require("./fiscal-qr");
+  return buildFiscalQrReceiptData(row, getFiscalSettings());
 }
 
 /**

@@ -458,6 +458,7 @@ function startAutoBackup(opts = {}) {
       console.warn("[backup] cycle:", e.message);
     }
   };
+  tick();
   setTimeout(tick, 5000);
   autoBackupTimer = setInterval(tick, autoBackupOpts.intervalMs);
   console.log(
