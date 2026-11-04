@@ -67,31 +67,30 @@ async function main() {
   ]);
   const pendingAfterRs = db.listPendingCloudOrders();
   const rsPending = pendingAfterRs.find((o) => o.id === rs.order_id);
-  const activeAfterRs = db.listActiveHotelOrdersForWaiter({ sessionRole: "recepsion" }).orders
-    .filter((o) => String(o.source || "").includes("102"));
-  const chargesAfterRs = db.listRoomChargesForGuest(guest.id);
-  note("1-room-service-para-pranimit", true, {
-    submit: { pending: rs.pending, total_lines: rs.count, message: rs.message },
-    pending_queue: rsPending
-      ? { source: rsPending.source_label, customer: rsPending.customer_label, total: rsPending.total, items: rsPending.items }
-      : null,
-    porosi_aktive: activeAfterRs.map((o) => ({
-      source: o.source, products: o.products, total: o.total, status: o.status,
-    })),
-    room_charges: chargesAfterRs.map((c) => ({ description: c.description, amount: c.amount })),
-    folio: db.getCheckoutPreview(roomRow.id).bill.charges_total,
-  });
-
-  const chargesBeforeAccept = chargesAfterRs.length;
-  const acceptedRs = db.tryApplyCloudRoomMenuOrder(rsPending);
+  const chargesBeforeWaiter = db.listRoomChargesForGuest(guest.id);
+  const importedRs = db.importCloudOrderToLocal(rsPending, "Fiktiv Kamarier", { fromAcceptFlow: true });
   db.removePendingCloudOrders([rs.order_id]);
-  const chargesAfterAccept = db.listRoomChargesForGuest(guest.id);
-  note("2-prano-room-service", true, {
-    applied: acceptedRs,
-    pending_left: db.listPendingCloudOrders().some((o) => o.id === rs.order_id),
-    charges_before: chargesBeforeAccept,
-    charges_after: chargesAfterAccept.length,
-    doubled: chargesAfterAccept.length > chargesBeforeAccept,
+  if (importedRs?.order_id) {
+    const row = db.db.prepare("SELECT items_json FROM orders WHERE id = ?").get(importedRs.order_id);
+    db.recordPrintedBatch(importedRs.order_id, row.items_json);
+    require("../lib/local-kds-service").touchOrderAfterSend(db, importedRs.order_id);
+  }
+  if (importedRs?.table_id) {
+    db.chargeTableToRoomAtomic({
+      tableId: importedRs.table_id,
+      waiterName: "Fiktiv Kamarier",
+      guestId: guest.id,
+      roomId: roomRow.id,
+      tableNumber: importedRs.table_number,
+    });
+  }
+  note("1-room-service-kamarier", true, {
+    label: rsPending?.source_label || null,
+    waiter_pending: rs.waiter_pending,
+    charges_before: chargesBeforeWaiter.length,
+    imported: importedRs ? { order_id: importedRs.order_id, table: importedRs.table_number } : null,
+    charges_after: db.listRoomChargesForGuest(guest.id).length,
+    folio: db.getCheckoutPreview(roomRow.id).bill.charges_total,
   });
 
   const mini = db.submitGuestRoomMenuOrder("102", [
@@ -206,7 +205,7 @@ async function main() {
     ditari: (ditariAfter.entries || []).map((e) => ({
       receipt: e.receipt_number, total: e.total, pay: e.payment_method,
     })),
-    ditari_sum: money((ditariAfter.entries || []).filter((e) => e.status !== "cancelled").reduce((s, e) => s + Number(e.total || 0), 0)),
+    ditari_sum: money(ditariAfter.totalSales),
     kontabilisti: ledgerAfter.map((r) => ({
       receipt: r.receipt_number, source: r.source, total: r.total, items: r.items,
     })),
@@ -224,7 +223,10 @@ async function main() {
     },
   });
 
-  const ditariSum = money((ditariAfter.entries || []).filter((e) => e.status !== "cancelled").reduce((s, e) => s + Number(e.total || 0), 0));
+  const ditariSum = money(ditariAfter.totalSales);
+  const roomTrace = (ditariAfter.entries || []).find((e) => e.folio_settled && e.payment_method === "room");
+  assert.ok(roomTrace, "rreshti restorant → dhomë mbetet i dukshëm");
+  assert.ok(String(roomTrace.artikujt || "").includes("Dhoma 102"));
   const ledgerSum = sum(ledgerAfter, "total");
   const shiftSum = money((shifts.shifts || []).reduce((s, r) => s + (Number(r.total_sales) || 0), 0));
   assert.strictEqual(money(preview.bill.total), 110.5);

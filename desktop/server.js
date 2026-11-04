@@ -623,6 +623,7 @@ async function finalizeImportedCloudOrders(importedRows, waiterName) {
       }
     }
     if (!slipItems.length) continue;
+    if (/^room service\b/i.test(String(order.source_label || ""))) continue;
     if (cloudId) onlineOrdersWatcher.markOrdersPrinted(db, [cloudId]);
     const batchNo = db.recordPrintedBatch(order.id, order.items_json);
     await autoPrintOrderSlip(db, {
@@ -7499,6 +7500,11 @@ app.get("/api/admin/low-stock", auth, adminOnly, (_req, res) => {
   res.json({ ok: true, items, count: items.length });
 });
 
+app.get("/api/admin/expiry-alerts", auth, adminOnly, (_req, res) => {
+  const items = db.getExpiringMenuItems();
+  res.json({ ok: true, items, count: items.length });
+});
+
 app.get("/api/admin/stock/reconcile", auth, adminOnly, (_req, res) => {
   try {
     const data = db.reconcileStock();
@@ -8115,7 +8121,7 @@ app.post("/api/products/update-vat-all", auth, adminOnly, (_req, res) => {
 });
 
 app.post("/api/menu", auth, adminOnly, (req, res) => {
-  const { name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat } = req.body;
+  const { name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, expiry_date } = req.body;
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e artikullit" });
   try {
     const id = db.addMenuItem({
@@ -8126,6 +8132,7 @@ app.post("/api/menu", auth, adminOnly, (req, res) => {
       stock_qty,
       low_stock_threshold,
       barcode,
+      expiry_date,
       auto_vat: auto_vat !== false && auto_vat !== 0 && auto_vat !== "0",
       operator_name: req.session?.emri || "Admin",
     });

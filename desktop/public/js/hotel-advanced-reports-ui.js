@@ -72,7 +72,7 @@
           );
         }
         const sum = $("adv-javore-sum");
-        if (sum && data.summary) sum.textContent = `Totali ${euro(data.summary.total)} · Kamarier ${euro(data.summary.waiter)} · Recepsion ${euro(data.summary.reception)}`;
+        if (sum && data.summary) sum.textContent = `Totali ${euro(data.summary.total)} · Restorant ${euro(data.summary.waiter)} · Recepsion ${euro(data.summary.reception)}`;
       } else if (pane === "mujore") {
         const data = await loadJson(`/api/reports/advanced/monthly${qs({ month: q.month })}`);
         const body = $("adv-mujore-body");
@@ -150,11 +150,11 @@
         if (body) {
           body.innerHTML = rowsOrEmpty(
             data.shifts || [],
-            7,
+            8,
             (data.shifts || [])
               .map((s) => {
                 const open = !!s.is_open;
-                return `<tr><td>${esc(s.waiter_name)}</td><td>${esc(s.staff_role === "recepsion" ? "Recepsion" : "Kamarier")}</td><td>${open ? "Hapur" : esc(s.closed_at || "—")}</td><td>${euro(s.total_sales)}</td><td>${open ? "—" : euro(s.closing_cash_actual)}</td><td>${open ? "—" : euro(s.cash_difference)}</td><td>${euro(s.cash_sales_total)}</td></tr>`;
+                return `<tr><td>${esc(s.waiter_name)}</td><td>${esc(s.staff_role === "recepsion" ? "Recepsion" : "Kamarier")}</td><td>${open ? "Hapur" : esc(s.closed_at || "—")}</td><td>${euro(s.total_sales)}</td><td>${open ? "—" : euro(s.closing_cash_actual)}</td><td>${open ? "—" : euro(s.cash_difference)}</td><td>${euro(s.cash_sales_total)}</td><td>${euro(s.room_total)}</td></tr>`;
               })
               .join(""),
           );

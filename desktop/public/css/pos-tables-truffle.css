@@ -89,6 +89,16 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
   background: linear-gradient(135deg, #818cf8, #6366f1);
 }
 
+#ekrani-tavolina .waiter-sync-btn.waiter-rooms-btn,
+#ekrani-tavolina .waiter-sync-btn.waiter-rooms-btn:hover,
+#ekrani-tavolina .waiter-sync-btn.waiter-rooms-btn.waiter-rooms-btn-on {
+  background: #4c1d95;
+  border-color: rgba(196, 181, 253, 0.55);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
 #ekrani-tavolina .waiter-nav-btn {
   border-radius: 12px;
   font-weight: 800;

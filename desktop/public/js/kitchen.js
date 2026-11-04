@@ -172,6 +172,8 @@
 
   /** Titulli i kartës — Porosi #… / Takeaway / QR; pa «T3» (kuzhina ≠ tavolina). */
   function orderHeadLabel(order) {
+    const srcLabel = String(order.source_label || "").trim();
+    if (/^room service\b/i.test(srcLabel)) return srcLabel;
     const ref = shortOrderRef(order);
     const device = String(order.device_id || "").toUpperCase();
     const tn = Number(order.table_number) || 0;

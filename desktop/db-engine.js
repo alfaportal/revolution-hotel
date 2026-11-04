@@ -1292,6 +1292,7 @@ function initSchema() {
         "sort_order",
         "barcode",
         "description",
+        "expiry_date",
       ].some((col) => !menuCols.some((c) => c.name === col));
     },
     () => {
@@ -1327,6 +1328,9 @@ function initSchema() {
       }
       if (!menuCols.some((c) => c.name === "description")) {
         sqlRun("ALTER TABLE menu_items ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+      }
+      if (!menuCols.some((c) => c.name === "expiry_date")) {
+        sqlRun("ALTER TABLE menu_items ADD COLUMN expiry_date TEXT");
       }
     },
   );

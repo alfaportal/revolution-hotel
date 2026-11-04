@@ -832,6 +832,13 @@
       background: #16a34a;
     }
 
+    #ekrani-porosia .waiter-payments-panel .btn-payment-room,
+    #ekrani-porosia .waiter-payments-panel .btn-payment-room:hover,
+    #ekrani-porosia .waiter-payments-panel .btn-payment-room.active {
+      background: #4c1d95 !important;
+      color: #fff !important;
+    }
+
     .coupon-type-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -976,7 +983,7 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=1">
+  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=2">
 </head>
 <body class="waiter-screen">
   <div id="waiter-fiscal-alerts">
@@ -987,7 +994,7 @@
     <aside class="waiter-sidebar">
       <div class="waiter-sidebar-top">
         <div class="waiter-brand" id="waiter-brand" title="HOTEL">K</div>
-        <button type="button" class="waiter-sync-btn waiter-calc-btn" data-open-calc title="Kalkulatorë" aria-label="Kalkulatorë">🧮</button>
+        <button type="button" class="waiter-sync-btn waiter-rooms-btn" id="btn-sidebar-dhomat" title="Dhomat" aria-label="Dhomat">Dh</button>
         <button type="button" class="waiter-sync-btn" id="btn-rifresko-tavolina" title="Rifresko tavolinat">↻</button>
       </div>
       <div class="waiter-sidebar-spacer"></div>
@@ -1099,7 +1106,7 @@
         <button type="button" id="btn-view-tables" data-view="tables">Tavolina</button>
       </div>
 
-      <div id="waiter-rooms-panel" hidden style="display:none">
+      <div id="waiter-rooms-panel" hidden>
         <div class="waiter-rooms-legend">
           <span class="w-legend-free"><i></i> E Lirë</span>
           <span class="w-legend-occ"><i></i> E Zënë</span>
@@ -1535,6 +1542,7 @@
             <button type="button" class="btn btn-pay-nopaper pos-pay-btn" id="btn-paguaj-nopaper">Paguaj pa letër</button>
             <button type="button" class="btn btn-ghost pos-pay-btn" id="btn-paguaj-termik">Paguaj (Termik)</button>
             <button type="button" class="btn btn-ghost btn-split-bill pos-pay-btn" id="btn-nda-faturen">Nda faturën</button>
+            <button type="button" class="btn btn-payment-room pos-pay-btn" id="btn-mbyll-dhome">Dhoma</button>
           </div>
           <div class="coupon-type-forced" id="coupon-type-forced" hidden></div>
         </div>
@@ -1904,8 +1912,23 @@
       return !!(o?.is_guest_hotel_service || o?.order_kind === "guest_hotel_service");
     }
 
+    function eshtePorosiRoomServiceKamarieri(o) {
+      const label = String(o?.source_label || "");
+      if (/^room service\b/i.test(label)) return true;
+      if (/minibar/i.test(label)) return false;
+      const device = String(o?.device_id || "").toUpperCase();
+      const kind = String(o?.order_kind || "");
+      const roomMenu = !!(o?.is_guest_room_menu || device === "WEB-GUEST-ROOM" || kind === "guest_room_menu");
+      if (!roomMenu) return false;
+      const items = Array.isArray(o?.items) ? o.items : [];
+      if (!items.length) return true;
+      return items.some((it) => String(it?.category || "").trim().toLowerCase() !== "minibar");
+    }
+
     /** Spa/sauna/shërbime hoteli — vetëm recepsioni (server: isRecepcionCloudPendingOrder). */
     function eshtePorosiVetemRecepsioni(o) {
+      if (eshtePorosiSherbimiHoteliQr(o)) return true;
+      if (eshtePorosiRoomServiceKamarieri(o)) return false;
       if (eshtePorosiSherbimiHoteliQr(o)) return true;
       if (o?.is_recepcion_qr || o?.is_guest_room_menu) return true;
       const device = String(o?.device_id || "").toUpperCase();
@@ -2065,12 +2088,16 @@
       const qrRoom = eshtePorosiQrDhome(o);
       const roomNum = String(o?.room_number || "").trim();
       const customer = o.customer_label || o.waiter_name || "Klient";
-      const src = qrRoom
-        ? `${tt("QR dhomë")} · Dh. ${roomNum || "?"}`
-        : (qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway"));
-      const table = qrRoom
-        ? `${tt("Dhoma")} ${roomNum || "?"}`
-        : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway"));
+      const src = /^room service\b/i.test(String(o.source_label || ""))
+        ? o.source_label
+        : (qrRoom
+          ? `${tt("QR dhomë")} · Dh. ${roomNum || "?"}`
+          : (qr ? `QR · T${tn || "?"}` : (o.source_label || "Takeaway")));
+      const table = /^room service\b/i.test(String(o.source_label || ""))
+        ? o.source_label
+        : (qrRoom
+          ? `${tt("Dhoma")} ${roomNum || "?"}`
+          : (qr ? `${tt("Tavolina")} T${tn || "?"}` : (tn > 0 ? `T${tn}` : "Takeaway")));
       const extra = orders.length > 1 ? `<p class="waiter-online-pop-queue">+ ${orders.length - 1} ${tt("tjetër në radhë")}</p>` : "";
       const itemsBlock = itemRows
         ? `<ul class="waiter-online-pop-items">${itemRows}</ul>`
@@ -2790,7 +2817,7 @@
 
     function setWaiterView(view) {
       const allowed = ["rooms", "tables", "reservations", "services", "housekeeping", "orders"];
-      const hotelOnlyViews = new Set(["rooms", "reservations", "services", "housekeeping", "orders"]);
+      const hotelOnlyViews = new Set(["reservations", "services", "housekeeping", "orders"]);
       if (hotelOnlyViews.has(view)) view = "tables";
       waiterView = allowed.includes(view) ? view : "tables";
       const roomsPanel = document.getElementById("waiter-rooms-panel");
@@ -2819,6 +2846,7 @@
         orders: "btn-nav-porosi",
       };
       document.getElementById(navMap[waiterView])?.classList.add("waiter-nav-active");
+      document.getElementById("btn-sidebar-dhomat")?.classList.toggle("waiter-rooms-btn-on", waiterView === "rooms");
       setKpiLabelsForView(waiterView === "tables" ? "tables" : "rooms");
       /* Mos lër «0.00 €» kur tab-i hotel tregon TË REZERVUARA */
       if (waiterView !== "tables") {
@@ -3012,7 +3040,7 @@
       document.getElementById("w-rd-charge")?.addEventListener("click", () => {
         mbyllRoomDetail();
         setWaiterView("tables");
-        showWaiterRoomsMsg("Zgjidhni porosinë nga tavolina, pastaj «Faturë në dhomë».", true);
+        showWaiterRoomsMsg("Zgjidhni porosinë nga tavolina, pastaj «Dhoma».", true);
       });
       document.getElementById("w-rd-clean")?.addEventListener("click", async () => {
         if (!confirm(`Dhoma ${room.room_number} u pastrua?`)) return;
@@ -3861,6 +3889,10 @@
     document.getElementById("btn-nav-dhomat")?.addEventListener("click", () => {
       showWaiterMainScreen();
       setWaiterView("rooms");
+    });
+    document.getElementById("btn-sidebar-dhomat")?.addEventListener("click", () => {
+      showWaiterMainScreen();
+      setWaiterView(waiterView === "rooms" ? "tables" : "rooms");
     });
     document.getElementById("btn-nav-tavolina")?.addEventListener("click", () => {
       showWaiterMainScreen();
@@ -4926,13 +4958,15 @@
       }
       const o = slot.order;
       const pending = slot.status === "pending";
+      const roomLabel = String(o.source_label || "");
+      const showRoom = /^room service\b/i.test(roomLabel);
       const items = o.items_json || o.items || [];
       const itemCount = items.reduce((s, it) => s + (Number(it.quantity) || 1), 0);
       const total = Number(o.total) || items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
       const customer = String(o.waiter_name || o.customer_label || "Klient").trim();
       const acceptedBy = String(o.accepted_by_waiter_name || user.emri || "Pranuar").trim();
       card.className = "table-card " + (pending ? "pending-cloud pending-takeaway" : "occupied");
-      card.innerHTML = `<div class="table-card-name">${label}</div>
+      card.innerHTML = `<div class="table-card-name">${showRoom ? roomLabel : label}</div>
         <div class="table-card-status">${pending ? tt("Në pritje") : acceptedBy}</div>
         <div class="table-card-meta">${itemCount} ${tt("artikuj")} · ${formatEuro(total)}</div>
         <div class="table-card-hint">${customer}</div>
@@ -6597,7 +6631,7 @@
         listBtns.forEach((b) => { b.disabled = false; });
         if (btnDhome) {
           btnDhome.disabled = false;
-          btnDhome.textContent = "Faturë në dhomë";
+          btnDhome.textContent = "Dhoma";
         }
       }
     }
@@ -6706,6 +6740,7 @@
 
     document.getElementById("w-charge-room-backdrop")?.addEventListener("click", mbyllChargeRoomModal);
     document.getElementById("w-charge-room-cancel")?.addEventListener("click", mbyllChargeRoomModal);
+    document.getElementById("btn-mbyll-dhome")?.addEventListener("click", () => hapChargeRoomModal());
 
     /** Auto-logout: 30s te tavolinat; 1 min në panel porosie; 5s pas dërgimit/pagesës → PIN. */
     function aktivizoAutoLogoutKamarierPorosi() {

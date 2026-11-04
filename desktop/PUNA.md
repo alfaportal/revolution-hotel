@@ -1,5 +1,74 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-04 — Room service te kamarieri, skadenca, burimi
+
+Room service i dhomës së zënë nuk hyn më direkt në folio. Shkon te kamarieri si «Room Service Dh. N», pastaj te kuzhina kur e dërgon, pastaj «Dhoma». Minibari mbetet te folia. `menu_items.expiry_date` + paralajmërim 7 ditë, shitja nuk bllokohet. Ditari ka kolonën Burimi. Raportet dhe avancuarat tregojnë Restorant / Recepsion që mblidhen te totali. Bilanci i Kontabilistit tregon të njëjtën ndarje pa prekur kutizat e TVSH-së.
+
+Prova: `hotel-restaurant-audit.test.js` 21/0. `hotel-full-flow-5.test.js` 44/0, folio 133, ditari 304, në dhomë te kamarieri 19.50. `guest-service-flow-e2e.test.js` 110.50. Pa build. hotel.db i instaluar nuk u hap.
+
+## 2026-11-04 — Auditi i restorantit (databazë e përkohshme)
+
+`tests/hotel-restaurant-audit.test.js`. hotel.db i instaluar nuk u hap. Pa build. Pa HTTP te cloud.
+
+17 kaluan, 3 nuk kaluan: room service nuk hyn te kuzhina; nuk ka kolonë skadence; radha LAN është e fikur në këtë instancë (0 rreshta). Tavolina cash 12€ kupon `20261104-000001`. QR/takeaway/web u pranuan dhe hynë te kuzhina. Fatura në dhomë 9€. Ditari 98€, restoranti 31 cash + 9 kartë + 9 në dhomë. Blerja +4 stok. Shpenzimi 7€ te bilanci.
+
+## 2026-11-04 — Katër rregullimet e fluksit
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` | check-out → `dirty` + task pastrimi | check-out → `free`, dhoma e lirë për check-in |
+| `desktop/database.js` | ndërrimi i recepsionit: CO-/RC-/SVC- | edhe KL-; cash recepsioni 293 (133+125+35) |
+| `desktop/database.js` | Ndërrimet pa `room_total` pas mbylljes | `room_total` nga të njëjtat totale si mbyllja (kamarieri 13) |
+| `desktop/database.js` | mbyllja cash/kartë pa numër kuponi | SEF fikur → kupon termik `YYYYMMDD-######`; SEF ndezur → numri mbetet bosh që ta mbushë kuponi fiskal |
+| `desktop/public/admin.html` | pa kolonë «Në dhomë» | kolona te Ditari dhe te Raporte avancuara → Ndërrimet |
+| `desktop/public/js/hotel-advanced-reports-ui.js` | rreshti pa «Në dhomë» | shfaq `room_total` |
+| `desktop/hotel-advanced-reports-export.js` | CSV/PDF pa kolonën | «Në dhomë» |
+| `desktop/tests/hotel-full-flow-5.test.js` | kuponi cash pranohej bosh | kërkon numër |
+
+**Prova:** `node tests/hotel-full-flow-5.test.js` — 44 kaluan, 0 dështuan. Dhoma `free`. Recepsioni cash 293, arka 393, diferenca 0. Kamarieri në dhomë 13. Kuponi termik `20261104-000001` = 11€. Ditari/Kontabilisti/javore 304. Pa build. Pa ATK. Moduli fiskal nuk u ndryshua.
+
+## 2026-11-04 — Pesë flukse në databazë të përkohshme
+
+`tests/hotel-full-flow-5.test.js`. DB: `%TEMP%\hotel-full-flow-5-….db`. hotel.db i instaluar nuk u hap. Fiskalizimi ishte OFF. Pa build.
+
+Totali zyrtar **304€** = 133 + 125 + 35 + 11. Ditari, Kontabilisti, javore, mujore, stafi: 304. Rreshti «në dhomë» 13€ mbetet i dukshëm; shuma e papërpunuar e daily_log është 317 (304+13), totali zyrtar nuk e dyfishon.
+
+Nuk kaluan: dhoma pas check-out është `dirty` (jo `free`); KL-1 35€ nuk hyn te paratë e ndërrimit të recepsionit (258 në vend të 293); skeda Ndërrimet nuk ka fushën «në dhomë» (mbyllja e kamarierit e ka: 13). Kuponi i tavolinës 5 nuk ka numër (receipt null).
+
+## 2026-11-04 — Dhomat në shiritin e kamarierit
+
+Nën «K» ishte kalkulatori i dytë. Poshtë mbetet «Kalkulatorë».
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/public/waiter.html` | 🧮 nën K; pamja e dhomave kthehej te tavolinat | butoni «Dh» hap dhomat; klikimi i dytë kthen tavolinat |
+| `desktop/public/css/pos-tables-truffle.css` | — | rrethi vjollcë për dhomat |
+
+**Prova:** lexuar lidhja. Pa build. Butoni i pagesës «Dhoma» mbetet për faturën e tavolinës.
+
+## 2026-11-04 — Butoni «Dhoma» te kamarieri
+
+Dritarja dhe `POST /api/waiter/charge-to-room` ekzistonin. Asnjë buton te pagesat nuk e hapte dritaren.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/public/waiter.html` | paneli i pagesës: Cash, Kartë, fiskal, termik, ndarje | butoni «Dhoma» pas tyre, ngjyrë vjollcë; klikimi hap dritaren e dhomave të zëna |
+
+**Prova:** butoni `#btn-mbyll-dhome` është në panel dhe thërret `hapChargeRoomModal`. Pa build. Logjika e faturës nuk u prek.
+
+## 2026-11-04 — Restorant → dhomë (faturë në dhomë)
+
+Biftek + sallatë nga tavolina shkonin te fatura, por pas check-out rreshti i restorantit zhdukej nga ditari dhe nga «Në dhomë» i ndërrimit. Recepsioni e shihte si dhomë, jo si restorant.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` | burimi «Dhoma 102»; ditari e fshihte rreshtin `room` kur dilte `CO-`; ndërrimi e humbiste shumën «Në dhomë» | «Restorant → Dh. 102»; teksti «Biftek 9€ — Dhoma 102 (Arta Fiktive)»; ditari e mban rreshtin, totali mbetet kuponi; ndërrimi: cash 0, në dhomë 13; ditari i hotelit: «Restorant → Dhoma 102: Biftek 9€, Kamarier: …» |
+| `desktop/public/admin.html` | filtri i restorantit e njehsonte «në dhomë» si cash | kartë «Në dhomë»; Raportet: Cash · Kartë · Në dhomë |
+| `desktop/tests/restaurant-room-charge.test.js` | — | dhoma 102, Biftek 9 + Sallatë 4 = 13, pastaj check-out 93 |
+| `desktop/tests/guest-service-flow-e2e.test.js` | shuma e rreshtave | totali i ditari mbetet 110.50; rreshti i biftekut mbetet i dukshëm |
+
+**Prova:** `node tests/restaurant-room-charge.test.js` kaloi (folio 93, ditari 93, kontabilisti 93, në dhomë 13, cash kamarieri 0). `node tests/guest-service-flow-e2e.test.js` kaloi (110.50). `node tests/service-work-log.test.js` kaloi. Pa build. Pa ATK. Formula e TVSH nuk u prek. Nuk duket në Setup 1.0.658 derisa të dalë Setup i ri.
+
 ## 2026-11-04 — Klient i jashtëm (pishinë, spa, palestër)
 
 Shërbimi shtohej vetëm te dhoma e zënë. Klienti pa check-in nuk kishte llogari.

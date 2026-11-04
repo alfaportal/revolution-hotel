@@ -175,7 +175,7 @@ function exportStaffPdf(from, to) {
 function exportShiftsCsv(from, to) {
   const data = reports.getShiftsReport(from, to);
   const csv = toCsv(
-    ["Stafi", "Roli", "Hapur", "Mbyllur", "Shitje", "Cash i numëruar", "Diferenca"],
+    ["Stafi", "Roli", "Hapur", "Mbyllur", "Shitje", "Cash i numëruar", "Diferenca", "Në dhomë"],
     data.shifts.map((s) => [
       s.waiter_name,
       s.staff_role === "recepsion" ? "Recepsion" : "Kamarier",
@@ -184,6 +184,7 @@ function exportShiftsCsv(from, to) {
       money(s.total_sales),
       s.is_open ? "" : money(s.closing_cash_actual),
       s.is_open ? "" : money(s.cash_difference),
+      money(s.room_total),
     ]),
   );
   return { csv, period: `${data.from} — ${data.to}` };
@@ -194,7 +195,7 @@ function exportShiftsPdf(from, to) {
   const html = htmlPage(
     `Raporte të avancuara — Ndërrimet (${data.from} — ${data.to})`,
     tableHtml(
-      ["Stafi", "Roli", "Mbyllur", "Shitje", "Cash i numëruar", "Diferenca"],
+      ["Stafi", "Roli", "Mbyllur", "Shitje", "Cash i numëruar", "Diferenca", "Në dhomë"],
       data.shifts.map((s) => [
         s.waiter_name || "—",
         s.staff_role === "recepsion" ? "Recepsion" : "Kamarier",
@@ -202,6 +203,7 @@ function exportShiftsPdf(from, to) {
         money(s.total_sales),
         s.is_open ? "—" : money(s.closing_cash_actual),
         s.is_open ? "—" : money(s.cash_difference),
+        money(s.room_total),
       ]),
     ),
   );

@@ -79,10 +79,37 @@ function itemsOf(row) {
 
 function stationOf(row) {
   const rec = String(row.receipt_number || "").trim().toUpperCase();
-  if (rec.startsWith("CO-") || rec.startsWith("RC-") || rec.startsWith("SVC-") || rec.startsWith("KR-")) {
+  if (
+    rec.startsWith("CO-")
+    || rec.startsWith("RC-")
+    || rec.startsWith("SVC-")
+    || rec.startsWith("KR-")
+    || rec.startsWith("KL-")
+  ) {
     return "recepsion";
   }
   return "waiter";
+}
+
+function moneyParts(row) {
+  const total = Number(row.total) || 0;
+  const rec = String(row.receipt_number || "").trim().toUpperCase();
+  if (rec.startsWith("CO-")) {
+    let food = 0;
+    for (const it of itemsOf(row)) {
+      const name = String(it.name || "");
+      const amt = (Number(it.quantity) || 1) * (Number(it.price) || 0);
+      if (/^Dhoma\s+/i.test(name.trim())) continue;
+      if (/\(\s*T\d+\s*\)/i.test(name) || /\(\s*POS\s*\)/i.test(name) || /\(\s*RS\s*\)/i.test(name)) {
+        food += amt;
+      }
+    }
+    food = round2(food);
+    const reception = round2(total - food);
+    return { restaurant: food, reception: reception < 0 ? 0 : reception };
+  }
+  if (stationOf(row) === "recepsion") return { restaurant: 0, reception: total };
+  return { restaurant: total, reception: 0 };
 }
 
 function summarize(rows) {
@@ -94,11 +121,12 @@ function summarize(rows) {
   for (const row of rows) {
     const t = Number(row.total) || 0;
     const pay = cashOf(row);
+    const parts = moneyParts(row);
     total += t;
     cash += pay.cash;
     card += pay.card;
-    if (stationOf(row) === "recepsion") reception += t;
-    else waiter += t;
+    waiter += parts.restaurant;
+    reception += parts.reception;
   }
   return {
     order_count: rows.length,

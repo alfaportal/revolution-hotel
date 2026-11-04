@@ -47,6 +47,7 @@ function mapOrderRow(order, tableNumber, db) {
     status: st === "refused" ? "ordered" : st || "ordered",
     refused_at: st === "refused" ? order.kds_kitchen_refused_at || null : null,
     refuse_reason: order.kds_kitchen_refuse_reason || "",
+    source_label: order.source_label || "",
   };
 }
 
