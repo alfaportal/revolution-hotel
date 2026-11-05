@@ -83,7 +83,95 @@ function listKitchenOrders(db) {
   return orders;
 }
 
-/** Porosi «Gati» lokale — alarm te kamarieri (pa cloud). */
+function ensureBarReadyNotices(db) {
+  db.db.exec(`
+    CREATE TABLE IF NOT EXISTS kds_bar_ready_notices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER,
+      table_number INTEGER,
+      item_name TEXT NOT NULL,
+      waiter_name TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+}
+
+function barReadyMessage(itemName, tableNumber) {
+  return `Gati: ${itemName}, Tavolina ${tableNumber}`;
+}
+
+function markBarItemReady(db, orderId, itemName) {
+  const order = getOrderForKds(db, orderId);
+  if (!order || String(order.status || "") !== "active") throw new Error("Porosia nuk u gjet.");
+  const barItems = filterBarItems(parseItems(order.items_json), db);
+  if (!barItems.length) throw new Error("Nuk ka pije për banakun.");
+  const want = String(itemName || "").trim().toLowerCase();
+  const picked = want
+    ? barItems.filter((it) => String(it.name || "").trim().toLowerCase() === want)
+    : barItems;
+  if (!picked.length) throw new Error("Pija nuk është në këtë porosi.");
+  ensureBarReadyNotices(db);
+  const tableNumber = Number(order.table_number) || 0;
+  const notices = [];
+  const seen = new Set();
+  for (const it of picked) {
+    const name = String(it.name || "").trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    const existing = db.db.prepare(`
+      SELECT id FROM kds_bar_ready_notices
+      WHERE order_id = ? AND lower(item_name) = lower(?)
+      ORDER BY id DESC LIMIT 1
+    `).get(order.id, name);
+    let id = existing?.id;
+    if (!id) {
+      const inserted = db.db.prepare(`
+        INSERT INTO kds_bar_ready_notices (order_id, table_number, item_name, waiter_name, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(order.id, tableNumber, name, order.waiter_name || "", new Date().toISOString());
+      id = inserted.lastInsertRowid;
+    }
+    notices.push({
+      id: `bar-${id}`,
+      message: barReadyMessage(name, tableNumber),
+      table_number: tableNumber,
+      item_name: name,
+    });
+  }
+  return notices;
+}
+
+function listWaiterReadyBarOrders(db, dismissedSet) {
+  const dismissed = dismissedSet instanceof Set ? dismissedSet : new Set();
+  ensureBarReadyNotices(db);
+  const rows = db.db.prepare(`
+    SELECT n.id, n.order_id, n.table_number, n.item_name, n.waiter_name, n.created_at, o.waiter_name AS order_waiter
+    FROM kds_bar_ready_notices n
+    JOIN orders o ON o.id = n.order_id
+    WHERE o.status = 'active'
+    ORDER BY n.id ASC
+  `).all();
+  const out = [];
+  for (const row of rows) {
+    const id = `bar-${row.id}`;
+    if (dismissed.has(id)) continue;
+    const tableNumber = Number(row.table_number) || 0;
+    out.push({
+      id,
+      local_order_id: String(row.order_id),
+      table_number: tableNumber,
+      waiter_name: row.waiter_name || row.order_waiter || "",
+      items_json: [{ name: row.item_name, quantity: 1 }],
+      message: barReadyMessage(row.item_name, tableNumber),
+      status: "ready",
+      station: "bar",
+      ready_at: row.created_at,
+    });
+  }
+  return out;
+}
+
 function listWaiterReadyKitchenOrders(db, dismissedSet) {
   const dismissed = dismissedSet instanceof Set ? dismissedSet : new Set();
   const rows = db.db.prepare(`
@@ -115,8 +203,22 @@ function listWaiterReadyKitchenOrders(db, dismissedSet) {
   return out;
 }
 
-function listKitchenCancelledOrders(_db) {
-  return [];
+function listKitchenCancelledOrders(db) {
+  if (!db || typeof db.listKdsCancelNotices !== "function") return [];
+  return db.listKdsCancelNotices().map((row) => ({
+    id: `cancel-${row.id}`,
+    item_cancel: true,
+    table_number: Number(row.table_number) || 0,
+    waiter_name: row.waiter_name || "",
+    items_json: [{ name: row.item_name, quantity: 1 }],
+    ordered_at: row.created_at,
+    created_at: row.created_at,
+    accepted_at: row.created_at,
+    accepted_by_waiter_name: row.waiter_name || "",
+    message: `ANULUAR: ${row.item_name}, Tavolina ${row.table_number}`,
+    status: "cancelled",
+    prepared: Number(row.prepared) === 1,
+  }));
 }
 
 function getOrderForKds(db, orderId) {
@@ -196,6 +298,44 @@ function markKitchenOrderReady(db, orderId) {
   return getOrderForKds(db, order.id);
 }
 
+function mapBarOrderRow(order, tableNumber, db) {
+  const allItems = parseItems(order.items_json);
+  const barItems = filterBarItems(allItems, db);
+  if (!barItems.length) return null;
+  return {
+    id: String(order.id),
+    local_order_id: String(order.id),
+    table_number: Number(tableNumber) || 0,
+    waiter_name: order.waiter_name || "",
+    items_json: barItems,
+    total: itemsTotal(barItems),
+    ordered_at: order.created_at || new Date().toISOString(),
+    device_id: order.cloud_order_id ? "WEB-WAITER" : "POS",
+    source_label: order.source_label || "",
+    station: "bar",
+  };
+}
+
+function listBarOrders(db) {
+  const rows = db.db.prepare(`
+    SELECT o.*, t.number AS table_number
+    FROM orders o
+    JOIN tables t ON t.id = o.table_id
+    WHERE o.status = 'active'
+      AND (
+        COALESCE(o.batch_count, 0) > 0
+        OR LOWER(COALESCE(o.kds_kitchen_status, '')) IN ('ordered', 'accepted', 'refused', 'ready')
+      )
+    ORDER BY o.created_at ASC
+  `).all();
+  const orders = [];
+  for (const row of rows) {
+    const mapped = mapBarOrderRow(row, row.table_number, db);
+    if (mapped) orders.push(mapped);
+  }
+  return orders;
+}
+
 function listBarTablesLive(db) {
   const venue =
     db.getBusinessDisplayName?.()
@@ -243,6 +383,9 @@ module.exports = {
   listKitchenOrders,
   listKitchenCancelledOrders,
   listWaiterReadyKitchenOrders,
+  listWaiterReadyBarOrders,
+  markBarItemReady,
+  listBarOrders,
   listBarTablesLive,
   touchOrderAfterSend,
   acceptKitchenOrder,

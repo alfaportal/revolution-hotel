@@ -78,6 +78,18 @@ async function main() {
   assert.strictEqual(kept.n, 2);
   assert.throws(() => db.payWalkInClient(client.id, { waiter_name: "Fiktiv Recep" }));
 
+  const empty = db.openWalkInClient({ client_name: "Pa sherbime" });
+  const zero = db.payWalkInClient(empty.id, { waiter_name: "Fiktiv Recep" });
+  assert.strictEqual(zero.message, "Llogaria u mbyll pa pagesë");
+  assert.strictEqual(zero.total, 0);
+  assert.strictEqual(zero.receipt_number, null);
+  assert.strictEqual(zero.client.status, "closed");
+  assert.strictEqual(db.listOpenWalkInClients().some((c) => c.id === empty.id), false);
+  assert.strictEqual(
+    db.db.prepare("SELECT COUNT(*) AS n FROM daily_log WHERE receipt_number LIKE 'KL-%'").get().n,
+    1,
+  );
+
   const restaurantOrders = db.db.prepare(`
     SELECT COUNT(*) AS n FROM orders o
     JOIN tables t ON t.id = o.table_id

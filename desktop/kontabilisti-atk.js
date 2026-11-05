@@ -364,6 +364,7 @@ function buildSalesVatBook(salesRows) {
       box30,
       gross: money(s.total),
       payment_method: s.payment_method || "",
+      burimi: s.burimi || "",
     });
   }
   return rows;

@@ -155,6 +155,8 @@ async function main() {
   assert.strictEqual(money(reports.restaurant_payments.card), 0);
   assert.strictEqual(money(reports.restaurant_payments.room), 13);
   assert.strictEqual(money(reports.restaurantSales), 13);
+  assert.strictEqual(money(ditari.totalSales), 13, "netet e papaguara nuk hyjne ne ditari");
+  assert.ok(money(ditari.active_unpaid_total) > 0, "mysafiri aktiv shfaqet vecmas");
   assert.ok(diary.some((row) => row.detail === "Restorant → Dhoma 102: Biftek 9€, Kamarier: Fiktiv Kamarier"));
   assert.ok(diary.some((row) => row.detail === "Restorant → Dhoma 102: Sallatë 4€, Kamarier: Fiktiv Kamarier"));
   assert.ok(charged.charges.length === 2);
@@ -172,7 +174,8 @@ async function main() {
   const shiftAfter = db.getWaiterShiftSummary(kamarierId);
   const coItems = JSON.parse(co.items_json || "[]").map((it) => String(it.name || ""));
   const ledgerSum = money(ledgerAfter.reduce((s, r) => s + Number(r.total || 0), 0));
-  const roomStill = (ditariAfter.entries || []).find((e) => e.payment_method === "room");
+  const roomStill = (ditariAfter.trace_entries || []).find((e) => e.payment_method === "room");
+  const roomInMain = (ditariAfter.entries || []).some((e) => e.audit_trail || (e.folio_settled && e.payment_method === "room"));
 
   report.after = {
     folio: money(closed.bill.total),
@@ -198,8 +201,13 @@ async function main() {
   assert.strictEqual(money(co.total), 93);
   assert.ok(coItems.some((name) => name.includes("Biftek")));
   assert.ok(coItems.some((name) => name.includes("Sallatë")));
-  assert.ok(roomStill, "pas check-out ditari e mban rreshtin e restorantit");
+  assert.ok(roomStill, "pas check-out gjurma e restorantit rri ne trace");
+  assert.strictEqual(roomInMain, false);
   assert.strictEqual(money(ditariAfter.totalSales), 93);
+  assert.strictEqual(money(ditariAfter.restaurantSales), 13);
+  assert.strictEqual(money(ditariAfter.receptionSales), 80);
+  assert.strictEqual(money(ditariAfter.restaurantSales + ditariAfter.receptionSales), 93);
+  assert.strictEqual(money(ditariAfter.active_unpaid_total || 0), 0);
   assert.strictEqual(money(ditariAfter.totalRoom), 13);
   assert.strictEqual(ledgerAfter.filter((r) => r.payment_method === "room").length, 0);
   assert.strictEqual(ledgerSum, 93);

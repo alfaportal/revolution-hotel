@@ -176,11 +176,40 @@ async function main() {
   note("T1 folio 133", t1.folio.total === 133, t1.folio, 133);
   note("T1 ditari 133", t1.ditari === 133, t1.ditari, 133);
   note("T1 kontabilisti 133", t1.kontabilisti === 133, t1.kontabilisti, 133);
+  const coRow = led1.find((r) => String(r.receipt_number || "").startsWith("CO-"));
+  note(
+    "T1 CO burimi 19.50 restorant + 113.50 recepsion",
+    coRow && money(coRow.restaurant_gross) === 19.5 && money(coRow.reception_gross) === 113.5 && money(coRow.total) === 133,
+    coRow && { r: coRow.restaurant_gross, c: coRow.reception_gross, b: coRow.burimi, t: coRow.total },
+    { r: 19.5, c: 113.5, t: 133 },
+  );
+  note(
+    "T1 ditari = kontabilisti ndarje",
+    money(dit1.restaurantSales) === 19.5
+      && money(dit1.receptionSales) === 113.5
+      && money(dit1.restaurantSales + dit1.receptionSales) === 133
+      && money(dit1.totalSales) === 133,
+    { restaurant: money(dit1.restaurantSales), reception: money(dit1.receptionSales), total: money(dit1.totalSales) },
+    { restaurant: 19.5, reception: 113.5, total: 133 },
+  );
+  const bil1 = db.getKontabilistiBilanc({ from: day, to: day });
+  note(
+    "T1 bilanc ndarja = totali",
+    money(bil1.sales_restaurant + bil1.sales_reception) === money(bil1.sales_total) && bil1.sales_restaurant > 0 && bil1.sales_reception > 0,
+    { restaurant: money(bil1.sales_restaurant), reception: money(bil1.sales_reception), total: money(bil1.sales_total) },
+    "te dyja, shuma e njejte",
+  );
   note("T1 avancuara 133", t1.avancuara === 133, t1.avancuara, 133);
   note("T1 Arben te pastrimi", t1.performer === "Arben", t1.performer, "Arben");
   note("T1 email", t1.email === "arta@test.com", t1.email, "arta@test.com");
   note("T1 nete 2 x 50", t1.folio.nights === 2 && t1.folio.room === 100, { nights: t1.folio.nights, room: t1.folio.room }, { nights: 2, room: 100 });
-  note("T1 dhoma e lire menjehere", roomAfter1.status === "free", roomAfter1.status, "free");
+  note("T1 dhoma e papaster pas check-out", roomAfter1.status === "dirty", roomAfter1.status, "dirty");
+  const hk1 = db.db.prepare(
+    "SELECT status FROM housekeeping_tasks WHERE room_id = ? ORDER BY id DESC LIMIT 1",
+  ).get(room102.id);
+  note("T1 task pastrimi", hk1 && hk1.status === "dirty", hk1 && hk1.status, "dirty");
+  const cleaned1 = db.markRoomClean(room102.id);
+  note("T1 e lire vetem pas pastrimit", cleaned1.status === "free", cleaned1.status, "free");
 
   const t2 = {};
   const rez = db.createRoomReservation({
@@ -227,7 +256,9 @@ async function main() {
   note("T2 dhoma e zene pas check-in", roomMid.status === "occupied", roomMid.status, "occupied");
   note("T2 folio 125", t2.folio.total === 125, t2.folio, 125);
   note("T2 ditari +125", t2.ditari_delta === 125, t2.ditari_delta, 125);
-  note("T2 dhoma e lire menjehere", roomEnd2.status === "free", roomEnd2.status, "free");
+  note("T2 dhoma e papaster pas check-out", roomEnd2.status === "dirty", roomEnd2.status, "dirty");
+  const cleaned2 = db.markRoomClean(room201.id);
+  note("T2 e lire vetem pas pastrimit", cleaned2.status === "free", cleaned2.status, "free");
 
   const t3 = {};
   const walk = db.openWalkInClient({ client_name: "Gëzim Testi", email: "gezim@test.com" });
@@ -373,6 +404,7 @@ async function main() {
   t5.staff = (staff.staff || []).map((s) => ({
     name: s.operator,
     total: money(s.total),
+    services_total: money(s.services_total),
     station: s.station_label,
     services: (s.services || []).map((x) => `${x.description} ${money(x.amount)}`).slice(0, 8),
   }));
@@ -386,10 +418,40 @@ async function main() {
   note("T5 kamarieri ne dhoma 19.50", t5.close_waiter.room === 19.5, t5.close_waiter.room, 19.5);
   note("T5 recepsioni cash 293", t5.close_recep.cash === 293, t5.close_recep.cash, 293);
   note("T5 ditari 304", t5.ditari === 304, t5.ditari, 304);
+  const ledRest = money(led5.reduce((s, r) => s + Number(r.restaurant_gross || 0), 0));
+  const ledRec = money(led5.reduce((s, r) => s + Number(r.reception_gross || 0), 0));
+  note(
+    "T5 ditari = kontabilisti ndarje",
+    money(dit5.restaurantSales) === ledRest
+      && money(dit5.receptionSales) === ledRec
+      && money(dit5.restaurantSales + dit5.receptionSales) === 304
+      && money(week.summary.waiter) === ledRest
+      && money(week.summary.reception) === ledRec
+      && money(dit5.active_unpaid_total || 0) === 0,
+    {
+      ditari: { restaurant: money(dit5.restaurantSales), reception: money(dit5.receptionSales) },
+      kontabilisti: { restaurant: ledRest, reception: ledRec },
+      javore: { restaurant: money(week.summary.waiter), reception: money(week.summary.reception) },
+    },
+    "barazim",
+  );
+  const traceSum = money((dit5.trace_entries || []).reduce((s, e) => s + Number(e.total || 0), 0));
+  const mainHasTrace = (dit5.entries || []).some((e) => e.audit_trail || (e.folio_settled && e.payment_method === "room"));
+  note("T5 gjurma jasht listes", traceSum === 19.5 && mainHasTrace === false, { trace: traceSum, mainHasTrace }, { trace: 19.5, mainHasTrace: false });
   note("T5 kontabilisti 304", t5.ledger === 304, t5.ledger, 304);
+  const bil5 = db.getKontabilistiBilanc({ from: day, to: day });
+  note(
+    "T5 bilanc ndarja = totali",
+    money(bil5.sales_restaurant + bil5.sales_reception) === money(bil5.sales_total),
+    { restaurant: money(bil5.sales_restaurant), reception: money(bil5.sales_reception), total: money(bil5.sales_total) },
+    "shuma e njejte",
+  );
   note("T5 javore 304", t5.week === 304, t5.week, 304);
   note("T5 mujore 304", t5.month === 304, t5.month, 304);
   note("T5 stafi 304", t5.staff_summary === 304, t5.staff_summary, 304);
+  const arbenStaff = t5.staff.find((s) => s.name === "Arben");
+  note("T5 Arben shitje 0", arbenStaff && arbenStaff.total === 0, arbenStaff, 0);
+  note("T5 Arben sherbime 12", arbenStaff && arbenStaff.services_total === 12, arbenStaff, 12);
   const waiterShiftRow = t5.nderrimet.find((s) => s.name === "Kamarier Testi");
   note("T5 Nderrimet tregon ne dhoma", waiterShiftRow && waiterShiftRow.room === 19.5, waiterShiftRow, 19.5);
 
@@ -420,6 +482,30 @@ async function main() {
     "Biftek",
   );
   note(
+    "ditari rezervim",
+    diaryBrief.some((r) => r.ev === "reservation" && r.guest === "Besnik Testi"),
+    diaryBrief.filter((r) => r.ev === "reservation"),
+    "Besnik",
+  );
+  note(
+    "ditari shitje cash tavoline",
+    diaryBrief.some((r) => r.ev === "table_cash" && r.amount === 11 && r.by === "Kamarier Testi"),
+    diaryBrief.filter((r) => r.ev === "table_cash"),
+    11,
+  );
+  note(
+    "ditari nderrim hapur",
+    diaryBrief.some((r) => r.ev === "shift_open" && r.by === "Kamarier Testi"),
+    diaryBrief.filter((r) => r.ev === "shift_open").map((r) => r.by),
+    "Kamarier Testi",
+  );
+  note(
+    "ditari nderrim mbyllur",
+    diaryBrief.some((r) => r.ev === "shift_close" && r.by === "Kamarier Testi"),
+    diaryBrief.filter((r) => r.ev === "shift_close").map((r) => r.by),
+    "Kamarier Testi",
+  );
+  note(
     "ditari pastrim",
     diaryBrief.some((r) => String(r.detail || "").includes("Pastrim") || String(r.guest || "") === "Arta Testi" && r.ev === "service_done"),
     diaryBrief.filter((r) => String(r.detail || "").includes("Pastrim") || r.ev === "service_order" || r.ev === "service_done").map((r) => `${r.ev}:${r.detail}`),
@@ -440,6 +526,83 @@ async function main() {
   note("stok ne dhoma -1 jo dyfish", stockEnd.biftek === 9 && stockEnd.sallate === 9, { biftek: stockEnd.biftek, sallate: stockEnd.sallate }, 9);
   note("stok cash -1", stockEnd.pasta === 9 && stockEnd.birra === 9, { pasta: stockEnd.pasta, birra: stockEnd.birra }, 9);
   note("stok minibar besnik -1", stockEnd.mini5 === 9, stockEnd.mini5, 9);
+
+  const roomRs = db.getRoomById(room102.id);
+  if (roomRs.status !== "free") db.markRoomClean(room102.id);
+  const stayRs = db.checkInGuest({
+    room_id: room102.id,
+    guest_name: "Lira Testi",
+    persons: 1,
+    check_in_date: day,
+    check_out_date: addDays(day, 1),
+    deposit: 0,
+  });
+  const forgotten = db.submitGuestRoomMenuOrder("102", [
+    { name: "Kafe", quantity: 1, price: 2.5, menu_item_id: kafe },
+  ]);
+  const forgottenPending = db.listPendingCloudOrders().find((o) => o.id === forgotten.order_id);
+  db.importCloudOrderToLocal(forgottenPending, "Kamarier Testi", { fromAcceptFlow: true });
+  db.removePendingCloudOrders([forgotten.order_id]);
+  const recepRs = db.db.prepare(
+    "INSERT INTO staff (name, staff_role, pin, active) VALUES ('Recep RS', 'recepsion', '1515', 1)",
+  ).run().lastInsertRowid;
+  db.openWaiterShiftWithCash(recepRs, 0);
+  const closedForgotten = db.checkOutGuest(room102.id, { waiter_name: "Recep RS", payment_method: "cash" });
+  const forgottenCharge = (closedForgotten.bill.charges || []).some((c) => String(c.description || "").includes("Kafe"));
+  note(
+    "RS e harruar hyn ne folio ne check-out",
+    forgottenCharge && money(closedForgotten.bill.charges_total) >= 2.5,
+    { charges: money(closedForgotten.bill.charges_total), guest: stayRs.guest.guest_name },
+    2.5,
+  );
+  note(
+    "RS paralajmerim ne check-out",
+    closedForgotten.room_service_warning === "Ka porosi Room Service të pa faturuara — po faturohen automatikisht.",
+    closedForgotten.room_service_warning,
+    "Ka porosi Room Service të pa faturuara — po faturohen automatikisht.",
+  );
+  note(
+    "RS e harruar dhoma dirty",
+    db.getRoomById(room102.id).status === "dirty",
+    db.getRoomById(room102.id).status,
+    "dirty",
+  );
+
+  if (db.getRoomById(room201.id).status !== "free") db.markRoomClean(room201.id);
+  db.checkInGuest({
+    room_id: room201.id,
+    guest_name: "Driton Testi",
+    persons: 1,
+    check_in_date: day,
+    check_out_date: addDays(day, 1),
+    deposit: 0,
+  });
+  const kam2 = db.db.prepare(
+    "INSERT INTO staff (name, staff_role, pin, active) VALUES ('Kamarier RS', 'kamarier', '1616', 1)",
+  ).run().lastInsertRowid;
+  db.openWaiterShiftWithCash(kam2, 0);
+  const forgottenShift = db.submitGuestRoomMenuOrder("201", [
+    { name: "Kafe", quantity: 1, price: 2.5, menu_item_id: kafe },
+  ]);
+  const forgottenShiftPending = db.listPendingCloudOrders().find((o) => o.id === forgottenShift.order_id);
+  db.importCloudOrderToLocal(forgottenShiftPending, "Kamarier RS", { fromAcceptFlow: true });
+  db.removePendingCloudOrders([forgottenShift.order_id]);
+  const sumRs = db.getWaiterShiftSummary(kam2, { sessionRole: "kamarier" });
+  note(
+    "RS nuk bllokon mbylljen",
+    sumRs.active_tables === 0 && sumRs.room_service_uncharged === 1,
+    { tables: sumRs.active_tables, open: sumRs.room_service_uncharged, warn: sumRs.room_service_warning },
+    1,
+  );
+  const closedRs = db.closeWaiterShift(kam2, 0, 0, { sessionRole: "kamarier" });
+  const folioRs = db.getCheckoutPreview(room201.id);
+  const shiftCharged = (folioRs.bill.charges || []).some((c) => String(c.description || "").includes("Kafe"));
+  note(
+    "RS faturohet ne mbyllje nderrimi",
+    closedRs.room_service_warning === "Ka porosi Room Service të pa faturuara — po faturohen automatikisht." && shiftCharged,
+    { warn: closedRs.room_service_warning, charged: shiftCharged, n: (closedRs.room_service_auto_charged || []).length },
+    "warning + folio",
+  );
 
   const failed = checks.filter((c) => !c.ok);
   const report = {

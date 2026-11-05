@@ -571,7 +571,7 @@ test("mixed cash + room: shift cash/room totals", () => {
 });
 
 test("recepsion shift: opening 50 + checkout 100 cash → expected closing 150", () => {
-  const pin = String(200000 + waiterSeq).padStart(6, "0");
+  const pin = String(4000 + waiterSeq).padStart(4, "0");
   db.addStaff("Recep Kusur", pin, "recepsion");
   const recep = db.findStaffByName("Recep Kusur");
   db.openWaiterShiftWithCash(recep.id, 50);
@@ -623,28 +623,18 @@ test("recepsion shift: opening 50 + checkout 100 cash → expected closing 150",
   );
 });
 
-test("staff PIN: kamarier 4 shifra, recepsion 6; legacy 6 kamarier login", () => {
+test("staff PIN: 4 shifra për kamarier dhe recepsion", () => {
   db.addStaff("Pin4", "4321", "kamarier");
-  db.addStaff("Pin6R", "654321", "recepsion");
+  db.addStaff("Pin4R", "5678", "recepsion");
   assert.throws(() => db.addStaff("BadK", "12345", "kamarier"));
   assert.throws(() => db.addStaff("BadK6", "654321", "kamarier"));
-  assert.throws(() => db.addStaff("BadR", "1234", "recepsion"));
+  assert.throws(() => db.addStaff("BadR6", "654321", "recepsion"));
   assert.ok(db.findStaffByPin("4321"));
-  assert.ok(db.findStaffByPin("654321"));
+  assert.ok(db.findStaffByPin("5678"));
   assert.ok(staffPinPolicy.acceptsLoginPin("4321", "kamarier"));
-  assert.ok(staffPinPolicy.acceptsLoginPin("001234", "kamarier"));
-  assert.ok(!staffPinPolicy.acceptsLoginPin("4321", "recepsion"));
+  assert.ok(staffPinPolicy.acceptsLoginPin("5678", "recepsion"));
   const wrong = staffPinPolicy.wrongZoneMessage("recepsion", "kamarier");
   assert.ok(wrong && wrong.includes("Recepsionin"));
-  const leg = db.db
-    .prepare(
-      "INSERT INTO staff (name, pin, active, web_token, staff_role) VALUES (?, ?, 1, ?, ?)",
-    )
-    .run("Legacy6K", "112233", "toklegacy6k", "kamarier");
-  const legId = Number(leg.lastInsertRowid);
-  db.updateStaffProfile(legId, { name: "Legacy6K Renamed" });
-  db.updateStaffPin(legId, "112233");
-  assert.throws(() => db.updateStaffPin(legId, "112244"));
 });
 
 async function run() {

@@ -51,12 +51,23 @@ async function main() {
   const biftek = db.addMenuItem({ name: "Biftek", category: "Ushqim", price: 9, vat_category: "18" });
   const pastrim = db.createHotelService({ name: "Pastrim dhome", price: 12, vat_category: "18" });
 
+  const dayRow = db.db.prepare("SELECT date('now','localtime') AS d").get();
+  const day = dayRow.d;
+  const stayOut = (() => {
+    const d = new Date(`${day}T12:00:00`);
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  })();
+
   const stay = db.checkInGuest({
     room_id: roomRow.id,
     guest_name: "Arta Fiktive",
     persons: 1,
-    check_in_date: "2026-11-03",
-    check_out_date: "2026-11-04",
+    check_in_date: day,
+    check_out_date: stayOut,
     deposit: 0,
   });
   const guest = stay.guest;
@@ -150,9 +161,8 @@ async function main() {
 
   const preview = db.getCheckoutPreview(roomRow.id);
   const fiscal = db.buildCheckoutFiscalItems(preview.bill, preview.room);
-  const day = "2026-11-03";
-  const ledgerBefore = db.getSalesLedger({ from: day, to: "2026-11-04" });
-  const ditariBefore = db.getDitari({ dateFrom: day, dateTo: "2026-11-04" });
+  const ledgerBefore = db.getSalesLedger({ from: day, to: day });
+  const ditariBefore = db.getDitari({ dateFrom: day, dateTo: day });
   note("6-para-checkout", true, {
     folio: {
       nights: preview.bill.nights,
@@ -182,8 +192,8 @@ async function main() {
   const co = db.db.prepare(
     "SELECT receipt_number, total, payment_method, items_json, date FROM daily_log WHERE receipt_number LIKE 'CO-%'",
   ).get();
-  const ditariAfter = db.getDitari({ dateFrom: day, dateTo: "2026-11-04" });
-  const ledgerAfter = db.getSalesLedger({ from: day, to: "2026-11-04" });
+  const ditariAfter = db.getDitari({ dateFrom: day, dateTo: day });
+  const ledgerAfter = db.getSalesLedger({ from: day, to: day });
   const coDate = String(co?.date || day).slice(0, 10);
   const week = advanced.getWeeklyReport(coDate);
   const month = advanced.getMonthlyReport(coDate.slice(0, 7));
@@ -224,8 +234,9 @@ async function main() {
   });
 
   const ditariSum = money(ditariAfter.totalSales);
-  const roomTrace = (ditariAfter.entries || []).find((e) => e.folio_settled && e.payment_method === "room");
-  assert.ok(roomTrace, "rreshti restorant → dhomë mbetet i dukshëm");
+  const roomTrace = (ditariAfter.trace_entries || []).find((e) => e.payment_method === "room");
+  assert.ok(roomTrace, "gjurma restorant → dhomë rri jashtë listës kryesore");
+  assert.ok(!(ditariAfter.entries || []).some((e) => e.audit_trail));
   assert.ok(String(roomTrace.artikujt || "").includes("Dhoma 102"));
   const ledgerSum = sum(ledgerAfter, "total");
   const shiftSum = money((shifts.shifts || []).reduce((s, r) => s + (Number(r.total_sales) || 0), 0));

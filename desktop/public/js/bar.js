@@ -8,6 +8,9 @@
   const syncEl = document.getElementById("last-sync");
   const tablesGridEl = document.getElementById("bar-tables-grid");
   const tablesUpdatedEl = document.getElementById("bar-tables-updated");
+  const ordersGridEl = document.getElementById("bar-orders-grid");
+  const ordersCountEl = document.getElementById("bar-orders-count");
+  const ordersEmptyEl = document.getElementById("bar-orders-empty");
 
   let eventSource = null;
 
@@ -97,6 +100,52 @@
     return Number(n || 0).toFixed(2) + " €";
   }
 
+  function orderHead(o) {
+    const src = String(o.source_label || "").trim();
+    const table = Number(o.table_number) || 0;
+    if (src) return src;
+    return table ? `T${table}` : "Banak";
+  }
+
+  function renderBarTicket(o) {
+    const items = (Array.isArray(o.items_json) ? o.items_json : []).map((it) => {
+      const qty = Number(it.quantity) || 1;
+      const rawName = String(it.name || it.emri || "—");
+      const name = escapeHtml(rawName);
+      return `<li><span class="qty">${qty}×</span> ${name} <button type="button" class="btn-bar-ready" data-bar-ready="${escapeHtml(o.id)}" data-item="${escapeHtml(rawName)}">Gati</button></li>`;
+    }).join("");
+    return `<article class="order-ticket" data-id="${escapeHtml(o.id)}">
+      <div class="ticket-kind">Banak · pije</div>
+      <div class="ticket-head">
+        <div class="ticket-table">${escapeHtml(orderHead(o))}</div>
+        <div class="ticket-time">${formatTime(o.ordered_at)}</div>
+      </div>
+      <div class="ticket-waiter">👤 <strong>${escapeHtml(o.waiter_name || "—")}</strong></div>
+      <ul class="ticket-items">${items || "<li>—</li>"}</ul>
+      <div class="ticket-total">${formatEuro(o.total)}</div>
+    </article>`;
+  }
+
+  async function fetchBarOrders() {
+    if (!ordersGridEl) return;
+    if (!ensureBarSession()) return;
+    try {
+      const res = await fetch(
+        apiUrl(`/api/kds/bar/orders${apiQuery()}`),
+        fetchOpts({ headers: apiHeaders() }),
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) return;
+      hideError();
+      const orders = data.orders || [];
+      if (ordersCountEl) ordersCountEl.textContent = String(orders.length);
+      if (ordersEmptyEl) ordersEmptyEl.hidden = orders.length > 0;
+      ordersGridEl.innerHTML = orders.map(renderBarTicket).join("");
+    } catch {
+      /* ignore */
+    }
+  }
+
   function renderLiveTableCard(t) {
     if (t.status === "free") {
       return `<div class="bar-table-card free">
@@ -160,22 +209,62 @@
     }
   }
 
+  if (ordersGridEl) {
+    ordersGridEl.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-bar-ready]");
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(
+          apiUrl(`/api/kds/bar/orders/${encodeURIComponent(btn.dataset.barReady)}/ready${apiQuery()}`),
+          fetchOpts({
+            method: "POST",
+            headers: { ...apiHeaders(), "Content-Type": "application/json" },
+            body: JSON.stringify({ item_name: btn.dataset.item || "" }),
+          }),
+        );
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showError(data.gabim || "Nuk u shënua si gati.");
+          btn.disabled = false;
+          return;
+        }
+        btn.textContent = "Gati";
+        fetchBarOrders();
+      } catch (err) {
+        showError(err.message || "Nuk u shënua si gati.");
+        btn.disabled = false;
+      }
+    });
+  }
+
   function connectLocalStaffEvents() {
     if (!window.LocalStaffEvents) return;
-    window.LocalStaffEvents.on("order-new", () => fetchLiveTables());
-    window.LocalStaffEvents.on("table-update", () => fetchLiveTables());
-    window.LocalStaffEvents.on("order-status", () => fetchLiveTables());
-    window.LocalStaffEvents.connect(() => fetchLiveTables());
+    const refresh = () => {
+      fetchBarOrders();
+      fetchLiveTables();
+    };
+    window.LocalStaffEvents.on("order-new", refresh);
+    window.LocalStaffEvents.on("table-update", refresh);
+    window.LocalStaffEvents.on("order-status", refresh);
+    window.LocalStaffEvents.connect(refresh);
   }
 
   async function bootBar() {
     await ensureBarSessionAsync();
+    fetchBarOrders();
     fetchLiveTables();
     connectLocalStaffEvents();
     if (window.LanStatus?.startAdaptivePoll) {
-      window.LanStatus.startAdaptivePoll(() => fetchLiveTables(), 8000, 30000);
+      window.LanStatus.startAdaptivePoll(() => {
+        fetchBarOrders();
+        fetchLiveTables();
+      }, 8000, 30000);
     } else {
-      setInterval(fetchLiveTables, 30_000);
+      setInterval(() => {
+        fetchBarOrders();
+        fetchLiveTables();
+      }, 30_000);
     }
   }
   void bootBar();

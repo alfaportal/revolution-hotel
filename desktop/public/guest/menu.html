@@ -228,6 +228,28 @@
 
               : `Porosia u ruajt (${result.guest_name || ""}, dhoma ${result.room_number || ""}).`);
 
+          if (result.pending && result.order_id && G.watchOrderUntilAccepted) {
+
+            G.watchOrderUntilAccepted(result.order_id, (data) => {
+
+              if (data.status === "expired") {
+
+                msg.className = "sub err";
+
+                msg.textContent = data.message || G.GUEST_EXPIRED_MSG;
+
+              } else if (data.status === "accepted" || data.status === "ready") {
+
+                msg.className = "sub ok";
+
+                msg.textContent = "Porosia u pranua.";
+
+              }
+
+            });
+
+          }
+
         } catch (e) {
 
           msg.className = "sub err";

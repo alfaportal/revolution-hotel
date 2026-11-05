@@ -247,6 +247,20 @@ function pendingAcceptGateOrder(o, db) {
   return false;
 }
 
+function qrMenuOrderPastAcceptLimit(o, db, firstSeenMap, nowMs) {
+  if (typeof db.isGuestRoomMenuOrder === "function" && db.isGuestRoomMenuOrder(o)) return false;
+  const qrTable = typeof db.isQrTableOrderSubjectToAcceptGate === "function"
+    && db.isQrTableOrderSubjectToAcceptGate(o);
+  const src = String(o?.source || "").toLowerCase();
+  const device = String(o?.device_id || "").trim().toUpperCase();
+  const publicTakeaway = (src === "takeaway" || src === "delivery")
+    && (device === "WEB-PUBLIC" || device === "WEB-PUBLIC-LOCAL");
+  if (!qrTable && !publicTakeaway) return false;
+  const firstSeenIso = firstSeenMap.get(String(o.id)) || o.created_at || o.ordered_at;
+  const firstMs = firstSeenIso ? new Date(firstSeenIso).getTime() : NaN;
+  return Number.isFinite(firstMs) && nowMs - firstMs > PENDING_ACCEPT_EXPIRE_MS;
+}
+
 function splitUntouchedExpiredPending(db, orders) {
   const firstSeenMap = pendingFirstSeenMap(db);
   const nowMs = Date.now();
@@ -258,7 +272,18 @@ function splitUntouchedExpiredPending(db, orders) {
       live.push(o);
       continue;
     }
+    if (typeof db.getGuestOrderOutcome === "function") {
+      const outcome = db.getGuestOrderOutcome(String(o.id));
+      if (outcome && String(outcome.status) === "expired") {
+        expiredIds.push(String(o.id));
+        continue;
+      }
+    }
     if (pendingAcceptGateOrder(o, db)) {
+      if (qrMenuOrderPastAcceptLimit(o, db, firstSeenMap, nowMs)) {
+        expiredIds.push(String(o.id));
+        continue;
+      }
       live.push(o);
       continue;
     }
@@ -894,7 +919,14 @@ async function tick(db, printBarTicket) {
   }
 
   const expiredSplit = splitUntouchedExpiredPending(db, finalPending);
-  finalPending = expiredSplit.live;
+  if (typeof db.expireUnacceptedQrOrders === "function") {
+    db.expireUnacceptedQrOrders(PENDING_ACCEPT_EXPIRE_MS);
+  }
+  finalPending = expiredSplit.live.filter((o) => {
+    if (typeof db.getGuestOrderOutcome !== "function") return true;
+    const outcome = db.getGuestOrderOutcome(String(o.id));
+    return !(outcome && String(outcome.status) === "expired");
+  });
   if (expiredSplit.expiredIds.length) {
     expireUntouchedPendingOrders(db, expiredSplit.expiredIds);
   }
@@ -1022,6 +1054,7 @@ function isCloudOrderSlipMarkedPrinted(cloudOrderId) {
 }
 
 module.exports = {
+  PENDING_ACCEPT_EXPIRE_MS,
   startOnlineOrdersWatcher,
   stopOnlineOrdersWatcher,
   getOnlineOrdersSnapshot: getSnapshot,

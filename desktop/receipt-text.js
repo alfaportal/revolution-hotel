@@ -342,6 +342,93 @@ function ensureEscPosCut(buffer) {
   return bufferHasEscPosCut(buffer) ? buffer : appendEscPosCut(buffer);
 }
 
+function normalizePrintDensity(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 10;
+  return Math.min(15, Math.max(1, n));
+}
+
+function clampFiscalPrintDensity(value) {
+  return Math.min(normalizePrintDensity(value), 8);
+}
+
+function isRongtaPrinterName(printerName) {
+  return /rongta|rpp0|rp[p]?02/i.test(String(printerName || ""));
+}
+
+function buildRongtaPrintDensityEscChunks(printDensity) {
+  const ESC = 0x1b;
+  const GS = 0x1d;
+  const d = normalizePrintDensity(printDensity);
+  const chunks = [
+    Buffer.from([ESC, 0x21, 0x00]),
+    Buffer.from([GS, 0x21, 0x00]),
+    Buffer.from([ESC, 0x47, 0x00]),
+    Buffer.from([ESC, 0x45, 0x00]),
+    Buffer.from([ESC, 0x4d, 0x00]),
+    Buffer.from([ESC, 0x20, 0x00]),
+  ];
+  if (d >= 14) {
+    chunks.push(Buffer.from([ESC, 0x45, 0x01]));
+    chunks.push(Buffer.from([ESC, 0x47, 0x01]));
+  } else if (d >= 12) {
+    chunks.push(Buffer.from([ESC, 0x45, 0x01]));
+  }
+  return chunks;
+}
+
+function buildPrintDensityEscChunks(printDensity, printerName = "") {
+  const ESC = 0x1b;
+  const GS = 0x1d;
+  const d = normalizePrintDensity(printDensity);
+  const t = (d - 1) / 14;
+  if (isRongtaPrinterName(printerName)) {
+    return buildRongtaPrintDensityEscChunks(d);
+  }
+  const chunks = [
+    Buffer.from([ESC, 0x21, 0x00]),
+    Buffer.from([GS, 0x21, 0x00]),
+    Buffer.from([ESC, 0x47, 0x00]),
+    Buffer.from([ESC, 0x45, 0x00]),
+    Buffer.from([ESC, 0x4d, 0x00]),
+    Buffer.from([ESC, 0x20, 0x00]),
+  ];
+  const n1 = Math.round(5 + t * 36);
+  const n2 = Math.round(24 + t * 70);
+  const n3 = Math.round(230 - t * 150);
+  const gsE = Math.round(t * 8);
+  chunks.push(Buffer.from([ESC, 0x37, n1, n2, n3]));
+  chunks.push(Buffer.from([GS, 0x45, gsE]));
+  return chunks;
+}
+
+function blackLumMaxFromPrintDensity(printDensity) {
+  const d = normalizePrintDensity(printDensity);
+  return 30 + d * 8;
+}
+
+function inkLevelFromPrintDensity(printDensity, printerName = "") {
+  const d = normalizePrintDensity(printDensity);
+  const t = (d - 1) / 14;
+  void printerName;
+  return 0.42 + t * 0.58;
+}
+
+function qrDarkHexFromPrintDensity(printDensity) {
+  const ink = inkLevelFromPrintDensity(printDensity);
+  const g = Math.max(0, Math.min(255, Math.round(255 * (1 - ink * 0.92))));
+  const h = g.toString(16).padStart(2, "0");
+  return `#${h}${h}${h}`;
+}
+
+function prependPrintDensityEscPos(buffer, printDensity, printerName = "") {
+  if (!buffer || !buffer.length) return buffer;
+  return Buffer.concat([
+    ...buildPrintDensityEscChunks(printDensity, printerName),
+    buffer,
+  ]);
+}
+
 function buildEscPosInitChunks(opts = {}) {
   const ESC = 0x1b;
   const GS = 0x1d;
@@ -553,4 +640,11 @@ module.exports = {
   displayReceiptNumber,
   THERMAL_EURO_CHAR,
   THERMAL_EURO_SUFFIX,
+  normalizePrintDensity,
+  clampFiscalPrintDensity,
+  blackLumMaxFromPrintDensity,
+  inkLevelFromPrintDensity,
+  qrDarkHexFromPrintDensity,
+  prependPrintDensityEscPos,
+  buildPrintDensityEscChunks,
 };

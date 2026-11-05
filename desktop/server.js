@@ -3151,6 +3151,31 @@ app.post("/api/kds/orders/:orderId/ready", auth, kdsPanelStaffAuth, (req, res) =
   }
 });
 
+app.post("/api/kds/bar/orders/:orderId/ready", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const itemName = String(req.body?.item_name || req.body?.name || "").trim();
+    const notices = localKds.markBarItemReady(db, req.params.orderId, itemName);
+    notifyWaitersRealtime("ready", { order_id: req.params.orderId, station: "bar", local: true });
+    res.json({ ok: true, notices });
+  } catch (e) {
+    res.status(400).json({ ok: false, gabim: e.message });
+  }
+});
+
+app.get("/api/kds/bar/orders", auth, kdsPanelStaffAuth, (req, res) => {
+  try {
+    const orders = localKds.listBarOrders(db);
+    const venue =
+      db.getBusinessDisplayName?.()
+      || db.getBusinessName?.()
+      || db.getSetting?.("restaurant_name", "")
+      || "Restorant";
+    res.json({ ok: true, client_name: venue, restaurant_name: venue, orders });
+  } catch (e) {
+    res.status(500).json({ ok: false, gabim: e.message });
+  }
+});
+
 app.get("/api/kds/bar/tables/live", auth, kdsPanelStaffAuth, (req, res) => {
   try {
     const live = localKds.listBarTablesLive(db);
@@ -4123,9 +4148,10 @@ function mergeReadyOrdersForWaiterAlarm(lists) {
 }
 
 function collectLocalWaiterReadyOrders() {
-  return filterReadyOrdersForWaiterAlarm(
-    localKds.listWaiterReadyKitchenOrders(db, _seenReadyOrderIds),
-  );
+  return filterReadyOrdersForWaiterAlarm([
+    ...localKds.listWaiterReadyKitchenOrders(db, _seenReadyOrderIds),
+    ...localKds.listWaiterReadyBarOrders(db, _seenReadyOrderIds),
+  ]);
 }
 
 app.get("/api/waiter/orders/ready-check", auth, waiterOnly, async (req, res) => {
@@ -4312,6 +4338,17 @@ app.post("/api/waiter/online-orders/close", auth, waiterOnly, async (req, res) =
     res.json({ ok: true, ...cloud });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message || "Gabim." });
+  }
+});
+
+app.post("/api/waiter/online-orders/update", auth, waiterOrRecepsion, (req, res) => {
+  const id = String(req.body?.order_id || req.body?.id || "").trim();
+  if (!id) return res.status(400).json({ gabim: "Porosia mungon." });
+  try {
+    const result = db.updatePendingTakeawayOrder(id, req.body?.items);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
   }
 });
 
@@ -4751,7 +4788,7 @@ app.post("/api/waiter/walkin-clients/:id/pay", auth, waiterOrRecepsion, async (r
     let printed = false;
     let printMessage = "";
     let couponType = "fiscal";
-    if (fiscalConfig.isFiscalEnabled()) {
+    if (Number(result.total) > 0 && result.receipt_number && fiscalConfig.isFiscalEnabled()) {
       fiscalResult = await fiscalizeRecepcionSale({
         items: result.fiscal_items,
         total: result.total,
@@ -4765,7 +4802,7 @@ app.post("/api/waiter/walkin-clients/:id/pay", auth, waiterOrRecepsion, async (r
       });
       printed = !!fiscalResult?.printed;
       printMessage = fiscalResult?.printMessage || "";
-    } else {
+    } else if (Number(result.total) > 0 && result.receipt_number) {
       const printResult = await printRecepcionKasaThermalReceipt(db, {
         receipt_number: result.receipt_number,
         total: result.total,
@@ -5600,6 +5637,35 @@ app.post("/api/admin/rooms/:id/clean", auth, adminOnly, (req, res) => {
   }
 });
 
+app.get("/api/waiter/guests/history", auth, staffOrAdmin, (req, res) => {
+  try {
+    const rows = db.listGuestsHistory({
+      status: req.query?.status,
+      from: req.query?.from,
+      to: req.query?.to,
+      limit: req.query?.limit,
+    });
+    res.json({ ok: true, guests: rows });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/guests/:id/refund", auth, staffOrAdmin, (req, res) => {
+  try {
+    const result = db.refundCheckedOutGuest({
+      guest_id: Number(req.params.id),
+      amount: req.body?.amount,
+      reason: req.body?.reason,
+      performed_by: req.session?.emri || "Recepsion",
+    });
+    auditReq(req, "Rimbursim", result.detail);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
 app.get("/api/admin/guests/history", auth, adminOnly, (req, res) => {
   try {
     const rows = db.listGuestsHistory({
@@ -5777,6 +5843,36 @@ app.post("/api/waiter/rooms/:id/check-in", auth, staffOrAdmin, (req, res) => {
     auditReq(req, "Check-in", `${result.room.room_number} — ${result.guest.guest_name}`);
     pushHotelGuestStayToCloudAsync("recepsion-check-in");
     res.status(201).json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/rooms/:id/cancel-check-in", auth, staffOrAdmin, (req, res) => {
+  try {
+    const result = db.cancelCheckIn({
+      room_id: Number(req.params.id),
+      performed_by: req.session?.emri || "Recepsion",
+    });
+    auditReq(req, "Anulo check-in", result.detail);
+    pushHotelGuestStayToCloudAsync("recepsion-cancel-check-in");
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/waiter/rooms/:id/move-guest", auth, staffOrAdmin, (req, res) => {
+  try {
+    const result = db.moveGuestToRoom({
+      from_room_id: Number(req.params.id),
+      to_room_id: Number(req.body?.to_room_id),
+      guest_id: Number(req.body?.guest_id) || undefined,
+      performed_by: req.session?.emri || "Recepsion",
+    });
+    auditReq(req, "Zhvendosje mysafiri", result.detail);
+    pushHotelGuestStayToCloudAsync("recepsion-move-guest");
+    res.json(result);
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -6596,6 +6692,18 @@ app.put("/api/waiter/room-reservations/:id", auth, staffOrAdmin, (req, res) => {
   }
 });
 
+app.post("/api/waiter/room-reservations/:id/no-show", auth, staffOrAdmin, (req, res) => {
+  try {
+    const result = db.markReservationNoShow(req.params.id, {
+      performed_by: req.session?.emri || "Recepsion",
+    });
+    auditReq(req, "No-show", result.detail);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
 app.post("/api/waiter/room-reservations/:id/cancel", auth, staffOrAdmin, (req, res) => {
   try {
     const reservation = db.cancelRoomReservation(req.params.id);
@@ -6987,6 +7095,52 @@ app.post("/api/orders/cancel", auth, async (req, res) => {
       action: "cancelled",
     });
     res.json({ ok: true, message: "Porosia u anullua", cloud });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/orders/move-items", auth, (req, res) => {
+  const fromId = Number(req.body?.from_table_id || req.body?.table_id);
+  const toId = Number(req.body?.to_table_id);
+  if (!fromId || !toId) return res.status(400).json({ gabim: "Tavolina mungon" });
+  try {
+    const order = db.getActiveOrderForTable(fromId);
+    if (!order) return res.status(400).json({ gabim: "Nuk ka porosi aktive për këtë tavolinë" });
+    if (req.session.role === "kamarier" && order.waiter_name !== req.session.emri) {
+      return res.status(403).json({ gabim: "Mund të zhvendosni vetëm porositë tuaja" });
+    }
+    const result = db.moveTableOrderItems({
+      fromTableId: fromId,
+      toTableId: toId,
+      waiterName: order.waiter_name,
+      items: req.body?.items,
+    });
+    emitLocalStaffEvent("table-update", { table_id: fromId, action: "moved" });
+    emitLocalStaffEvent("table-update", { table_id: toId, action: "moved" });
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.post("/api/orders/remove-sent-item", auth, (req, res) => {
+  const tableId = Number(req.body?.table_id);
+  if (!tableId) return res.status(400).json({ gabim: "Tavolina mungon" });
+  try {
+    const order = db.getActiveOrderForTable(tableId);
+    if (!order) return res.status(400).json({ gabim: "Nuk ka porosi aktive për këtë tavolinë" });
+    if (req.session.role === "kamarier" && order.waiter_name !== req.session.emri) {
+      return res.status(403).json({ gabim: "Mund të hiqni vetëm nga porositë tuaja" });
+    }
+    const result = db.removeSentOrderItem({
+      tableId,
+      waiterName: order.waiter_name,
+      item: req.body?.item,
+    });
+    emitLocalStaffEvent("table-update", { table_id: tableId, action: "item-removed" });
+    notifyLocalKdsUpdate({ reason: "item-cancel", table_id: tableId });
+    res.json(result);
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -8975,7 +9129,7 @@ app.get("/api/kontabilisti/sales-ledger/export/pdf", auth, adminOnly, (req, res)
 
 app.get("/api/kontabilisti/expenses", auth, adminOnly, (req, res) => {
   try {
-    res.json({ ok: true, rows: db.listExpenses(req.query) });
+    res.json({ ok: true, rows: db.listKontabilistiExpenseRows(req.query) });
   } catch (e) {
     res.status(400).json({ ok: false, gabim: e.message });
   }
@@ -9011,7 +9165,7 @@ app.get("/api/kontabilisti/expenses/export.csv", auth, adminOnly, (req, res) => 
 
 app.get("/api/kontabilisti/expenses/export/pdf", auth, adminOnly, (req, res) => {
   const { from, to } = req.query;
-  const rows = db.listExpenses(req.query);
+  const rows = db.listKontabilistiExpenseRows(req.query);
   const settings = db.getSettings();
   const period = `${from || "—"} deri ${to || "—"}`;
   const html = buildExpensesLedgerHtml(rows, db.getUnifiedBusinessName(), period);
@@ -9749,6 +9903,17 @@ app.post("/api/guest/menu-order", (req, res) => {
     });
     notifyWaitersRealtime("online_orders", { reason: "guest_menu" });
     res.status(201).json(result);
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.get("/api/guest/order-status", (req, res) => {
+  const id = String(req.query.order_id || "").trim();
+  if (!id) return res.status(400).json({ gabim: "Mungon porosia" });
+  try {
+    const data = db.getGuestPublicOrderStatus(id, onlineOrdersWatcher.PENDING_ACCEPT_EXPIRE_MS);
+    res.json(data);
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -10946,6 +11111,8 @@ async function postFiscalReceiptPrintHandler(req, res) {
 
 app.post("/api/fiscal-receipts/:id/print", auth, adminOnly, postFiscalReceiptPrintHandler);
 app.post("/api/fiscal/receipts/:id/print", auth, adminOnly, postFiscalReceiptPrintHandler);
+app.get("/api/staff/fiscal/receipts", auth, staffOrAdmin, handleGetFiscalReceiptsList);
+app.post("/api/staff/fiscal/receipts/:id/print", auth, staffOrAdmin, postFiscalReceiptPrintHandler);
 
 /** Dërgim manual i radhës offline te ATK (BIZNES: POST /api/fiscal/send-pending) */
 app.post("/api/fiscal/send-pending", auth, adminOnly, async (_req, res) => {

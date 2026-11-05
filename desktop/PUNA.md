@@ -1,5 +1,263 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-05 — Dy dyqane: Restorant dhe Recepsion
+
+Ditari, Raportet, 7 skedat e raporteve të avancuara dhe rreshti i Kontabilistit tregojnë dy dyqane. Shuma «Shitur recepsionit» dhe «Paguar për restorantin» është e njëjta. TOTALI = cash+kartë e restorantit + cash+kartë e recepsionit. Shitjet, TVSH dhe fitimi nuk ndryshuan.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | `shops` te Ditari dhe Raportet; te bilanci u shtuan `sold_to_reception` dhe `paid_to_restaurant` |
+| `hotel-advanced-reports.js` | javore/mujore/punonjësit marrin të njëjtën ndarje |
+| `public/admin.html` | dy seksione te Ditari, Raportet, Kontabilisti |
+| `public/js/hotel-advanced-reports-ui.js` | dy rreshta në të 7 skedat |
+
+Prova: comprehensive **74/74**, stresi **88/88**. 3 ditë: restoranti 38+47+37.50=122.50, recepsioni arka 396, transferi 37.50, TOTALI 481. Stresi: restoranti 232.80+51+99=382.80, recepsioni arka 349, transferi 99, TOTALI 632.80.
+
+## 2026-11-05 — Tavolina bosh dhe banaku gati
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `database.js` `closeTable` | porosia pa artikuj bëhej shitje 0€ dhe tavolina lihej e lirë | hedh «Tavolina është e zbrazët — shto artikuj para mbylljes.»; porosia mbetet aktive |
+| `lib/local-kds-service.js` | vetëm kuzhina njoftonte «gati» | `markBarItemReady` → «Gati: Pije 2, Tavolina 2» |
+| `server.js` | s’kishte rrugë banaku gati | `POST /api/kds/bar/orders/:orderId/ready`; alarmi i kamarierit merr edhe banakun |
+| `public/js/bar.js` | tiketa pa buton | butoni «Gati» për çdo pije |
+| `public/waiter.html` | alarmi tregonte vetëm listën | tregon fjalinë `Gati: …, Tavolina …` |
+| `tests/hotel-restaurant-stress.test.js` | 382.80 krahasohej me Ditari/Kontabilisti 632.80 | krahasohet me Ditari Restorant dhe Kontabilisti restorant, të dyja 382.80 |
+
+Prova: `node tests/hotel-restaurant-stress.test.js` → **88/88**. Tavolina 19 mbeti occupied, 0 rreshta shitjeje. Banaku: «Gati: Pije 2, Tavolina 2». Ditari i plotë 632.80, restoranti 382.80.
+
+## 2026-11-05 — Provë stresi e restorantit
+
+U shtua vetëm `tests/hotel-restaurant-stress.test.js`. Kodi i sistemit nuk u ndryshua. Databazë e përkohshme. 84/88.
+
+Restoranti 382.80 = Ditari Restorant 382.80 = Kamarier A 249.80 + Kamarier B 133. Ditari = Kontabilisti = 632.80 (recepsioni 250 nga 5 netë × 50). Foliot 30 + 19 + 24 + 26 = 99 = «në dhomë». Stoku 50 − shitur, pastaj +10 për ushqimin, përputhet me Qarkullimin. Dështuan: njoftimi «gati» s’e merr tavolinën vetëm me pije (4 nga 5), tavolina bosh mbyllet me shitje 0€, dhe shuma e tavolinave nuk barazon Ditari/Kontabilistin e plotë sepse netët janë 250.
+
+## 2026-11-05 — Pritjet e provës 74/74
+
+U ndryshua vetëm `tests/hotel-final-comprehensive.test.js`. Logjika e sistemit nuk u prek.
+
+| Pritja | Para | Pas |
+|--------|------|-----|
+| Riprintimi | kërkonte kupon fiskal | kuponi termik `CO-2` (`Nr. Fatures: 000002`), `fiscal_receipts` 0 |
+| Stoku 0 | priste −1 | mbetet 0; formula nuk pret stok negativ |
+| Recepsion dita 3 | arka 171 duhej të barazonte Ditari 128.50 | arka 171 dhe Ditari Recepsion 128.50, të dyja të sakta |
+
+Prova: `node tests/hotel-final-comprehensive.test.js` → **74/74 PASS**. CO-2 totali 105, fiscal_receipts 0. Stoku Zero: shitur 1, fundi 0. Arka 171, Ditari Recepsion 128.50.
+
+## 2026-11-05 — Minibar stok, punonjësit, Qarkullimi
+
+Tri rregullime. Ditari, Kontabilisti, ndërrimi i arkës dhe fiskali nuk u prekën.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `database.js` `addRoomCharge` | ngarkesa manuale «Minibar · Coca-Cola» nuk zbriste stokun | zbret 1 nga produkti me të njëjtin emër dhe çmim; ruan `menu_item_id` |
+| `database.js` `buildCheckoutLogItems` | rreshti i CO nuk merrte id e produktit | CO mban `menu_item_id` që Qarkullimi ta bashkojë |
+| `hotel-advanced-reports.js` `getStaffReport` | recepsioni 396 + kamarieri 122.50 = 518.50 | recepsioni 396 − ushqimi i restorantit në CO 37.50 = 358.50; shuma 481 |
+| `hotel-advanced-reports.js` `getTurnoverReport` | Birra dy rreshta (meny + minibar) | një rresht për `product_id`: sasia 2, xhiro 6, stoku 18 |
+
+Prova `node tests/hotel-final-comprehensive.test.js`: 70/74. Coca-Cola 20 → 19, Qarkullimi Coca-Cola sasia 1, xhiro 1.50, stoku 19. Punonjësit 358.50 + 122.50 + 0 = 481 = Ditari. Birra një rresht, sasia 2, xhiro 6, stoku 18. Ditari dita 1/2/3 = 202 / 111 / 168, totali 481. Mbeten 4 dështime jashtë kësaj pune: riprintimi (fiskalizimi i fikur), stoku 0 mbetet 0, paralajmërimi i stokut 0, ndërrimi i recepsionit 171 kundrejt Ditarit Recepsion 128.50.
+
+## 2026-11-05 — Provë përfundimtare 3-ditore
+
+U shtua vetëm `tests/hotel-final-comprehensive.test.js`. Kodi i sistemit nuk u ndryshua. Databazë e përkohshme. 68/74 kontrolle kaluan.
+
+Ditari = Kontabilisti = Mujore = 481. Dita 1 = 202 (Restorant 62 + Recepsion 140). Dita 2 = 111 (21 + 90). Dita 3 = 168 (39.50 + 128.50). Arta 171, Besnik 105, Gëzim 90. Rimbursimi −5 e zbret 481. Dështuan: riprintimi fiskal (s’ka kupon se fiskalizimi është i fikur), stoku 0 shitet dhe mbetet 0, ndërrimi i recepsionit ditën 3 është 171 kundrejt Ditarit 128.50, shuma e punonjësve 518.50 kundrejt 481, Qarkullimi e ndan Birrën mes dy produkteve me të njëjtin emër.
+
+## 2026-11-05 — Anulo check-in, no-show, rimbursim
+
+KAFENE u lexua vetëm: s’ka anulim check-in, no-show rezervimi, as rimbursim mysafiri. HOTEL: check-in i anuluar e kthen dhomën të lirë dhe rezervimin në «confirmed»; no-show lihet status i lejuar pa e mbajtur dhomën të rezervuar; rimbursimi është kupon negativ `KR-RB-…` që Ditari dhe Kontabilisti e zbresin. Librat ATK dhe moduli fiskal nuk u prekën.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `database.js` | `no_show` hidhte «Statusi i rezervimit është i pavlefshëm.»; s’kishte anulim check-in as rimbursim | `cancelCheckIn`, `markReservationNoShow`, `refundCheckedOutGuest`; `no_show` në statuset e rezervimit |
+| `server.js` | s’kishte rrugë | `POST /api/waiter/rooms/:id/cancel-check-in`, `POST /api/waiter/room-reservations/:id/no-show`, `GET /api/waiter/guests/history`, `POST /api/waiter/guests/:id/refund` |
+| `public/recepcion.html` | dhoma e zënë pa anulim; rezervimi pa no-show; s’kishte listë rimbursimi | «Anulo check-in», «No-show», skeda «Rimbursim» |
+
+Prova në databazë të përkohshme: «Anulim check-in: Arta Testi, Dh. 101» — mysafiri cancelled, ngarkesa 0, dhoma free, rezervimi confirmed. «No-show: Arta Testi, Dh. 101, data 05.11.2026» — status no_show, dhoma mbeti e lirë. Pas check-out, rimbursimi 5€: «Rimbursim: Arta Testi, 5€, arsyeja: mbingarkesë». Shitjet 30 → 25, neto 25.42 → 20.42, fitimi 25.42 → 20.42. Ditari 25. Kuponi negativ, pa rresht fiskal të ri.
+
+## 2026-11-05 — Takeaway në pritje, riprinto kuponin, zhvendos mysafirin
+
+KAFENE nuk i ka këto tri (u lexua vetëm). Takeaway ndryshohet vetëm para PRANO. Pas pranimit refuzohet. Riprintimi përdor kuponin e ruajtur dhe të njëjtin NUIKF, pa rresht të ri. Mysafiri kalon me folion; dhoma e vjetër bëhet e papastër.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `database.js` | takeaway s’ndryshohej; s’kishte zhvendosje dhome | `updatePendingTakeawayOrder`, `moveGuestToRoom` |
+| `server.js` | reprint fiskal vetëm për admin | `POST /api/waiter/online-orders/update`, `POST /api/waiter/rooms/:id/move-guest`, `GET/POST /api/staff/fiscal/receipts` |
+| `public/waiter.html` | s’kishte Ndrysho as listë kuponësh | «Ndrysho» te takeaway në pritje, «Kuponat» / «Riprinto» |
+| `public/recepcion.html` | s’kishte zhvendosje | «Zhvendos» te dhoma e zënë |
+
+Prova: takeaway 1 Biftek → 2 Biftek + Kafe = 20.50, mbeti në pritje. Pas pranimit: «Porosia është pranuar dhe nuk ndryshohet.» QR tavolinë u refuzua. Zhvendosje: «Zhvendosje: Arta Testi nga Dh. 101 në Dh. 201». Dhoma 101 e papastër, 201 e zënë, minibar mbeti te mysafiri dhe te dhoma 201. Kuponi ABCD1234EFGH5678 u ripërgatit; rreshtat fiskalë mbetën 1.
+
+## 2026-11-05 — Zhvendos, Hiq pas kuzhinës, QR 15 min
+
+KAFENE nuk i ka këto (u lexua vetëm). HOTEL: artikujt e dërguar zhvendosen mes tavolinave pa stok dhe pa fletë të re kuzhine. «Hiq» heq artikullin e dërguar dhe kuzhina sheh «ANULUAR: Biftek, Tavolina 1» edhe kur është gati; stoku nuk kthehet. Porosia QR që s’pranohet për 15 min del nga lista dhe mysafiri sheh «Porosia juaj ka skaduar — provoni përsëri.»
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `database.js` | s’kishte zhvendosje/heqje të artikullit të dërguar; `PENDING_ACCEPT_EXPIRE_MS` s’përdorej | `moveTableOrderItems`, `removeSentOrderItem`, `expireUnacceptedQrOrders` |
+| `server.js` | s’kishte rrugë | `POST /api/orders/move-items`, `POST /api/orders/remove-sent-item`, `GET /api/guest/order-status` |
+| `online-orders-watcher.js` | porosia QR që pret PRANO s’skadonte | përdor `PENDING_ACCEPT_EXPIRE_MS` (15 min) |
+| `lib/local-kds-service.js` | `listKitchenCancelledOrders` kthente `[]` | njoftimet «ANULUAR: …» |
+| `public/waiter.html` | lista e dërguar pa buton | «Zhvendos» dhe «Hiq» |
+| `public/js/kitchen.js` | shfaqte vetëm anulim të porosisë së pranuar më parë | kartë e kuqe me tekstin e anulimit të artikullit |
+| `public/guest/guest-order-lib.js` | tekst tjetër skadimi | fjalia e re |
+| `public/guest/menu.html` | s’kontrollonte statusin | poll derisa të skadojë ose të pranohet |
+
+Prova në databazë të përkohshme: Biftek stok 20 mbeti 20, Ditari 0 rreshta, tavolina 1 u lirua, tavolina 3 mbeti e zënë pa hyrë në radhën e kuzhinës. QR 16 min = expired + jashtë listës. QR 10 min = pending.
+
+## 2026-11-05 — Auditi i skedave, stoku i plotë te Qarkullimi
+
+Dita e provës në databazë të përkohshme: Ditari = Kontabilisti = javore = 208. Restorant 59.50, Recepsion 148.50. Blerja 50€ është te Blerjet dhe te Shpenzimet. Biftek stok 26 (20 + 10 − 4). Kuponi i dhomës tani bashkohet me produktin: Biftek shitur 4, të ardhura 36, stoku 26. Kafe shitur 3, stoku 17.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/hotel-advanced-reports.js` `getTurnoverReport` | emri «1× Biftek (T5)» lidhet me produktin dhe stokun |
+| `desktop/tests/hotel-cross-tab-audit.test.js` | dita e plotë dhe krahasimi i skedave |
+
+## 2026-11-05 — Stoku te Qarkullimi
+
+Qarkullimi tregon çdo produkt të shitur me stokun aktual. Biftek: shitur 5, të ardhura 45, stoku 25. Kafe: shitur 5, të ardhura 12.50, stoku 20.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/hotel-advanced-reports.js` `getTurnoverReport` | `products[]` me `stock_qty` |
+| `desktop/public/admin.html`, `public/js/hotel-advanced-reports-ui.js` | kolona Stoku |
+| `desktop/hotel-advanced-reports-export.js` | CSV dhe PDF: Produkti, Kategoria, Shitur, Të ardhura, Stoku |
+
+## 2026-11-05 — Blerja te shpenzimet, ndarja e ndërrimit
+
+Fatura e blerjes mbetet te Blerjet dhe hyn edhe te Shpenzimet. `expenses_total` = bruto e faturës + shpenzimet e tjera (p.sh. Drita). Fitimi dhe deklarata ATK e zbresin blerjen një herë (pa TVSH), jo dy herë. Ndërrimi tregon Shitje cash, Kartë, Në dhomë, Shitje totale. Recepsioni tregon «Nga restoranti».
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` `getKontabilistiBilanc` | `expenses_total` përfshin faturën e blerjes |
+| `desktop/database.js` `listKontabilistiExpenseRows` | lista e shpenzimeve + faturat e blerjes |
+| `desktop/server.js` | lista dhe PDF i shpenzimeve përdorin listën e bashkuar |
+| `desktop/public/admin.html` | kolonat e ndërrimit dhe «Nga restoranti» |
+| `desktop/public/js/hotel-advanced-reports-ui.js` | e njëjta ndarje te Punonjësit dhe Ndërrimet |
+| `desktop/public/recepcion.html` | «Nga restoranti» te mbyllja e ndërrimit |
+| `desktop/waiter-shift-html.js`, `shift-report-html.js` | Shitje cash, Në dhomë, Shitje totale |
+
+## 2026-11-05 — Bilanci bruto, Birra te Restorant, kuponi i check-out te ndërrimi
+
+`sales_total` i bilancit është totali i librit të shitjes (57.50). 8.75€ ishte TVSH, jo rresht i humbur. Fitimi dhe deklarata vjetore/tremujore mbeten mbi shumën pa TVSH (`sales_net`). Birra e tavolinës 4 te CO-2 është Restorant (11), netët mbeten Recepsion (80). Kuponi CO hyn te ndërrimi që e bën check-out-in: 5 nëntor shitje 20, cash 20.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` `lineIsRestaurantFood` | (T#) binte te minibar me emër | (T#)/(POS) = Restorant, minibar (RS) = Recepsion |
+| `desktop/database.js` `getKontabilistiBilanc` | `sales_total` pa TVSH 48.75 | `sales_total` bruto 57.50, `sales_net` për fitimin |
+| `desktop/database.js` `shiftDailyLogRoleWhereSql` | kamarieri hidhte CO- | CO- numërohet te ndërrimi që e krijoi |
+
+Prova: `node tests/hotel-complete-audit.test.js`. A: bilanc 57.50 = Ditari 57.50. B: Ditari = Kontabilisti = javore = 433, Restorant 64.50, Recepsion 368.50, CO-2 Restorant 11 + Recepsion 80. D: ndërrimi 2026-11-05 shitje 20 = ditari 20. Mbeten flamujt e vjetër: blerja te blerjet jo te shpenzimet, Qarkullimi pa stok, SUM daily_log 455.50 kundrejt 433, ndërrimi 2026-11-04 shitje 50 (cash 30 + në dhomë 20) kundrejt ditari 30.
+
+## 2026-11-05 — Testi hotel-complete-audit (vetëm skedar testi)
+
+U shtua `tests/hotel-complete-audit.test.js`. Katër skenarë, secili në databazë të përkohshme. Kodi i programit nuk u ndryshua. Ekzekutimi: A kalon stokun (17, 15, 27, 20, 25) dhe shitjet 57.50; bilanci neto është 48.75 dhe blerja 45€ është te blerjet 38.14, jo te shpenzimet 0. B: Ditari = Kontabilisti = javore = mujore = 433 (Restorant 61.50 + Recepsion 371.50). `SUM(daily_log)` = 455.50. C: stoku 0 shitet dhe mbetet 0; produkti i skaduar shitet; walk-in 0 mbyllet; check-out faturon Room Service; check-in i dyfishtë bllokohet; check-out 0€ kalon. D: ditari 50 / 30 / 20, mujore 100; ndërrimi i 5 nëntorit ruan shitje 0 ndërsa ditari i asaj dite është 20.
+
+## 2026-11-05 — Ditari i tavolinës (cash, kartë, takeaway, QR) dhe Shitje totale
+
+Ditari i hotelit shkruan çdo mbyllje tavoline me cash, kartë, takeaway dhe QR. Pagesa «në dhomë» mbetet te ngarkesa e dhomës, që të mos dyfishohet. «Shitje totale» = cash + kartë + në dhomë. Kolona «Shitje» dhe totali i Ditarit/Kontabilistit nuk ndryshojnë.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` `logTableSale` | vetëm cash | cash, kartë, takeaway, QR |
+| `desktop/public/waiter.html` | cash / kartë / në dhomë | shtohet «Shitje totale» |
+| `desktop/waiter-shift-html.js`, `shift-report-html.js` | pa rreshtin | «Shitje totale» mbi TOTALI |
+| `desktop/public/admin.html` Raportet dhe Raporte avancuara | vetëm ndarja | «Shitje totale» + ndarja |
+| `desktop/hotel-advanced-reports.js` | pa `activity_total` | cash + kartë + në dhomë, pa e futur te `total` |
+
+Prova: audit i ditës, temp DB. Kamarieri cash 21.50 + kartë 11.50 + në dhomë 16.50 = Shitje totale 49.50. Shitje (arkë) mbetet 33. Ditari = Kontabilisti = javore 49.50 + 107 = 156.50. Stafi 33 + 123.50 = 156.50. Arben shitje 0, shërbime 12. Ditari: T1 cash 5.50, T2 kartë 4.50, T3 cash 16, takeaway T9 Pica 7.00€ takeaway QR kartë. `hotel-full-flow-5` 64/0.
+
+## 2026-11-05 — Walk-in 0€, paralajmërim Room Service, PIN 4 shifra në test
+
+Klienti i jashtëm pa shërbime mbyllet me 0€, pa kupon, me mesazhin «Llogaria u mbyll pa pagesë». Check-out kthen paralajmërimin e Room Service dhe recepsioni e shfaq para se të përfundojë pagesa. Testi i PIN-it krijon vetëm PIN me 4 shifra.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` `payWalkInClient` | hedh «Nuk ka shërbime për pagesë» | status `closed`, total 0, pa `daily_log` |
+| `desktop/database.js` `checkOutGuest` / `getCheckoutPreview` | paralajmërimi hidhej | `room_service_warning` në preview dhe në përgjigje |
+| `desktop/server.js` pagesa walk-in | print/fiskal edhe për 0€ | nuk thirret kur s’ka kupon |
+| `desktop/public/recepcion.html` | Cash/Kartë edhe pa shërbime; checkout pa paralajmërim | butoni Mbyll; mesazhi në modal para pagesës |
+| `desktop/tests/protected-functions.test.js` | PIN recepsioni 6 shifra | PIN 4 shifra |
+| `desktop/tests/walkin-client.test.js` | pa rastin 0€ | mbyllje pa kupon |
+| `desktop/tests/hotel-full-flow-5.test.js` | pa kontroll të mesazhit te check-out | mesazhi i saktë |
+
+## 2026-11-05 — Ditari = Kontabilisti, minibar te Recepsion, netët e papaguara jashtë totalit
+
+Ditari merr të njëjtën ndarje si libri i shitjes. Minibari (Coca-Cola 1.50€) është shërbim hoteli, prandaj CO-1 është Restorant 19.50 + Recepsion 113.50 = 133, jo 21 + 112. Netët e mysafirit që s’ka paguar nuk hyjnë në total; dalin te «Mysafirë aktiv (të papaguar)». Kutizat ATK dhe fiskalizimi nuk u prekën.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` `ledgerSourceParts` | çdo `(RS)` = Restorant, përfshirë minibar | minibar = Recepsion; ushqimi `(T#)`/`(POS)` mbetet Restorant |
+| `desktop/database.js` `getDitari` | Recepsion = kuponi i tërë; netët e papaguara në total | `restaurantSales` + `receptionSales` = `totalSales`; `active_unpaid` veç |
+| `desktop/hotel-advanced-reports.js` `moneyParts` | e njëjta rregull e vjetër `(RS)` | thërret `ledgerSourceParts` |
+| `desktop/public/admin.html` | Recepsion = total − restorant | kutia lexon `receptionSales`; seksioni i të papaguarve |
+| `desktop/tests/hotel-full-flow-5.test.js` | 21 + 112 | 19.50 + 113.50 dhe barazimi Ditari = Kontabilisti = javore |
+| `desktop/tests/restaurant-room-charge.test.js` | pa kontroll të të papaguarve | para check-out totali 13, netët jashtë; pas check-out 13 + 80 = 93 |
+| `desktop/tests/service-work-log.test.js` | shuma e rreshtave të akrualit | kuponi i datës së pagesës: Recepsion 92 |
+
+Prova (DB të përkohshme): `hotel-full-flow-5` 63/0. Ditari dhe Kontabilisti: Restorant 30.50, Recepsion 273.50, total 304. CO-1: 19.50 + 113.50 = 133. «Në dhomë» 19.50 mbetet gjurmë, jashtë 304. `restaurant-room-charge` OK. `kontabilisti-atk` 16/0. `run-all` 10/11: `protected-functions` 15/17 — dy testet e PIN-it (6 shifra) dështojnë me «PIN duhet të jetë 4 shifra»; s’kanë lidhje me ndarjen.
+
+## 2026-11-05 — CO sipas burimit, kupon fiskal lokal
+
+Kuponi CO-1 (133€) nuk numërohet më i tëri si Recepsion. Ushqimi i ngarkuar në dhomë shkon te Restorant; netët dhe shërbimet te Recepsion. Shuma mbetet 133. Libri i shitjes ka kolonën Burimi. Kutizat ATK nuk u ndryshuan.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` `getSalesLedger` | CO një burim, krejt te Recepsion te bilanci | `burimi`, `restaurant_gross`, `reception_gross`; CO-1 = Restorant 21.00 + Recepsion 112.00 |
+| `desktop/database.js` `getKontabilistiBilanc` | çdo `CO-` te `sales_reception` | ndarje sipas bruto; shuma e netos mbetet e njëjta |
+| `desktop/database.js` `exportSalesLedgerCsv` | pa Burimi | kolona Burimi |
+| `desktop/kontabilisti-atk.js` `buildSalesVatBook` | rreshti pa burim | fusha `burimi`; kutizat [9]…[30] të njëjta |
+| `desktop/public/admin.html` | libri i shitjes pa Burimi | kolona Burimi |
+| `desktop/public/js/kontabilisti-atk-ui.js` | 9 kolona | Burimi pas nr. të faturës |
+| `desktop/receipt-text.js` | `normalizePrintDensity` mungonte; logoja hidhte gabim kur SEF është ndezur | funksionet e dendësisë që logoja dhe QR i thërrasin |
+| `desktop/tests/hotel-full-flow-5.test.js` | kontabilisti 133 pa ndarje | CO 21+112=133; bilanci i ndarë = totali |
+| `desktop/tests/fiscal-coupon-local-prove.test.js` | nuk kishte provë | SEF në DB të përkohshme, pa HTTP ATK, pa `hotel.db` të instaluar |
+
+Prova: `hotel-full-flow-5` 61/0. `kontabilisti-atk` 16/0. Kuponi lokal: QR me TVSH E (bazë 1314, tatim 236), artikujt Biftek/Sallate/Kafe në tekst dhe në PosCoupon, 6 rreshta të theksuar, logo 4587 bajt, e-kuponi dhe www.revolution-pos.com në radhën QR → logo → e-kuponi, SALE/RETURN/CANCEL, `atk_http` 0.
+
+## 2026-11-05 — Kuzhinë/banak, pastrimi te punonjësi, ditari
+
+Pijet nuk qëndrojnë te bileta e kuzhinës. Banaku ka biletën e vet. Pastrimi 12€ i Arbenit del te «Shërbime të kryera», jo te shitjet. Ditari shkruan rezervimin, shitjen cash të tavolinës dhe hapjen/mbylljen e ndërrimit.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/print-routing.js` | kategoria `kitchen` e merrte edhe pijen | emri/kategoria e pijes shkon te banaku |
+| `desktop/lib/local-kds-service.js` | banaku pa listë artikujsh | `listBarOrders`: vetëm pije, tavolina, kamarieri |
+| `desktop/server.js` | pa `GET /api/kds/bar/orders` | bileta e banakut |
+| `desktop/public/bar.html`, `public/js/bar.js` | vetëm rrjeti i tavolinave | bileta «Banak · pije» |
+| `desktop/public/js/kitchen.js` | bileta pa etiketë; pija mbetej nëse vinte në listë | «Kuzhinë · ushqim»; pijet hiqen nga bileta |
+| `desktop/database.js` | ditari pa rezervim, cash tavoline, ndërrim | `reservation`, `table_cash`, `shift_open`, `shift_close` |
+| `desktop/database.js` | shërbimi i hotelit i përzier me ngarkesën POS | `hotel_service` vetëm kur ka `service_id` (jo `POS-CHARGE-ROOM`) |
+| `desktop/hotel-advanced-reports.js` | punonjësi pa shumë shërbimesh | `services_total`; shitja mbetet `total` |
+| `desktop/public/admin.html`, `public/js/hotel-advanced-reports-ui.js`, `hotel-advanced-reports-export.js` | kolona Totali | «Shitje» dhe «Shërbime të kryera: …» |
+| `desktop/public/admin.html` | filtri i ditarit pa ngjarjet e reja | Rezervim, shitje cash, ndërrim |
+| `desktop/tests/hotel-full-flow-5.test.js` | pa Arbenin te raporti | shitje 0, shërbime 12; ditari i ngjarjeve të reja |
+| `desktop/tests/hotel-restaurant-audit.test.js` | vetëm kuzhina | banaku vetëm Birra |
+
+**Prova:** `node tests/hotel-full-flow-5.test.js` — 58 kaluan, 0 dështuan. Arben shitje 0, shërbime 12 (Pastrim). Stafi/ditari 304. `node tests/hotel-restaurant-audit.test.js` — 22 kaluan, 0 dështuan. Kuzhina: Biftek, jo Birra. Banaku: Birra, tavolina 2, Kamarier Audit. Pa build. Pa ATK. Kontabilisti dhe fiskalizimi nuk u prekën. Kuponi i check-out mbetet me pastrimin brenda.
+
+## 2026-11-05 — Dhoma e papastër, Room Service i harruar, gjurma e Ditarit
+
+## 2026-11-05 — Dhoma e papastër, Room Service i harruar, gjurma e Ditarit
+
+Pas check-out dhoma nuk bëhet e lirë. Room Service i pranuar por i pafaturuar hyn vetë në folio. Ditari kryesor nuk i mbledh rreshtat «në dhomë» që janë gjurmë.
+
+| Skedar | Para | Pas |
+|--------|------|-----|
+| `desktop/database.js` | check-out → `free` | check-out → `dirty` + task pastrimi; `free` vetëm me `markRoomClean` |
+| `desktop/database.js` | porosia Room Service e pranuar rrinte në tavolinë | check-out ose mbyllja e ndërrimit e faturon në dhomë; paralajmërimi «Ka porosi Room Service të pa faturuara — po faturohen automatikisht.» |
+| `desktop/database.js` | rreshtat `room` të mbyllura me CO- qëndronin te `entries` | dalin te `trace_entries`; totali mbetet pa to |
+| `desktop/public/recepcion.html` | dhoma e papastër pa buton | «Dhoma e pastër» te karta dhe te Pastrimi |
+| `desktop/public/admin.html` | gjurma në listën kryesore | e fshehur; «Trego gjurmën» e shfaq gri/italike «Gjurmë — nuk numërohet» |
+| `desktop/public/waiter.html` | mbyllja bllokohej nga Room Service | paralajmërimi në dritaren e mbylljes; pastaj faturohet |
+| `desktop/tests/hotel-full-flow-5.test.js` | priste `free` menjëherë | priste `dirty`, pastaj të lirë pas pastrimit; RS e harruar në folio |
+| `desktop/tests/restaurant-room-charge.test.js` | rreshti «në dhomë» te `entries` pas check-out | te `trace_entries` |
+| `desktop/tests/guest-service-flow-e2e.test.js` | gjurma te `entries` | te `trace_entries` |
+
+**Prova:** `node tests/hotel-full-flow-5.test.js` — 52 kaluan, 0 dështuan. Dhoma pas check-out `dirty`, e lirë vetëm pas `markRoomClean`. Ditari 304; gjurma 6.50+13 qëndron jashtë listës (raw daily_log 323.50). Room Service i pranuar pa «Dhoma» hyn në folio në check-out dhe në mbylljen e ndërrimit. `restaurant-room-charge.test.js` kaloi (folio/ditari/kontabilisti 93). `guest-service-flow-e2e.test.js` kaloi (110.50); datat e fiksuara 3–4 nëntor u kaluan te data e sotme, sepse sot është 5 nëntor dhe faturat e reja binin jashtë atij intervali. Pa build. Pa ATK. Kontabilisti dhe fiskalizimi nuk u prekën.
+
+
 ## 2026-11-04 — Room service te kamarieri, skadenca, burimi
 
 Room service i dhomës së zënë nuk hyn më direkt në folio. Shkon te kamarieri si «Room Service Dh. N», pastaj te kuzhina kur e dërgon, pastaj «Dhoma». Minibari mbetet te folia. `menu_items.expiry_date` + paralajmërim 7 ditë, shitja nuk bllokohet. Ditari ka kolonën Burimi. Raportet dhe avancuarat tregojnë Restorant / Recepsion që mblidhen te totali. Bilanci i Kontabilistit tregon të njëjtën ndarje pa prekur kutizat e TVSH-së.

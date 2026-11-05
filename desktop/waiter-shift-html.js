@@ -110,7 +110,8 @@ function buildShiftCloseHtml({
       <div class="receipt-item"><span>Porosi:</span><span>${orderCount}</span></div>
       <div class="receipt-item"><span>Shitje cash:</span><span>${formatEuro(cashSales)}</span></div>
       <div class="receipt-item"><span>Shitje kartë:</span><span>${formatEuro(cardSales)}</span></div>
-      ${roomSales > 0.005 ? `<div class="receipt-item"><span>Në dhomë:</span><span>${formatEuro(roomSales)}</span></div>` : ""}
+      <div class="receipt-item"><span>Në dhomë:</span><span>${formatEuro(roomSales)}</span></div>
+      <div class="receipt-item"><span>Shitje totale:</span><span>${formatEuro(Math.round((cashSales + cardSales + roomSales) * 100) / 100)}</span></div>
       ${discountLine}
       <div class="receipt-total"><span>TOTALI:</span><span>${formatEuro(totalSales)}</span></div>
       <div class="receipt-rule">--------------------------------</div>
@@ -182,9 +183,8 @@ function buildShiftCloseLines({
   lines.push(labelValueLine("Porosi:", String(orderCount), w));
   lines.push(labelValueLine("Shitje cash:", money(cashSales), w));
   lines.push(labelValueLine("Shitje kartë:", money(cardSales), w));
-  if (roomSales > 0.005) {
-    lines.push(labelValueLine("Në dhomë:", money(roomSales), w));
-  }
+  lines.push(labelValueLine("Në dhomë:", money(roomSales), w));
+  lines.push(labelValueLine("Shitje totale:", money(Math.round((cashSales + cardSales + roomSales) * 100) / 100), w));
   if (discountTotal > 0) {
     lines.push(labelValueLine("Zbritje totale:", `-${formatMoney(discountTotal)} EUR`, w));
   }

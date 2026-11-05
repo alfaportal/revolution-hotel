@@ -180,6 +180,7 @@
       overflow: hidden;
       font: inherit;
     }
+    .waiter-room-clean-btn { margin-top: 0.35rem; width: 100%; }
     .waiter-room-card:hover {
       transform: translateY(-2px);
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
@@ -666,6 +667,7 @@
         <button type="button" class="waiter-nav-btn" id="btn-tab-services" data-view="services">Shërbimet</button>
         <button type="button" class="waiter-nav-btn" id="btn-tab-housekeeping" data-view="housekeeping">Pastrimi</button>
         <button type="button" class="waiter-nav-btn" id="btn-tab-orders" data-view="orders">Porositë</button>
+        <button type="button" class="waiter-nav-btn" id="btn-tab-rimbursim">Rimbursim</button>
       </nav>
 
       <div class="waiter-table-toolbar">
@@ -998,6 +1000,8 @@
         <div><dt>Totali i pagesave</dt><dd id="rc-shift-total-sales">0.00 €</dd></div>
         <div><dt>Shitje cash</dt><dd id="rc-shift-cash-sales">0.00 €</dd></div>
         <div><dt>Shitje kartë</dt><dd id="rc-shift-card-sales">0.00 €</dd></div>
+        <div><dt>Shitje totale</dt><dd id="rc-shift-activity">0.00 €</dd></div>
+        <div><dt>Nga restoranti</dt><dd id="rc-shift-from-restaurant">0.00 €</dd></div>
         <div><dt>Shërbime të kryera</dt><dd id="rc-shift-service-total">0.00 €</dd></div>
         <div id="rc-shift-services" style="grid-column:1/-1;font-size:0.88rem;font-weight:600"></div>
         <div><dt>Dhoma ende të zëna</dt><dd id="rc-shift-occupied">0</dd></div>
@@ -1208,6 +1212,36 @@
         <button type="button" class="btn-coupon btn-coupon-thermal" id="rc-btn-shtyp-kupon-termik" style="width:100%">Shtyp Kuponin</button>
         <button type="button" class="btn btn-primary" id="rc-btn-post-pay-vazhdo" style="width:100%">Vazhdo</button>
       </div>
+    </div>
+  </div>
+
+  <div id="modal-rc-rimbursim" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-rimbursim-backdrop"></div>
+    <div class="table-modal-content" role="dialog" aria-modal="true" aria-labelledby="rc-rimbursim-title">
+      <h2 id="rc-rimbursim-title">Rimbursim</h2>
+      <div id="rc-rimbursim-lista"></div>
+      <div id="rc-rimbursim-form" hidden style="margin-top:0.75rem">
+        <p id="rc-rimbursim-guest" style="font-weight:700;margin:0 0 0.4rem"></p>
+        <label for="rc-rimbursim-shuma">Shuma (€)</label>
+        <input type="number" id="rc-rimbursim-shuma" min="0.01" step="0.01" value="5">
+        <label for="rc-rimbursim-arsyeja">Arsyeja</label>
+        <input type="text" id="rc-rimbursim-arsyeja" value="mbingarkesë">
+        <button type="button" class="btn btn-primary" id="rc-rimbursim-ruaj" style="margin-top:0.5rem">Rimbursim</button>
+      </div>
+      <pre id="rc-rimbursim-kupon" hidden style="white-space:pre-wrap;margin-top:0.75rem"></pre>
+      <div id="rc-rimbursim-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <button type="button" class="btn btn-ghost" id="rc-rimbursim-mbyll" style="margin-top:0.75rem">Mbyll</button>
+    </div>
+  </div>
+
+  <div id="modal-rc-zhvendos" class="table-modal" hidden>
+    <div class="table-modal-backdrop" id="rc-zhvendos-backdrop"></div>
+    <div class="table-modal-content" role="dialog" aria-modal="true" aria-labelledby="rc-zhvendos-title">
+      <h2 id="rc-zhvendos-title">Zhvendos mysafirin</h2>
+      <p id="rc-zhvendos-guest" style="margin:0.35rem 0;font-weight:700"></p>
+      <div id="rc-zhvendos-dhoma"></div>
+      <div id="rc-zhvendos-msg" class="alert alert-error" hidden style="margin-top:0.75rem"></div>
+      <button type="button" class="btn btn-ghost" id="rc-zhvendos-mbyll" style="margin-top:0.75rem">Mbyll</button>
     </div>
   </div>
 
@@ -2238,6 +2272,7 @@
         pending_guest_confirmation: "Pret konfirmimin e mysafirit",
         cancelled: "Anuluar",
         checked_in: "Check-in",
+        no_show: "No-show",
       };
       return m[String(st || "").toLowerCase()] || st || "—";
     }
@@ -2293,7 +2328,8 @@
         let actions = "";
         if (st === "dirty") {
           actions =
-            `<button type="button" class="btn btn-primary btn-sm" data-hk-start>Fillo Pastrimin</button>` +
+            `<button type="button" class="btn btn-primary btn-sm" data-hk-clean>Dhoma e pastër</button>` +
+            `<button type="button" class="btn btn-ghost btn-sm" data-hk-start>Fillo Pastrimin</button>` +
             `<button type="button" class="btn btn-ghost btn-sm" data-hk-maint>Mirëmbajtje</button>`;
         } else if (st === "in_progress") {
           actions =
@@ -2332,6 +2368,9 @@
         card.querySelector("[data-hk-save-notes]")?.addEventListener("click", () => {
           const notes = card.querySelector("[data-hk-notes]")?.value || "";
           hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/notes`, { notes }, "Shënimi u ruajt.");
+        });
+        card.querySelector("[data-hk-clean]")?.addEventListener("click", () => {
+          hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/complete`, {}, `Dhoma ${r.room_number} është e lirë.`);
         });
         card.querySelector("[data-hk-start]")?.addEventListener("click", () => {
           hkActionRecep(`/api/waiter/housekeeping/${r.room_id}/start`, {}, `Pastrim i nisur — dhoma ${r.room_number}.`);
@@ -2439,8 +2478,24 @@
               showMsg("recep-rez-msg", err.message || "Gabim", false);
             }
           });
+          const btnNoShow = document.createElement("button");
+          btnNoShow.type = "button";
+          btnNoShow.className = "btn btn-ghost btn-sm";
+          btnNoShow.textContent = "No-show";
+          btnNoShow.addEventListener("click", async () => {
+            if (!confirm(`No-show për ${r.guest_name}?`)) return;
+            try {
+              const res = await api(`/api/waiter/room-reservations/${r.id}/no-show`, { method: "POST", body: "{}" });
+              await ngarkoRezervimetRecep();
+              await ngarkoDhomat();
+              showMsg("recep-rez-msg", res.detail || "No-show u shënua.", true);
+            } catch (err) {
+              showMsg("recep-rez-msg", err.message || "Gabim", false);
+            }
+          });
           actions.appendChild(btnCi);
           actions.appendChild(btnEdit);
+          actions.appendChild(btnNoShow);
           actions.appendChild(btnCancel);
         }
         tbody.appendChild(tr);
@@ -3181,6 +3236,18 @@
       const preview = await api(`/api/waiter/rooms/${roomId}/checkout-preview?${q}`);
       recepCheckoutPreview = preview;
       renderRcCheckoutBill(preview);
+      const warn = String(preview.room_service_warning || "");
+      const msg = document.getElementById("rc-checkout-msg");
+      if (msg) {
+        if (warn) {
+          msg.hidden = false;
+          msg.className = "alert";
+          msg.textContent = warn;
+        } else {
+          msg.hidden = true;
+          msg.textContent = "";
+        }
+      }
       updateCheckoutMixedPaymentBar();
     }
 
@@ -3507,8 +3574,7 @@
       for (const r of rooms) {
         const st = displayStatus(r);
         const guest = r.active_guest;
-        const card = document.createElement("button");
-        card.type = "button";
+        const card = document.createElement("div");
         card.className = "waiter-room-card " + st;
         card.setAttribute("data-room-id", String(r.id));
 
@@ -3535,6 +3601,56 @@
           guestLine + datesLine +
           `<div class="waiter-room-price">${formatEuro(r.price_per_night)} <span style="font-weight:600;color:#64748b">/ natë</span></div>`;
 
+        if (st === "occupied" && guest) {
+          const cancelInBtn = document.createElement("button");
+          cancelInBtn.type = "button";
+          cancelInBtn.className = "btn btn-ghost btn-sm waiter-room-clean-btn";
+          cancelInBtn.textContent = "Anulo check-in";
+          cancelInBtn.addEventListener("click", async (ev) => {
+            ev.stopPropagation();
+            if (!confirm(`Anulo check-in për ${guest.guest_name}, Dh. ${r.room_number}?`)) return;
+            cancelInBtn.disabled = true;
+            try {
+              const res = await api(`/api/waiter/rooms/${r.id}/cancel-check-in`, { method: "POST", body: "{}" });
+              await ngarkoDhomat();
+              showMsg("recep-rooms-msg", res.detail || "Check-in u anulua.", true);
+            } catch (err) {
+              showMsg("recep-rooms-msg", err.message || "Gabim", false);
+              cancelInBtn.disabled = false;
+            }
+          });
+          card.appendChild(cancelInBtn);
+          const moveBtn = document.createElement("button");
+          moveBtn.type = "button";
+          moveBtn.className = "btn btn-ghost btn-sm waiter-room-clean-btn";
+          moveBtn.textContent = "Zhvendos";
+          moveBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            hapZhvendosMysafirin(r);
+          });
+          card.appendChild(moveBtn);
+        }
+
+        if (st === "dirty") {
+          const cleanBtn = document.createElement("button");
+          cleanBtn.type = "button";
+          cleanBtn.className = "btn btn-primary btn-sm waiter-room-clean-btn";
+          cleanBtn.textContent = "Dhoma e pastër";
+          cleanBtn.addEventListener("click", async (ev) => {
+            ev.stopPropagation();
+            cleanBtn.disabled = true;
+            try {
+              await api(`/api/waiter/housekeeping/${r.id}/complete`, { method: "POST", body: "{}" });
+              await ngarkoDhomat();
+              showMsg("recep-rooms-msg", `Dhoma ${r.room_number} është e lirë.`, true);
+            } catch (err) {
+              showMsg("recep-rooms-msg", err.message || "Gabim", false);
+              cleanBtn.disabled = false;
+            }
+          });
+          card.appendChild(cleanBtn);
+        }
+
         card.addEventListener("click", () => {
           if (st === "free" || st === "reserved") hapModalCheckIn(r);
           else if (st === "occupied") hapModalCheckOut(r);
@@ -3543,6 +3659,120 @@
         grid.appendChild(card);
       }
     }
+
+    let zhvendosNgaDhoma = null;
+
+    function hapZhvendosMysafirin(room) {
+      zhvendosNgaDhoma = room;
+      const guest = room.active_guest;
+      document.getElementById("rc-zhvendos-title").textContent = `Zhvendos — Dh. ${room.room_number}`;
+      document.getElementById("rc-zhvendos-guest").textContent = guest?.guest_name || "";
+      const msg = document.getElementById("rc-zhvendos-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      const free = (lastRooms || []).filter((r) => displayStatus(r) === "free" && r.id !== room.id);
+      const box = document.getElementById("rc-zhvendos-dhoma");
+      if (!free.length) box.textContent = "Nuk ka dhomë të lirë.";
+      else {
+        box.innerHTML = free.map((r) =>
+          `<button type="button" class="btn btn-ghost" data-zhvendos-dhomen="${r.id}" style="margin:0.25rem 0.25rem 0 0">Dh. ${escHtml(String(r.room_number))}</button>`,
+        ).join("");
+      }
+      document.getElementById("modal-rc-zhvendos").hidden = false;
+    }
+
+    async function kryejZhvendosjen(toRoomId) {
+      if (!zhvendosNgaDhoma) return;
+      const msg = document.getElementById("rc-zhvendos-msg");
+      try {
+        const res = await api(`/api/waiter/rooms/${zhvendosNgaDhoma.id}/move-guest`, {
+          method: "POST",
+          body: JSON.stringify({ to_room_id: Number(toRoomId) }),
+        });
+        document.getElementById("modal-rc-zhvendos").hidden = true;
+        await ngarkoDhomat();
+        showMsg("recep-rooms-msg", res.detail || "Mysafiri u zhvendos.", true);
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim"; }
+      }
+    }
+
+    document.getElementById("rc-zhvendos-mbyll").addEventListener("click", () => {
+      document.getElementById("modal-rc-zhvendos").hidden = true;
+    });
+    document.getElementById("rc-zhvendos-backdrop").addEventListener("click", () => {
+      document.getElementById("modal-rc-zhvendos").hidden = true;
+    });
+    document.getElementById("rc-zhvendos-dhoma").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-zhvendos-dhomen]");
+      if (!btn) return;
+      kryejZhvendosjen(btn.dataset.zhvendosDhomen);
+    });
+
+    let rimbursimGuestId = null;
+
+    async function hapRimbursim() {
+      rimbursimGuestId = null;
+      document.getElementById("rc-rimbursim-form").hidden = true;
+      document.getElementById("rc-rimbursim-kupon").hidden = true;
+      const msg = document.getElementById("rc-rimbursim-msg");
+      if (msg) { msg.hidden = true; msg.textContent = ""; }
+      const box = document.getElementById("rc-rimbursim-lista");
+      box.textContent = "Duke ngarkuar…";
+      document.getElementById("modal-rc-rimbursim").hidden = false;
+      try {
+        const data = await api("/api/waiter/guests/history?status=checked_out&limit=40");
+        const rows = data.guests || [];
+        if (!rows.length) {
+          box.textContent = "Nuk ka mysafirë të check-out.";
+          return;
+        }
+        box.innerHTML = rows.map((g) =>
+          `<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:center;margin:0.35rem 0">
+            <span>${escHtml(g.guest_name)} · Dh. ${escHtml(String(g.room_number || "—"))}</span>
+            <button type="button" class="btn btn-ghost btn-sm" data-rimbursim-guest="${g.id}" data-rimbursim-name="${escHtml(g.guest_name)}">Rimbursim</button>
+          </div>`,
+        ).join("");
+      } catch (err) {
+        box.textContent = err.message || "Gabim";
+      }
+    }
+
+    document.getElementById("btn-tab-rimbursim").addEventListener("click", () => {
+      hapRimbursim().catch((err) => showMsg("recep-rooms-msg", err.message || "Gabim", false));
+    });
+    document.getElementById("rc-rimbursim-mbyll").addEventListener("click", () => {
+      document.getElementById("modal-rc-rimbursim").hidden = true;
+    });
+    document.getElementById("rc-rimbursim-backdrop").addEventListener("click", () => {
+      document.getElementById("modal-rc-rimbursim").hidden = true;
+    });
+    document.getElementById("rc-rimbursim-lista").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-rimbursim-guest]");
+      if (!btn) return;
+      rimbursimGuestId = Number(btn.dataset.rimbursimGuest);
+      document.getElementById("rc-rimbursim-guest").textContent = btn.dataset.rimbursimName || "";
+      document.getElementById("rc-rimbursim-form").hidden = false;
+    });
+    document.getElementById("rc-rimbursim-ruaj").addEventListener("click", async () => {
+      const msg = document.getElementById("rc-rimbursim-msg");
+      if (!rimbursimGuestId) return;
+      try {
+        const res = await api(`/api/waiter/guests/${rimbursimGuestId}/refund`, {
+          method: "POST",
+          body: JSON.stringify({
+            amount: Number(document.getElementById("rc-rimbursim-shuma").value),
+            reason: document.getElementById("rc-rimbursim-arsyeja").value,
+          }),
+        });
+        const pre = document.getElementById("rc-rimbursim-kupon");
+        pre.hidden = false;
+        pre.textContent = res.coupon || res.detail || "";
+        if (msg) { msg.hidden = true; msg.textContent = ""; }
+        showMsg("recep-rooms-msg", res.detail || "Rimbursimi u regjistrua.", true);
+      } catch (err) {
+        if (msg) { msg.hidden = false; msg.textContent = err.message || "Gabim"; }
+      }
+    });
 
     async function ngarkoDhomat() {
       await syncRecepHotelFromCloud();
@@ -3625,8 +3855,10 @@
           <div>Totali ${formatEuro(c.total || 0)}</div>
           ${lineHtml || "<div>Pa shërbime ende.</div>"}
           <div style="margin-top:0.5rem;display:flex;gap:0.4rem">
-            <button type="button" class="btn btn-primary btn-sm" data-walkin-pay="${c.id}" data-method="cash">Cash</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-walkin-pay="${c.id}" data-method="karte">Kartë</button>
+            ${lines.length
+              ? `<button type="button" class="btn btn-primary btn-sm" data-walkin-pay="${c.id}" data-method="cash">Cash</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-walkin-pay="${c.id}" data-method="karte">Kartë</button>`
+              : `<button type="button" class="btn btn-primary btn-sm" data-walkin-pay="${c.id}" data-method="cash">Mbyll</button>`}
           </div>
         </div>`;
       }).join("");
@@ -3652,7 +3884,11 @@
               method: "POST",
               body: JSON.stringify({ payment_method: btn.getAttribute("data-method") }),
             });
-            showMsg("recep-svc-msg", `U pagua ${formatEuro(data.total)} · ${data.receipt_number || ""}`, true);
+            showMsg(
+              "recep-svc-msg",
+              data.message || `U pagua ${formatEuro(data.total)} · ${data.receipt_number || ""}`,
+              true,
+            );
             await ngarkoWalkInClients();
             await ngarkoSherbimetPune().catch(() => {});
           } catch (err) {
@@ -3873,6 +4109,8 @@
       document.getElementById("rc-shift-total-sales").textContent = formatEuro(total);
       document.getElementById("rc-shift-cash-sales").textContent = formatEuro(cash);
       document.getElementById("rc-shift-card-sales").textContent = formatEuro(card);
+      const rcFromClosed = document.getElementById("rc-shift-from-restaurant");
+      if (rcFromClosed) rcFromClosed.textContent = formatEuro(closed.from_restaurant || 0);
       document.getElementById("rc-shift-occupied").textContent = String(countOccupiedRooms());
       document.getElementById("rc-shift-opening").textContent = formatEuro(opening);
       document.getElementById("rc-shift-expected").textContent = formatEuro(expected);
@@ -4052,6 +4290,11 @@
         formatEuro(preview.cash_total || 0);
       document.getElementById("rc-shift-card-sales").textContent =
         formatEuro(preview.card_total || 0);
+      const rcActivity = (Number(preview.cash_total) || 0) + (Number(preview.card_total) || 0) + (Number(preview.room_total) || 0);
+      const rcActivityEl = document.getElementById("rc-shift-activity");
+      const rcFrom = document.getElementById("rc-shift-from-restaurant");
+      if (rcFrom) rcFrom.textContent = formatEuro(preview.from_restaurant || 0);
+      if (rcActivityEl) rcActivityEl.textContent = formatEuro(rcActivity);
       const svcTotalEl = document.getElementById("rc-shift-service-total");
       if (svcTotalEl) svcTotalEl.textContent = formatEuro(preview.service_total || 0);
       const svcBox = document.getElementById("rc-shift-services");

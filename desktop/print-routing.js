@@ -43,6 +43,7 @@ function resolveItemCategory(item, lookup) {
 function isKitchenItem(item, lookup, routeByCategory) {
   const name = String(item?.name || item?.emri || "");
   const cat = resolveItemCategory(item, lookup);
+  if (isDrinkItemName(name) || (cat && isDrinkCategory(cat))) return false;
   if (cat && routeByCategory && routeByCategory.has(cat)) {
     return routeByCategory.get(cat) === "kitchen";
   }

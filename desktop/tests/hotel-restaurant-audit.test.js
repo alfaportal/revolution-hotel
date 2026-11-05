@@ -70,6 +70,12 @@ async function main() {
   A.kitchen_pas_dergeses = kds.listKitchenOrders(db).map((o) => ({
     id: o.id,
     table: o.table_number,
+    waiter: o.waiter_name,
+    items: (o.items_json || []).map((it) => it.name),
+  }));
+  A.bar_pas_dergeses = kds.listBarOrders(db).filter((o) => String(o.id) === String(cashId)).map((o) => ({
+    table: o.table_number,
+    waiter: o.waiter_name,
     items: (o.items_json || []).map((it) => it.name),
   }));
   kds.markKitchenOrderReady(db, cashId);
@@ -92,7 +98,8 @@ async function main() {
     stock_birra: qty(birra),
   };
   note("A tavoline cash kupon", !!A.cash.receipt && A.cash.total === 12 && A.cash.pay === "cash", A.cash, "kupon 12 cash");
-  note("A kuzhina pas dergeses", A.kitchen_pas_dergeses.some((o) => o.items.includes("Biftek Audit") && !o.items.includes("Birra Audit")), A.kitchen_pas_dergeses, "vetem biftek");
+  note("A kuzhina pas dergeses", A.kitchen_pas_dergeses.some((o) => o.items.includes("Biftek Audit") && !o.items.includes("Birra Audit") && o.waiter === "Kamarier Audit"), A.kitchen_pas_dergeses, "vetem biftek");
+  note("A banaku vetem pije", A.bar_pas_dergeses.some((o) => o.items.includes("Birra Audit") && !o.items.includes("Biftek Audit") && o.table === 2 && o.waiter === "Kamarier Audit"), A.bar_pas_dergeses, "vetem birra");
   note("A kuzhina nuk e sheh para dergeses", A.kitchen_para_dergeses.length === 0, A.kitchen_para_dergeses, []);
   note("A kamarieri sheh gati", A.waiter_gati.some((o) => String(o.id) === String(cashId) && o.status === "ready") && A.kitchen_pas_gati === false, A.waiter_gati, "ready");
 

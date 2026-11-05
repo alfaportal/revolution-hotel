@@ -16,6 +16,7 @@
   const toastEl = document.getElementById("order-toast");
 
   let knownIds = new Set();
+  let knownCancelIds = new Set();
   let eventSource = null;
   let alarmTimer = null;
   let toastTimer = null;
@@ -323,15 +324,17 @@
   }
 
   function filterKitchenViewOrders(orders) {
-    // API /api/kds/.../orders (listKitchenOrders) filtron tashmë artikujt e kuzhinës —
-    // mos ripërsërit filtrimin e vjetër këtu (p.sh. «Mëngjes» / Krosan humbnin nga heuristika).
-    return (orders || []).filter((o) => normalizeOrderItems(o.items_json).length > 0);
+    return (orders || []).map((o) => {
+      const items = normalizeOrderItems(o.items_json).filter((it) => !isDrinkLikeItem(it));
+      return { ...o, items_json: items };
+    }).filter((o) => normalizeOrderItems(o.items_json).length > 0);
   }
 
   function renderOrders(orders, cancelledOrders) {
     hideError();
     const active = filterKitchenViewOrders(orders);
-    const cancelled = filterKitchenViewOrders(cancelledOrders);
+    const itemCancels = filterKitchenViewOrders((cancelledOrders || []).filter((o) => o && o.item_cancel));
+    const cancelled = filterKitchenViewOrders((cancelledOrders || []).filter((o) => !o || !o.item_cancel));
     let hasNew = false;
     for (const o of active) {
       if (!knownIds.has(o.id)) hasNew = true;
@@ -339,6 +342,12 @@
     if (hasNew && knownIds.size) {
       playNewOrderSound();
       showToast("Porosi e re — pranoni ose refuzoni", "info");
+    }
+    for (const o of itemCancels) {
+      if (!knownCancelIds.has(o.id)) {
+        const banner = o.message || `ANULUAR: ${(o.items_json && o.items_json[0] && o.items_json[0].name) || ""}, Tavolina ${o.table_number}`;
+        showToast(banner, "error");
+      }
     }
 
     updateAlarmState(active);
@@ -349,7 +358,21 @@
     const cancelledVisible = cancelled.filter(
       o => knownIds.has(o.id) && (o.accepted_at || o.accepted_by_waiter_name),
     );
-    const cancelledHtmlVisible = cancelledVisible.map(o => {
+    const cancelledHtmlVisible = itemCancels.map(o => {
+      const src = sourceMeta(o);
+      const items = (o.items_json || []).map(renderOrderItem).join("");
+      const banner = o.message || `ANULUAR: ${(o.items_json && o.items_json[0] && o.items_json[0].name) || ""}, Tavolina ${o.table_number}`;
+      return `
+        <article class="order-ticket cancelled" data-id="${o.id}">
+          <div class="ticket-cancelled-banner">${escapeHtml(banner)}</div>
+          <div class="ticket-head">
+            <div class="ticket-table">${escapeHtml(orderHeadLabel(o))}</div>
+            <div class="ticket-time">${formatTime(o.ordered_at || o.created_at)}</div>
+          </div>
+          <div class="ticket-waiter">${src.icon} ${src.label} · 👤 <strong>${escapeHtml(o.waiter_name || "—")}</strong></div>
+          <ul class="ticket-items">${items || "<li>—</li>"}</ul>
+        </article>`;
+    }).join("") + cancelledVisible.map(o => {
       const src = sourceMeta(o);
       const items = (o.items_json || []).map(renderOrderItem).join("");
       return `
@@ -364,10 +387,11 @@
         </article>`;
     }).join("");
 
-    if (!active.length && !cancelledVisible.length) {
+    if (!active.length && !cancelledVisible.length && !itemCancels.length) {
       gridEl.innerHTML = "";
       emptyEl.classList.remove("hidden");
       knownIds = new Set();
+      knownCancelIds = new Set();
       return;
     }
 
@@ -398,6 +422,7 @@
       }
       return `
         <article class="order-ticket${isNew ? " new" : ""}${accepted ? " accepted" : " pending"}" data-id="${o.id}">
+          <div class="ticket-kind">Kuzhinë · ushqim</div>
           <div class="ticket-source">${src.icon} ${src.label}</div>
           <div class="ticket-head">
             <div class="ticket-table">${escapeHtml(orderHeadLabel(o))}</div>
@@ -411,6 +436,7 @@
     }).join("");
 
     knownIds = new Set(active.map(o => o.id));
+    knownCancelIds = new Set(itemCancels.map(o => o.id));
     gridEl.querySelectorAll("[data-accept]").forEach(btn => {
       btn.addEventListener("click", () => acceptOrder(btn.dataset.accept, btn));
     });

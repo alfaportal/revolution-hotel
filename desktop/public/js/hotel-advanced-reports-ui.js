@@ -53,6 +53,16 @@
     return s ? `?${s}` : "";
   }
 
+  function shopSummaryText(summary) {
+    const shops = summary && summary.shops;
+    if (!shops || !shops.restaurant || !shops.reception) {
+      return `Totali ${euro(summary?.total)} · Restorant ${euro(summary?.waiter)} · Recepsion ${euro(summary?.reception)}`;
+    }
+    const r = shops.restaurant;
+    const h = shops.reception;
+    return `Restorant: cash ${euro(r.cash)} · kartë ${euro(r.card)} · shitur recepsionit ${euro(r.sold_to_reception)} · TOTAL ${euro(r.total)} | Recepsion: cash ${euro(h.cash)} · kartë ${euro(h.card)} · netë ${euro(h.nights)} · shërbime ${euro(h.services)} · walk-in ${euro(h.walkin)} · paguar për restorantin ${euro(h.paid_to_restaurant)} · TOTAL ${euro(h.total)} | TOTALI ${euro(shops.total)}`;
+  }
+
   async function render() {
     const q = query();
     setMsg("");
@@ -72,7 +82,7 @@
           );
         }
         const sum = $("adv-javore-sum");
-        if (sum && data.summary) sum.textContent = `Totali ${euro(data.summary.total)} · Restorant ${euro(data.summary.waiter)} · Recepsion ${euro(data.summary.reception)}`;
+        if (sum && data.summary) sum.textContent = shopSummaryText(data.summary);
       } else if (pane === "mujore") {
         const data = await loadJson(`/api/reports/advanced/monthly${qs({ month: q.month })}`);
         const body = $("adv-mujore-body");
@@ -87,6 +97,8 @@
               .join(""),
           );
         }
+        const monthSum = $("adv-mujore-sum");
+        if (monthSum && data.summary) monthSum.textContent = shopSummaryText(data.summary);
       } else if (pane === "krahasime") {
         const data = await loadJson(`/api/reports/advanced/comparison${qs({ month1: q.month1, month2: q.month2 })}`);
         const body = $("adv-krahasime-body");
@@ -103,17 +115,21 @@
           );
         }
         const sum = $("adv-krahasime-sum");
-        if (sum) sum.textContent = `Ndryshimi ${euro(data.delta)} (${Number(data.delta_pct) || 0}%)`;
+        if (sum) {
+          const a = data.month1?.summary ? shopSummaryText(data.month1.summary) : "";
+          const b = data.month2?.summary ? shopSummaryText(data.month2.summary) : "";
+          sum.textContent = `${data.month1?.month || ""}: ${a} || ${data.month2?.month || ""}: ${b} || Ndryshimi ${euro(data.delta)} (${Number(data.delta_pct) || 0}%)`;
+        }
       } else if (pane === "trende") {
         const data = await loadJson("/api/reports/advanced/trends");
         const body = $("adv-trende-body");
         if (body) {
           body.innerHTML = rowsOrEmpty(
             data.weeks || [],
-            6,
+            8,
             (data.weeks || [])
               .map(
-                (w) => `<tr><td>${esc(w.from)}</td><td>${esc(w.to)}</td><td>${w.order_count}</td><td>${euro(w.total)}</td><td>${euro(w.cash)}</td><td>${euro(w.card)}</td></tr>`,
+                (w) => `<tr><td>${esc(w.from)}</td><td>${esc(w.to)}</td><td>${w.order_count}</td><td>${euro(w.total)}</td><td>${euro(w.cash)}</td><td>${euro(w.card)}</td><td>${euro(w.waiter)}</td><td>${euro(w.reception)}</td></tr>`,
               )
               .join(""),
           );
@@ -122,42 +138,52 @@
         const data = await loadJson(`/api/reports/advanced/turnover${qs({ from: q.from, to: q.to })}`);
         const body = $("adv-qarkullimi-body");
         if (body) {
+          const lines = data.products || [];
           body.innerHTML = rowsOrEmpty(
-            data.categories || [],
-            3,
-            (data.categories || [])
-              .map((c) => `<tr><td>${esc(c.category)}</td><td>${c.qty}</td><td>${euro(c.revenue)}</td></tr>`)
+            lines,
+            5,
+            lines
+              .map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${p.qty}</td><td>${euro(p.revenue)}</td><td>${p.stock_qty == null ? "—" : p.stock_qty}</td></tr>`)
               .join(""),
           );
         }
+        const turnSum = $("adv-qarkullimi-sum");
+        if (turnSum) turnSum.textContent = shopSummaryText(data.summary);
       } else if (pane === "punonjesit") {
         const data = await loadJson(`/api/reports/advanced/staff${qs({ from: q.from, to: q.to })}`);
         const body = $("adv-punonjesit-body");
         if (body) {
-          body.innerHTML = rowsOrEmpty(
-            data.staff || [],
-            6,
-            (data.staff || [])
-              .map(
-                (s) => `<tr><td>${esc(s.operator)}</td><td>${esc(s.station_label)}</td><td>${s.order_count}</td><td>${euro(s.total)}</td><td>${euro(s.cash)}</td><td>${euro(s.card)}</td></tr>`,
-              )
-              .join(""),
-          );
+          const transfer = (data.staff || []).reduce((sum, s) => sum + (Number(s.paid_to_restaurant) || 0), 0);
+          const fromEl = $("adv-punonjesit-from");
+          if (fromEl) fromEl.textContent = `Shitur recepsionit: ${euro(transfer)} · Paguar për restorantin: ${euro(transfer)}`;
+          const people = data.staff || [];
+          const restPeople = people.filter((s) => s.shop !== "Recepsion");
+          const recPeople = people.filter((s) => s.shop === "Recepsion");
+          const personRow = (s) => `<tr><td>${esc(s.operator)}</td><td>${esc(s.shop || s.station_label)}</td><td>${s.order_count}</td><td>${euro(s.cash)}</td><td>${euro(s.card)}</td><td>${euro(s.room)}</td><td>${euro(s.activity_total)}</td><td>${s.shop === "Recepsion" ? `Paguar për restorantin: ${euro(s.paid_to_restaurant)}` : `Shitur recepsionit: ${euro(s.room)}`} · Shërbime të kryera: ${euro(s.services_total)}</td></tr>`;
+          body.innerHTML = `<tr><td colspan="8"><strong>Restorant</strong></td></tr>${restPeople.map(personRow).join("") || `<tr><td colspan="8">—</td></tr>`}<tr><td colspan="8"><strong>Recepsion</strong></td></tr>${recPeople.map(personRow).join("") || `<tr><td colspan="8">—</td></tr>`}`;
         }
       } else if (pane === "nderrimet") {
         const data = await loadJson(`/api/reports/advanced/shifts${qs({ from: q.from, to: q.to })}`);
         const body = $("adv-nderrimet-body");
         if (body) {
-          body.innerHTML = rowsOrEmpty(
-            data.shifts || [],
-            8,
-            (data.shifts || [])
-              .map((s) => {
-                const open = !!s.is_open;
-                return `<tr><td>${esc(s.waiter_name)}</td><td>${esc(s.staff_role === "recepsion" ? "Recepsion" : "Kamarier")}</td><td>${open ? "Hapur" : esc(s.closed_at || "—")}</td><td>${euro(s.total_sales)}</td><td>${open ? "—" : euro(s.closing_cash_actual)}</td><td>${open ? "—" : euro(s.cash_difference)}</td><td>${euro(s.cash_sales_total)}</td><td>${euro(s.room_total)}</td></tr>`;
-              })
-              .join(""),
-          );
+          const shiftTransfer = (data.shifts || []).reduce((sum, s) => {
+            if (s.staff_role === "recepsion") return sum;
+            return sum + (Number(s.room_total) || 0);
+          }, 0);
+          const fromShiftEl = $("adv-nderrimet-from");
+          if (fromShiftEl) fromShiftEl.textContent = `Shitur recepsionit: ${euro(shiftTransfer)} · Paguar për restorantin: ${euro(shiftTransfer)}`;
+          const shiftRow = (s) => {
+            const open = !!s.is_open;
+            const cashSales = Number(s.cash_sales_total) || 0;
+            const cardSales = Number(s.card_sales_total) || 0;
+            const roomSales = Number(s.room_total) || 0;
+            const activity = Math.round((cashSales + cardSales + roomSales) * 100) / 100;
+            const shop = s.staff_role === "recepsion" ? "Recepsion" : "Restorant";
+            return `<tr><td>${esc(s.waiter_name)}</td><td>${esc(shop)}</td><td>${open ? "Hapur" : esc(s.closed_at || "—")}</td><td>${euro(cashSales)}</td><td>${euro(cardSales)}</td><td>${euro(roomSales)}</td><td>${euro(activity)}</td><td>${open ? "—" : euro(s.closing_cash_actual)}</td><td>${open ? "—" : euro(s.cash_difference)}</td></tr>`;
+          };
+          const restShifts = (data.shifts || []).filter((s) => s.staff_role !== "recepsion");
+          const recShifts = (data.shifts || []).filter((s) => s.staff_role === "recepsion");
+          body.innerHTML = `<tr><td colspan="9"><strong>Restorant</strong></td></tr>${restShifts.map(shiftRow).join("") || `<tr><td colspan="9">—</td></tr>`}<tr><td colspan="9"><strong>Recepsion</strong></td></tr>${recShifts.map(shiftRow).join("") || `<tr><td colspan="9">—</td></tr>`}`;
         }
       }
     } catch (e) {

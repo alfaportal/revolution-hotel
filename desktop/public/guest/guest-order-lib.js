@@ -161,8 +161,7 @@
     return postJson(withSlugQuery("/api/guest/menu-order"), body);
   }
 
-  const GUEST_EXPIRED_MSG =
-    "Porosia nuk u pranua. Ju lutem porositni përsëri ose thërrisni stafin.";
+  const GUEST_EXPIRED_MSG = "Porosia juaj ka skaduar — provoni përsëri.";
 
   function watchOrderUntilAccepted(orderId, onUpdate) {
     const id = String(orderId || "").trim();

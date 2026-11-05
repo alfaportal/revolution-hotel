@@ -90,12 +90,12 @@
     if (body) {
       if (!rows.length) {
         body.innerHTML =
-          '<tr><td colspan="9" class="purchases-empty">Nuk ka shitje B2C në këtë periudhë</td></tr>';
+          '<tr><td colspan="10" class="purchases-empty">Nuk ka shitje B2C në këtë periudhë</td></tr>';
       } else {
         body.innerHTML = rows
           .map(
             (r) => `<tr>
-        <td>${r.nr}</td><td>${esc(r.date)}</td><td>${esc(r.invoice_number || "—")}</td>
+        <td>${r.nr}</td><td>${esc(r.date)}</td><td>${esc(r.invoice_number || "—")}</td><td>${esc(r.burimi || "—")}</td>
         <td>${euro(r.box9)}</td><td>${euro(r.box12)}</td><td>${euro(r.boxK1)}</td>
         <td>${euro(r.box14)}</td><td>${euro(r.boxK2)}</td><td>${euro(r.box30)}</td>
       </tr>`,

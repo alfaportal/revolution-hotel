@@ -133,8 +133,8 @@ function exportTrendsPdf() {
 function exportTurnoverCsv(from, to) {
   const data = reports.getTurnoverReport(from, to);
   const csv = toCsv(
-    ["Kategoria", "Sasia", "Të ardhura"],
-    data.categories.map((c) => [c.category, c.qty, money(c.revenue)]),
+    ["Produkti", "Kategoria", "Shitur", "Të ardhura", "Stoku"],
+    (data.products || []).map((p) => [p.name, p.category, p.qty, money(p.revenue), p.stock_qty == null ? "" : p.stock_qty]),
   );
   return { csv, period: `${data.from} — ${data.to}` };
 }
@@ -144,8 +144,8 @@ function exportTurnoverPdf(from, to) {
   const html = htmlPage(
     `Raporte të avancuara — Qarkullimi (${data.from} — ${data.to})`,
     tableHtml(
-      ["Kategoria", "Sasia", "Të ardhura"],
-      data.categories.map((c) => [c.category, c.qty, money(c.revenue)]),
+      ["Produkti", "Kategoria", "Shitur", "Të ardhura", "Stoku"],
+      (data.products || []).map((p) => [p.name, p.category, p.qty, money(p.revenue), p.stock_qty == null ? "—" : p.stock_qty]),
     ),
   );
   return { html, period: `${data.from} — ${data.to}` };
@@ -154,8 +154,8 @@ function exportTurnoverPdf(from, to) {
 function exportStaffCsv(from, to) {
   const data = reports.getStaffReport(from, to);
   const csv = toCsv(
-    ["Punonjësi", "Stacioni", "Porosi", "Totali", "Cash", "Kartë"],
-    data.staff.map((s) => [s.operator, s.station_label, s.order_count, money(s.total), money(s.cash), money(s.card)]),
+    ["Punonjësi", "Stacioni", "Porosi", "Shitje cash", "Kartë", "Në dhomë", "Shitje totale", "Shërbime të kryera"],
+    data.staff.map((s) => [s.operator, s.station_label, s.order_count, money(s.cash), money(s.card), money(s.room), money(s.activity_total), money(s.services_total)]),
   );
   return { csv, period: `${data.from} — ${data.to}` };
 }
@@ -165,8 +165,8 @@ function exportStaffPdf(from, to) {
   const html = htmlPage(
     `Raporte të avancuara — Punonjësit (${data.from} — ${data.to})`,
     tableHtml(
-      ["Punonjësi", "Stacioni", "Porosi", "Totali", "Cash", "Kartë"],
-      data.staff.map((s) => [s.operator, s.station_label, s.order_count, money(s.total), money(s.cash), money(s.card)]),
+      ["Punonjësi", "Stacioni", "Porosi", "Shitje cash", "Kartë", "Në dhomë", "Shitje totale", "Shërbime të kryera"],
+      data.staff.map((s) => [s.operator, s.station_label, s.order_count, money(s.cash), money(s.card), money(s.room), money(s.activity_total), money(s.services_total)]),
     ),
   );
   return { html, period: `${data.from} — ${data.to}` };
@@ -175,16 +175,18 @@ function exportStaffPdf(from, to) {
 function exportShiftsCsv(from, to) {
   const data = reports.getShiftsReport(from, to);
   const csv = toCsv(
-    ["Stafi", "Roli", "Hapur", "Mbyllur", "Shitje", "Cash i numëruar", "Diferenca", "Në dhomë"],
+    ["Stafi", "Roli", "Hapur", "Mbyllur", "Shitje cash", "Kartë", "Në dhomë", "Shitje totale", "Cash i numëruar", "Diferenca"],
     data.shifts.map((s) => [
       s.waiter_name,
       s.staff_role === "recepsion" ? "Recepsion" : "Kamarier",
       s.opened_at || "",
       s.is_open ? "Hapur" : s.closed_at || "",
-      money(s.total_sales),
+      money(s.cash_sales_total),
+      money(s.card_sales_total),
+      money(s.room_total),
+      money(Math.round(((Number(s.cash_sales_total) || 0) + (Number(s.card_sales_total) || 0) + (Number(s.room_total) || 0)) * 100) / 100),
       s.is_open ? "" : money(s.closing_cash_actual),
       s.is_open ? "" : money(s.cash_difference),
-      money(s.room_total),
     ]),
   );
   return { csv, period: `${data.from} — ${data.to}` };
@@ -195,15 +197,17 @@ function exportShiftsPdf(from, to) {
   const html = htmlPage(
     `Raporte të avancuara — Ndërrimet (${data.from} — ${data.to})`,
     tableHtml(
-      ["Stafi", "Roli", "Mbyllur", "Shitje", "Cash i numëruar", "Diferenca", "Në dhomë"],
+      ["Stafi", "Roli", "Mbyllur", "Shitje cash", "Kartë", "Në dhomë", "Shitje totale", "Cash i numëruar", "Diferenca"],
       data.shifts.map((s) => [
         s.waiter_name || "—",
         s.staff_role === "recepsion" ? "Recepsion" : "Kamarier",
         s.is_open ? "Hapur" : s.closed_at || "—",
-        money(s.total_sales),
+        money(s.cash_sales_total),
+        money(s.card_sales_total),
+        money(s.room_total),
+        money(Math.round(((Number(s.cash_sales_total) || 0) + (Number(s.card_sales_total) || 0) + (Number(s.room_total) || 0)) * 100) / 100),
         s.is_open ? "—" : money(s.closing_cash_actual),
         s.is_open ? "—" : money(s.cash_difference),
-        money(s.room_total),
       ]),
     ),
   );

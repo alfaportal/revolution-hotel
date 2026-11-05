@@ -73,21 +73,29 @@ async function main() {
   const left = db.listStayServiceWork().filter((row) => row.guest_name === "Arta Fiktive");
   assert.strictEqual(left.length, 0);
 
-  const day = "2026-11-03";
-  const ditari = db.getDitari({ dateFrom: day, dateTo: "2026-11-04" });
-  const ditariSum = money((ditari.entries || []).filter((e) => e.status !== "cancelled").reduce((s, e) => s + Number(e.total || 0), 0));
-  assert.strictEqual(ditariSum, 92);
+  const coLog = db.db.prepare(
+    "SELECT date FROM daily_log WHERE receipt_number LIKE 'CO-%' ORDER BY id DESC LIMIT 1",
+  ).get();
+  const coDay = String(coLog?.date || "2026-11-05").slice(0, 10);
+  const ditari = db.getDitari({ dateFrom: coDay, dateTo: coDay });
+  assert.strictEqual(money(ditari.totalSales), 92);
+  assert.strictEqual(money(ditari.restaurantSales), 0);
+  assert.strictEqual(money(ditari.receptionSales), 92);
+  assert.strictEqual(money(ditari.restaurantSales + ditari.receptionSales), 92);
   const co = (ditari.entries || []).find((e) => String(e.receipt_number || "").startsWith("CO-"));
   assert.ok(String(co.artikujt || "").includes("Arben"));
   assert.ok(String(co.artikujt || "").includes("Pastrim"));
 
-  const ledger = db.getSalesLedger({ from: day, to: "2026-11-04" });
+  const ledger = db.getSalesLedger({ from: coDay, to: coDay });
   const ledgerSum = money(ledger.reduce((s, r) => s + (Number(r.total) || 0), 0));
+  const ledgerReception = money(ledger.reduce((s, r) => s + (Number(r.reception_gross) || 0), 0));
   assert.strictEqual(ledgerSum, 92);
+  assert.strictEqual(ledgerReception, 92);
+  assert.strictEqual(money(ditari.receptionSales), ledgerReception);
 
-  const week = advanced.getWeeklyReport(day);
+  const week = advanced.getWeeklyReport(coDay);
   assert.strictEqual(money(week.summary.total), 92);
-  const staff = advanced.getStaffReport(day, "2026-11-04");
+  const staff = advanced.getStaffReport(coDay, coDay);
   const arben = (staff.staff || []).find((s) => s.operator === "Arben");
   assert.ok(arben && arben.services.length === 1);
   assert.strictEqual(money(staff.summary.total), 92);

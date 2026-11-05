@@ -93,20 +93,10 @@ function stationOf(row) {
 
 function moneyParts(row) {
   const total = Number(row.total) || 0;
-  const rec = String(row.receipt_number || "").trim().toUpperCase();
-  if (rec.startsWith("CO-")) {
-    let food = 0;
-    for (const it of itemsOf(row)) {
-      const name = String(it.name || "");
-      const amt = (Number(it.quantity) || 1) * (Number(it.price) || 0);
-      if (/^Dhoma\s+/i.test(name.trim())) continue;
-      if (/\(\s*T\d+\s*\)/i.test(name) || /\(\s*POS\s*\)/i.test(name) || /\(\s*RS\s*\)/i.test(name)) {
-        food += amt;
-      }
-    }
-    food = round2(food);
-    const reception = round2(total - food);
-    return { restaurant: food, reception: reception < 0 ? 0 : reception };
+  const db = require("./database");
+  if (typeof db.ledgerSourceParts === "function") {
+    const parts = db.ledgerSourceParts(row.receipt_number, itemsOf(row), total);
+    return { restaurant: round2(parts.restaurant_gross), reception: round2(parts.reception_gross) };
   }
   if (stationOf(row) === "recepsion") return { restaurant: 0, reception: total };
   return { restaurant: total, reception: 0 };
@@ -128,6 +118,7 @@ function summarize(rows) {
     waiter += parts.restaurant;
     reception += parts.reception;
   }
+  const shops = require("./database").shopFiguresFromDailyLogs(rows);
   return {
     order_count: rows.length,
     total: round2(total),
@@ -135,6 +126,7 @@ function summarize(rows) {
     card: round2(card),
     waiter: round2(waiter),
     reception: round2(reception),
+    shops,
   };
 }
 
@@ -204,30 +196,92 @@ function getTrendsReport() {
   return { ok: true, weeks };
 }
 
+function bareSaleName(name) {
+  return String(name || "")
+    .replace(/^\d+(?:[.,]\d+)?\s*[×xX]\s*/, "")
+    .replace(/\(\s*(?:T\d+|POS|RS)\s*\)/gi, "")
+    .replace(/\s*·.*$/, "")
+    .trim();
+}
+
 function getTurnoverReport(from, to) {
   const start = String(from || fmtDate(new Date())).slice(0, 10);
   const end = String(to || start).slice(0, 10);
   const rows = fetchSales(start, end);
-  const menu = sqlite().prepare("SELECT name, category FROM menu_items").all();
-  const catByName = new Map(menu.map((m) => [String(m.name || "").trim().toLowerCase(), m.category || "Të tjera"]));
+  const menu = sqlite().prepare(
+    "SELECT id, name, category, COALESCE(stock_qty, 0) AS stock_qty FROM menu_items",
+  ).all();
+  const byId = new Map(menu.map((m) => [Number(m.id), m]));
+  function menuRowForSale(it, name, bare) {
+    const mid = Number(it.menu_item_id || it.product_id) || 0;
+    if (mid && byId.get(mid)) return byId.get(mid);
+    const keys = new Set(
+      [name, bare].map((s) => String(s || "").trim().toLowerCase()).filter(Boolean),
+    );
+    const matches = menu.filter((m) => keys.has(String(m.name || "").trim().toLowerCase()));
+    if (matches.length === 1) return matches[0];
+    if (!matches.length) return null;
+    const raw = `${name} ${bare}`;
+    const mini = matches.filter((m) => String(m.category || "").trim().toLowerCase() === "minibar");
+    const other = matches.filter((m) => String(m.category || "").trim().toLowerCase() !== "minibar");
+    if (/\bminibar\b/i.test(raw) && mini.length) return mini[0];
+    if (other.length) return other[0];
+    return mini[0] || matches[0];
+  }
   const cats = new Map();
+  const products = new Map();
   for (const row of rows) {
     for (const it of itemsOf(row)) {
       const name = String(it.name || "").trim();
       if (!name) continue;
-      const qty = Number(it.quantity ?? it.qty) || 1;
-      const rev = qty * (Number(it.price) || 0);
-      const cat = catByName.get(name.toLowerCase()) || "Të tjera";
-      const cur = cats.get(cat) || { category: cat, qty: 0, revenue: 0 };
+      const storedQty = Number(it.quantity ?? it.qty) || 1;
+      const prefix = name.match(/^(\d+(?:[.,]\d+)?)\s*[×xX]\s*/);
+      const prefixQty = prefix ? Number(String(prefix[1]).replace(",", ".")) : 0;
+      const qty = prefixQty > 0 && storedQty === 1 ? prefixQty : storedQty;
+      const rev = storedQty * (Number(it.price) || 0);
+      const bare = bareSaleName(name);
+      const menuRow = menuRowForSale(it, name, bare);
+      const cat = menuRow?.category || "Të tjera";
+      const stock = menuRow ? Number(menuRow.stock_qty) || 0 : null;
+      const pkey = menuRow ? `id:${menuRow.id}` : `name:${(bare || name).toLowerCase()}`;
+      const prod = products.get(pkey) || {
+        name: menuRow?.name || name,
+        category: cat,
+        qty: 0,
+        revenue: 0,
+        stock_qty: stock,
+      };
+      prod.qty += qty;
+      prod.revenue += rev;
+      products.set(pkey, prod);
+      const cur = cats.get(cat) || { category: cat, qty: 0, revenue: 0, stock_qty: 0, seen: new Set() };
       cur.qty += qty;
       cur.revenue += rev;
+      if (menuRow && !cur.seen.has(Number(menuRow.id))) {
+        cur.seen.add(Number(menuRow.id));
+        cur.stock_qty += Number(menuRow.stock_qty) || 0;
+      }
       cats.set(cat, cur);
     }
   }
+  const productRows = [...products.values()]
+    .map((p) => ({
+      name: p.name,
+      category: p.category,
+      qty: round2(p.qty),
+      revenue: round2(p.revenue),
+      stock_qty: p.stock_qty,
+    }))
+    .sort((a, b) => b.revenue - a.revenue || String(a.name).localeCompare(String(b.name), "sq"));
   const categories = [...cats.values()]
-    .map((c) => ({ ...c, qty: round2(c.qty), revenue: round2(c.revenue) }))
+    .map((c) => ({
+      category: c.category,
+      qty: round2(c.qty),
+      revenue: round2(c.revenue),
+      stock_qty: round2(c.stock_qty),
+    }))
     .sort((a, b) => b.revenue - a.revenue);
-  return { ok: true, from: start, to: end, categories, summary: summarize(rows) };
+  return { ok: true, from: start, to: end, categories, products: productRows, summary: summarize(rows) };
 }
 
 function getStaffReport(from, to) {
@@ -244,12 +298,28 @@ function getStaffReport(from, to) {
       total: 0,
       cash: 0,
       card: 0,
+      services_total: 0,
+      paid_to_restaurant: 0,
     };
     const pay = cashOf(row);
+    let cashPart = pay.cash;
+    let cardPart = pay.card;
+    let totalPart = Number(row.total) || 0;
+    if (stationOf(row) === "recepsion") {
+      const food = moneyParts(row).restaurant;
+      if (food) {
+        const base = cashPart + cardPart;
+        const cutCash = base ? round2(food * (cashPart / base)) : 0;
+        cashPart = round2(cashPart - cutCash);
+        cardPart = round2(cardPart - round2(food - cutCash));
+        totalPart = round2(totalPart - food);
+        cur.paid_to_restaurant += food;
+      }
+    }
     cur.order_count += 1;
-    cur.total += Number(row.total) || 0;
-    cur.cash += pay.cash;
-    cur.card += pay.card;
+    cur.total += totalPart;
+    cur.cash += cashPart;
+    cur.card += cardPart;
     if (stationOf(row) === "recepsion") cur.station = "recepsion";
     stats.set(name, cur);
   }
@@ -260,6 +330,9 @@ function getStaffReport(from, to) {
       cash: round2(s.cash),
       card: round2(s.card),
       station_label: s.station === "recepsion" ? "Recepsion" : "Kamarier",
+      shop: s.station === "recepsion" || s.station === "sherbim" ? "Recepsion" : "Restorant",
+      paid_to_restaurant: round2(s.paid_to_restaurant || 0),
+      services_total: round2(s.services_total || 0),
       services: [],
     }))
     .sort((a, b) => b.total - a.total);
@@ -267,7 +340,7 @@ function getStaffReport(from, to) {
   const byName = new Map(staff.map((s) => [s.operator, s]));
   for (const line of work) {
     const name = String(line.performed_by_name || "").trim();
-    if (!name || line.status !== "completed") continue;
+    if (!name || line.status !== "completed" || !line.hotel_service) continue;
     let bucket = byName.get(name);
     if (!bucket) {
       bucket = {
@@ -277,13 +350,28 @@ function getStaffReport(from, to) {
         total: 0,
         cash: 0,
         card: 0,
+        services_total: 0,
         station_label: "Shërbim",
+        shop: "Recepsion",
+        paid_to_restaurant: 0,
         services: [],
       };
       byName.set(name, bucket);
       staff.push(bucket);
     }
     bucket.services.push(line);
+    bucket.services_total = round2((Number(bucket.services_total) || 0) + (Number(line.amount) || 0));
+  }
+  const roomByName = new Map();
+  const shifts = require("./database").listShiftReports({ from: start, to: end, include_open: true });
+  for (const sh of shifts || []) {
+    const name = String(sh.waiter_name || "").trim();
+    if (!name) continue;
+    roomByName.set(name, round2((roomByName.get(name) || 0) + (Number(sh.room_total) || 0)));
+  }
+  for (const s of staff) {
+    s.room = round2(roomByName.get(s.operator) || 0);
+    s.activity_total = round2((Number(s.cash) || 0) + (Number(s.card) || 0) + s.room);
   }
   return { ok: true, from: start, to: end, staff, service_work: work, summary: summarize(rows) };
 }
