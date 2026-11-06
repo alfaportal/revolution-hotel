@@ -1,0 +1,31 @@
+---
+description: LOCKED — tavolina live e POS, pronarit dhe telefonit nuk preket pa 2 konfirmime
+alwaysApply: true
+---
+
+# TAVOLINAT LIVE JANË TË MBYLLURA (LOCKED)
+
+Kjo rregull **nuk thyhet**. POS-i, paneli i pronarit dhe kamarieri në telefon duhet të shohin **të njëjtën** tavolinë, me të njëjtat artikuj dhe të njëjtin total.
+
+## Ndalim absolut pa 2 konfirmime
+
+**MOS** ndrysho, rifaktorizo, “pastro” apo “përmirëso”:
+
+- `revolution-hotel-server/src/lib/pendingAcceptExpiry.js` → `needsWaiterAcceptance`
+- `revolution-hotel-server/src/services/waiterService.js` → `getActiveTableOrders`
+- `revolution-hotel-server/src/services/salesService.js` → `resolveSaleOrderTotal`, `filterStaleDuplicateVenueOrdersForOwner`
+
+Shenja në kod: `NUK PREKET`.
+
+## Çfarë nuk guxon të prishet
+
+- Porosia e arkës lokale **nuk** skadon pas 15 minutash.
+- Një tavolinë = një biletë. Fletë QR që është tashmë brenda porosisë **nuk** mblidhet përsëri.
+- Totali është shuma e ruajtur. Nëse mungon, është shuma e artikujve.
+
+## Procedura
+
+1. **NDALO.**
+2. Pyet herën e parë çfarë prishet (tavolina e lirë, artikuj të dyfishuar, total i gabuar).
+3. Pyet herën e dytë: “A je i sigurt? Prekja mund t’i ndajë POS-in, pronarin dhe telefonin.”
+4. Vetëm pas dy “po” të qarta lejohet ndryshim i kufizuar.
