@@ -28,6 +28,8 @@ function buildWhatsAppActivationUrl(hardwareId, email) {
   return buildLicenseWhatsAppActivationUrl(hardwareId, email);
 }
 /** Grace HW kur çelësi lokal prishet — i shkurtuar (mbrojtje më e fortë). */
+const LICENSE_REGISTRATION_WAIT_MS = 10 * 60 * 1000;
+const LICENSE_SUCCESS_CLOSE_DELAY_MS = 2500;
 const GRACE_MS = 24 * 60 * 60 * 1000;
 const TRIAL_DAYS = 7;
 const ANNUAL_DAYS = 365;
@@ -792,6 +794,13 @@ function promptHardwareActivation(app, opts = {}) {
     } catch {
       /* ignore */
     }
+    if (typeof opts.onBeforeShow === "function") {
+      try {
+        opts.onBeforeShow();
+      } catch {
+        /* ignore */
+      }
+    }
     const { BrowserWindow, ipcMain } = require("electron");
     const hwFormatted = formatHardwareId(getHardwareId(app));
     const reason = String(opts.reason || "");
@@ -814,10 +823,19 @@ function promptHardwareActivation(app, opts = {}) {
       subText = `Trial është përdorur në këtë kompjuter. Futni License Key vjetor. Kontaktoni ${getLicenseSupportContactPlain()}.`;
     }
     let settled = false;
+    let registrationTimer = null;
 
     const finish = (ok) => {
       if (settled) return;
       settled = true;
+      if (registrationTimer) {
+        try {
+          clearTimeout(registrationTimer);
+        } catch {
+          /* ignore */
+        }
+        registrationTimer = null;
+      }
       try {
         ipcMain.removeHandler("hw-lic-try");
         ipcMain.removeHandler("hw-lic-close");
@@ -917,7 +935,7 @@ function promptHardwareActivation(app, opts = {}) {
         <button type="button" class="pair-join" id="pair-join">Lidhu</button>
       </div>
       <button type="button" class="ghost" id="c">Mbyll</button>
-      ${getLicenseSupportContactHtml()}<p class="hint">Dërgoni foto të ID-së për aktivizim. Duke pritur regjistrimin nga admini…</p>
+      ${getLicenseSupportContactHtml()}<p class="hint">Dërgoni foto të ID-së për aktivizim. <b>Deri në 10 minuta</b> — dritarja mbetet hapur derisa admini të regjistrojë licencën (kontroll cloud çdo 3 sek).</p>
     </div></div>
     <script>
       const { ipcRenderer } = require('electron');
@@ -941,7 +959,7 @@ function promptHardwareActivation(app, opts = {}) {
         const email = String(emailEl.value || '').trim();
         const v = String(input.value || '').trim();
         if (!isEmail(email)) { err.textContent = 'Shkruani email të vlefshëm për regjistrim.'; emailEl.focus(); return; }
-        if (!v) { err.textContent = 'Shkruani çelësin e licencës.'; return; }
+        if (!v) { err.textContent = 'Futni çelësin ose prisni regjistrimin e HW ID nga admini.'; return; }
         btn.disabled = true;
         btn.textContent = 'Duke verifikuar...';
         err.textContent = '';
@@ -988,25 +1006,25 @@ function promptHardwareActivation(app, opts = {}) {
       pairCode.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !pairBtn.disabled) submitPair();
       });
+      const pollMaxMs = ${LICENSE_REGISTRATION_WAIT_MS};
+      const pollStartedAt = Date.now();
       const poll = setInterval(async () => {
+        if (Date.now() - pollStartedAt > pollMaxMs) {
+          clearInterval(poll);
+          err.textContent = 'Koha 10 minuta mbaroi. Rihapni programin ose kontaktoni ${getLicenseSupportContactPlain().replace(/'/g, "\\'")}.';
+          return;
+        }
         try {
           const r = await ipcRenderer.invoke('hw-lic-poll-cloud');
-          if (r && r.ok) clearInterval(poll);
+          if (r && r.ok) {
+            err.textContent = 'Licenca u aktivizua — duke hapur programin…';
+            clearInterval(poll);
+            btn.disabled = true;
+          }
         } catch (_e) {}
       }, 3000);
       setTimeout(() => { try { emailEl.focus(); } catch (_e) {} }, 80);
     </script></body></html>`;
-
-    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-
-    try {
-      const licenseMod = require(path.join(__dirname, "..", "license"));
-      if (licenseMod && typeof licenseMod.reportHardwareIdToCloud === "function") {
-        licenseMod.reportHardwareIdToCloud(app).catch(() => {});
-      }
-    } catch {
-      /* ignore */
-    }
 
     ipcMain.handle("hw-lic-poll-cloud", async () => {
       try {
@@ -1014,9 +1032,14 @@ function promptHardwareActivation(app, opts = {}) {
         const claimed = await license.claimByHardwareFromCloud(app);
         if (claimed && claimed.valid && (claimed.celesi || claimed.license_key)) {
           const ck = claimed.celesi || claimed.license_key;
+          try {
+            await license.activateWithKey(app, ck, {});
+          } catch (actErr) {
+            return { ok: false, message: actErr.message || String(actErr) };
+          }
           writeStoredLicenseKey(app, ck, { source: "cloud" });
-          finish(true);
-          return { ok: true };
+          setTimeout(() => finish(true), LICENSE_SUCCESS_CLOSE_DELAY_MS);
+          return { ok: true, closing: true };
         }
         return { ok: false };
       } catch {
@@ -1146,6 +1169,22 @@ function promptHardwareActivation(app, opts = {}) {
       return { ok: true };
     });
 
+    registrationTimer = setTimeout(() => {
+      if (settled) return;
+      finish(false);
+    }, LICENSE_REGISTRATION_WAIT_MS);
+
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+    try {
+      const licenseMod = require(path.join(__dirname, "..", "license"));
+      if (licenseMod && typeof licenseMod.reportHardwareIdToCloud === "function") {
+        licenseMod.reportHardwareIdToCloud(app).catch(() => {});
+      }
+    } catch {
+      /* ignore */
+    }
+
     win.on("close", () => {
       // Lejo mbylljen (X / Alt+F4) — finish(false) në "closed"
     });
@@ -1168,7 +1207,13 @@ async function allowWithGraceOrBlock() {
  * Kontrollo / aktivizo hardware lock. Thirret PARA license.ensureActivated.
  * @returns {Promise<{ ok: boolean, grace: object|null }>}
  */
-async function ensureHardwareLicense(app) {
+async function ensureHardwareLicense(app, opts = {}) {
+  const licenseUiOpts = (extra = {}) => ({
+    ...extra,
+    onBeforeShow: () => {
+      if (typeof opts.onBeforeLicenseUi === "function") opts.onBeforeLicenseUi();
+    },
+  });
   try {
     const license = require(path.join(__dirname, "..", "license"));
     await license.enforceRevokedBlock(app);
@@ -1183,7 +1228,7 @@ async function ensureHardwareLicense(app) {
     formatted = formatHardwareId(hwId);
   } catch (e) {
     logHwLicenseAudit(app, "hardware_id_error", { error: e.message || String(e) });
-    const activated = await promptHardwareActivation(app, { reason: "hardware_id_error" });
+    const activated = await promptHardwareActivation(app, licenseUiOpts({ reason: "hardware_id_error" }));
     return { ok: !!activated, grace: null };
   }
 
@@ -1195,7 +1240,7 @@ async function ensureHardwareLicense(app) {
       error: e.message || String(e),
       hardware_id: formatted,
     });
-    const activated = await promptHardwareActivation(app, { reason: "license_read_error" });
+    const activated = await promptHardwareActivation(app, licenseUiOpts({ reason: "license_read_error" }));
     return { ok: !!activated, grace: null };
   }
 
@@ -1211,7 +1256,7 @@ async function ensureHardwareLicense(app) {
           licenseType: rec.licenseType || null,
           expires_at: rec.expires_at || null,
         });
-        const activated = await promptHardwareActivation(app, { reason });
+        const activated = await promptHardwareActivation(app, licenseUiOpts({ reason }));
         return { ok: !!activated, grace: null };
       }
       if (keyOk && isHardwareUnlocked(app, hwId)) {
@@ -1220,7 +1265,7 @@ async function ensureHardwareLicense(app) {
           const cloudKey = license.readStoredLicense(app);
           const validateKey = cloudKey || rec.key;
           const promptNoLicense = () =>
-            promptHardwareActivation(app, { reason: "no_license" });
+            promptHardwareActivation(app, licenseUiOpts({ reason: "no_license" }));
           try {
             const online = await license.validateLicenseOnline(validateKey, { skipHardFail: true });
             if (online.valid && !online.offline) {
@@ -1285,11 +1330,11 @@ async function ensureHardwareLicense(app) {
               hardware_id: formatted,
               code: onlineResult.code,
             });
-            const activated = await promptHardwareActivation(app, { reason: "no_license" });
+            const activated = await promptHardwareActivation(app, licenseUiOpts({ reason: "no_license" }));
             return { ok: !!activated, grace: null };
           }
           if (onlineResult?.offline && !onlineResult.valid && app.isPackaged) {
-            const activated = await promptHardwareActivation(app, { reason: "offline_expired" });
+            const activated = await promptHardwareActivation(app, licenseUiOpts({ reason: "offline_expired" }));
             return { ok: !!activated, grace: null };
           }
         }
@@ -1301,15 +1346,15 @@ async function ensureHardwareLicense(app) {
         error: e.message || String(e),
         hardware_id: formatted,
       });
-      const activated = await promptHardwareActivation(app, { reason: "license_verify_error" });
+      const activated = await promptHardwareActivation(app, licenseUiOpts({ reason: "license_verify_error" }));
       return { ok: !!activated, grace: null };
     }
     logHwLicenseAudit(app, "license_mismatch", { hardware_id: formatted });
-    const activated = await promptHardwareActivation(app, { reason: "license_mismatch" });
+    const activated = await promptHardwareActivation(app, licenseUiOpts({ reason: "license_mismatch" }));
     return { ok: !!activated, grace: null };
   }
 
-  const activated = await promptHardwareActivation(app);
+  const activated = await promptHardwareActivation(app, licenseUiOpts());
   return { ok: !!activated, grace: null };
 }
 

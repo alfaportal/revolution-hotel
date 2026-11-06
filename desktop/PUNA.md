@@ -1,5 +1,135 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-06 — Aktivizimi i licencës si KAFENE
+
+Pronari nuk e shkruan çelësin. Dritarja tregon ID e pajisjes dhe çdo 3 sekonda pyet cloud-in. Kur Naseri ruan ID-në te paneli, programi e merr çelësin vetë dhe e aktivizon. Pritja ndalet pas 10 minutash.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `fiscal/license-guard.js` | poll para ngarkimit të dritares, `activateWithKey`, 10 min, mesazhi «Licenca u aktivizua» |
+
+`node --check` kaloi. Nuk u bë build. Nuk u bë git. Nuk u provua te programi i instaluar.
+
+
+
+## 2026-11-06 — Rreshti i artikullit në shportë
+
+Artikulli i dërguar është një rresht: foto 28px, sasia dhe emri, çmimi djathtas. Zhvendos mbetet poshtë. Nuk u prek printimi.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/waiter.html` | rreshti `sent-line` |
+| `public/css/pos-truffle.css` | thumbnail 28px, një rresht |
+
+Nuk u bë build. Nuk u bë git.
+
+
+
+## 2026-11-06 — Hover mbi tavolinën e zënë
+
+Te paneli i kamarierit, miu mbi kartën e zënë tregon artikujt, totalin, sa minuta është hapur dhe kush e hapi. Telefoni nuk e ka (nuk ka hover). Nuk u prek printimi dhe nuk u ndryshua pamja tjetër.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/waiter.html` | hover te tavolina dhe Online e zënë |
+| `public/css/pos-tables-truffle.css` | kutia e hover |
+
+Nuk u bë build. Nuk u bë git.
+
+
+
+## 2026-11-05 — Raportet e avancuara si KAFENE
+
+Skeda «Raporte të avancuara» mori të njëjtin dizajn si restoranti: nën-skedat portokalli, filtri dhe Shfaq/CSV/PDF brenda çdo skede, kutizat, grafiku dhe tabela. Mbetën Restoranti dhe Recepsioni te shumat. Porosia «Dërgo porosinë» në burim ruan në SQLite para cloud-it; nuk u prek printimi.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/admin.html` | paneli i raporteve + CSS |
+| `public/js/hotel-advanced-reports-ui.js` | ngarkimi sipas skedës, si KAFENE |
+
+## 2026-11-05 — Cash termik, kartë fiskal, pa rënie
+
+Mbyllja e tavolinës (telefon dhe desktop) e zgjedh kuponin nga pagesa. Cash shtyp vetëm termik dhe nuk krijon kupon fiskal. Kartë (`credit_card`, `debit_card`, `card`, `karte`) shtyp vetëm kupon fiskal; pa internet e mban moduli fiskal si kupon offline. Nëse fiskali nuk del, nuk shtypet termik. E njëjta rregull te KAFENE.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `close-table-print.js` | telefoni: cash termik, kartë fiskal, pa fallback |
+| `server.js` | mbyllja, ndarja dhe `/api/orders/close` |
+
+Nuk u prek moduli fiskal. Nuk u bë build.
+
+## 2026-11-05 — U kthyen rrugët e printimit termik/fiskal
+
+U kthyen ndryshimet e printimit te gjendja e mëparshme (para prekjes së këtij agjenti).
+
+| Skedar | Çfarë u kthye |
+|--------|----------------|
+| `close-table-print.js` | mbyllja nga telefoni, si më parë |
+| `server.js` mbyllje tavoline dhe ndarje fature | butoni termik / butoni fiskal, si më parë |
+| `database.js` `tableCloseReceiptNumber` | kur fiskalizimi është ndezur, numri i ditarit mbetet bosh derisa të dalë kuponi fiskal |
+| `receipt-print.js` | printimi termik pyet përsëri formatin, pastaj bie te teksti lokal |
+
+Nuk u prek restoranti (KAFENE): atje nuk kisha ndryshuar printimin e kuponit. Nuk bëra build.
+
+## 2026-11-05 — Mbyllja nga telefoni: fiskal pa termik
+
+`close-table-print.js`: kur fiskalizimi është ndezur, mbyllja nga telefoni kthen vetëm kuponin fiskal. Nuk shtyp termik nëse fiskali nuk del. Kur fiskalizimi është fikur, del vetëm termiku. Audit-i (`/api/admin/audit-log`) lexon vetëm `fiscal_receipts` me `is_fiscalized=1` dhe NUIKF 16 — termiku nuk hyn.
+
+## 2026-11-05 — Termik dhe fiskal, rruge të ndara
+
+Pagesa me kupon fiskal nuk shtyp më edhe kupon termik. Termiku nuk thërret `processFiscalReceipt`, pra nuk hyn te ATK dhe as te raportet Z/X. Kuponi fiskal shtypet lokalisht; interneti përdoret vetëm për dërgimin te ATK më vonë.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `server.js` mbyllje tavoline dhe ndarje fature | termik vetëm kur është zgjedhur termiku; fiskal vetëm kur është zgjedhur fiskali |
+
+## 2026-11-05 — Termik dhe fiskal, të dyja në ditar
+
+Kuponi termik dhe ai fiskal mbeten rruge të ndara. Termiku shtypet lokalisht. Regjistrimi në `daily_log` bëhet te mbyllja, para printimit, për të dyja. Më parë, kur fiskalizimi ishte ndezur, `tableCloseReceiptNumber` e linte numrin bosh dhe ditari e mbushte vetëm pasi dilte kuponi fiskal. Tani çdo pagesë cash/kartë merr numër fature në ditar dhe në raporte, qoftë termik qoftë fiskal.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` `tableCloseReceiptNumber` | nuk e lë më bosh numrin kur fiskalizimi është ndezur |
+
+## 2026-11-05 — Pa internet = të njëjtat libra, jo backup
+
+U hoq zëvendësimi që, pa internet, shtypte një kupon termik dhe e linte fiskalin me `skip_print`. Kasa dhe check-out thërrasin të njëjtin `processFiscalReceipt`. Pa ATK, kuponi shkruhet në `fiscal_receipts` (`sent_to_atk = 0`) dhe shtypet si kupon offline. Kur kthehet lidhja, radha e dërgon te ATK. Porosia e tavolinës shkruhet në `orders`; mbyllja në ditari. Backup-i i Desktop-it nuk përdoret për këtë.
+
+## 2026-11-05 — Recepsioni punon pa internet
+
+Check-in, dhomat dhe rezervimet ishin tashmë lokale. Kasa dhe check-out prisnin kontrollin e internetit para kuponit. Lista e kërkesave nga webi priste gjithashtu cloud-in.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `server.js` `fiscalizeRecepcionSale` | pa internet, kuponi lokal del menjëherë; fiskalizimi vazhdon në background pa letër të dytë |
+| `server.js` check-out dhe kasa | kur fiskali nuk përgjigjet shpejt, shtypet fatura/kuponi lokal |
+| `server.js` pranim porosie dhe shërbimi publik | ruajtja lokale nuk pret cloud-in; dërgimi shkon në background |
+| `server.js` lista e kërkesave web | lexon SQLite; cloud-i pyetet vetëm kur është online |
+
+Kur kthehet interneti, push-i i PMS (`pushHotelGuestStayToCloudAsync`) dhe pranimi në background i dërgojnë. Nuk preka modulin fiskal, ATK, URL. Nuk bëra build.
+
+## 2026-11-05 — Restoranti i hotelit punon pa internet
+
+«Dërgo porosinë» priste `revolution-pos.com` para se ta ruante porosinë. Pa internet ajo thirrje nuk mbaron, prandaj Tavolina 5 mbetej te «Porosi e re» dhe as fleta as kuponi nuk niseshin. Restoranti (KAFENE) e ruan porosinë lokalisht; hoteli tani bën të njëjtën gjë.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `server.js` `findTableHeldByOtherRegister` | nuk pret internetin. Përdor cache-in. Rifreskimi i cloud-it shkon në background |
+| `server.js` `POST /api/orders` | fleta niset pasi përgjigja i kthehet ekranit |
+| `receipt-print.js` `printOrderReceipt` | teksti dhe printeri janë lokalë. Nuk pyet cloud-in për format |
+
+Kur kthehet interneti, `reconcileAllTablesWithCloud` (te `cloud-auto-sync` onReconnect) i dërgon porositë e hapura. Mbyllja lokale vazhdon me `scheduleCloudAfterTableClose`. Nuk preka fiskalin, ATK, URL, waiter.html. Nuk bëra build. Programi i hapur është Setup 1.0.659.
+
+## 2026-11-05 — Setup 1.0.659
+
+Build i një Setup. `package.json` version 1.0.658 → 1.0.659 (e bën vetë `build-packages.js`). Audit para build: 76 module root në `build.files`, testet e mbrojtura 17/17.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `package.json` | version `1.0.659` |
+
+Prova: `app.asar` version 1.0.659, 4963 hyrje. Brenda: `server.js`, `database.js`, `main.js`, `cloud-sync.js`, `hotel-cloud-sync.js`, `hotel-advanced-reports.js`, `lib/local-kds-service.js`, `public/admin.html`, `public/waiter.html`, `public/recepcion.html`, `public/bar.html`, `public/js/bar.js`, `kontabilisti-atk.js`, `receipt-text.js`. Setup: `dist/Revolution HOTEL Setup.exe` (121890492 bytes) dhe kopja në Desktop. Rollback `dist/Revolution HOTEL Setup 1.0.658.exe` mbeti.
+
 ## 2026-11-05 — Dy dyqane: Restorant dhe Recepsion
 
 Ditari, Raportet, 7 skedat e raporteve të avancuara dhe rreshti i Kontabilistit tregojnë dy dyqane. Shuma «Shitur recepsionit» dhe «Paguar për restorantin» është e njëjta. TOTALI = cash+kartë e restorantit + cash+kartë e recepsionit. Shitjet, TVSH dhe fitimi nuk ndryshuan.

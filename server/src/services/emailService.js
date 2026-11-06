@@ -564,9 +564,7 @@ async function sendOwnerClientOfflineEmail({
     ? new Date(lastSeenAt).toLocaleString("sq-AL", { timeZone: "Europe/Belgrade" })
     : "i panjohur";
 
-  const subject = atkWarning
-    ? `⚠️ URGJENT: POS offline >48h — rrezik kontrolli ATK — ${name}`
-    : `Paralajmërim: POS offline ${milestoneHours}h — ${name}`;
+  const subject = `Paralajmërim: POS offline — ${name}`;
 
   const text = [
     `Përshëndetje ${name},`,
@@ -574,9 +572,7 @@ async function sendOwnerClientOfflineEmail({
     `Sistemi juaj Revolution POS është offline prej rreth ${hours} orësh.`,
     `Lidhja e fundit me cloud: ${seenLabel}`,
     "",
-    atkWarning
-      ? "KUJTESË E RËNDËSISHME: Keni kaluar 48 orë offline. ATK mund të vijë për kontroll nëse sistemi fiskal / POS nuk po funksionon online. Rilidhni internetin dhe hapni programin sa më shpejt."
-      : `Mund të jeni offline deri në 48 orë. Ky është njoftimi i ${milestoneHours} orëve. Pas 48 orësh ATK mund të vijë për kontroll nëse sistemi nuk funksionon. Rilidhni internetin dhe hapni programin.`,
+    "Lokali nuk është aktiv. Ky është njoftimi i vetëm. Kontrolloni lidhjen dhe hapni programin.",
     "",
     `Nëse keni nevojë për ndihmë: ${support}`,
     "",
@@ -587,20 +583,9 @@ async function sendOwnerClientOfflineEmail({
     <p>Përshëndetje <strong>${escapeHtmlEmail(name)}</strong>,</p>
     <p>Sistemi juaj <strong>Revolution POS</strong> është <strong>offline</strong> prej rreth <strong>${hours} orësh</strong>.</p>
     <p>Lidhja e fundit me cloud: <code>${escapeHtmlEmail(seenLabel)}</code></p>
-    ${
-      atkWarning
-        ? `<p style="margin-top:16px;padding:12px;background:#7f1d1d;color:#fecaca;border-radius:8px">
-            <strong>URGJENT:</strong> Keni kaluar <strong>48 orë</strong> offline.
-            <strong>ATK mund të vijë për kontroll</strong> nëse sistemi fiskal / POS nuk po funksionon online.
-            Rilidhni internetin dhe hapni programin sa më shpejt.
-          </p>`
-        : `<p style="margin-top:16px;padding:12px;background:#78350f;color:#fde68a;border-radius:8px">
-            <strong>Paralajmërim:</strong> Mund të jeni offline deri në <strong>48 orë</strong>
-            (ky njoftim: ${milestoneHours}h). Pas 48 orësh
-            <strong>ATK mund të vijë për kontroll</strong> nëse sistemi nuk funksionon.
-            Rilidhni internetin dhe hapni programin.
-          </p>`
-    }
+    <p style="margin-top:16px;padding:12px;background:#78350f;color:#fde68a;border-radius:8px">
+      <strong>Paralajmërim:</strong> Lokali nuk është aktiv. Ky është njoftimi i vetëm. Kontrolloni lidhjen dhe hapni programin.
+    </p>
     <p style="margin-top:16px">Nëse keni nevojë për ndihmë: <strong>${escapeHtmlEmail(support)}</strong></p>
     <p style="color:#64748b;font-size:13px">Revolution Invest POS</p>
   `;

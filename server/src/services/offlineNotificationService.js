@@ -4,8 +4,7 @@ const {
   sendOwnerClientOfflineEmail,
 } = require("./emailService");
 
-/** Vetëm dy email pronari për episod offline: 24h dhe 48h (ATK). */
-const MILESTONES = [24, 48];
+const MILESTONES = [44];
 const MS_HOUR = 60 * 60 * 1000;
 
 function pickLatestIso(values) {
@@ -138,6 +137,23 @@ async function fetchSentMilestones(clientId, offlineSince) {
   return new Set((data || []).map((r) => Number(r.milestone_hours)));
 }
 
+async function notifiedAfterLastSeen(clientId, lastSeenAt) {
+  const db = getSupabase();
+  const { data, error } = await db
+    .from("offline_notifications")
+    .select("sent_at")
+    .eq("client_id", clientId)
+    .order("sent_at", { ascending: false })
+    .limit(8);
+  if (error) throw error;
+  const seenMs = new Date(lastSeenAt).getTime();
+  if (!Number.isFinite(seenMs)) return false;
+  return (data || []).some((r) => {
+    const sentMs = new Date(r.sent_at).getTime();
+    return Number.isFinite(sentMs) && sentMs >= seenMs;
+  });
+}
+
 async function recordMilestone(row, milestoneHours) {
   const db = getSupabase();
   const { error } = await db.from("offline_notifications").upsert(
@@ -190,6 +206,11 @@ async function processOfflineNotifications() {
       console.warn(
         `[cron] offlineNotifications: pa email pronari — ${row.client_name} (${row.client_id})`,
       );
+      continue;
+    }
+
+    if (await notifiedAfterLastSeen(row.client_id, row.last_seen_at)) {
+      stats.skipped += 1;
       continue;
     }
 
