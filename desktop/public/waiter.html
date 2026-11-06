@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="/css/lan-status.css">
   <script src="/js/lan-status-indicator.js" defer></script>
   <link rel="stylesheet" href="/css/waiter-modern.css?v=14">
-  <link rel="stylesheet" href="/css/pos-truffle.css?v=16">
+  <link rel="stylesheet" href="/css/pos-truffle.css?v=17">
   <link rel="stylesheet" href="/css/staff-cloud-disabled.css?v=2">
   <script src="/js/staff-cloud-disabled.js"></script>
   <style>
@@ -992,7 +992,7 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=2">
+  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=3">
 </head>
 <body class="waiter-screen">
   <div id="waiter-fiscal-alerts">
@@ -1486,7 +1486,7 @@
     <div class="waiter-order-top">
       <div class="back-bar">
         <button class="btn btn-ghost btn-sm" id="btn-kthehu">← Kthehu te tavolinat</button>
-        <button class="btn btn-ghost btn-sm" type="button" onclick="dil()">Kyçu</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="dil()">Dil</button>
       </div>
       <header class="header waiter-table-header">
         <h1 id="titull-tavolina">Tavolina T1</h1>
@@ -4659,6 +4659,89 @@
       perditesoKpiTavolinaQr(tables, lastQrPublicCount, lastOnlinePendingWaiter);
     }
 
+    function hoverVetemDesktop() {
+      return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    }
+
+    function escapeHover(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+    }
+
+    function minutaNgaHapja(raw) {
+      if (!raw) return "";
+      const t = Date.parse(String(raw).trim().replace(" ", "T"));
+      if (!Number.isFinite(t)) return "";
+      const min = Math.max(0, Math.floor((Date.now() - t) / 60000));
+      if (min < 1) return "tani";
+      if (min < 60) return `${min} min`;
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return m ? `${h} orë ${m} min` : `${h} orë`;
+    }
+
+    function siguroHoverTavoline() {
+      let el = document.getElementById("waiter-table-hover");
+      if (el) return el;
+      el = document.createElement("div");
+      el.id = "waiter-table-hover";
+      el.className = "waiter-table-hover";
+      el.hidden = true;
+      document.body.appendChild(el);
+      return el;
+    }
+
+    function fshihHoverTavoline() {
+      const el = document.getElementById("waiter-table-hover");
+      if (!el) return;
+      el.hidden = true;
+      el.innerHTML = "";
+    }
+
+    function pozicionoHoverTavoline(el, anchor) {
+      const r = anchor.getBoundingClientRect();
+      const w = el.offsetWidth || 240;
+      const h = el.offsetHeight || 120;
+      let left = r.right + 10;
+      let top = r.top;
+      if (left + w > window.innerWidth - 8) left = r.left - w - 10;
+      if (left < 8) left = 8;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+    }
+
+    function lidhHoverPorosie(card, info) {
+      if (!card || !info || !hoverVetemDesktop()) return;
+      let rawItems = info.items;
+      if (typeof rawItems === "string") {
+        try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
+      }
+      const rows = (Array.isArray(rawItems) ? rawItems : []).map((it) => ({
+        qty: Number(it.quantity) || 1,
+        name: String(it.name || it.product_name || "—"),
+        price: Number(it.price) || 0,
+      }));
+      if (!rows.length && !(Number(info.total) > 0)) return;
+      card.addEventListener("mouseenter", () => {
+        const el = siguroHoverTavoline();
+        const lines = rows.map((it) => (
+          `<div class="wth-row"><span>${escapeHover(it.qty)}× ${escapeHover(it.name)}</span><span>${formatEuro(it.price * it.qty)}</span></div>`
+        )).join("");
+        const total = Number.isFinite(Number(info.total))
+          ? Number(info.total)
+          : rows.reduce((s, it) => s + it.price * it.qty, 0);
+        const age = minutaNgaHapja(info.openedAt);
+        const who = String(info.waiter || "").trim();
+        const meta = [age ? `⏱ ${age}` : "", who].filter(Boolean).join(" — ");
+        el.innerHTML = `${lines}<div class="wth-line"></div><div class="wth-row wth-total"><span>Total</span><span>${formatEuro(total)}</span></div>${meta ? `<div class="wth-meta">${escapeHover(meta)}</div>` : ""}`;
+        el.hidden = false;
+        pozicionoHoverTavoline(el, card);
+      });
+      card.addEventListener("mouseleave", fshihHoverTavoline);
+    }
+
     function ndertoKartelenTavoline(t) {
       const card = document.createElement("button");
       card.type = "button";
@@ -4727,6 +4810,31 @@
         inner += `<div class="table-reserve-meta">${String(t.reservation.time).slice(0, 5)} · ${t.reservation.guests}p</div>`;
       }
       card.innerHTML = inner;
+      if (cloudLive && cloudLive.order) {
+        const clo = cloudLive.order;
+        lidhHoverPorosie(card, {
+          items: clo.items || clo.items_json || [],
+          total: clo.total,
+          openedAt: clo.created_at || clo.opened_at,
+          waiter: clo.waiter_name,
+        });
+      } else if (cloudPending) {
+        lidhHoverPorosie(card, {
+          items: cloudPending.items || cloudPending.items_json || [],
+          total: cloudPending.total,
+          openedAt: cloudPending.created_at || cloudPending.opened_at || cloudPending.ordered_at,
+          waiter: cloudPending.waiter_name || cloudPending.customer_label || "",
+        });
+      } else if (!isFree && t.order) {
+        const rows = t.items || [];
+        const sum = rows.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
+        lidhHoverPorosie(card, {
+          items: rows,
+          total: sum || t.order.total,
+          openedAt: t.order.created_at,
+          waiter: t.order.waiter_name,
+        });
+      }
       card.addEventListener("click", () => {
         if (cloudPending) {
           vendosPorosiOnlinePrioritet({
@@ -4863,7 +4971,12 @@
       const roomLine = qrRoom && o.room_number
         ? `${tt("Dhoma")} ${String(o.room_number).trim()}`
         : "";
-      const items = (o.items || []).slice(0, 2).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
+      let rawItems = o.items_json || o.items || [];
+      if (typeof rawItems === "string") {
+        try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
+      }
+      if (!Array.isArray(rawItems)) rawItems = [];
+      const items = rawItems.slice(0, 2).map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
       card.innerHTML = `<div class="table-card-name">${src}</div>
         <div class="table-card-status">${tt("Në pritje")}</div>
         <div class="table-card-meta">${formatEuro(o.total || 0)}</div>
@@ -4872,6 +4985,12 @@
         ${items ? `<div class="table-card-hint">${items}</div>` : ""}
         <div class="table-card-accept-cta">${tt("Kliko — hap PRANO")}</div>
         ${eshtePorosiTakeawayNePritje(o) ? `<span class="table-card-hint" data-ndrysho-takeaway="1" style="font-weight:800;color:#0f172a">Ndrysho</span>` : ""}`;
+      lidhHoverPorosie(card, {
+        items: rawItems,
+        total: o.total,
+        openedAt: o.created_at || o.opened_at || o.ordered_at,
+        waiter: customer,
+      });
       card.addEventListener("click", (ev) => {
         if (ev.target.closest("[data-ndrysho-takeaway]")) {
           ev.preventDefault();
@@ -5013,7 +5132,15 @@
       const pending = slot.status === "pending";
       const roomLabel = String(o.source_label || "");
       const showRoom = /^room service\b/i.test(roomLabel);
-      const items = o.items_json || o.items || [];
+      let items = o.items_json || o.items || [];
+      if (typeof items === "string") {
+        try { items = JSON.parse(items); } catch { items = []; }
+      }
+      if (!Array.isArray(items)) items = [];
+      if (!pending && !items.length) {
+        const lokale = (lastTablesFlat || []).find((row) => String(row?.order?.cloud_order_id || "") === String(o.id || ""));
+        if (lokale?.items?.length) items = lokale.items;
+      }
       const itemCount = items.reduce((s, it) => s + (Number(it.quantity) || 1), 0);
       const total = Number(o.total) || items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
       const customer = String(o.waiter_name || o.customer_label || "Klient").trim();
@@ -5025,6 +5152,12 @@
         <div class="table-card-hint">${customer}</div>
         <div class="table-card-hint">${pending ? tt("Kliko → prano") : tt("Kliko → Cash / Kartë")}</div>
         ${pending && eshtePorosiTakeawayNePritje(o) ? `<span class="table-card-hint" data-ndrysho-takeaway="1" style="font-weight:800;color:#0f172a">Ndrysho</span>` : ""}`;
+      lidhHoverPorosie(card, {
+        items,
+        total,
+        openedAt: o.created_at || o.opened_at || o.ordered_at,
+        waiter: pending ? customer : (o.accepted_by_waiter_name || customer),
+      });
       card.addEventListener("click", (ev) => {
         if (ev.target.closest("[data-ndrysho-takeaway]")) {
           ev.preventDefault();
@@ -5097,6 +5230,7 @@
       });
       if (sig === ndertoRjetenTavolinave._sig && wrap.childElementCount) return;
       ndertoRjetenTavolinave._sig = sig;
+      fshihHoverTavoline();
       wrap.innerHTML = "";
       const zones = Array.isArray(lastTableZones) ? lastTableZones : [];
       const { dining, onlineZone, deferred } = ndarjaZonaveTavolinave(zones);
@@ -5273,6 +5407,7 @@
     document.getElementById("kpi-stock-loss-wrap")?.addEventListener("click", () => {
       window.location.href = "/stock-loss.html";
     });
+    document.getElementById("waiter-zones-wrap")?.addEventListener("scroll", fshihHoverTavoline, { passive: true });
     document.getElementById("kpi-cash-wrap")?.addEventListener("click", () => {
       const pazari = document.getElementById("hdr-pazari");
       document.querySelector(".waiter-table-toolbar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -6094,6 +6229,13 @@
       return (lista || []).reduce((s, i) => s + i.price * i.quantity, 0);
     }
 
+    function sentLineThumb(it) {
+      const menu = (menuItems || []).find((m) => Number(m.id) === Number(it.menu_item_id));
+      const url = menu && typeof menuPhotoUrl === "function" ? String(menuPhotoUrl(menu) || "") : "";
+      if (!url) return `<span class="sent-line-thumb" aria-hidden="true"></span>`;
+      return `<img class="sent-line-thumb" src="${url.replace(/"/g, "&quot;")}" alt="">`;
+    }
+
     function perditesoPorosine() {
       const neTavWrap = document.getElementById("lista-ne-tavoline-wrap");
       const neTavLista = document.getElementById("lista-ne-tavoline");
@@ -6103,10 +6245,11 @@
         totalTavBar.hidden = false;
         const eHuaj = tavolinaAktive?.order && tavolinaAktive.order.waiter_name !== user.emri;
         neTavLista.innerHTML = artikujNeTavoline.map((it, idx) =>
-          `<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:center;padding:0.15rem 0;color:var(--ngjyr-muted)">
-            <span>${it.quantity}× ${it.name}</span>
-            <span>${formatEuro(it.price * it.quantity)}</span>
-            ${eHuaj ? "" : `<button type="button" class="btn btn-ghost" data-hiq-sent="${idx}" style="padding:0.15rem 0.45rem;font-size:0.75rem">Hiq</button>`}
+          `<div class="sent-line">
+            ${sentLineThumb(it)}
+            <span class="sent-line-name">${it.quantity}× ${it.name}</span>
+            <span class="sent-line-price">${formatEuro(it.price * it.quantity)}</span>
+            ${eHuaj ? "" : `<button type="button" class="btn btn-ghost" data-hiq-sent="${idx}">Hiq</button>`}
           </div>`,
         ).join("");
         const btnZhvendos = document.getElementById("btn-zhvendos");

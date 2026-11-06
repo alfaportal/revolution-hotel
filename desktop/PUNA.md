@@ -1,5 +1,54 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-06 — Raporti Z dhe Dil
+
+`scripts/obfuscate-build.mjs` e ka tashmë `printFiscalReportText` (dhe printin Z) të rezervuar. Te `public/waiter.html` butoni është «Dil». Këtë radhë nuk u ndryshua desktopi. Nuk u bë build.
+
+
+
+## 2026-11-06 — Kutia e porosisë edhe te Online
+
+Kalimi i mausit te kartat Online (edhe në pritje) dhe te porosia QR në pritje tregon artikujt, totalin dhe emrin. Më parë kutia dilte vetëm pasi pranohej.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/waiter.html` | `lidhHoverPorosie` edhe për pending |
+
+Nuk u bë build. Nuk u bë git.
+
+
+
+## 2026-11-06 — Raporti Z printohet, Dil te porosia
+
+Butoni Raporti Z thërret `printFiscalReportText`. Obfuskimi e prishte emrin mes `server.js` dhe `fiscal-main.js` (`_0x… is not a function`). Emrat e printimit Z u shtuan te lista e mbrojtur. Te porosia, «Kyçu» u bë «Dil».
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `scripts/obfuscate-build.mjs` | emrat e Raportit Z nuk obfuskohen |
+| `public/waiter.html` | «Dil» |
+
+Nuk u prek moduli fiskal. Nuk u bë build. Nuk u bë git. Programi i instaluar e mban ende gabimin derisa të instalohet Setup i ri.
+
+
+
+## 2026-11-06 — Dërgo porosinë ruan SQLite pa pritur cloud
+
+`POST /api/orders` priste `findTableHeldByOtherRegister` (LAN / cloud) para `sendOrder`. Butoni qëndronte i fikur dhe porosia nuk hynte në SQLite. Tani `sendOrder` shkruan menjëherë, përgjigjja del, cloud dhe printimi shkojnë pas.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `server.js` | rreshti i `POST /api/orders` — pa `await` para ruajtjes |
+
+Prova: databazë e përkohshme, `sendOrder` Americano+Latte → porosia 1, status active, total 2.70, tavolina occupied. `node --check server.js` kaloi. Nuk u bë build. Nuk u bë git.
+
+## 2026-11-06 — Build Setup 1.0.660
+
+Komanda: `node build-packages.js` (një Setup). Version: `package.json` 1.0.659 → 1.0.660. Pre-build: 76 module, testet e mbrojtura kaluan. electron-builder exit 0.
+
+Rezultat: `dist/Revolution HOTEL Setup.exe` dhe `Desktop\Revolution HOTEL Setup.exe`. ProductVersion **1.0.660**. 1.0.658 dhe 1.0.659 mbetën.
+
+Përfshin aktivizimin e licencës nga ID e pajisjes (kodi që ishte në disk). **Nuk u bë git.** Instalo Setup 1.0.660 → mbyll programin plotësisht → hape përsëri.
+
 ## 2026-11-06 — Aktivizimi i licencës si KAFENE
 
 Pronari nuk e shkruan çelësin. Dritarja tregon ID e pajisjes dhe çdo 3 sekonda pyet cloud-in. Kur Naseri ruan ID-në te paneli, programi e merr çelësin vetë dhe e aktivizon. Pritja ndalet pas 10 minutash.

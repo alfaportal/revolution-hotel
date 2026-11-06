@@ -444,7 +444,7 @@ const STAFF_LOCAL_EMPTY_ONLINE_ORDERS = {
 
 const license = require("./license");
 const receiptPrint = require("./receipt-print");
-const { printClosedTableReceipt } = require("./close-table-print");
+const { printClosedTableReceipt, paymentCouponKind } = require("./close-table-print");
 const { buildXReportHtml, buildZReportHtml, buildXReportLines, buildZReportLines, buildDailySummaryLines } = require("./shift-report-html");
 const { diffOrderItems } = require("./kitchen-ticket-html");
 const localKdsEvents = require("./lib/local-kds-events");
@@ -591,11 +591,9 @@ function resolvePendingPublicBookingRow(dbRef, id) {
 
 async function loadPublicBookingRequestsForRecepcion() {
   ensurePublicGuestRequestsWatcher();
-  try {
-    await publicGuestRequestsWatcher.refreshPublicGuestRequests(db);
-  } catch (err) {
+  void publicGuestRequestsWatcher.refreshPublicGuestRequests(db).catch((err) => {
     console.warn("[public-booking] refresh:", err?.message || err);
-  }
+  });
   if (typeof db.listPendingPublicBookingRequests !== "function") return [];
   return db.listPendingPublicBookingRequests();
 }
@@ -921,16 +919,9 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
 
   let cloudResult = { ok: false, message: "", accepted_by: "" };
   if (ackPin || ackMeta.waiterName) {
-    try {
-      cloudResult = await cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta);
-    } catch (e) {
-      cloudResult = { ok: false, message: e.message || "", accepted_by: "" };
-    }
-    if (cloudResult.ok && !success.length) {
-      onlineOrdersWatcher.persistAcknowledged(db, ids);
-      db.removePendingCloudOrders(ids);
-      onlineOrdersWatcher.removeOrdersFromSnapshot(ids);
-    }
+    void cloudSync.acknowledgeOnlineOrders(db, ids, ackPin, ackMeta).catch((e) => {
+      console.warn("[accept] cloud:", e.message || e);
+    });
   }
 
   if (tableImports.length) {
@@ -950,17 +941,16 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
         ? 0
         : (Number(r.table_number || cloudOrder.table_number) || 0);
       try {
-        const pushRes = await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
+        void cloudSync.pushQrWaiterAcceptToCloudKitchen(db, order, {
           cloudOrderId: cloudOrder.id,
           cloudOrder,
           waiterName,
           waiterId: ackMeta.waiterId,
           table_number: tblNum,
           batch_items: Array.isArray(r.batch_items) ? r.batch_items : null,
+        }).catch((pushErr) => {
+          console.warn("[accept] push → kuzhinë:", pushErr.message || pushErr);
         });
-        if (!pushRes?.ok) {
-          console.warn("[accept] push → kuzhinë (QR/online):", pushRes.message || "dështoi");
-        }
       } catch (pushErr) {
         console.warn("[accept] push → kuzhinë:", pushErr);
       }
@@ -1007,25 +997,19 @@ async function acceptOnlineOrdersFlow(orderIds, pin, options = {}) {
       created_at: cloudOrder.created_at || new Date().toISOString(),
       cloud_order_id: cloudOrder.id,
     };
-    try {
-      await cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
-        cloudOrderId: cloudOrder.id,
-        cloudOrder,
-        waiterName,
-        waiterId: ackMeta.waiterId,
-        table_number: 0,
-      });
-    } catch (pushErr) {
+    void cloudSync.pushQrWaiterAcceptToCloudKitchen(db, synthOrder, {
+      cloudOrderId: cloudOrder.id,
+      cloudOrder,
+      waiterName,
+      waiterId: ackMeta.waiterId,
+      table_number: 0,
+    }).catch((pushErr) => {
       console.warn("[accept] push QR dhomë → kuzhinë:", pushErr.message || pushErr);
-    }
+    });
   }
 
-  let freshSnapshot = onlineOrdersWatcher.getOnlineOrdersSnapshot();
-  try {
-    freshSnapshot = await onlineOrdersWatcher.refreshOnlineOrders(db, null);
-  } catch {
-    /* mbet snapshot i përditësuar lokalisht */
-  }
+  const freshSnapshot = onlineOrdersWatcher.getOnlineOrdersSnapshot();
+  void onlineOrdersWatcher.refreshOnlineOrders(db, null).catch(() => {});
 
   return {
     acknowledged: ids.length,
@@ -1260,6 +1244,21 @@ function otherRegisterLabel(order) {
 const HELD_TABLES_CACHE_MS = 5000;
 let heldTablesCloudCache = { at: 0, live: null };
 let heldTablesLanCache = { at: 0, occupied: null };
+let heldTablesCloudRefresh = null;
+
+function refreshHeldTablesCloudCache() {
+  if (heldTablesCloudRefresh) return;
+  heldTablesCloudRefresh = cloudSync.fetchLiveCloudTables(db)
+    .then((live) => {
+      heldTablesCloudCache = { at: Date.now(), live: live || null };
+    })
+    .catch(() => {
+      heldTablesCloudCache = { at: Date.now(), live: heldTablesCloudCache.live || null };
+    })
+    .finally(() => {
+      heldTablesCloudRefresh = null;
+    });
+}
 
 async function fetchMasterRegisterOccupiedTables() {
   if (Date.now() - heldTablesLanCache.at < HELD_TABLES_CACHE_MS) return heldTablesLanCache.occupied;
@@ -1295,22 +1294,12 @@ async function fetchMasterRegisterOccupiedTables() {
   return occupied;
 }
 
-/**
- * Tavolina e hapur në arkë tjetër POS → { label } ; ndryshe null.
- * Cloud së pari; pa cloud, Arka 2+ pyet Arka 1 me LAN; pa asnjë → lejo (null).
- */
 async function findTableHeldByOtherRegister(tableNumber) {
   const num = Number(tableNumber) || 0;
   if (!num) return null;
   const cloudTtl = heldTablesCloudCache.live ? HELD_TABLES_CACHE_MS : HELD_TABLES_CACHE_MS * 4;
   if (Date.now() - heldTablesCloudCache.at >= cloudTtl) {
-    let live = null;
-    try {
-      live = await cloudSync.fetchLiveCloudTables(db);
-    } catch {
-      live = null;
-    }
-    heldTablesCloudCache = { at: Date.now(), live };
+    refreshHeldTablesCloudCache();
   }
   const live = heldTablesCloudCache.live;
   if (live && Array.isArray(live.tables)) {
@@ -4501,7 +4490,8 @@ app.get("/api/waiter/public-booking-requests/pending", auth, waiterOrRecepsion, 
   try {
     const requests = await loadPublicBookingRequestsForRecepcion();
     const staffCloud = sessionMayTalkToCloud(req.session);
-    if (staffCloud) {
+    const cloudUp = require("./cloud-health").getHealthStatus()?.online === true;
+    if (staffCloud && cloudUp) {
       try {
         const hotelCloudSync = require("./hotel-cloud-sync");
         const data = await hotelCloudSync.listPublicBookingRequestsPending(db);
@@ -4577,16 +4567,13 @@ app.get("/api/waiter/public-booking-requests/:id/available-rooms", auth, waiterO
 app.get("/api/waiter/public-service-requests/pending", auth, waiterOrRecepsion, async (req, res) => {
   try {
     ensurePublicGuestRequestsWatcher();
-    try {
-      await publicGuestRequestsWatcher.refreshPublicGuestRequests(db);
-    } catch {
-      /* cache */
-    }
+    void publicGuestRequestsWatcher.refreshPublicGuestRequests(db).catch(() => {});
     let requests = typeof db.listPendingPublicServiceRequests === "function"
       ? db.listPendingPublicServiceRequests()
       : [];
     const staffCloud = sessionMayTalkToCloud(req.session);
-    if (staffCloud) {
+    const cloudUp = require("./cloud-health").getHealthStatus()?.online === true;
+    if (staffCloud && cloudUp) {
       try {
         const hotelCloudSync = require("./hotel-cloud-sync");
         const data = await hotelCloudSync.listPublicServiceRequestsPending(db, { status: "open" });
@@ -4615,6 +4602,20 @@ app.post("/api/waiter/public-service-requests/:id/accept", auth, waiterOrRecepsi
       ? db.listPendingPublicServiceRequests()
       : []
     ).find((r) => String(r?.id) === String(req.params.id));
+    if (local) {
+      if (typeof db.removePendingPublicServiceRequest === "function") {
+        db.removePendingPublicServiceRequest(req.params.id);
+      }
+      queuePublicServiceDecision(req.params.id, "accepted", staffName, local, null);
+      void hotelCloudSync.acceptPublicServiceRequest(db, req.params.id, {
+        staff_name: staffName,
+        request_prepayment: req.body?.request_prepayment,
+      }).catch((err) => {
+        console.warn("[service-request] accept cloud:", err.message || err);
+      });
+      auditReq(req, "Shërbim publik pranuar", req.params.id);
+      return res.json({ ok: true, request: local, local: true });
+    }
     const data = await hotelCloudSync.acceptPublicServiceRequest(db, req.params.id, {
       staff_name: staffName,
       request_prepayment: req.body?.request_prepayment,
@@ -4644,6 +4645,20 @@ app.post("/api/waiter/public-service-requests/:id/reject", auth, waiterOrRecepsi
       ? db.listPendingPublicServiceRequests()
       : []
     ).find((r) => String(r?.id) === String(req.params.id));
+    if (local) {
+      if (typeof db.removePendingPublicServiceRequest === "function") {
+        db.removePendingPublicServiceRequest(req.params.id);
+      }
+      queuePublicServiceDecision(req.params.id, "rejected", staffName, local, null);
+      void hotelCloudSync.rejectPublicServiceRequest(db, req.params.id, {
+        staff_name: staffName,
+        staff_note: req.body?.staff_note || req.body?.reason || "",
+      }).catch((err) => {
+        console.warn("[service-request] reject cloud:", err.message || err);
+      });
+      auditReq(req, "Shërbim publik refuzuar", req.params.id);
+      return res.json({ ok: true, request: local, local: true });
+    }
     const data = await hotelCloudSync.rejectPublicServiceRequest(db, req.params.id, {
       staff_name: staffName,
       staff_note: req.body?.staff_note || req.body?.reason || "",
@@ -6908,14 +6923,6 @@ app.post("/api/orders", auth, async (req, res) => {
   }
   try {
     const existing = db.getActiveOrderForTable(table_id);
-    if (!existing) {
-      const tRow = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(Number(table_id));
-      const held = await findTableHeldByOtherRegister(tRow?.number);
-      if (held) {
-        return res.status(409).json({ gabim: heldTableMessage(tRow.number, held), held_by_other_register: true });
-      }
-    }
-    // Throttle backend: nëse artikujt janë identikë me ekzistuesin dhe u dërguan brenda 10s, kthe direkt
     if (existing) {
       const age = Date.now() - new Date(existing.updated_at || existing.created_at).getTime();
       if (age < 10000) {
@@ -6925,11 +6932,18 @@ app.post("/api/orders", auth, async (req, res) => {
           const existingKey = JSON.stringify([...existingItems].sort((a,b)=>String(a.id||a.name).localeCompare(String(b.id||b.name))));
           if (incomingKey === existingKey) {
             const tSkip = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(Number(table_id));
-            cloudSync.pushWaiterOrderToCloudBackground(db, existing, {
-              table_number: tSkip?.number || 0,
-              ordered_at: existing.updated_at || existing.created_at,
+            res.json({ ok: true, id: existing.id, skipped: true });
+            setImmediate(() => {
+              try {
+                cloudSync.pushWaiterOrderToCloudBackground(db, existing, {
+                  table_number: tSkip?.number || 0,
+                  ordered_at: existing.updated_at || existing.created_at,
+                });
+              } catch (err) {
+                console.warn("[orders] cloud:", err.message);
+              }
             });
-            return res.json({ ok: true, id: existing.id, skipped: true });
+            return;
           }
         } catch { /* ignore parse errors */ }
       }
@@ -6948,33 +6962,45 @@ app.post("/api/orders", auth, async (req, res) => {
     const order = db.getActiveOrderForTable(table_id);
     const tables = db.getTablesWithOrders();
     const t = tables.find(x => x.id === Number(table_id));
-    if (order) {
-      cloudSync.pushWaiterOrderToCloudBackground(db, order, {
-        table_number: t?.number || 0,
-        ordered_at: order.created_at,
-      });
-    }
-    const settings = db.getSettings();
     let batchNo = 0;
     if (deltaItems.length && order) {
-      const slipAt = new Date().toISOString();
-      batchNo = db.recordPrintedBatch(order.id, order.items_json);
-      void autoPrintOrderSlip(db, {
-        tableNumber: t?.number || table_id,
-        waiterName: waiter_name,
-        items: deltaItems,
-        batchNumber: batchNo,
-        order,
-        closedAt: slipAt,
-      });
-      localKds.touchOrderAfterSend(db, order.id);
-      notifyLocalKdsUpdate({
-        order_id: String(order.id),
-        table_number: t?.number || 0,
-        status: "ordered",
-      });
+      try {
+        batchNo = db.recordPrintedBatch(order.id, order.items_json);
+      } catch (err) {
+        console.warn("[orders] batch:", err.message);
+      }
     }
     res.json({ ok: true, id, batch_no: batchNo, printed_items: deltaItems.length, items: deltaItems });
+    const tableNumber = t?.number || 0;
+    const slipAt = new Date().toISOString();
+    setImmediate(() => {
+      try {
+        if (order) {
+          cloudSync.pushWaiterOrderToCloudBackground(db, order, {
+            table_number: tableNumber,
+            ordered_at: order.created_at,
+          });
+        }
+        if (deltaItems.length && order) {
+          void autoPrintOrderSlip(db, {
+            tableNumber: tableNumber || table_id,
+            waiterName: waiter_name,
+            items: deltaItems,
+            batchNumber: batchNo,
+            order,
+            closedAt: slipAt,
+          });
+          localKds.touchOrderAfterSend(db, order.id);
+          notifyLocalKdsUpdate({
+            order_id: String(order.id),
+            table_number: tableNumber,
+            status: "ordered",
+          });
+        }
+      } catch (err) {
+        console.warn("[orders] pas ruajtjes:", err.message);
+      }
+    });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -7018,8 +7044,9 @@ app.post("/api/orders/close", auth, async (req, res) => {
     const cloudIdsClose = order ? db.getLinkedCloudOrderIds(order.id) : [];
 
     // HAPI FINAL — PAS closeTable (nuk e prek closeTable)
+    const payCoupon = paymentCouponKind(payInfo.payment_method, payInfo.payment_splits);
     let fiscalResult = null;
-    if (order && fiscalConfig.isFiscalEnabled() && !fiscalSkip) {
+    if (order && fiscalConfig.isFiscalEnabled() && payCoupon === "fiscal") {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           order.id,
@@ -7062,7 +7089,7 @@ app.post("/api/orders/close", auth, async (req, res) => {
       action: "closed",
       room_number: tableRow?.number,
     });
-    res.json({ ok: true, order, fiscal: fiscalResult, fiscal_skipped: fiscalSkip });
+    res.json({ ok: true, order, fiscal: fiscalResult, fiscal_skipped: payCoupon !== "fiscal" });
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }
@@ -7265,31 +7292,27 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
     const sefOn = fiscalConfig.isFiscalEnabled();
     const sefPrintMode = sefOn ? getFiscalMain().getFiscalPrintMode() : "addon";
     const skipPrint = req.body?.skip_print === true;
+    const payCoupon = paymentCouponKind(payInfo.payment_method, payInfo.payment_splits);
     let printResult = {
       printed: false,
       printMessage: "",
-      coupon_type: couponType,
+      coupon_type: payCoupon,
       html: null,
       source: null,
     };
 
-    // Termik i zgjedhur → mbyll/printo termik pa kupon fiskal.
-    // SEF replace → skip VETËM kuponin normal të MBYLLJES. Order ticket nuk preket këtu.
-    if (!skipPrint && (fiscalSkip || getFiscalMain().shouldPrintClosingNormalReceipt())) {
+    if (!skipPrint && payCoupon === "thermal") {
       printResult = await printClosedTableReceipt(db, {
         order,
         receipt,
         tableNumber: table?.number || 0,
-        couponType: fiscalSkip ? "thermal" : (sefOn ? "thermal" : couponType),
+        couponType: "thermal",
         closedBy: waiterName,
       });
-    } else {
-      console.log("[close-and-print] SEF replace — skip kupon normal mbylljeje, vetëm fiskal");
     }
 
-    // HAPI FINAL — PAS closeTable
     let fiscalResult = null;
-    if (sefOn && !fiscalSkip) {
+    if (sefOn && payCoupon === "fiscal") {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           order.id,
@@ -7329,13 +7352,13 @@ app.post("/api/waiter/close-and-print", auth, waiterOnly, async (req, res) => {
       sale_items: closeItems,
       fiscal,
       totals,
-      coupon_type: printResult.coupon_type || couponType,
+      coupon_type: payCoupon,
       html: printResult.html || null,
       printed: !!(printResult.printed || fiscalResult?.printed),
       printMessage: printResult.printMessage || fiscalResult?.printMessage || "",
       receipt_source: printResult.source,
       fiscal_receipt: fiscalResult,
-      fiscal_skipped: fiscalSkip,
+      fiscal_skipped: payCoupon !== "fiscal",
       skip_print: skipPrint,
       sef_print_mode: sefPrintMode,
     });
@@ -7479,27 +7502,26 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
 
     const sefOn = fiscalConfig.isFiscalEnabled();
     const sefPrintMode = sefOn ? getFiscalMain().getFiscalPrintMode() : "addon";
+    const payCoupon = paymentCouponKind(payInfo.payment_method, payInfo.payment_splits);
     let printResult = {
       printed: false,
       printMessage: "",
-      coupon_type: couponType,
+      coupon_type: payCoupon,
       html: null,
       source: null,
     };
-    if (fiscalSkip || getFiscalMain().shouldPrintClosingNormalReceipt()) {
+    if (payCoupon === "thermal") {
       printResult = await printClosedTableReceipt(db, {
         order: partialOrder,
         receipt,
         tableNumber: table?.number || 0,
-        couponType: fiscalSkip ? "thermal" : (sefOn ? "thermal" : couponType),
+        couponType: "thermal",
         closedBy: waiterName,
       });
-    } else {
-      console.log("[split-close] SEF replace — skip kupon normal mbylljeje, vetëm fiskal");
     }
 
     let fiscalResult = null;
-    if (sefOn && !fiscalSkip) {
+    if (sefOn && payCoupon === "fiscal") {
       try {
         fiscalResult = await getFiscalMain().processFiscalReceipt(
           fiscalOrderId,
@@ -7551,13 +7573,13 @@ app.post("/api/waiter/split-close-and-print", auth, waiterOnly, async (req, res)
       totals,
       table_freed: result.tableFreed,
       remaining_total: result.tableFreed ? 0 : result.order.total,
-      coupon_type: printResult.coupon_type || couponType,
+      coupon_type: payCoupon,
       html: printResult.html || null,
       printed: !!(printResult.printed || fiscalResult?.printed),
       printMessage: printResult.printMessage || fiscalResult?.printMessage || "",
       receipt_source: printResult.source,
       fiscal_receipt: fiscalResult,
-      fiscal_skipped: fiscalSkip,
+      fiscal_skipped: payCoupon !== "fiscal",
       sef_print_mode: sefPrintMode,
     });
   } catch (e) {
