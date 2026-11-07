@@ -18360,6 +18360,7 @@ function recordSaleReturn({
   const card = isDailyLogCardMethod(method);
   const shift = pickOpenShiftForReturn(waiter_name, staff_id, shift_id);
   const waiterLabel = String((shift && shift.waiter_name) || waiter_name || "Pronari").trim() || "Pronari";
+  const receptionReturn = shift && sessionRoleForStaffId(shift.staff_id) === "recepsion";
   addDailyLogEntry({
     table_number: 0,
     waiter_name: waiterLabel,
@@ -18371,6 +18372,7 @@ function recordSaleReturn({
     status: "completed",
     subtotal: -sum,
     discount_total: 0,
+    receipt_number: receptionReturn ? `RC-KTH-${shift.id}-${Date.now()}` : null,
     staff_id: shift ? shift.staff_id : null,
     shift_id: shift ? shift.id : null,
   });
@@ -19454,6 +19456,7 @@ function getDashboardOverview() {
         AND receipt_number NOT LIKE 'RC-%'
         AND receipt_number NOT LIKE 'SVC-%'
       ))
+      AND ${folioSettledRoomDailyLogExcludeSql()}
   `).get(today)?.t) || 0;
 
   const receptionRevenue = Number(sqlite.prepare(`

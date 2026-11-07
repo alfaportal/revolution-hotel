@@ -1,5 +1,15 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-07 — Pasqyra, kthimi i recepsionit, java
+
+Ushqimi i dhomës që është brenda check-out nuk numërohet përsëri te Pasqyra (`database.js` 19459).
+
+Kthimi i recepsionit merr numër `RC-` (`database.js` 18375), prandaj del te Recepsion te Ditari dhe te Raportet, dhe zbritet nga arka e recepsionit.
+
+Java te Raportet e avancuara është 7 ditët e fundit (`hotel-advanced-reports.js` 24), njësoj si Raportet → Javë.
+
+Prova me API, databazë e përkohshme, pastaj e fshirë. Dhoma 101: 118. Para kthimit Pasqyra 58 + 253 = 311. Pas kthimit Spa −35: Pasqyra 58 + 218 = 276. Arka e Besës 148 → 113. Arka e Arbenit mbeti 32.10. Mbyllja dhe Z për Besën: cash 113, pritet 313. Java 2026-11-01 deri 2026-11-07, të dyja 276. Backup u kthye: latest 1626148, mujori 1576996. Nuk u bë build.
+
 ## 2026-11-07 — TVSH e kthimit dhe norma e kasës
 
 Kthimi me shumë negative (`kontabilisti-atk.js` 190 dhe 255) tani ul Pa TVSH dhe TVSH. Deklarata e mban atë rresht (`kontabilisti-atk.js` 372).

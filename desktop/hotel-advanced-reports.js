@@ -22,13 +22,9 @@ function parseIsoDate(s) {
 const DAY_NAMES = ["E Diel", "E Hënë", "E Martë", "E Mërkurë", "E Enjte", "E Premte", "E Shtunë"];
 
 function weekBounds(dateStr) {
-  const d = parseIsoDate(dateStr || fmtDate(new Date()));
-  const day = d.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const start = new Date(d);
-  start.setDate(d.getDate() + mondayOffset);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  const end = parseIsoDate(dateStr || fmtDate(new Date()));
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
   return { from: fmtDate(start), to: fmtDate(end) };
 }
 
