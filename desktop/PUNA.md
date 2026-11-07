@@ -1,5 +1,9 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-07 — Setup 1.0.664
+
+U ndërtua një Setup. Versioni në `desktop/package.json` është 1.0.664. Skedari është te Desktop: Revolution HOTEL Setup.exe. Kodi u dërgua te master, commit 59a37c4.
+
 ## 2026-11-07 — Pasqyra, kthimi i recepsionit, java
 
 Ushqimi i dhomës që është brenda check-out nuk numërohet përsëri te Pasqyra (`database.js` 19459).
