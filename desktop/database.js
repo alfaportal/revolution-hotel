@@ -12277,6 +12277,24 @@ function nextRecepcionKasaReceiptNumber() {
   return `RC-${max + 1}`;
 }
 
+function recepcionKasaVatCategory(it, menuItemId, serviceId) {
+  if (serviceId) {
+    const svc = sqlite.prepare(
+      "SELECT COALESCE(vat_category, '18') AS vat_category FROM services WHERE id = ?",
+    ).get(serviceId);
+    if (svc && VAT_CATEGORIES.includes(String(svc.vat_category))) return String(svc.vat_category);
+  }
+  if (menuItemId) {
+    const row = sqlite.prepare(
+      "SELECT COALESCE(vat_category, '18') AS vat_category FROM menu_items WHERE id = ?",
+    ).get(menuItemId);
+    if (row && VAT_CATEGORIES.includes(String(row.vat_category))) return String(row.vat_category);
+  }
+  const raw = it?.vat_category ?? it?.vat_rate ?? it?.vat_percent;
+  if (raw != null && raw !== "" && VAT_CATEGORIES.includes(String(raw))) return String(raw);
+  return "18";
+}
+
 /** Shitje walk-in shërbimesh në recepsion (kasa) — daily_log RC-… */
 function recordRecepcionKasaSale({
   items,
@@ -12298,12 +12316,14 @@ function recordRecepcionKasaSale({
       it.menu_item_id != null && it.menu_item_id !== ""
         ? Number(it.menu_item_id)
         : null;
+    const serviceId = it.service_id != null && it.service_id !== "" ? Number(it.service_id) : null;
     const row = {
-      service_id: it.service_id != null ? Number(it.service_id) : null,
+      service_id: serviceId,
       menu_item_id: menuItemId,
       name: String(it.name || "Shërbim"),
       quantity: qty,
       price,
+      vat_category: recepcionKasaVatCategory(it, menuItemId, serviceId),
     };
     if (menuItemId) {
       stockItems.push({ menu_item_id: menuItemId, name: row.name, quantity: qty });
@@ -12598,12 +12618,21 @@ function buildTopItemsFromDailyLogEntries(entryList) {
   const itemCounts = {};
   const itemRevenue = {};
   for (const e of entryList || []) {
+    const lines = [];
+    let raw = 0;
     for (const it of JSON.parse(e.items_json || "[]")) {
       const name = String(it.name || "").trim();
       if (!name) continue;
       const qty = Number(it.quantity) || 1;
-      itemCounts[name] = (itemCounts[name] || 0) + qty;
-      itemRevenue[name] = (itemRevenue[name] || 0) + (Number(it.price) || 0) * qty;
+      const rev = (Number(it.price) || 0) * qty;
+      raw += rev;
+      lines.push({ name, qty, rev });
+    }
+    const paid = Number(e.total) || 0;
+    const scale = raw ? paid / raw : 0;
+    for (const line of lines) {
+      itemCounts[line.name] = (itemCounts[line.name] || 0) + line.qty;
+      itemRevenue[line.name] = (itemRevenue[line.name] || 0) + line.rev * scale;
     }
   }
   return Object.keys(itemCounts)
@@ -12794,17 +12823,35 @@ function getReports(dateFrom, dateTo) {
   const receptionRounded = roundReportMoney(receptionSales);
 
   const totalCash = roundReportMoney(
-    restaurantEntries.reduce((s, e) => s + dailyLogEntryCashAmount(e), 0),
+    entries.reduce((s, e) => s + dailyLogEntryCashAmount(e), 0),
   );
   const totalKarte = roundReportMoney(
-    restaurantEntries.reduce((s, e) => s + dailyLogEntryCardAmount(e), 0),
+    entries.reduce((s, e) => s + dailyLogEntryCardAmount(e), 0),
   );
   const totalTjera = roundReportMoney(
-    restaurantEntries.reduce((s, e) => {
+    entries.reduce((s, e) => {
       if (isDailyLogRoomMethod(e.payment_method)) return s;
       return s + dailyLogEntryOtherAmount(e);
     }, 0),
   );
+  let paTvsh = 0;
+  let tvsh = 0;
+  let tvsh18 = 0;
+  let tvsh8 = 0;
+  try {
+    const decl = getAtkVatDeclaration({ from, to });
+    const boxes = decl.boxes || {};
+    const box = (tag) => {
+      const hit = Object.entries(boxes).find(([k]) => k.includes(tag));
+      return hit ? Number(hit[1]) || 0 : 0;
+    };
+    tvsh18 = roundReportMoney(box("[K1]"));
+    tvsh8 = roundReportMoney(box("[K2]"));
+    tvsh = roundReportMoney(box("[30]"));
+    paTvsh = roundReportMoney(getKontabilistiBilanc({ from, to }).sales_net);
+  } catch (vatErr) {
+    console.warn("[reports] tvsh:", vatErr.message);
+  }
 
   const byRegisterMap = new Map();
   for (const e of entries) {
@@ -12863,9 +12910,14 @@ function getReports(dateFrom, dateTo) {
 
   return {
     totalSales,
+    pa_tvsh: paTvsh,
+    tvsh,
+    tvsh_18: tvsh18,
+    tvsh_8: tvsh8,
     totalCash,
     totalKarte,
     totalTjera,
+    expense_book: listExpenseBook({ from, to }),
     sales_cash: cashRegister.sales_cash,
     purchases_cash: cashRegister.purchases_cash,
     cash_in_register: cashRegister.cash_in_register,
@@ -16271,6 +16323,45 @@ function listExpenses({ from, to } = {}) {
   `).all(fromDate, toDate);
 }
 
+function expenseCategoryLabel(category) {
+  const labels = {
+    qera: "Qira",
+    pastrim: "Pastrim",
+    sherbime: "Shërbime",
+    paga: "Paga",
+    papritur: "Të papritura",
+    humbje: "Humbje",
+    tjeter: "Tjetër",
+  };
+  const key = String(category || "").trim().toLowerCase();
+  return labels[key] || "Tjetër";
+}
+
+function expenseGrossVat(row) {
+  const gross = Number(row?.amount) || 0;
+  const rate = Number(row?.vat_rate);
+  if (!(gross > 0) || !(rate > 0)) return 0;
+  return atk.splitGross(gross, rate).vat;
+}
+
+function listExpenseBook({ from, to } = {}) {
+  const map = new Map();
+  for (const row of listExpenses({ from, to })) {
+    const category = expenseCategoryLabel(row.category);
+    const cur = map.get(category) || { category, total: 0, vat: 0 };
+    cur.total += Number(row.amount) || 0;
+    cur.vat += expenseGrossVat(row);
+    map.set(category, cur);
+  }
+  return [...map.values()]
+    .map((row) => ({
+      category: row.category,
+      total: roundReportMoney(row.total),
+      vat: roundReportMoney(row.vat),
+    }))
+    .sort((a, b) => a.category.localeCompare(b.category, "sq"));
+}
+
 function listKontabilistiExpenseRows({ from, to } = {}) {
   const manual = listExpenses({ from, to }).map((r) => ({ ...r, from_purchase: false }));
   const invoices = listPurchaseInvoicesForAtk({ from, to });
@@ -17715,11 +17806,8 @@ function getAtkAnnualStatements({ year } = {}) {
     WHERE year_month >= ? AND year_month <= ?
   `).get(`${y - 1}-01`, `${y - 1}-12`);
   const prevStockEnd = Number(getSetting(`atk_stock_end_${y - 1}`, "0")) || stockStart;
-  const cogsCurrent = computeCogsForPeriod({ from, to }).total;
-  const prevCogs = computeCogsForPeriod({ from: prevFrom, to: prevTo }).total;
   const prevWages = Number(prevPayroll?.w) || 0;
-  const prevGross = atk.money(prevBilanc.sales_net - prevCogs);
-  const prevOp = atk.money(prevGross - prevBilanc.expenses_manual - prevWages);
+  const prevOp = atk.money(prevBilanc.profit);
   const prevTax = atk.money(Math.max(0, prevOp) * 0.1);
   const prevNet = atk.money(prevOp - prevTax);
   const result = atk.buildAnnualStatements({
@@ -17733,11 +17821,11 @@ function getAtkAnnualStatements({ year } = {}) {
     stockStart,
     stockEnd,
     wages: Number(payroll?.w) || 0,
-    cogs: cogsCurrent,
+    cogs: bilanc.purchases_total,
     priorYear: {
       sales: prevBilanc.sales_net,
-      cogs: prevCogs,
-      grossProfit: prevGross,
+      cogs: prevBilanc.purchases_total,
+      grossProfit: atk.money(prevBilanc.sales_net - prevBilanc.purchases_total),
       expenses: prevBilanc.expenses_manual,
       wages: prevWages,
       operating: prevOp,
@@ -18213,6 +18301,164 @@ function addDailyLogEntry({
     });
   }
   return logId;
+}
+
+function pickOpenShiftForReturn(waiterName, staffId, shiftId) {
+  const sid = Number(shiftId);
+  if (sid) {
+    const named = sqlite.prepare(
+      "SELECT * FROM waiter_shifts WHERE id = ? AND closed_at IS NULL",
+    ).get(sid);
+    if (named) return named;
+  }
+  const staffNum = Number(staffId);
+  if (staffNum) {
+    const own = getOpenShift(staffNum);
+    if (own && own.opening_cash != null) return own;
+  }
+  const label = String(waiterName || "").trim();
+  if (label) {
+    const staff = findStaffByName(label) || findStaffByNameInsensitive(label);
+    if (staff) {
+      const own = getOpenShift(staff.id);
+      if (own && own.opening_cash != null) return own;
+    }
+  }
+  const open = sqlite.prepare(`
+    SELECT ws.*, LOWER(TRIM(COALESCE(st.staff_role, ''))) AS staff_role
+    FROM waiter_shifts ws
+    LEFT JOIN staff st ON st.id = ws.staff_id
+    WHERE ws.closed_at IS NULL AND ws.opening_cash IS NOT NULL
+    ORDER BY ws.id DESC
+  `).all();
+  if (!open.length) return null;
+  if (open.length === 1) return open[0];
+  return open.find((s) => s.staff_role !== "recepsion" && s.staff_role !== "receptionist") || open[0];
+}
+
+function recordSaleReturn({
+  items, payment_method, waiter_name, amount, restore_stock, shift_id, staff_id,
+} = {}) {
+  const lines = (Array.isArray(items) ? items : [])
+    .map((it) => {
+      const quantity = Number(it?.quantity ?? it?.qty ?? it?.sasia) || 0;
+      const price = Number(it?.price ?? it?.unit_price ?? it?.unitPrice) || 0;
+      return {
+        menu_item_id: it?.menu_item_id ?? it?.product_id ?? null,
+        name: String(it?.name || it?.emri || "").trim(),
+        price,
+        quantity,
+      };
+    })
+    .filter((it) => it.quantity > 0);
+  let sum = amount != null ? Math.abs(Number(amount)) : lines.reduce((s, it) => s + it.price * it.quantity, 0);
+  sum = roundDailyLogMoney(sum);
+  if (!(sum > 0)) throw new Error("Shuma e kthimit mungon");
+  if (restore_stock !== false && !lines.length) throw new Error("Zgjidhni artikullin e kthimit");
+  if (restore_stock !== false) restoreMenuItemStockFromSale(lines);
+  const method = normalizePaymentMethod(payment_method || "cash");
+  const card = isDailyLogCardMethod(method);
+  const shift = pickOpenShiftForReturn(waiter_name, staff_id, shift_id);
+  const waiterLabel = String((shift && shift.waiter_name) || waiter_name || "Pronari").trim() || "Pronari";
+  addDailyLogEntry({
+    table_number: 0,
+    waiter_name: waiterLabel,
+    items_json: JSON.stringify(lines),
+    total: -sum,
+    payment_method: method,
+    cash_amount: card ? 0 : -sum,
+    card_amount: card ? -sum : 0,
+    status: "completed",
+    subtotal: -sum,
+    discount_total: 0,
+    staff_id: shift ? shift.staff_id : null,
+    shift_id: shift ? shift.id : null,
+  });
+  return { amount: sum, items: lines, shift_id: shift ? shift.id : null };
+}
+
+function shiftClosedLocalDay(closedAt) {
+  const d = new Date(closedAt);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function buildDailyZReport(dateYmd) {
+  const day = String(dateYmd || hotelTodayLocalYmd()).slice(0, 10);
+  const pending = sqlite.prepare(`
+    SELECT id, staff_id, waiter_name, opened_at, closed_at, opening_cash,
+           expected_closing_cash, closing_cash_actual, cash_difference
+    FROM waiter_shifts
+    WHERE closed_at IS NOT NULL
+      AND (z_report_printed_at IS NULL OR TRIM(z_report_printed_at) = '')
+    ORDER BY closed_at ASC
+  `).all().filter((s) => shiftClosedLocalDay(s.closed_at) === day);
+  if (!pending.length) return null;
+  let cash = 0;
+  let card = 0;
+  let total = 0;
+  let expected = 0;
+  let difference = 0;
+  let opening = 0;
+  const shifts = pending.map((s) => {
+    const t = computeShiftTotals(s.id);
+    const openCash = Number(s.opening_cash) || 0;
+    const exp = s.expected_closing_cash != null
+      ? Number(s.expected_closing_cash)
+      : roundReportMoney(openCash + (Number(t.cash_total) || 0));
+    const actual = s.closing_cash_actual != null ? Number(s.closing_cash_actual) : null;
+    const diff = s.cash_difference != null
+      ? Number(s.cash_difference)
+      : (actual != null ? roundReportMoney(actual - exp) : 0);
+    cash += Number(t.cash_total) || 0;
+    card += Number(t.card_total) || 0;
+    total += Number(t.total_sales) || 0;
+    expected += exp;
+    difference += diff;
+    opening += openCash;
+    return {
+      shift_id: s.id,
+      waiter_name: s.waiter_name,
+      opening_cash: openCash,
+      cash_total: roundReportMoney(t.cash_total),
+      card_total: roundReportMoney(t.card_total),
+      total_sales: roundReportMoney(t.total_sales),
+      expected_closing_cash: roundReportMoney(exp),
+      closing_cash_actual: actual,
+      cash_difference: roundReportMoney(diff),
+    };
+  });
+  const report = {
+    date: day,
+    shift_count: shifts.length,
+    shift_ids: shifts.map((s) => s.shift_id),
+    shifts,
+    opening_cash: roundReportMoney(opening),
+    cash_total: roundReportMoney(cash),
+    card_total: roundReportMoney(card),
+    total_sales: roundReportMoney(total),
+    total: roundReportMoney(total),
+    expected_closing_cash: roundReportMoney(expected),
+    cash_difference: roundReportMoney(difference),
+  };
+  report.text = [
+    `Raporti Z ${day}`,
+    `Ndërrime: ${report.shift_count}`,
+    `Totali: ${report.total_sales.toFixed(2)}`,
+    `Cash: ${report.cash_total.toFixed(2)}`,
+    `Kartë: ${report.card_total.toFixed(2)}`,
+    `Arka e pritur: ${report.expected_closing_cash.toFixed(2)}`,
+    `Diferenca: ${report.cash_difference.toFixed(2)}`,
+  ].join("\n");
+  return report;
+}
+
+function markShiftsZReported(ids) {
+  let n = 0;
+  for (const id of ids || []) {
+    if (markShiftZReportPrinted(id)) n += 1;
+  }
+  return n;
 }
 
 /**
@@ -18757,6 +19003,140 @@ function splitReceivedDitari(entries) {
   };
 }
 
+function ditariVatFromDeclaration(items, entry, fallbackPercent) {
+  const buckets = computeItemsVat(items, fallbackPercent, {
+    subtotal: entry.subtotal,
+    discount_total: entry.discount_total,
+    total: entry.total,
+    promotion_id: entry.promotion_id,
+  });
+  let net = 0;
+  let vat = 0;
+  let vat18 = 0;
+  let vat8 = 0;
+  for (const b of buckets) {
+    net += Number(b.net) || 0;
+    vat += Number(b.vat) || 0;
+    const rate = Number(b.rate) || 0;
+    if (rate === 8) vat8 += Number(b.vat) || 0;
+    else if (rate === 18) vat18 += Number(b.vat) || 0;
+  }
+  return {
+    net: roundReportMoney(net),
+    vat: roundReportMoney(vat),
+    vat18: roundReportMoney(vat18),
+    vat8: roundReportMoney(vat8),
+  };
+}
+
+function ditariClock(stamp, fallbackDate) {
+  const s = String(stamp || "").trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/);
+  if (m) return { date: m[1], time: m[2].length === 5 ? `${m[2]}:00` : m[2] };
+  return { date: String(fallbackDate || "").slice(0, 10), time: "00:00:00" };
+}
+
+function ditariLedgerRow({ date, time, type, pala, number, net, vat, total }) {
+  const netN = roundReportMoney(net);
+  const vatN = roundReportMoney(vat);
+  const totN = roundReportMoney(total);
+  return {
+    date,
+    time,
+    table_number: "—",
+    waiter_name: pala,
+    payment_label: type,
+    artikujt: number ? `${type} ${number}` : type,
+    items: [],
+    total: totN,
+    status: "completed",
+    entry_type: type,
+    origin: type,
+    type,
+    pala,
+    party: pala,
+    number: number || "",
+    net: netN,
+    vat: vatN,
+    pa_tvsh: netN,
+    tvsh: vatN,
+    entry_kind: type,
+  };
+}
+
+function ditariLedgerRows(dateFrom, dateTo) {
+  const rows = [];
+  const invoices = sqlite.prepare(`
+    SELECT id FROM purchase_invoices
+    WHERE date(invoice_date) >= date(?) AND date(invoice_date) <= date(?)
+      AND status IN ('completed', 'adjustment')
+    ORDER BY invoice_date DESC, id DESC
+  `).all(dateFrom, dateTo);
+  for (const row of invoices) {
+    const inv = getPurchaseInvoice(row.id);
+    if (!inv) continue;
+    const net = atk.purchaseInvoiceNetTotal(inv);
+    const total = roundReportMoney(inv.total);
+    const clock = ditariClock(inv.created_at, inv.invoice_date);
+    rows.push(ditariLedgerRow({
+      date: String(inv.invoice_date || clock.date).slice(0, 10),
+      time: clock.time,
+      type: "Blerje",
+      pala: String(inv.supplier || "—"),
+      number: inv.invoice_number || "",
+      net,
+      vat: roundReportMoney(total - Number(net)),
+      total,
+    }));
+  }
+  const payments = sqlite.prepare(`
+    SELECT sp.amount, sp.paid_at, sp.created_at, s.name AS supplier, pi.invoice_number
+    FROM supplier_payments sp
+    LEFT JOIN suppliers s ON s.id = sp.supplier_id
+    LEFT JOIN purchase_invoices pi ON pi.id = sp.invoice_id
+    WHERE date(sp.paid_at) >= date(?) AND date(sp.paid_at) <= date(?)
+    ORDER BY sp.paid_at DESC, sp.id DESC
+  `).all(dateFrom, dateTo);
+  for (const pay of payments) {
+    const clock = ditariClock(pay.created_at, pay.paid_at);
+    const amount = roundReportMoney(pay.amount);
+    rows.push(ditariLedgerRow({
+      date: String(pay.paid_at || clock.date).slice(0, 10),
+      time: clock.time,
+      type: "Pagesë blerje",
+      pala: String(pay.supplier || "—"),
+      number: pay.invoice_number || "",
+      net: amount,
+      vat: 0,
+      total: amount,
+    }));
+  }
+  const expenses = sqlite.prepare(`
+    SELECT expense_date, vendor_name, category, amount, vat_rate, created_at
+    FROM expenses
+    WHERE date(expense_date) >= date(?) AND date(expense_date) <= date(?)
+    ORDER BY expense_date DESC, id DESC
+  `).all(dateFrom, dateTo);
+  for (const exp of expenses) {
+    const clock = ditariClock(exp.created_at, exp.expense_date);
+    const amount = roundReportMoney(exp.amount);
+    const vat = roundReportMoney(expenseGrossVat(exp));
+    const net = roundReportMoney(amount - vat);
+    const pala = String(exp.vendor_name || "").trim() || expenseCategoryLabel(exp.category);
+    rows.push(ditariLedgerRow({
+      date: String(exp.expense_date || clock.date).slice(0, 10),
+      time: clock.time,
+      type: "Shpenzim",
+      pala,
+      number: "",
+      net,
+      vat,
+      total: amount,
+    }));
+  }
+  return rows;
+}
+
 function getDitari(opts = {}) {
   const range = resolveDitariRange(opts);
   const entries = sqlite.prepare(`
@@ -18781,22 +19161,37 @@ function getDitari(opts = {}) {
     range.dateTo,
   );
 
+  const fiscalPct = Number(getFiscalSettings().tvsh_percent) || 18;
   const mapped = entries.map(e => {
-    const artikujt = JSON.parse(e.items_json || "[]")
+    const items = JSON.parse(e.items_json || "[]");
+    const artikujt = items
       .map(i => `${i.quantity}× ${i.name}`)
       .join(", ");
     const roomCaption = restaurantRoomSaleCaption(e);
     const settled = isRoomSaleSettledOnCheckout(e);
     const auditTrail = !!(settled && isDailyLogRoomMethod(e.payment_method));
+    const cancelled = e.status === "cancelled";
+    const split = cancelled
+      ? { net: 0, vat: 0, vat18: 0, vat8: 0 }
+      : ditariVatFromDeclaration(items, e, fiscalPct);
     return {
       ...e,
       entry_type: "restaurant",
-      items: JSON.parse(e.items_json || "[]"),
+      items,
       artikujt: roomCaption || artikujt,
       payment_label: paymentMethodLabel(e.payment_method),
       folio_settled: settled,
       audit_trail: auditTrail,
       origin: reportOriginLabel({ ...e, entry_type: "restaurant" }),
+      total: cancelled ? 0 : e.total,
+      cash_amount: cancelled ? 0 : e.cash_amount,
+      card_amount: cancelled ? 0 : e.card_amount,
+      net: split.net,
+      vat: split.vat,
+      pa_tvsh: split.net,
+      tvsh: split.vat,
+      tvsh_18: split.vat18,
+      tvsh_8: split.vat8,
     };
   });
   const traceEntries = mapped.filter((e) => e.audit_trail);
@@ -18835,7 +19230,8 @@ function getDitari(opts = {}) {
     return db_.localeCompare(da) || String(a.id).localeCompare(String(b.id));
   });
 
-  const allEntries = [...parsed].sort((a, b) => {
+  const ledgerRows = ditariLedgerRows(range.dateFrom, range.dateTo);
+  const allEntries = [...parsed, ...ledgerRows].sort((a, b) => {
     const da = `${a.date || ""} ${a.time || ""}`;
     const db_ = `${b.date || ""} ${b.time || ""}`;
     return db_.localeCompare(da) || String(a.id).localeCompare(String(b.id));
@@ -18926,6 +19322,57 @@ function getDitari(opts = {}) {
   };
 }
 
+function pasqyraCategoryRows(day, targetTotal) {
+  const menuById = new Map();
+  const menuByName = new Map();
+  for (const m of sqlite.prepare("SELECT id, name, category FROM menu_items").all()) {
+    const cat = String(m.category || "").trim() || "Të tjera";
+    menuById.set(Number(m.id), cat);
+    menuByName.set(String(m.name || "").trim().toLowerCase(), cat);
+  }
+  const totals = {};
+  const logs = sqlite.prepare(`
+    SELECT total, items_json FROM daily_log
+    WHERE date = ? AND status = 'completed'
+  `).all(day);
+  for (const e of logs) {
+    let items = [];
+    try { items = JSON.parse(e.items_json || "[]"); } catch { items = []; }
+    const lines = [];
+    let raw = 0;
+    for (const it of items) {
+      const name = String(it.name || "").trim();
+      const qty = Number(it.quantity) || 1;
+      const rev = (Number(it.price) || 0) * qty;
+      if (!name || !rev) continue;
+      raw += rev;
+      const mid = Number(it.menu_item_id);
+      let cat = "";
+      if (mid && menuById.has(mid)) cat = menuById.get(mid);
+      else if (menuByName.has(name.toLowerCase())) cat = menuByName.get(name.toLowerCase());
+      else if (/^Dhoma\s+/i.test(name)) cat = "Netë";
+      else cat = "Shërbime";
+      lines.push({ cat, rev });
+    }
+    const paid = Number(e.total) || 0;
+    if (!lines.length) {
+      totals["Të tjera"] = (totals["Të tjera"] || 0) + paid;
+      continue;
+    }
+    const scale = raw ? paid / raw : 0;
+    for (const line of lines) {
+      totals[line.cat] = (totals[line.cat] || 0) + line.rev * scale;
+    }
+  }
+  const rows = Object.entries(totals)
+    .map(([category, total]) => ({ category, total: roundReportMoney(total) }))
+    .filter((row) => row.total !== 0)
+    .sort((a, b) => b.total - a.total);
+  const drift = roundReportMoney((Number(targetTotal) || 0) - rows.reduce((s, row) => s + row.total, 0));
+  if (drift && rows.length) rows[0].total = roundReportMoney(rows[0].total + drift);
+  return rows;
+}
+
 /** Pasqyra e hotelit — KPI + mbërritje/largime/pastrim nga SQLite lokal. */
 function getDashboardOverview() {
   try {
@@ -18977,12 +19424,22 @@ function getDashboardOverview() {
     return sum;
   }, 0);
 
+  const settledCheckoutGuests = new Set();
+  for (const row of sqlite.prepare(`
+    SELECT receipt_number FROM daily_log
+    WHERE date = ? AND status = 'completed' AND receipt_number LIKE 'CO-%'
+  `).all(today)) {
+    const match = /^CO-(\d+)/i.exec(String(row.receipt_number || "").trim());
+    if (match) settledCheckoutGuests.add(Number(match[1]));
+  }
+
   let servicesRevenue = 0;
   const todayCharges = sqlite.prepare(`
-    SELECT description, amount FROM room_charges
+    SELECT description, amount, guest_id FROM room_charges
     WHERE created_at >= ? AND created_at < date(?, '+1 day')
   `).all(today, today);
   for (const c of todayCharges) {
+    if (settledCheckoutGuests.has(Number(c.guest_id))) continue;
     const amt = Number(c.amount) || 0;
     if (isRoomServiceFoodCharge(c.description)) servicesRevenue += amt;
     else if (!isFoodDrinkRoomCharge(c.description)) servicesRevenue += amt;
@@ -19145,7 +19602,7 @@ function getDashboardOverview() {
     average: 0,
     salesByHour: [],
     dailyLast30: [],
-    byCategory: [],
+    byCategory: pasqyraCategoryRows(today, roundReportMoney(restaurantRevenue + receptionRevenue)),
     topProducts: [],
     lowStockItems: [],
     lowStockCount: 0,
@@ -19737,8 +20194,11 @@ function getVersionInfo() {
     buildXReportData,
     listRecentClosedShifts,
     buildZReportData,
+    buildDailyZReport,
+    recordSaleReturn,
     getUnprintedClosedZShift,
     markShiftZReportPrinted,
+    markShiftsZReported,
     markAllPendingShiftZReportsPrinted,
     getUnprintedClosedZShift,
     Z_REPORT_REQUIRED_BEFORE_SHIFT_MSG,

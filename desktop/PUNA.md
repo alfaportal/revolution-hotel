@@ -1,5 +1,89 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-07 — TVSH e kthimit dhe norma e kasës
+
+Kthimi me shumë negative (`kontabilisti-atk.js` 190 dhe 255) tani ul Pa TVSH dhe TVSH. Deklarata e mban atë rresht (`kontabilisti-atk.js` 372).
+
+Kasa e recepsionit (`database.js` 12280 dhe 12326) ruan normën e shërbimit ose të produktit: 0%, 8% ose 18%.
+
+Prova me API, dy databaza të përkohshme, pastaj të fshira. Kthimi 1× Steak: Pa −10.17, TVSH −1.83, Total −12.00. Gym 15.00: TVSH 1.11. Spa 45.00: TVSH 6.86. Testi A: [30] = Raportet = Pasqyra = Ditari = 54.44. Fitimi −3,172.84. Testi B: TVSH 6.56, fitimi 36.44. Testet e kontabilistit: 16 OK. Backup u kthye: latest 1626148, mujori 1576996. Nuk u bë build.
+
+## 2026-11-07 — Fitimi, kutia [31], anulimi, produktet
+
+Fitimi i Tremujorit (`kontabilisti-atk.js` 819) nuk e kthen më humbjen në zero. Vjetorja (`database.js` 17804) merr blerjen me çmimin e faturës, njësoj si Bilanci. Titulli i Vjetores (`kontabilisti-atk.js` 866, `public/js/kontabilisti-atk-ui.js` 361) tregon fitimin para tatimit.
+
+Kutia [31] (`kontabilisti-atk.js` 430) mbledh vetëm bazën e blerjeve nga furnitorët. Qiraja dhe paga me TVSH 0 nuk hyjnë (`kontabilisti-atk.js` 510).
+
+Porosia e anuluar para pagesës del 0 te Ditari (`database.js` 19166). Lista e produkteve merr shumën pas zbritjes (`database.js` 12612).
+
+Prova me API, databazë e përkohshme, pastaj e fshirë. Bilanci = Tremujori = Vjetorja = −1699.46. Blerja Birra bazë 50: [31] = 50.00, jo 1700. 3× Sallatë e anuluar: Total 0, Pa TVSH 0, TVSH 0. Produktet së bashku 195.60, sa shitja neto. Testet e kontabilistit: 16 OK. Backup u kthye: latest 1626148, mujori 1576996. Nuk u bë build. Faqja e adminit nuk u prek.
+
+## 2026-11-07 — Ditari TVSH, Raportet, Pasqyra
+
+Ditari (`database.js` getDitari) tani jep Pa TVSH dhe TVSH për çdo shitje, njësoj si Deklarata. Blerja, pagesa e blerjes dhe shpenzimi dalin si rreshta.
+
+Raportet mbledhin cash dhe kartë të restorantit dhe të recepsionit. Shtuan TVSH 18%, TVSH 8%, TVSH totale, Pa TVSH (nga Deklarata) dhe Libri i Shpenzimeve sipas kategorisë.
+
+Pasqyra nuk e numëron më shërbimin që është tashmë brenda check-out. Grafiku i kategorive mbushet dhe shuma e tij është shitja e ditës.
+
+Prova me API, databazë e përkohshme, pastaj e fshirë. Shitja 9.90: Pa 8.39, TVSH 1.51. Blerja 59: TVSH 9.00. Qira 500: TVSH 0. Mirëmbajtje 118: TVSH 18. Raportet 195.60, cash 165.40, kartë 30.20, TVSH 27.06 (18% 24.88, 8% 2.18) = Deklarata. Pasqyra 195.60, kategoritë 195.60. Backup u kthye: latest 1626148, mujori 1576996. Nuk u bë build. Faqja e adminit nuk u prek.
+
+## 2026-11-07 — Kthimi pa ATK, Raporti Z, lidhja me ndërrimin
+
+Kthimi ndalte te `server.js` 11296 kur fiskalizimi ishte i fikur. Tani `recordSaleReturn` te `database.js` 18251 shkruan rreshtin negativ te Ditari, kthen stokun dhe e lidh me ndërrimin e hapur (`shift_id`). Kuponi fiskal mbetet vetëm kur ATK është i ndezur (`server.js` 11314).
+
+Raporti Z pa fiskalizim (`server.js` 10719) kthen cash, kartë, totalin, arkën e pritur dhe diferencën. Mbledh ndërrimin e restorantit dhe të recepsionit të së njëjtës ditë (`database.js` 18298) dhe i shënon si të raportuar edhe pa printer.
+
+Prova me API, databazë e përkohshme, pastaj e fshirë. Kthim 1× Birra: stoku 7→8, arka 7.40 (9.90−2.50), Ditari −2.50, Z neto 7.40. Dita: restoranti 45.60 + recepsioni 150.00 = Z 195.60, 2 ndërrime të shënuara. Backup i pronarit u kthye: latest 1626148, mujori 1576996. Nuk u bë build.
+
+## 2026-11-06 — Setup 1.0.662
+
+`node build-packages.js` e ngriti versionin 1.0.661 → 1.0.662 dhe mbaroi me kod 0. Instaluesi: `dist\Revolution HOTEL Setup.exe` dhe Desktop `Revolution HOTEL Setup.exe`. Rollback i 1.0.661 mbeti në dist.
+
+## 2026-11-06 — Telefoni dhe desktopi, i njëjti server
+
+Prova reale: telefoni `http://192.168.1.7:3091`, desktopi `http://127.0.0.1:3091`, i njëjti `server.js`, DB e përkohshme. Cloud i paçelësuar.
+
+Telefoni dërgoi Espresso te Tavolina 3 (ishte e lirë). Desktopi e pa të zënë: «Kamarier Prove, 1 artikuj · 0.80 €», pas 5.6 s. Tavolina 1: Macchiato, desktopi nga 4 artikuj 5.30 € në 5 artikuj 6.60 €, pas 4.3 s. Desktopi dërgoi Latte te Tavolina 2. Telefoni e pa 4 artikuj · 5.30 €, pas 4.4 s.
+
+`GET /api/waiter/cloud-tables` 4 ms, 0 tavolina. `GET /api/tables` rreth 350 ms. Cloud-i nuk e mban listën lokale.
+
+Ndryshime: `server.js` njofton tavolinat para printit. `printer.js` lista e printerëve nuk e ngrin serverin (PowerShell me presje të gabuar). `waiter.html` rifreskon tavolinat çdo 2 s dhe numëron sasinë.
+
+Cash nga telefoni nuk u mbyll: «Cash» hap zgjedhjen e pagesës. Nuk u zgjodh metoda. Nuk u bë build. PIN 1111 nuk u prek.
+
+## 2026-11-06 — Zhvendos artikujt si te kafeneja
+
+Te `public/waiter.html` rreshtat «tashmë dërguar» kishin «Hiq». Tani kanë kutizë (si kafeneja). «Zhvendos» merr kutizat e zgjedhura dhe i çon te tavolinë tjetër e hapur. CSS: `public/css/pos-truffle.css` kutiza 28px.
+
+Prova te `http://127.0.0.1:3091`: Tavolina 1 kishte Espresso, Cappuccino, Latte. U zgjodh Espresso dhe u zhvendos te Tavolina 2. Te Tavolina 1 mbetën Cappuccino dhe Latte. Modali u mbyll, gabim bosh.
+
+Nuk u bë build. Setup 1.0.661 i instaluar nuk e ka këtë. PIN 1111 i hotelit të instaluar nuk u prek.
+
+## 2026-11-06 — Dërgo porosinë
+
+`public/waiter.html`: `#ndrysho-takeaway-rreshta`, `#kuponat-lista`, `#zhvendos-tavolina` janë pas `</script>`. `addEventListener` hidhej, `catch` e gëlltiste, dhe dëgjuesi i «Dërgo porosinë» nuk lidhej. Tani ato lidhen te `DOMContentLoaded` vetëm nëse elementi ekziston. «Dërgo», «Anullo», Cash dhe Kartë kanë `?.`.
+
+Prova te `http://127.0.0.1:3091` (DB e përkohshme): PIN 1818, Tavolina 1, Espresso + Cappuccino + Latte. `POST /api/orders` 443 ms. Porosia 1, status `occupied`, total 4.10 €. Tavolina 1 doli portokalli: «Kamarier Prove, 3 artikuj · 4.10 €».
+
+Nuk u bë build. Setup 1.0.661 i instaluar nuk e ka këtë.
+
+## 2026-11-06 — Cloud nuk e ngrin serverin
+
+`GET /api/login/online-orders` priste tick-un e porosive online (12s + fallback kuzhine 12s) dhe pastaj `fetchLoginOrderNotify` e bënte të njëjtën thirrje edhe një herë. Kjo arrin rreth 48s. Middleware para rrugëve nuk bën fetch te cloud. `api()` shton vetëm `X-Session-Token` dhe më parë priste pa limit.
+
+Tani çdo HTTP te `revolution-pos.com` / Railway ndalet pas 3s (`cloud-health.js` `requestJsonOnce`). LAN mes arkave mbetet me timeout-in e vet. Login-i i porosive kthen snapshot-in pas 3s, pa thirrjen e dytë. `api()` ndërpret fetch lokal pas 8s.
+
+Prova: kërkesë 45000ms te host që nuk përgjigjet mbaroi në 3038ms; LAN 1200ms mbaroi në 1206ms. `sendOrder` në DB të përkohshme: porosia 1, 4ms.
+
+Nuk u bë build. Setup 1.0.661 i instaluar nuk e ka këtë.
+
+## 2026-11-06 — Setup 1.0.661
+
+`node build-packages.js` e ngriti versionin 1.0.660 → 1.0.661 dhe mbaroi me kod 0. Instaluesi: `dist\Revolution HOTEL Setup.exe` dhe Desktop `Revolution HOTEL Setup.exe`.
+
+
+
 ## 2026-11-06 — Raporti Z dhe Dil
 
 `scripts/obfuscate-build.mjs` e ka tashmë `printFiscalReportText` (dhe printin Z) të rezervuar. Te `public/waiter.html` butoni është «Dil». Këtë radhë nuk u ndryshua desktopi. Nuk u bë build.

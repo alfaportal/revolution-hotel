@@ -187,10 +187,57 @@ function enrichItemsWithVatNorm(items, rateByMenuId, fallbackPercent) {
   });
 }
 
-/**
- * Bucket-e TVSH për një shitje — i njëjti matematikë si kupon fiskal.
- * targetTotal = shuma e paguar (daily_log.total); residual → net+vat=gross.
- */
+function bucketsForNegativeTotal(list, target, sumLines, rateByMenuId, fallbackPercent) {
+  const scale = sumLines > 0 ? target / sumLines : 1;
+  let net18 = 0;
+  let net8 = 0;
+  let net0 = 0;
+  let vat18 = 0;
+  let vat8 = 0;
+  let gross0 = 0;
+  for (const it of list) {
+    const rate = resolveItemVatRate(it, rateByMenuId, fallbackPercent);
+    const qty = Number(it?.quantity ?? it?.qty) || 0;
+    const price = Number(it?.price ?? it?.unit_price) || 0;
+    const raw = price * qty;
+    if (!(raw > 0)) continue;
+    const gross = money(raw * scale);
+    const lineNet = rate > 0 ? money(gross / (1 + rate / 100)) : gross;
+    const lineVat = money(gross - lineNet);
+    if (rate === 8) {
+      net8 += lineNet;
+      vat8 += lineVat;
+    } else if (rate === 18) {
+      net18 += lineNet;
+      vat18 += lineVat;
+    } else {
+      net0 += lineNet;
+      gross0 += gross;
+    }
+  }
+  net18 = money(net18);
+  net8 = money(net8);
+  net0 = money(net0);
+  vat18 = money(vat18);
+  vat8 = money(vat8);
+  const drift = money(target - (net18 + net8 + net0 + vat18 + vat8));
+  if (drift) {
+    if (vat18 >= vat8) vat18 = money(vat18 + drift);
+    else vat8 = money(vat8 + drift);
+  }
+  const out = [];
+  if (net18 || vat18) {
+    out.push({ letter: "E", rate: 18, gross: money(net18 + vat18), vat: vat18, net: net18 });
+  }
+  if (net8 || vat8) {
+    out.push({ letter: "D", rate: 8, gross: money(net8 + vat8), vat: vat8, net: net8 });
+  }
+  if (net0 || gross0) {
+    out.push({ letter: "A", rate: 0, gross: money(net0), vat: 0, net: net0 });
+  }
+  return out;
+}
+
 function buildSaleVatBuckets(preparedItems, opts = {}) {
   const list = Array.isArray(preparedItems) ? preparedItems : [];
   const rateByMenuId = opts.rateByMenuId || new Map();
@@ -205,6 +252,9 @@ function buildSaleVatBuckets(preparedItems, opts = {}) {
     opts.targetTotal != null && opts.targetTotal !== ""
       ? money(opts.targetTotal)
       : sumLines;
+  if (target < 0 && sumLines > 0) {
+    return bucketsForNegativeTotal(list, target, sumLines, rateByMenuId, fallbackPercent);
+  }
   if (!list.length && !(target > 0)) return [];
 
   let fiscalOn = false;
@@ -318,7 +368,19 @@ function buildSalesVatBook(salesRows) {
         rawBuckets = [{ letter, rate, ...split }];
       }
     }
-    const buckets = normalizeVatBuckets(rawBuckets, s.total);
+    const grossSum = money((rawBuckets || []).reduce((s2, b) => s2 + (Number(b.gross) || 0), 0));
+    const storedReady = (rawBuckets || []).length > 0
+      && (rawBuckets || []).every((b) => b.vat != null && b.net != null)
+      && Math.abs(grossSum - money(s.total)) < 0.001;
+    const buckets = storedReady
+      ? rawBuckets.map((b) => ({
+        letter: normalizeLetter(b.letter, b.rate),
+        rate: Number(b.rate) || 0,
+        gross: money(b.gross),
+        net: money(b.net),
+        vat: money(b.vat),
+      }))
+      : normalizeVatBuckets(rawBuckets, s.total);
 
     const acc = {
       box9: 0,
@@ -427,9 +489,9 @@ function exportSalesQuarterlyCsv(rows) {
 function addPurchaseVatSplitToRow(row, gross, rate, isInvest) {
   const split = splitGross(gross, rate);
   const r = Number(rate) >= 0 ? Number(rate) : 18;
+  if (!isInvest) row.box31 = money((row.box31 || 0) + split.net);
   if (r <= 0) {
     if (isInvest) row.box32 = money((row.box32 || 0) + split.net);
-    else row.box31 = money((row.box31 || 0) + split.net);
   } else if (r <= 8) {
     if (isInvest) {
       row.box49 = money((row.box49 || 0) + split.net);
@@ -506,8 +568,9 @@ function buildPurchaseVatBook(invoices, expenses) {
   }
 
   for (const e of expenses || []) {
-    nr += 1;
     const rate = Number(e.vat_rate) >= 0 ? Number(e.vat_rate) : 18;
+    if (rate <= 0) continue;
+    nr += 1;
     const split = splitGross(e.amount, rate);
     const row = emptyPurchaseVatRow(nr, {
       date: e.expense_date || "",
@@ -815,8 +878,8 @@ function buildRentWithholdingForm(rentRows) {
 function buildQuarterlyInstallment({ income, expenses, priorYearTax = 0 }) {
   const rev = money(income);
   const exp = money(expenses);
-  const profit = money(Math.max(0, rev - exp));
-  const box11 = money(profit * 0.1);
+  const profit = money(rev - exp);
+  const box11 = money(Math.max(0, profit) * 0.1);
   const box12 = money((Number(priorYearTax) || 0) * 1.1 / 4);
   const box13 = money(Math.max(box11, box12));
   return {
@@ -862,6 +925,7 @@ function buildAnnualStatements({
   const profitBeforeTax = operating;
   const tax = money(Math.max(0, profitBeforeTax) * 0.1);
   const netProfit = money(profitBeforeTax - tax);
+  const headlineProfit = profitBeforeTax;
 
   const prevNet = money(prev.netProfit);
   const prevTax = money(prev.tax != null ? prev.tax : Math.max(0, money(prev.profitBeforeTax)) * 0.1);
@@ -890,6 +954,7 @@ function buildAnnualStatements({
       wages: wageTotal,
       operating,
       profitBeforeTax,
+      headlineProfit,
       tax,
       netProfit,
       stockStart: stStart,

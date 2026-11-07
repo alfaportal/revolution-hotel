@@ -191,7 +191,7 @@ test("Blerje: mallra/invest/shpenzim → [43]/[47]/[45]/[49]/[31] + K1/K2", () =
   eq(t.box39, 0, "invest vendore NUK shkon te [39] import");
   eq(t.box45, 100); // mallra 8%
   eq(t.box49, 50); // invest 8%
-  eq(t.box31, 200); // pa TVSH
+  eq(t.box31, 1300); // baza e blerjeve: 1000 + 100 + 200
   eq(t.boxK1, 288); // 180 + 90 + 18
   eq(t.boxK2, 12); // 8 + 4
   eq(t.box67, 300);
@@ -417,7 +417,7 @@ test("Skenar i plotë: shitje+blerje+deklaratë si kontroll ATK", () => {
 
   eq(p.box43, 2000);
   eq(p.box47, 1000);
-  eq(p.box31, 500);
+  eq(p.box31, 2000);
   eq(p.boxK1, 540); // mallra 360 + invest 180
   eq(p.box67, 540);
 

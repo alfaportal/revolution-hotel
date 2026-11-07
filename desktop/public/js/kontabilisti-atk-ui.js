@@ -358,7 +358,7 @@
     if (hdr) {
       const h = data.header || {};
       const t = data.totals || {};
-      hdr.textContent = `${h.bizName || "—"} · NUI ${h.nui || "—"} · ${h.address || ""} · Viti ${data.year} · Fitimi ${euro(t.netProfit)} · Stok fillimi ${euro(t.stockStart)} · Stok fundi ${euro(t.stockEnd)}`;
+      hdr.textContent = `${h.bizName || "—"} · NUI ${h.nui || "—"} · ${h.address || ""} · Viti ${data.year} · Fitimi ${euro(t.headlineProfit != null ? t.headlineProfit : t.profitBeforeTax)} · Stok fillimi ${euro(t.stockStart)} · Stok fundi ${euro(t.stockEnd)}`;
     }
     const body = document.getElementById("kont-vit-body");
     if (body) {

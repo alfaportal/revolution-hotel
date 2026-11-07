@@ -10719,17 +10719,24 @@ async function postFiscalZReportHandler(req, res) {
         }
       }
     } else {
-      const pending = db.getUnprintedClosedZShift();
-      if (!pending) {
+      const day = zOpts.dateYmd || businessTodayYmd();
+      const daily = db.buildDailyZReport(day);
+      if (!daily) {
         throw new Error("Nuk ka ndërrim të mbyllur që pret Raportin Z.");
       }
-      if (!skipPrint) {
-        shiftReport = await printClosedShiftZReport(pending.id);
-        text = shiftReport.text;
-        printed = shiftReport.printed;
-        printMessage = shiftReport.printMessage || "";
+      shiftReport = { data: daily };
+      text = daily.text || "";
+      if (!skipPrint && text) {
+        try {
+          const pr = await printer.printPlainTextAt(text, db, "bar");
+          printed = pr?.printed !== false;
+          printMessage = pr?.printMessage || pr?.message || "";
+        } catch (pe) {
+          printed = false;
+          printMessage = pe.message || "Printimi Z dështoi";
+        }
       }
-      shiftsMarked = db.markAllPendingShiftZReportsPrinted();
+      shiftsMarked = db.markShiftsZReported(daily.shift_ids);
     }
 
     const enrichedDetails = details
@@ -11289,7 +11296,22 @@ app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
     const blocked = recordsGuardResponse(res);
     if (blocked) return blocked;
     if (!fiscalConfig.isFiscalEnabled()) {
-      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+      const returned = db.recordSaleReturn({
+        items: req.body?.items || [],
+        payment_method: req.body?.payment_method || req.body?.payment || "cash",
+        waiter_name: req.body?.waiter_name || req.session?.emri || "Pronari",
+        amount: req.body?.amount,
+        shift_id: req.body?.shift_id,
+        staff_id: req.body?.staff_id,
+      });
+      return res.json({
+        ok: true,
+        fiscal: false,
+        total_amount: returned.amount,
+        items: returned.items,
+        shift_id: returned.shift_id,
+        atk_message: "Pa ATK — stoku dhe arka u përditësuan",
+      });
     }
     const nuikf = String(req.body?.nuikf || "")
       .trim()
@@ -11313,6 +11335,19 @@ app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
       req.body?.reason || `${correctionType} ATK`,
       op
     );
+    try {
+      db.recordSaleReturn({
+        items: req.body?.items || [],
+        payment_method: req.body?.payment_method || req.body?.payment || "cash",
+        waiter_name: req.body?.waiter_name || req.session?.emri || "Pronari",
+        amount: Math.abs(Number(result.total_amount) || 0) || req.body?.amount,
+        shift_id: req.body?.shift_id,
+        staff_id: req.body?.staff_id,
+        restore_stock: false,
+      });
+    } catch (retErr) {
+      console.warn("[storno] arka:", retErr.message);
+    }
 
     let qrResult = null;
     try {
