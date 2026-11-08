@@ -1,5 +1,9 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-08 — Email dhe QR te kuponi i pronarit
+
+Te pamja e kuponit (jo te arka, jo te kamarieri) u shtua fjalia e skanimit dhe butoni «Dërgo me Email». `public/admin.html` rreshti 5745 (teksti), 19613 (hapja me QR), 19806 (email). Kamarieri nuk u prek. Klik dhe email real: NOT VERIFIED. Në PC vetëm pas Setup-it të ri.
+
 ## 2026-11-07 — Setup 1.0.664
 
 U ndërtua një Setup. Versioni në `desktop/package.json` është 1.0.664. Skedari është te Desktop: Revolution HOTEL Setup.exe. Kodi u dërgua te master, commit 59a37c4.

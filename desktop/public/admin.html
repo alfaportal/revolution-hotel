@@ -5627,13 +5627,16 @@
         <h2 data-fi18n="fiscal_receipt_view_title">Kupon Fiskal</h2>
         <p class="frv-meta" id="frv-meta"></p>
         <div class="frv-qr-wrap" id="frv-qr-wrap" hidden>
-          <img id="frv-qr" alt="QR fiskal" width="200" height="200" />
+          <p class="frv-qr-hint">Skano QR-në fiskale — nuk kërkohet printim letre</p>
+          <img id="frv-qr" alt="QR kupon fiskal" width="200" height="200" />
         </div>
         <pre class="frv-body" id="frv-body"></pre>
         <div class="frv-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="frv-print-from-preview" hidden>Printo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="frv-email">Dërgo me Email</button>
           <button type="button" class="btn btn-ghost btn-sm" id="frv-close" data-fi18n="close">Mbyll</button>
         </div>
+        <p id="frv-email-msg" style="margin:0.45rem 0 0"></p>
       </div>
     </div>
 
@@ -19498,12 +19501,22 @@
       const printBtn = document.getElementById("frv-print-from-preview");
       if (!modal || !body) return;
       frlPreviewPrintId = null;
+      window.__frvPreviewId = id;
       if (printBtn) printBtn.hidden = true;
       body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
       if (meta) meta.textContent = "";
+      const emailMsg = document.getElementById("frv-email-msg");
+      if (emailMsg) emailMsg.textContent = "";
       frlHideReceiptQr();
       modal.hidden = false;
       try {
+        const prev = await api("/api/fiscal/receipts/" + encodeURIComponent(id) + "/preview");
+        const qrWrap = document.getElementById("frv-qr-wrap");
+        const qrImg = document.getElementById("frv-qr");
+        if (prev.qr_png_base64 && qrWrap && qrImg) {
+          qrImg.src = "data:image/png;base64," + prev.qr_png_base64;
+          qrWrap.hidden = false;
+        }
         const res = await api("/api/fiscal-receipts/" + encodeURIComponent(id));
         const r = res.receipt || {};
         if (meta) {
@@ -19525,6 +19538,7 @@
       const qrImg = document.getElementById("frv-qr");
       if (!modal || !body || !id) return;
       frlPreviewPrintId = String(id);
+      window.__frvPreviewId = id;
       if (printBtn) printBtn.hidden = false;
       body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
       if (meta) meta.textContent = "";
@@ -19673,6 +19687,30 @@
     document.getElementById("frl-close")?.addEventListener("click", mbyllFiscalReceiptsModal);
     document.getElementById("frv-backdrop")?.addEventListener("click", mbyllFiscalReceiptViewModal);
     document.getElementById("frv-close")?.addEventListener("click", mbyllFiscalReceiptViewModal);
+    document.getElementById("frv-email")?.addEventListener("click", async () => {
+      const id = window.__frvPreviewId;
+      const msg = document.getElementById("frv-email-msg");
+      if (!id) {
+        if (msg) msg.textContent = "Vetëm kuponët fiskalë mund të dërgohen me email.";
+        return;
+      }
+      const email = window.prompt("Fut emailin e konsumatorit për dërgimin e kuponit fiskal (PDF + QR):");
+      if (!email) return;
+      if (msg) msg.textContent = "Duke dërguar email…";
+      try {
+        const data = await api("/api/fiscal/receipts/" + encodeURIComponent(id) + "/email", {
+          method: "POST",
+          body: JSON.stringify({ email }),
+        });
+        const queued = !!data.queued || /radhë/i.test(String(data.message || ""));
+        const line = queued
+          ? data.message || `Email u ruajt në radhë për ${data.email || email} — dërgohet kur kthehet interneti.`
+          : `Kuponi ${data.nuikf || ""} u dërgua te ${data.email || email}.`;
+        if (msg) msg.textContent = line;
+      } catch (e) {
+        if (msg) msg.textContent = e.message || "Dërgimi i emailit dështoi.";
+      }
+    });
     document.getElementById("frv-print-from-preview")?.addEventListener("click", () => {
       if (frlPreviewPrintId) frlPrintReceipt(frlPreviewPrintId);
     });
