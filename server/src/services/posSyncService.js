@@ -4,6 +4,7 @@ const { getSupabase } = require("../db");
 const { withPgTransaction } = require("../lib/pgPool");
 const { getCatalogForPos } = require("./menuCatalogService");
 const { hashPin, generateWebToken } = require("./waiterPinService");
+const { normalizeVatCategory } = require("../lib/vatCategories");
 
 function extractMenuItems(body) {
   if (Array.isArray(body.menu_items)) return body.menu_items;
@@ -89,6 +90,7 @@ function buildMenuRow(clientId, m, i, photoByLocalId, stockByLocalId) {
     photo: String(m.photo || "").trim() || photoByLocalId.get(localId) || "",
     description: String(m.description || "").trim().slice(0, 2000),
     sku: String(m.sku || "").trim().slice(0, 64),
+    vat_category: normalizeVatCategory(m.vat_category ?? m.tvsh ?? "18"),
     track_stock: trackStock,
     stock_quantity: trackStock ? (stockQty ?? 0) : null,
     stock_alert_threshold: stockThreshold,

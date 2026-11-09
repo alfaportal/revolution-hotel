@@ -19,8 +19,13 @@ function emptyVatBreakdown() {
 }
 
 function normalizeVatCategory(cat) {
-  const c = String(cat || "A").trim().toUpperCase();
-  return VAT_KEYS.includes(c) ? c : "A";
+  const raw = String(cat == null ? "" : cat).trim().toUpperCase().replace(/%/g, "");
+  if (VAT_KEYS.includes(raw)) return raw;
+  const n = Number(raw);
+  if (n === 8) return "B";
+  if (n === 0) return "C";
+  if (n === 18) return "A";
+  return "A";
 }
 
 function splitGrossByCategory(gross, category = "A") {

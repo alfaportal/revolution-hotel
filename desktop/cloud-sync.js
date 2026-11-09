@@ -1288,6 +1288,7 @@ function buildCatalogPayload(db) {
       track_stock: threshold > 0,
       stock_quantity: Number(m.stock_qty) || 0,
       stock_alert_threshold: threshold,
+      vat_category: String(m.vat_category || "18"),
     };
   });
   const staff = db.getStaff().map(s => ({

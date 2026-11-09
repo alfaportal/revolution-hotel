@@ -1,5 +1,15 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-09 — TVSH 8% te cloud
+
+Katalogu dërgon TVSH-në e produktit (8 ose 18) te cloud, që raporti i pronarit të mos i fusë te 18%. Në PC pas Setup-it të ri + Sinkronizo. Git jo u bë.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `cloud-sync.js` | `vat_category` te katalogu |
+| `server/src/lib/vatCategories.js` | 8 → B |
+| `server/src/services/posSyncService.js` | TVSH te katalogu |
+
 ## 2026-11-09 — Fatura e blerjes: 4 fusha të prekshme
 
 Te rreshti mund të shkruhen çmimi me TVSH, shuma pa TVSH, shuma TVSH, totali me TVSH. Në PC pas Setup-it të ri.
