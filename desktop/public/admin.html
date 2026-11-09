@@ -10131,29 +10131,63 @@
         if (Number.isFinite(pack_qty)) line.pack_qty = pack_qty;
         if (Number.isFinite(qSasia) && qSasia >= 0) line.line_sasia = qSasia;
       }
-      const net = Number(netInp?.value);
-      if (Number.isFinite(net) && net >= 0) {
-        const vat = normalizePurchaseLineVat(line.vat_rate ?? 18);
-        line.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
-        line.pack_price = "";
-      }
       const disc = Number(discInp?.value);
       if (Number.isFinite(disc)) line.discount_pct = Math.min(100, Math.max(0, disc));
+      if (src.contains("purchase-line-price-gross")) {
+        const g = Number(sourceEl?.value);
+        if (Number.isFinite(g) && g >= 0) {
+          line.price_gross = g;
+          line.pack_price = "";
+        }
+      } else if (src.contains("purchase-line-sum-net")) {
+        const n = Number(sourceEl?.value);
+        if (Number.isFinite(n)) applyPurchaseLineNetFromSumNet(line, n);
+      } else if (src.contains("purchase-line-sum-vat")) {
+        const v = Number(sourceEl?.value);
+        const vat = normalizePurchaseLineVat(line.vat_rate ?? 18);
+        if (Number.isFinite(v) && vat > 0) applyPurchaseLineNetFromSumNet(line, v / (vat / 100));
+      } else if (src.contains("purchase-line-sum-gross")) {
+        const g = Number(sourceEl?.value);
+        const vat = normalizePurchaseLineVat(line.vat_rate ?? 18);
+        if (Number.isFinite(g)) applyPurchaseLineNetFromSumNet(line, vat > 0 ? g / (1 + vat / 100) : g);
+      } else {
+        const net = Number(netInp?.value);
+        if (Number.isFinite(net) && net >= 0) {
+          const vat = normalizePurchaseLineVat(line.vat_rate ?? 18);
+          line.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
+          line.pack_price = "";
+        }
+      }
     }
 
-    function updatePurchaseInvoiceRowUi(idx) {
+    function applyPurchaseLineNetFromSumNet(line, sumNet) {
+      const sasia = purchaseLineSasiaForInvoice(line);
+      const disc = Math.min(100, Math.max(0, Number(line.discount_pct) || 0));
+      const den = sasia * (1 - disc / 100);
+      if (!Number.isFinite(sumNet) || !Number.isFinite(den) || den === 0) return;
+      const priceNet = sumNet / den;
+      const vat = normalizePurchaseLineVat(line.vat_rate ?? 18);
+      line.price_gross = Math.round(priceNet * (1 + vat / 100) * 10000) / 10000;
+      line.pack_price = "";
+    }
+
+    function updatePurchaseInvoiceRowUi(idx, sourceEl) {
       const tr = document.querySelector(`#purchase-lines-body tr[data-line="${idx}"]`);
       const line = purchaseLines[idx];
       if (!tr || !line) return;
       const amt = purchaseInvoiceLineAmounts(line);
-      const set = (sel, text) => {
+      const netVal = purchaseLineNetPerPiece(line);
+      const setInp = (sel, val) => {
         const el = tr.querySelector(sel);
-        if (el) el.textContent = text;
+        if (!el || el === sourceEl) return;
+        if (el.tagName === "INPUT") el.value = val;
+        else el.textContent = val;
       };
-      set(".purchase-inv-price-gross-cell", amt.priceGross.toFixed(2));
-      set(".purchase-inv-sum-net", amt.sumNet.toFixed(2));
-      set(".purchase-inv-sum-vat", amt.sumVat.toFixed(2));
-      set(".purchase-inv-sum-gross", formatEuro(amt.sumGross));
+      setInp(".purchase-line-price-net", netVal ? String(netVal) : "");
+      setInp(".purchase-line-price-gross", amt.priceGross ? amt.priceGross.toFixed(2) : "");
+      setInp(".purchase-line-sum-net", amt.sumNet ? amt.sumNet.toFixed(2) : "");
+      setInp(".purchase-line-sum-vat", amt.sumVat ? amt.sumVat.toFixed(2) : "");
+      setInp(".purchase-line-sum-gross", amt.sumGross ? amt.sumGross.toFixed(2) : "");
     }
 
     function normalizePurchaseLineVat(v) {
@@ -10404,11 +10438,11 @@
             <td class="n"><input type="number" class="purchase-line-sasia" data-idx="${idx}" ${isAdj ? 'step="any"' : 'min="0" step="any"'} value="${amt.sasia}" title="Sasia (copë totale)"></td>
             <td class="n"><input type="number" class="purchase-line-price-net" data-idx="${idx}" min="0" step="any" value="${netVal ? netVal : ""}" title="Çmimi pa TVSH / copë"></td>
             <td class="n"><input type="number" class="purchase-line-discount" data-idx="${idx}" min="0" max="100" step="any" value="${disc}" title="Zbritja %"></td>
-            <td class="n purchase-inv-price-gross-cell">${amt.priceGross.toFixed(2)}</td>
-            <td class="n purchase-inv-sum-net">${amt.sumNet.toFixed(2)}</td>
+            <td class="n purchase-inv-price-gross-cell"><input type="number" class="purchase-line-price-gross" data-idx="${idx}" min="0" step="any" value="${amt.priceGross ? amt.priceGross.toFixed(2) : ""}" title="Çmimi me TVSH / copë"></td>
+            <td class="n purchase-inv-sum-net"><input type="number" class="purchase-line-sum-net" data-idx="${idx}" min="0" step="any" value="${amt.sumNet ? amt.sumNet.toFixed(2) : ""}" title="Shuma pa TVSH"></td>
             <td class="c">${purchaseLineVatSelectHtml(idx, line.vat_rate)}</td>
-            <td class="n purchase-inv-sum-vat">${amt.sumVat.toFixed(2)}</td>
-            <td class="n purchase-inv-sum-gross">${formatEuro(amt.sumGross)}</td>
+            <td class="n purchase-inv-sum-vat"><input type="number" class="purchase-line-sum-vat" data-idx="${idx}" min="0" step="any" value="${amt.sumVat ? amt.sumVat.toFixed(2) : ""}" title="Shuma TVSH"></td>
+            <td class="n purchase-inv-sum-gross"><input type="number" class="purchase-line-sum-gross" data-idx="${idx}" min="0" step="any" value="${amt.sumGross ? amt.sumGross.toFixed(2) : ""}" title="Totali me TVSH"></td>
           </tr>`;
       }).join("");
 
@@ -10416,7 +10450,7 @@
         const idx = Number(e.target?.dataset?.idx);
         if (!Number.isFinite(idx)) return;
         syncPurchaseLineFromDom(idx, e.target);
-        updatePurchaseInvoiceRowUi(idx);
+        updatePurchaseInvoiceRowUi(idx, e.target);
         recalcPurchaseGrandTotal();
       };
       tbody.querySelectorAll("input, select").forEach((inp) => {

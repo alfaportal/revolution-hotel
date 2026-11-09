@@ -1,5 +1,13 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-09 — Fatura e blerjes: 4 fusha të prekshme
+
+Te rreshti mund të shkruhen çmimi me TVSH, shuma pa TVSH, shuma TVSH, totali me TVSH. Në PC pas Setup-it të ri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/admin.html` | 4 kutitë janë input |
+
 ## 2026-11-08 — Email dhe QR te kuponi i pronarit
 
 Te pamja e kuponit (jo te arka, jo te kamarieri) u shtua fjalia e skanimit dhe butoni «Dërgo me Email». `public/admin.html` rreshti 5745 (teksti), 19613 (hapja me QR), 19806 (email). Kamarieri nuk u prek. Klik dhe email real: NOT VERIFIED. Në PC vetëm pas Setup-it të ri.
