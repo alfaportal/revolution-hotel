@@ -8461,12 +8461,22 @@
         let card = Number(e.card_amount);
         if (!Number.isFinite(cash)) cash = 0;
         if (!Number.isFinite(card)) card = 0;
-        const pm = String(e.payment_method || "").toLowerCase();
+        const pm = String(e.payment_method || "").trim().toLowerCase();
+        const cardMethod = (
+          pm === "karte" || pm === "card" || pm === "kart" || pm === "kartë" ||
+          pm === "debit_card" || pm === "credit_card" || pm === "sms" ||
+          pm === "check" || pm === "bank_account" || pm === "voucher"
+        );
         if (pm === "room") {
           totalRoom += t;
-        } else if (cash === 0 && card === 0 && t > 0) {
-          if (pm === "karte" || pm === "debit_card" || pm === "credit_card") card = t;
-          else cash = t;
+        } else if (cardMethod && !(card > 0 && cash > 0)) {
+          if (card > 0) cash = 0;
+          else if (t > 0) {
+            cash = 0;
+            card = t;
+          }
+        } else if (pm !== "mixed" && pm !== "perzier" && pm !== "përzier" && cash === 0 && card === 0 && t > 0) {
+          cash = t;
         }
         totalCash += cash;
         totalKarte += card;

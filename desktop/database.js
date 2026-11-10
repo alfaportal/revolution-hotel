@@ -11080,7 +11080,18 @@ function roundDailyLogMoney(n) {
 
 function isDailyLogCardMethod(method) {
   const m = String(method || "").trim().toLowerCase();
-  return ["karte", "card", "kart", "kartë", "debit_card", "credit_card"].includes(m);
+  return [
+    "karte",
+    "card",
+    "kart",
+    "kartë",
+    "debit_card",
+    "credit_card",
+    "sms",
+    "check",
+    "bank_account",
+    "voucher",
+  ].includes(m);
 }
 
 function isDailyLogCashMethod(method) {
@@ -11145,6 +11156,10 @@ function dailyLogEntryCashAmount(e) {
   let card = Number(e.card_amount);
   if (!Number.isFinite(cash)) cash = 0;
   if (!Number.isFinite(card)) card = 0;
+  if (isDailyLogCardMethod(e.payment_method)) {
+    if (card > 0 && cash > 0) return roundDailyLogMoney(cash);
+    return 0;
+  }
   if (cash === 0 && card === 0 && total > 0 && isDailyLogCashMethod(e.payment_method)) {
     return roundDailyLogMoney(total);
   }
@@ -11157,8 +11172,9 @@ function dailyLogEntryCardAmount(e) {
   let card = Number(e.card_amount);
   if (!Number.isFinite(cash)) cash = 0;
   if (!Number.isFinite(card)) card = 0;
-  if (cash === 0 && card === 0 && total > 0 && isDailyLogCardMethod(e.payment_method)) {
-    return roundDailyLogMoney(total);
+  if (isDailyLogCardMethod(e.payment_method)) {
+    if (card > 0) return roundDailyLogMoney(card);
+    if (total > 0) return roundDailyLogMoney(total);
   }
   return roundDailyLogMoney(card);
 }
@@ -13186,12 +13202,14 @@ const SHIFT_DAILY_LOG_PAYMENT_TOTALS_SQL = `
         WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'room' THEN 0
         WHEN payment_method = 'cash' THEN total
         WHEN payment_method IN ('mixed', 'perzier') THEN COALESCE(cash_amount, 0)
-        WHEN payment_method IN ('karte', 'debit_card', 'credit_card') THEN COALESCE(NULLIF(cash_amount, 0), 0)
+        WHEN payment_method IN ('karte', 'debit_card', 'credit_card', 'sms', 'check', 'bank_account', 'voucher') THEN
+          CASE WHEN COALESCE(card_amount, 0) > 0 THEN COALESCE(cash_amount, 0) ELSE 0 END
         WHEN LOWER(TRIM(COALESCE(payment_method, ''))) IN ('para', '') THEN COALESCE(cash_amount, total)
         ELSE COALESCE(cash_amount, 0)
       END), 0) AS cash_total,
       COALESCE(SUM(CASE
-        WHEN payment_method IN ('karte', 'debit_card', 'credit_card') THEN total
+        WHEN payment_method IN ('karte', 'debit_card', 'credit_card', 'sms', 'check', 'bank_account', 'voucher') THEN
+          CASE WHEN COALESCE(card_amount, 0) > 0 THEN card_amount ELSE total END
         WHEN payment_method IN ('mixed', 'perzier') THEN COALESCE(card_amount, 0)
         ELSE COALESCE(NULLIF(card_amount, 0), 0)
       END), 0) AS card_total,

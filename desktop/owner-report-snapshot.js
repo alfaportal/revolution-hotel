@@ -16,12 +16,14 @@ const DAILY_LOG_PAYMENT_TOTALS_SQL = `
         WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'room' THEN 0
         WHEN payment_method = 'cash' THEN total
         WHEN payment_method IN ('mixed', 'perzier') THEN COALESCE(cash_amount, 0)
-        WHEN payment_method IN ('karte', 'debit_card', 'credit_card') THEN COALESCE(NULLIF(cash_amount, 0), 0)
+        WHEN payment_method IN ('karte', 'debit_card', 'credit_card', 'sms', 'check', 'bank_account', 'voucher') THEN
+          CASE WHEN COALESCE(card_amount, 0) > 0 THEN COALESCE(cash_amount, 0) ELSE 0 END
         WHEN LOWER(TRIM(COALESCE(payment_method, ''))) IN ('para', '') THEN COALESCE(cash_amount, total)
         ELSE COALESCE(cash_amount, 0)
       END), 0) AS cash_total,
       COALESCE(SUM(CASE
-        WHEN payment_method IN ('karte', 'debit_card', 'credit_card') THEN total
+        WHEN payment_method IN ('karte', 'debit_card', 'credit_card', 'sms', 'check', 'bank_account', 'voucher') THEN
+          CASE WHEN COALESCE(card_amount, 0) > 0 THEN card_amount ELSE total END
         WHEN payment_method IN ('mixed', 'perzier') THEN COALESCE(card_amount, 0)
         ELSE COALESCE(NULLIF(card_amount, 0), 0)
       END), 0) AS card_total,

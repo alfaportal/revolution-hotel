@@ -1,5 +1,26 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-10 — Ditari, filtri Restoranti / Recepsioni
+
+Kur Ditari filtrohet te Restoranti ose Recepsioni, kutia Kartë tani mblidhet në panel: debit, kredit, mobile (`sms`), çek, transfer, voucher dhe `karte`. Pagesa e përzier mbetet vetëm `card_amount`. «Të gjitha» vjen nga serveri, si më parë. KAFENE nuk e ka këtë filtër.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/admin.html` | `computeDitariTotalsFromEntries` |
+
+Provë në databazë të re: shitje restoranti me `sms` 2 € → filtri Restoranti 2 €, Recepsioni 0. Checkout me `sms` 40 € → filtri Recepsioni 40 €, Restoranti 0. Të dyja së bashku: 42 € = 2 + 40. Git nuk u prek. Nuk u bë Setup.
+
+## 2026-11-10 — Ditari, kutia Kartë
+
+Kutia «Kartë» dhe ndërrimi tani mbledhin debit, kredit, mobile (`sms`), çek (`check`), transfer (`bank_account`), voucher dhe `karte`. Pagesa e përzier mbetet vetëm pjesa e kartës. Dhoma (`room`) dhe cash nuk hyjnë. Serveri cloud nuk e ka këtë llogaritje.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | `isDailyLogCardMethod`, shumat e Ditarit, SQL e ndërrimit |
+| `owner-report-snapshot.js` | e njëjta SQL e kartës për panelin e pronarit |
+
+Provë me 9 mbyllje tavoline nga 2 €: Ditari dhe ndërrimi cash 2.50 €, kartë 15.50 €, shitje 18.00 €. Git nuk u prek. Nuk u bë Setup.
+
 ## 2026-11-09 — Forma e produktit: 5 fusha + Më shumë
 
 Te Produktet, «Shto» dhe «Ndrysho» tregojnë Emri, Kategoria, Çmimi, TVSH dhe Ruaje / Anulo. Barkodi, stoku, pragu, skadenca dhe përshkrimi hapen me «Më shumë». «Printo etiketë» është pranë Ruaje. Butoni i TVSH-së së përgjithshme është i fshehur. Përshkrimi tani ruhet edhe kur shtohet produkt i ri.
