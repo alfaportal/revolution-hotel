@@ -122,6 +122,7 @@
       sumNet: amt.sumNet,
       sumVat: amt.sumVat,
       sumGross: amt.sumGross,
+      vat_rate: HI.normalizeLineVat(line.vat_rate ?? defaultLineVat()),
     };
   }
 
@@ -133,7 +134,7 @@
     else if (Number(ln.discount?.value) > 0 && qty * net > 0) {
       disc = Math.min(100, (Number(ln.discount.value) / (qty * net)) * 100);
     }
-    const vat = defaultLineVat();
+    const vat = HI.normalizeLineVat(ln.vat_rate ?? defaultLineVat());
     const gross = net > 0 ? Math.round(net * (1 + vat / 100) * 10000) / 10000 : "";
     return {
       menu_item_id: "",
@@ -295,6 +296,16 @@
     return defaultLineVat();
   }
 
+  function applySalesLineNetFromSumNet(line, sumNet) {
+    const sasia = HI.lineSasiaForInvoice(line);
+    const disc = Math.min(100, Math.max(0, Number(line.discount_pct) || 0));
+    const den = sasia * (1 - disc / 100);
+    if (!Number.isFinite(sumNet) || !Number.isFinite(den) || den === 0) return;
+    const priceNet = sumNet / den;
+    const vat = HI.normalizeLineVat(line.vat_rate ?? 18);
+    line.price_gross = Math.round(priceNet * (1 + vat / 100) * 10000) / 10000;
+  }
+
   function syncSalesLineFromDom(idx, sourceEl) {
     const line = lines[idx];
     if (!line) return;
@@ -343,28 +354,48 @@
       if (Number.isFinite(qSasia) && qSasia >= 0) line.line_sasia = qSasia;
     }
 
-    const net = Number(netInp?.value);
-    if (Number.isFinite(net) && net >= 0) {
-      const vat = HI.normalizeLineVat(line.vat_rate ?? 18);
-      line.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
-    }
     const disc = Number(discInp?.value);
     if (Number.isFinite(disc)) line.discount_pct = Math.min(100, Math.max(0, disc));
+    if (src.contains("sales-line-price-gross")) {
+      const g = Number(sourceEl?.value);
+      if (Number.isFinite(g) && g >= 0) line.price_gross = g;
+    } else if (src.contains("sales-line-sum-net")) {
+      const n = Number(sourceEl?.value);
+      if (Number.isFinite(n)) applySalesLineNetFromSumNet(line, n);
+    } else if (src.contains("sales-line-sum-vat")) {
+      const v = Number(sourceEl?.value);
+      const vat = HI.normalizeLineVat(line.vat_rate ?? 18);
+      if (Number.isFinite(v) && vat > 0) applySalesLineNetFromSumNet(line, v / (vat / 100));
+    } else if (src.contains("sales-line-sum-gross")) {
+      const g = Number(sourceEl?.value);
+      const vat = HI.normalizeLineVat(line.vat_rate ?? 18);
+      if (Number.isFinite(g)) applySalesLineNetFromSumNet(line, vat > 0 ? g / (1 + vat / 100) : g);
+    } else {
+      const net = Number(netInp?.value);
+      if (Number.isFinite(net) && net >= 0) {
+        const vat = HI.normalizeLineVat(line.vat_rate ?? 18);
+        line.price_gross = Math.round(net * (1 + vat / 100) * 10000) / 10000;
+      }
+    }
   }
 
-  function updateSalesInvoiceRowUi(idx) {
+  function updateSalesInvoiceRowUi(idx, sourceEl) {
     const tr = document.querySelector(`#sales-lines-body tr[data-line="${idx}"]`);
     const line = lines[idx];
     if (!tr || !line) return;
     const amt = HI.invoiceLineAmountsFromLine(line);
+    const netVal = HI.lineNetPerPiece(line);
     const set = (sel, text) => {
       const el = tr.querySelector(sel);
-      if (el) el.textContent = text;
+      if (!el || el === sourceEl) return;
+      if (el.tagName === "INPUT") el.value = text;
+      else el.textContent = text;
     };
-    set(".sales-inv-price-gross-cell", amt.priceGross.toFixed(2));
-    set(".sales-inv-sum-net", amt.sumNet.toFixed(2));
-    set(".sales-inv-sum-vat", amt.sumVat.toFixed(2));
-    set(".sales-inv-sum-gross", euro(amt.sumGross));
+    set(".sales-line-price-net", netVal ? String(netVal) : "");
+    set(".sales-line-price-gross", amt.priceGross.toFixed(2));
+    set(".sales-line-sum-net", amt.sumNet.toFixed(2));
+    set(".sales-line-sum-vat", amt.sumVat.toFixed(2));
+    set(".sales-line-sum-gross", amt.sumGross.toFixed(2));
   }
 
   function recalcSalesGrandTotal() {
@@ -424,11 +455,11 @@
           <td class="n"><input type="number" class="sales-line-sasia" data-idx="${idx}" min="0" step="any" value="${amt.sasia}" title="Sasia (copë totale)"></td>
           <td class="n"><input type="number" class="sales-line-price-net" data-idx="${idx}" min="0" step="any" value="${netVal ? netVal : ""}" title="Çmimi pa TVSH / copë"></td>
           <td class="n"><input type="number" class="sales-line-discount" data-idx="${idx}" min="0" max="100" step="any" value="${disc}" title="Zbritja %"></td>
-          <td class="n sales-inv-price-gross-cell">${amt.priceGross.toFixed(2)}</td>
-          <td class="n sales-inv-sum-net">${amt.sumNet.toFixed(2)}</td>
+          <td class="n"><input type="number" class="sales-line-price-gross" data-idx="${idx}" min="0" step="any" value="${amt.priceGross.toFixed(2)}" title="Çmimi me TVSH"></td>
+          <td class="n"><input type="number" class="sales-line-sum-net" data-idx="${idx}" min="0" step="any" value="${amt.sumNet.toFixed(2)}" title="Shuma pa TVSH"></td>
           <td class="c">${salesLineVatSelectHtml(idx, line.vat_rate)}</td>
-          <td class="n sales-inv-sum-vat">${amt.sumVat.toFixed(2)}</td>
-          <td class="n sales-inv-sum-gross">${euro(amt.sumGross)}</td>
+          <td class="n"><input type="number" class="sales-line-sum-vat" data-idx="${idx}" min="0" step="any" value="${amt.sumVat.toFixed(2)}" title="Shuma TVSH"></td>
+          <td class="n"><input type="number" class="sales-line-sum-gross" data-idx="${idx}" min="0" step="any" value="${amt.sumGross.toFixed(2)}" title="Totali me TVSH"></td>
         </tr>`;
     }).join("");
 
@@ -436,7 +467,7 @@
       const idx = Number(e.target?.dataset?.idx);
       if (!Number.isFinite(idx)) return;
       syncSalesLineFromDom(idx, e.target);
-      updateSalesInvoiceRowUi(idx);
+      updateSalesInvoiceRowUi(idx, e.target);
       recalcSalesGrandTotal();
     };
     tbody.querySelectorAll("input, select").forEach((inp) => {

@@ -1496,6 +1496,8 @@
 
     <div class="waiter-order-body">
       <div class="menu-pos-wrap">
+        <input id="pos-scan" type="text" autocomplete="off" placeholder="Skano barkodin" aria-label="Skano barkodin" style="width:100%;box-sizing:border-box;margin:0 0 .35rem;padding:.55rem .7rem;font-size:1rem;border-radius:8px;border:1px solid var(--ngjyr-border,#cbd5e1)">
+        <p id="pos-scan-msg" style="margin:0 0 .35rem;min-height:1.1em;font-size:.85rem;color:#b91c1c"></p>
         <div class="menu-group-bar" id="menu-group-bar"></div>
         <div class="menu-photo-grid" id="menu-grid"></div>
       </div>
@@ -6125,6 +6127,7 @@
         }
       }
       perditesoPorosine();
+      document.getElementById("pos-scan")?.focus();
       await ngarkoPromocionetAktive().catch(() => {});
       schedulePricingPreview();
       refreshWaiterFiscalMixedUi().catch(() => {});
@@ -6195,6 +6198,61 @@
         applyWaiterUnitPrice(Number(el.dataset.i), el.textContent);
       });
     }
+
+    function matchPosProduct(raw) {
+      const q = String(raw || "").trim();
+      if (!q) return null;
+      let code = q;
+      if (q.startsWith("{")) {
+        try {
+          const data = JSON.parse(q);
+          code = String(data.kodi || data.barcode || data.code || "").trim() || q;
+        } catch { /* QR jo-JSON */ }
+      }
+      const needle = code.toLowerCase();
+      const list = menuItems || [];
+      const exact = list.find((x) => String(x.barcode || "").trim().toLowerCase() === needle);
+      if (exact) return exact;
+      const digits = needle.replace(/\D/g, "");
+      if (digits.length >= 4) {
+        const byDigits = list.find((x) => String(x.barcode || "").replace(/\D/g, "") === digits);
+        if (byDigits) return byDigits;
+        if (digits.length === 12) {
+          const byUpc = list.find((x) => String(x.barcode || "").replace(/\D/g, "") === "0" + digits);
+          if (byUpc) return byUpc;
+        }
+        if (digits.length === 13 && digits.startsWith("0")) {
+          const byUpc = list.find((x) => String(x.barcode || "").replace(/\D/g, "") === digits.slice(1));
+          if (byUpc) return byUpc;
+        }
+      }
+      return null;
+    }
+
+    document.getElementById("pos-scan")?.addEventListener("keydown", async (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const raw = String(e.target.value || "").trim();
+      e.target.value = "";
+      const msg = document.getElementById("pos-scan-msg");
+      if (!raw) return;
+      let p = matchPosProduct(raw);
+      if (!p) {
+        try { await ngarkoMenu(); } catch { /* */ }
+        p = matchPosProduct(raw);
+      }
+      if (!p) {
+        if (msg) msg.textContent = "Produkti nuk u gjet.";
+        return;
+      }
+      const eHuaj = tavolinaAktive?.order && tavolinaAktive.order.waiter_name !== user.emri;
+      if (eHuaj) {
+        if (msg) msg.textContent = "Kjo tavolinë është e një kamarieri tjetër.";
+        return;
+      }
+      if (msg) msg.textContent = "";
+      shtoArtikull(p);
+    });
 
     function shtoArtikull(item) {
       commitWaiterPriceEdits();

@@ -4,6 +4,15 @@ const svc = require("./sales-invoices-service");
 const { renderInvoicePdf } = require("./sales-invoice-pdf");
 const { deliverEmail, isEmailConfigured, buildInvoiceA4From } = require("./sales-invoice-email");
 
+function applySavedLogo(invoice) {
+  try {
+    const saved = svc.getSellerSnapshot();
+    if (!saved?.logoUrl) return invoice;
+    invoice.sellerSnapshot = { ...(invoice.sellerSnapshot || {}), logoUrl: saved.logoUrl };
+  } catch {}
+  return invoice;
+}
+
 function registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly }) {
   const admin = [auth, adminOnly];
   const waiter = [auth, waiterOnly];
@@ -145,13 +154,14 @@ function registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly }) {
       if (!isEmailConfigured()) {
         return res.status(503).json({ ok: false, gabim: "Nuk mund të dërgohet email." });
       }
+      applySavedLogo(invoice);
       const pdfBuffer = await renderInvoicePdf(invoice);
       const filename = `Fature-${String(invoice.number).replace(/[^\w-]/g, "_")}.pdf`;
       const sellerName =
         invoice.sellerSnapshot?.companyName || svc.getSellerSnapshot().companyName || "";
       const data = await deliverEmail({
         to,
-        from: buildInvoiceA4From(sellerName, ""),
+        from: buildInvoiceA4From(sellerName, "Hotel"),
         subject: `Faturë ${invoice.number} — ${sellerName}`,
         text: `Faturë shitje nr. ${invoice.number} nga ${sellerName}.`,
         html: `<p>Faturë shitje nr. ${invoice.number} nga ${sellerName}.</p>`,
@@ -197,13 +207,14 @@ function registerSalesInvoiceRoutes(app, { auth, adminOnly, waiterOnly }) {
       if (!isEmailConfigured()) {
         return res.status(503).json({ ok: false, gabim: "Nuk mund të dërgohet email." });
       }
+      applySavedLogo(invoice);
       const pdfBuffer = await renderInvoicePdf(invoice);
       const filename = `Fature-${String(invoice.number).replace(/[^\w-]/g, "_")}.pdf`;
       const sellerName =
         invoice.sellerSnapshot?.companyName || svc.getSellerSnapshot().companyName || "";
       const data = await deliverEmail({
         to,
-        from: buildInvoiceA4From(sellerName, ""),
+        from: buildInvoiceA4From(sellerName, "Hotel"),
         subject: `Faturë ${invoice.number} — ${sellerName}`,
         text: `Faturë shitje nr. ${invoice.number}.`,
         html: `<p>Faturë shitje nr. ${invoice.number}.</p>`,

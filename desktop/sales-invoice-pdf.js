@@ -1,4 +1,38 @@
+const fs = require("fs");
+const path = require("path");
 const PDFDocument = require("pdfkit");
+
+function decodeImage(raw) {
+  if (!raw) return null;
+  if (Buffer.isBuffer(raw)) return raw.length > 24 ? raw : null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const i = s.indexOf(",");
+  const b64 = s.startsWith("data:") && i >= 0 ? s.slice(i + 1) : s;
+  if (b64.length < 40 || /[^A-Za-z0-9+/=\s]/.test(b64)) return null;
+  try {
+    const buf = Buffer.from(b64.replace(/\s/g, ""), "base64");
+    return buf.length > 24 ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+function settingsLogoFile() {
+  try {
+    const dbPath = process.env.DB_PATH || path.join(__dirname, "restaurant.db");
+    const file = path.join(path.dirname(path.resolve(dbPath)), "business-logo.png");
+    if (!fs.existsSync(file)) return null;
+    const buf = fs.readFileSync(file);
+    return buf.length > 24 ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+function firmLogoBuffer(seller) {
+  return settingsLogoFile() || decodeImage(seller?.logoUrl || seller?.companyLogoUrl || seller?.biz_logo);
+}
 
 function money(n, cur) {
   const v = (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
@@ -22,6 +56,31 @@ function guestSectionHeading(guest) {
   return "Mysafiri";
 }
 
+function round2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function vatSplit(lines, invoice) {
+  const out = { 18: 0, 8: 0, 0: 0 };
+  let tagged = false;
+  for (const ln of lines || []) {
+    const rate = Number(ln.vat_rate);
+    if (rate !== 18 && rate !== 8 && rate !== 0) continue;
+    tagged = true;
+    if (rate === 0) out[0] += Number(ln.sumNet) || Number(ln.lineTotal) || 0;
+    else out[rate] += Number(ln.sumVat) || 0;
+  }
+  if (!tagged) {
+    const pct = Number(invoice?.vat?.percent ?? invoice?.totals?.vatPercent);
+    const amt = Number(invoice?.totals?.vatAmount) || 0;
+    const base = Number(invoice?.totals?.subtotal) || 0;
+    if (pct === 8) out[8] = amt;
+    else if (pct === 0) out[0] = base;
+    else out[18] = amt;
+  }
+  return { 18: round2(out[18]), 8: round2(out[8]), 0: round2(out[0]) };
+}
+
 function renderInvoicePdf(invoice) {
   return new Promise((resolve, reject) => {
     try {
@@ -32,21 +91,33 @@ function renderInvoicePdf(invoice) {
       const vat = invoice.vat || {};
       const cur = seller.currency || "€";
 
-      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      const doc = new PDFDocument({ size: "A4", margin: 40, compress: false });
       const chunks = [];
       doc.on("data", (c) => chunks.push(c));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
 
+      const logo = firmLogoBuffer(seller);
+      const top = doc.y;
+      let logoBottom = top;
+      if (logo) {
+        try {
+          doc.image(logo, 40, top, { fit: [96, 72] });
+          logoBottom = top + 80;
+        } catch {}
+      }
+      const textX = logo ? 150 : 40;
+      const textW = 555 - textX;
       const titleName = String(seller.companyNameDisplay || seller.companyName || "").toUpperCase();
-      doc.fontSize(14).font("Helvetica-Bold").text(titleName, { align: "right" });
+      doc.fontSize(14).font("Helvetica-Bold").text(titleName, textX, top, { width: textW, align: "right" });
       doc.fontSize(9).font("Helvetica");
-      if (seller.nui) doc.text(`NUI: ${seller.nui}`, { align: "right" });
-      if (seller.fiscalNumber) doc.text(`NF: ${seller.fiscalNumber}`, { align: "right" });
+      doc.text(`NUI: ${seller.nui || "—"}`, textX, doc.y, { width: textW, align: "right" });
+      if (seller.fiscalNumber) doc.text(`NF: ${seller.fiscalNumber}`, textX, doc.y, { width: textW, align: "right" });
       const addr = [seller.address, seller.city].filter(Boolean).join(", ");
-      if (addr) doc.text(addr, { align: "right" });
-      if (seller.phone) doc.text(`Tel: ${seller.phone}`, { align: "right" });
-      if (seller.email) doc.text(seller.email, { align: "right" });
+      if (addr) doc.text(addr, textX, doc.y, { width: textW, align: "right" });
+      if (seller.phone) doc.text(`Tel: ${seller.phone}`, textX, doc.y, { width: textW, align: "right" });
+      if (seller.email) doc.text(seller.email, textX, doc.y, { width: textW, align: "right" });
+      if (doc.y < logoBottom) doc.y = logoBottom;
 
       doc.moveDown(1);
       doc.fontSize(12).font("Helvetica-Bold").text(`Faturë Shitje nr. ${invoice.number || ""}`);
@@ -58,7 +129,7 @@ function renderInvoicePdf(invoice) {
         doc.text(`Kontakt: ${guest.name}`);
       }
       if (guest.address) doc.text(guest.address);
-      if (guest.nui) doc.text(`NUI: ${guest.nui}`);
+      doc.text(`NUI: ${guest.nui || "—"}`);
       if (guest.fiscalNumber) doc.text(`NF: ${guest.fiscalNumber}`);
       if (guest.phone) doc.text(`Tel: ${guest.phone}`);
       if (guest.email) doc.text(guest.email);
@@ -99,12 +170,19 @@ function renderInvoicePdf(invoice) {
       doc.text("Nëntotali:", 380, y, { width: 70, align: "right" });
       doc.text(money(totals.subtotal, cur), col[5], y, { width: 90, align: "right" });
       y += 14;
-      if (vat.enabled) {
-        doc.text(`TVSH (${Number(vat.percent) || 0}%):`, 380, y, { width: 70, align: "right" });
-        doc.text(money(totals.vatAmount, cur), col[5], y, { width: 90, align: "right" });
-        y += 14;
-      }
-      doc.fontSize(10).text("Totali i përgjithshëm:", 340, y, { width: 110, align: "right" });
+      const split = vatSplit(lines, invoice);
+      doc.font("Helvetica");
+      doc.text("TVSH 18%:", 360, y, { width: 90, align: "right" });
+      doc.text(money(split[18], cur), col[5], y, { width: 90, align: "right" });
+      y += 14;
+      doc.text("TVSH 8%:", 360, y, { width: 90, align: "right" });
+      doc.text(money(split[8], cur), col[5], y, { width: 90, align: "right" });
+      y += 14;
+      doc.text("TVSH 0%:", 360, y, { width: 90, align: "right" });
+      doc.text(money(split[0], cur), col[5], y, { width: 90, align: "right" });
+      y += 14;
+      doc.font("Helvetica-Bold").fontSize(10);
+      doc.text("Totali i përgjithshëm:", 340, y, { width: 110, align: "right" });
       doc.text(money(totals.grandTotal, cur), col[5], y, { width: 90, align: "right" });
 
       y += 40;

@@ -1,5 +1,47 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-10 — Fatura e shitjes: logo e firmës
+
+Logoja që ngarkohet te Cilësimet → Lokal & biznesi del lart majtas në PDF-në e email-it. Nëse ajo mungon, përdoret logoja e faturës.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `sales-invoice-pdf.js` | Logo lart majtas |
+| `sales-invoices-routes.js` | Merr logon e ruajtur para dërgimit |
+
+Nuk u bë Setup.
+
+## 2026-11-10 — Fatura e shitjes: email me PDF
+
+Butoni «Dërgo me Email» te fatura e shitjes dërgon PDF-në me Resend (`api.resend.com`, `RESEND_API_KEY`). Pa çelës kthen «Nuk mund të dërgohet email.» PDF ka emrin e firmës, NUI, blerësin, artikujt, TVSH 18%/8%/0% dhe totalin. Dërguesi: `{firma} <noreply@revolution-pos.com>`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `sales-invoice-pdf.js` | Ndarja TVSH 18/8/0, NUI gjithmonë |
+| `sales-invoices-routes.js` | Dërguesi me emrin e firmës |
+| `sales-invoices-service.js` | NUI nga `biz_nui`, pastaj numri TVSH |
+| `public/js/sales-invoices-ui.js` | Rreshti i dërguar mban `vat_rate` |
+
+Nuk u bë Setup.
+
+## 2026-11-10 — Fatura e shitjes: katër kolonat preken
+
+Te fatura e shitjes, Çmimi me TVSH, Shuma pa TVSH, Shuma TVSH dhe Totali me TVSH janë kuti. Kur preket njëra, çmimi i rreshtit rillogaritet.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/js/sales-invoices-ui.js` | Katër kolonat e rreshtit janë input |
+
+## 2026-11-10 — Arka gjen barkodin e etiketës
+
+Etiketa «Printo etiketë» shtyp barkodin e ruajtur (`menu_items.barcode`), jo kodin `590` + id. Te porosia e tavolinës u shtua fusha «Skano barkodin». Kërkimi: barkodi i ruajtur, pastaj vetëm shifrat. Nëse gjendet, artikulli hyn te porosia e re. Nuk ka bllok PLU për barkodet që nisin me 2.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/waiter.html` | Fusha e skanimit dhe kërkimi i barkodit |
+
+Nuk u bë Setup.
+
 ## 2026-11-10 — Produktet: dy rreshta, barkod, kategoritë ATK
 
 Rreshti i regjistrimit te Produktet ndahet në dy rreshta pa rrëshqitje anash. Fusha e parë është Barkod; «Emri i produktit» është veç. Skanimi shkon te Barkod. Nëse barkodi ekziston, plotësohen të dhënat dhe nuk shtohet dy herë. Kategoria ATK tregon 25 kodet. Zgjedhja ruhet te `category_code` dhe `unit_code`.

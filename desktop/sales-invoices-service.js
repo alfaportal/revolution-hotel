@@ -163,7 +163,7 @@ function getSellerSnapshot() {
   return {
     companyName,
     companyNameDisplay: companyName.toLocaleUpperCase("sq-AL"),
-    nui: String(fiscal.biz_vat_number || "").trim(),
+    nui: String(dbMod.getSetting("biz_nui", "") || fiscal.biz_vat_number || "").trim(),
     fiscalNumber: String(fiscal.biz_fiscal_number || "").trim(),
     address: String(fiscal.biz_address || "").trim(),
     city: String(fiscal.biz_city || "").trim(),
