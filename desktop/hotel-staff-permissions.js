@@ -1,6 +1,7 @@
 const PERMISSION_DEFS = [
   { tab_key: "pasqyra", label: "Pasqyra" },
   { tab_key: "menuja", label: "Produktet" },
+  { tab_key: "importo-produkte", label: "Importo Produkte" },
   { tab_key: "promocione", label: "Promocione" },
   { tab_key: "tavolinat", label: "Tavolinat" },
   { tab_key: "rezervime", label: "Rezervime tavolinash" },
@@ -50,6 +51,7 @@ const PATH_RULES = [
   ["/api/dashboard", ["pasqyra"]],
   ["/api/menu", ["menuja"]],
   ["/api/categories", ["menuja"]],
+  ["/api/products/import", ["importo-produkte", "menuja"]],
   ["/api/products", ["menuja"]],
   ["/api/ingredients", ["receta-perberesit", "stoku"]],
   ["/api/recipes", ["receta-perberesit"]],

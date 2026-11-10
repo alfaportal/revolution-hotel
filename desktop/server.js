@@ -13882,6 +13882,12 @@ function onServerListening(server, port) {
 }
 
 /** Nis Express — përdoret nga Electron (main.js). */
+try {
+  require("./product-import-routes").registerProductImportRoutes(app, db, { guard: [auth, adminOnly] });
+} catch (e) {
+  console.warn("[hotel] product-import-routes:", e.message);
+}
+
 function startServer(startPort = START_PORT) {
   return new Promise((resolve, reject) => {
     const tryListen = (port) => {

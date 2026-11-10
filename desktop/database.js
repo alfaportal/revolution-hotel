@@ -2859,6 +2859,55 @@ function applySmartVatToAllMenuItems() {
   return { total: rows.length, changed, skipped_disputed };
 }
 
+function findMenuItemByBarcode(code) {
+  const needle = String(code || "").trim().toLowerCase();
+  if (!needle) return null;
+  const row = sqlite.prepare(
+    `SELECT id FROM menu_items WHERE lower(trim(COALESCE(barcode, ''))) = ? LIMIT 1`,
+  ).get(needle);
+  return row ? getMenuItemById(row.id) : null;
+}
+
+function ensureProductImportsTable() {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS product_imports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT NOT NULL DEFAULT '',
+      total_rows INTEGER NOT NULL DEFAULT 0,
+      new_count INTEGER NOT NULL DEFAULT 0,
+      updated_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );`);
+}
+
+function insertProductImportRecord(row) {
+  ensureProductImportsTable();
+  const r = row || {};
+  const result = sqlite.prepare(
+    `INSERT INTO product_imports (filename, total_rows, new_count, updated_count, skipped_count, error_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`,
+  ).run(
+    String(r.filename || ""),
+    Number(r.total_rows) || 0,
+    Number(r.new_count) || 0,
+    Number(r.updated_count) || 0,
+    Number(r.skipped_count) || 0,
+    Number(r.error_count) || 0,
+    r.created_at ? String(r.created_at) : null,
+  );
+  return Number(result.lastInsertRowid);
+}
+
+function listProductImportHistory(limit = 50) {
+  ensureProductImportsTable();
+  const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  return sqlite.prepare(
+    `SELECT id, filename, total_rows, new_count, updated_count, skipped_count, error_count, created_at
+     FROM product_imports ORDER BY id DESC LIMIT ?`,
+  ).all(lim);
+}
+
 function addMenuItem({
   name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, operator_name, expiry_date, description,
 } = {}) {
@@ -19945,6 +19994,9 @@ function getVersionInfo() {
     vatLetterFromCategory,
     vatPercentFromCategory,
     addMenuItem,
+    findMenuItemByBarcode,
+    insertProductImportRecord,
+    listProductImportHistory,
     applySmartVatToAllMenuItems,
     updateMenuPrice,
     updateMenuItem,

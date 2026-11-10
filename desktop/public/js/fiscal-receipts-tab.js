@@ -117,6 +117,8 @@
             <td>${esc(r.payment_label || r.payment_method)}</td>
             <td><strong style="color:${atkColor}">${atkLbl}</strong></td>
             <td style="white-space:nowrap">
+              <button type="button" class="btn btn-ghost btn-sm kuponet-act-view" data-id="${esc(r.id)}">Preview</button>
+              <button type="button" class="btn btn-primary btn-sm kuponet-act-copy" data-id="${esc(r.id)}">Printo Kopje</button>
               <button type="button" class="btn btn-ghost btn-sm kuponet-act" data-nuikf="${esc(r.nuikf)}">Anulo</button>
               <button type="button" class="btn btn-ghost btn-sm kuponet-act-ex" data-nuikf="${esc(r.nuikf)}">Ndërrim</button>
               <button type="button" class="btn btn-primary btn-sm kuponet-act-ret" data-nuikf="${esc(r.nuikf)}">Kthim</button>
@@ -124,6 +126,16 @@
           </tr>`;
         })
         .join("");
+      body.querySelectorAll(".kuponet-act-view").forEach((b) => {
+        b.addEventListener("click", () => {
+          if (typeof global.hapFiscalReceiptView === "function") global.hapFiscalReceiptView(b.dataset.id);
+        });
+      });
+      body.querySelectorAll(".kuponet-act-copy").forEach((b) => {
+        b.addEventListener("click", () => {
+          if (typeof global.frlPrintReceiptCopy === "function") global.frlPrintReceiptCopy(b.dataset.id);
+        });
+      });
       body.querySelectorAll(".kuponet-act").forEach((b) => {
         b.addEventListener("click", () => {
           fillNuikf(b.dataset.nuikf);

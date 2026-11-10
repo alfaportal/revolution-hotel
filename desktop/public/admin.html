@@ -965,6 +965,10 @@
     }
     #paper-product-results button:hover { background: rgba(255, 107, 53, 0.12); }
     #paper-product-results .paper-pick-meta { display: block; font-size: 0.75rem; color: #a0a0b8; margin-top: 2px; }
+    #panel-kuponet-fiskale {
+      align-self: start;
+      margin-top: 0;
+    }
     #panel-kuponet-fiskale .kuponet-toolbar {
       display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;
     }
@@ -1133,16 +1137,26 @@
     }
     #modal-fiscal-receipts .frl-row-actions .btn-frl-view { margin: 0; }
     #modal-fiscal-receipt-view .frv-qr-wrap {
-      margin: 0.5rem 0;
-      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 8px;
     }
     #modal-fiscal-receipt-view .frv-qr-wrap[hidden] { display: none !important; }
+    #modal-fiscal-receipt-view .frv-qr-hint {
+      margin: 0;
+      color: #334155;
+      font-size: 0.82rem;
+      text-align: center;
+    }
     #modal-fiscal-receipt-view .frv-qr-wrap img {
-      max-width: 200px;
-      height: auto;
-      border-radius: 8px;
-      background: #fff;
-      padding: 6px;
+      display: block;
+      width: 150px;
+      height: 150px;
+      image-rendering: pixelated;
     }
     #modal-fiscal-receipts .frl-footer {
       margin-top: 0.75rem;
@@ -1290,31 +1304,47 @@
       width: 5rem;
     }
     #modal-fiscal-receipt-view.table-modal .table-modal-content {
-      background: #1a1a2e;
+      background: #121826;
       color: #e8e8ef;
-      border: 1px solid rgba(255, 107, 53, 0.4);
-      max-width: 420px;
-      width: min(94vw, 420px);
+      border: 1px solid #2a3548;
+      border-radius: 12px;
+      max-width: 560px;
+      width: min(94vw, 560px);
       max-height: 90vh;
       display: flex;
       flex-direction: column;
+      gap: 10px;
+      padding: 16px;
     }
-    #modal-fiscal-receipt-view h2 { color: #fff; margin: 0 0 0.5rem; font-size: 1.05rem; }
-    #modal-fiscal-receipt-view .frv-meta { color: #a0a0b8; font-size: 0.8rem; margin: 0 0 0.65rem; }
+    #modal-fiscal-receipt-view .frv-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    #modal-fiscal-receipt-view h2 { color: #fff; margin: 0; font-size: 1.05rem; }
+    #modal-fiscal-receipt-view .frv-meta { color: #a0a0b8; font-size: 0.8rem; margin: 0; }
     #modal-fiscal-receipt-view .frv-body {
-      background: #0d0d14;
-      border: 1px solid #2e2e45;
+      margin: 0;
+      background: #0f172a;
+      border: 1px solid #2a3548;
       border-radius: 8px;
-      padding: 0.85rem 0.75rem;
+      padding: 12px;
       overflow: auto;
-      max-height: min(60vh, 520px);
-      font-family: ui-monospace, "Cascadia Mono", "Consolas", "Courier New", monospace;
-      font-size: 12px;
+      max-height: 48vh;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.78rem;
       line-height: 1.35;
-      white-space: pre-wrap;
-      color: #e8e8ef;
+      white-space: pre;
+      color: #e2e8f0;
     }
-    #modal-fiscal-receipt-view .frv-actions { margin-top: 0.75rem; text-align: right; }
+    #modal-fiscal-receipt-view .frv-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0;
+      text-align: left;
+    }
 
     /* HAPI 7 — Kupon korrigjues */
     #btn-kupon-korrigjues {
@@ -1858,6 +1888,38 @@
     #modal-purchase .purchase-inv-desc-cell select,
     #modal-receipt-scan .receipt-scan-desc-cell input {
       min-width: 0;
+    }
+    #modal-purchase table.inv-lines.purchase-inv-lines {
+      table-layout: auto;
+      min-width: 1080px;
+    }
+    #modal-purchase table.inv-lines.purchase-inv-lines td {
+      overflow: visible;
+    }
+    #modal-purchase table.inv-lines.purchase-inv-lines th:nth-child(2),
+    #modal-purchase table.inv-lines.purchase-inv-lines td:nth-child(2) {
+      width: 15rem;
+      min-width: 15rem;
+    }
+    #modal-purchase table.inv-lines.purchase-inv-lines input,
+    #modal-purchase table.inv-lines.purchase-inv-lines select {
+      min-height: 44px !important;
+      font-size: 1rem !important;
+      padding: 0.4rem 0.5rem !important;
+      touch-action: manipulation;
+    }
+    #modal-purchase .purchase-form-field input,
+    #modal-purchase .purchase-form-field select,
+    #modal-purchase #btn-purchase-add-line,
+    #modal-purchase .product-cat-tab {
+      min-height: 44px;
+      font-size: 1rem;
+      touch-action: manipulation;
+    }
+    #modal-purchase .purchase-line-remove-inline {
+      min-height: 44px !important;
+      min-width: 36px;
+      font-size: 1.15rem;
     }
     .receipt-scan-warnings {
       margin-top: 0.5rem;
@@ -2581,6 +2643,7 @@
     <nav class="admin-tabbar" id="tabs">
       <button type="button" class="admin-tab-btn active" data-panel="pasqyra">Pasqyra</button>
       <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
+      <button type="button" class="admin-tab-btn" data-panel="importo-produkte">Importo Produkte</button>
       <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
       <button type="button" class="admin-tab-btn" data-panel="tavolinat">Tavolinat</button>
       <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
@@ -2909,6 +2972,94 @@
     </section>
 
     <!-- MENUJA / PRODUKTET -->
+    <section id="panel-importo-produkte" class="panel">
+      <style>
+        #panel-importo-produkte .pi-drop { border: 2px dashed #64748b; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; background: rgba(15,23,42,.35); }
+        #panel-importo-produkte .pi-drop-hover, #panel-importo-produkte .pi-drop:focus-visible { border-color: #38bdf8; }
+        #panel-importo-produkte .pi-drop-title { font-weight: 700; margin-bottom: 6px; }
+        #panel-importo-produkte .pi-drop-sub, #panel-importo-produkte .pi-format-hint, #panel-importo-produkte .pi-muted { color: #94a3b8; }
+        #panel-importo-produkte .pi-upload-actions, #panel-importo-produkte .pi-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+        #panel-importo-produkte .pi-browser-overlay { position: fixed; inset: 0; background: rgba(2,6,23,.72); z-index: 80; display: flex; align-items: center; justify-content: center; padding: 16px; }
+        #panel-importo-produkte .pi-browser-overlay.hidden { display: none !important; }
+        #panel-importo-produkte .pi-browser-inner { width: min(720px, 96vw); max-height: 80vh; overflow: auto; background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 14px; }
+        #panel-importo-produkte .pi-browser-head, #panel-importo-produkte .pi-browser-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        #panel-importo-produkte .pi-browser-path { flex: 1; min-width: 120px; word-break: break-all; }
+        #panel-importo-produkte .pi-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        #panel-importo-produkte .pi-table th, #panel-importo-produkte .pi-table td, #panel-importo-produkte .pi-browser-list th, #panel-importo-produkte .pi-browser-list td { padding: 8px 10px; border-bottom: 1px solid #334155; text-align: left; }
+        #panel-importo-produkte .pi-table-wrap { overflow: auto; max-height: 52vh; border: 1px solid #334155; border-radius: 8px; margin-top: 8px; }
+        #panel-importo-produkte .pi-new { color: #22c55e; }
+        #panel-importo-produkte .pi-exists { color: #f97316; }
+        #panel-importo-produkte .pi-error { color: #ef4444; }
+        #panel-importo-produkte .pi-progress-track { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+        #panel-importo-produkte .pi-progress-bar { height: 100%; width: 0; background: #22c55e; }
+        #panel-importo-produkte .pi-result { margin-top: 12px; font-weight: 700; color: #22c55e; }
+        #panel-importo-produkte .hidden { display: none !important; }
+        #panel-importo-produkte .pi-browser-row, #panel-importo-produkte .pi-browser-drive-row { cursor: pointer; }
+      </style>
+      <h2 class="purchases-panel-title">Importo Produkte</h2>
+      <div id="pi-step-upload">
+        <div class="pi-drop" id="pi-drop" tabindex="0" role="button">
+          <div class="pi-drop-title">Zvarrit skedarin këtu</div>
+          <div class="pi-drop-sub">.csv, .xlsx, .xls</div>
+          <input type="file" id="pi-file-input" accept=".csv,.xlsx,.xls,text/csv" hidden />
+        </div>
+        <div class="pi-upload-actions">
+          <button type="button" class="btn btn-primary" id="pi-pick-btn">Zgjidh skedarin</button>
+          <button type="button" class="btn btn-ghost" id="pi-usb-scan-btn">Skano USB</button>
+          <button type="button" class="btn btn-ghost" id="pi-sample-btn">Shkarko shembullin</button>
+        </div>
+        <p class="pi-format-hint">Formati: barcode, name, price, category, stock</p>
+        <div id="pi-browser-overlay" class="pi-browser-overlay hidden" aria-hidden="true">
+          <div class="pi-browser-inner" role="dialog" aria-labelledby="pi-browser-title">
+            <div class="pi-browser-head">
+              <h3 id="pi-browser-title">USB / disqe të jashtme</h3>
+              <button type="button" class="btn btn-ghost btn-sm" id="pi-browser-close">✕</button>
+            </div>
+            <div class="pi-browser-nav">
+              <button type="button" class="btn btn-ghost btn-sm" id="pi-browser-up" hidden>⬆ Kthehu</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="pi-browser-drives" hidden>← Kthehu te disqet</button>
+              <span class="pi-browser-path" id="pi-browser-path"></span>
+            </div>
+            <p class="pi-browser-msg hidden" id="pi-browser-msg"></p>
+            <div class="pi-browser-list-wrap">
+              <table class="pi-browser-list">
+                <thead id="pi-browser-thead"><tr><th>Emri</th><th>Madhësia</th><th>Ndryshuar</th></tr></thead>
+                <tbody id="pi-browser-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="msg" id="pi-msg"></p>
+      <div id="pi-step-preview" class="hidden">
+        <div class="pi-toolbar">
+          <p id="pi-summary" class="pi-summary"></p>
+          <label>Për produktet ekzistuese:
+            <select id="pi-global-exists">
+              <option value="update">Përditëso të gjitha</option>
+              <option value="skip">Anashkalo të gjitha</option>
+            </select>
+          </label>
+        </div>
+        <div class="pi-table-wrap">
+          <table class="pi-table">
+            <thead><tr><th>#</th><th>Barkodi</th><th>Emri</th><th>Çmimi</th><th>Kategoria</th><th>Sasia</th><th>Statusi</th><th>Veprim</th></tr></thead>
+            <tbody id="pi-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="pi-progress-wrap" class="hidden pi-progress-wrap"><div class="pi-progress-track"><div id="pi-progress-bar" class="pi-progress-bar"></div></div></div>
+        <button type="button" class="btn btn-primary" id="pi-confirm-btn" disabled>Regjistro të gjitha</button>
+        <p id="pi-result" class="pi-result hidden"></p>
+      </div>
+      <h3 style="margin-top:24px">Historiku i importeve</h3>
+      <div class="pi-table-wrap">
+        <table class="pi-table">
+          <thead><tr><th>Data</th><th>Skedari</th><th>Rreshta</th><th>Të reja</th><th>Përditësuar</th><th>Anashkaluar</th><th>Gabime</th></tr></thead>
+          <tbody id="pi-history-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="panel-menuja" class="panel">
       <div class="purchases-panel-header">
         <div>
@@ -5699,19 +5850,22 @@
     <div id="modal-fiscal-receipt-view" class="table-modal" hidden>
       <div class="table-modal-backdrop" id="frv-backdrop"></div>
       <div class="table-modal-content">
-        <h2 data-fi18n="fiscal_receipt_view_title">Kupon Fiskal</h2>
+        <div class="frv-head">
+          <h2>Print Preview</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="frv-close">Mbyll</button>
+        </div>
         <p class="frv-meta" id="frv-meta"></p>
+        <pre class="frv-body" id="frv-body"></pre>
         <div class="frv-qr-wrap" id="frv-qr-wrap" hidden>
           <p class="frv-qr-hint">Skano QR-në fiskale — nuk kërkohet printim letre</p>
-          <img id="frv-qr" alt="QR kupon fiskal" width="200" height="200" />
+          <img id="frv-qr" alt="QR kupon fiskal" width="150" height="150" />
         </div>
-        <pre class="frv-body" id="frv-body"></pre>
         <div class="frv-actions">
-          <button type="button" class="btn btn-ghost btn-sm" id="frv-print-from-preview" hidden>Printo</button>
+          <button type="button" class="btn btn-primary btn-sm" id="frv-print-from-preview">Printo tani</button>
           <button type="button" class="btn btn-ghost btn-sm" id="frv-email">Dërgo me Email</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="frv-close" data-fi18n="close">Mbyll</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="frv-view-only">Vetëm shiko</button>
         </div>
-        <p id="frv-email-msg" style="margin:0.45rem 0 0"></p>
+        <p id="frv-email-msg" style="margin:0"></p>
       </div>
     </div>
 
@@ -6195,7 +6349,8 @@
         <button type="button" class="btn btn-danger btn-sm" id="staff-modal-delete-btn">Fshi punonjësin</button>
       </div>
       <div id="staff-permissions-block">
-        <h4 style="margin:12px 0 8px;font-size:0.95rem">Lejet e punonjësit</h4>
+        <h4 style="margin:12px 0 4px;font-size:0.95rem">Lejet e panelit</h4>
+        <p class="hint" style="margin:0 0 8px">Vetëm skedat me PO i dalin punonjësit.</p>
         <div id="staff-permissions-list" class="op-permissions-grid"></div>
         <button type="button" class="btn btn-primary btn-sm" id="staff-permissions-save" style="margin-top:8px">Ruaj lejet</button>
       </div>
@@ -6937,6 +7092,7 @@
 
   <script src="/js/hotel-business-date.js?v=1"></script>
   <script src="/js/app.js?v=13"></script>
+  <script src="/js/product-import-ui.js?v=1"></script>
   <script src="/js/hotel-suppliers-ui.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=2"></script>
   <script src="/js/virt-window.js?v=1"></script>
@@ -6951,7 +7107,7 @@
   <script src="/js/fiscal-payment-modal.js?v=3"></script>
   <script src="/js/fiscal-offline-status.js?v=2"></script>
   <script src="/js/hotel-paper-block-tab.js?v=2"></script>
-  <script src="/js/fiscal-receipts-tab.js?v=2"></script>
+  <script src="/js/fiscal-receipts-tab.js?v=3"></script>
   <script src="/js/kontabilisti-atk-ui.js?v=6"></script>
   <script src="/js/hotel-advanced-reports-ui.js?v=1"></script>
   <script src="https://revolution-pos.com/js/qrcode.js?v=1" defer></script>
@@ -7544,6 +7700,7 @@
       document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
       const panel = document.getElementById("panel-" + name);
       if (panel) panel.classList.add("active");
+      if (name === "importo-produkte") window.DyqanetProductImport?.onTabShow?.();
 
       if (name === "cilësimet") {
         adminSettingsMode = true;
@@ -10454,7 +10611,7 @@
         .map((t) => {
           const active = purchaseCatFilter === t.key;
           const val = t.key === null ? "__all__" : encodeURIComponent(t.key);
-          return `<button type="button" class="product-cat-tab${active ? " active" : ""}" data-purchase-cat="${val}" role="tab" aria-selected="${active ? "true" : "false"}" style="flex:0 0 auto;white-space:nowrap;padding:0.32rem 0.7rem;font-size:0.78rem;font-weight:700;border-radius:999px;cursor:pointer;border:1px solid ${active ? "#FF6B35" : "#3a3a55"};background:${active ? "#FF6B35" : "#252538"};color:#fff">${esc(t.label)}</button>`;
+          return `<button type="button" class="product-cat-tab${active ? " active" : ""}" data-purchase-cat="${val}" role="tab" aria-selected="${active ? "true" : "false"}" style="flex:0 0 auto;white-space:nowrap;padding:0.55rem 0.95rem;font-size:1rem;min-height:44px;font-weight:700;border-radius:999px;cursor:pointer;touch-action:manipulation;border:1px solid ${active ? "#FF6B35" : "#3a3a55"};background:${active ? "#FF6B35" : "#252538"};color:#fff">${esc(t.label)}</button>`;
         })
         .join("");
       bar.querySelectorAll("[data-purchase-cat]").forEach((btn) => {
@@ -17184,13 +17341,26 @@
     function pikturoLejet(list) {
       const box = document.getElementById("staff-permissions-list");
       if (!box) return;
-      box.innerHTML = (list || [])
+      const trs = (list || [])
         .map((p) => {
+          const on = Number(p.allowed) === 1;
           const label = String(p.label || p.tab_key).replace(/&/g, "&amp;").replace(/</g, "&lt;");
           const key = String(p.tab_key).replace(/"/g, "");
-          return `<label><input type="checkbox" data-perm-key="${key}"${Number(p.allowed) === 1 ? " checked" : ""} /> ${label}</label>`;
+          const bg = on ? "background:rgba(34,197,94,.18);color:#166534" : "background:rgba(239,68,68,.15);color:#991b1b";
+          return `<tr><td style="padding:8px 10px;border-bottom:1px solid #2e2e45">${label}</td><td style="padding:8px;text-align:center;border-bottom:1px solid #2e2e45"><span data-perm-badge style="display:inline-block;min-width:2.2rem;padding:2px 8px;border-radius:999px;font-weight:800;font-size:12px;${bg}">${on ? "PO" : "JO"}</span></td><td style="padding:8px;text-align:center;border-bottom:1px solid #2e2e45"><input type="checkbox" data-perm-key="${key}"${on ? " checked" : ""}></td></tr>`;
         })
         .join("");
+      box.innerHTML = `<div style="max-height:min(42vh,320px);overflow:auto;border:1px solid #2e2e45;border-radius:10px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:8px 10px">Tab / modul</th><th style="padding:8px">Statusi</th><th style="padding:8px">Leje</th></tr></thead><tbody>${trs}</tbody></table></div>`;
+      box.querySelectorAll("[data-perm-key]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const lab = cb.closest("tr")?.querySelector("[data-perm-badge]");
+          if (!lab) return;
+          const on = cb.checked;
+          lab.textContent = on ? "PO" : "JO";
+          lab.style.background = on ? "rgba(34,197,94,.18)" : "rgba(239,68,68,.15)";
+          lab.style.color = on ? "#166534" : "#991b1b";
+        });
+      });
     }
 
     async function ngarkoLejetEPunonjesit(id) {
@@ -19742,9 +19912,9 @@
       const body = document.getElementById("frv-body");
       const printBtn = document.getElementById("frv-print-from-preview");
       if (!modal || !body) return;
-      frlPreviewPrintId = null;
+      frlPreviewPrintId = String(id);
       window.__frvPreviewId = id;
-      if (printBtn) printBtn.hidden = true;
+      if (printBtn) printBtn.hidden = false;
       body.textContent = fiscalUiT("loading", "Duke ngarkuar…");
       if (meta) meta.textContent = "";
       const emailMsg = document.getElementById("frv-email-msg");
@@ -19832,15 +20002,19 @@
           method: "POST",
           body: "{}",
         });
-        setFrlOpsMsg(
-          "Kopje · NUIKF " +
-            (data.nuikf || "—") +
-            " · " +
-            (data.printed ? "PO" : "JO") +
-            (data.printMessage ? " · " + data.printMessage : "") +
-            "\n(Nuk u krijua kupon i ri fiskal)",
-          !!data.printed || !data.printMessage
-        );
+        const line =
+          "Kopje e kuponit · ID " +
+          (data.receipt_id || id) +
+          "\nNUIKF: " +
+          (data.nuikf || "—") +
+          "\nPrint: " +
+          (data.printed ? "PO" : "JO") +
+          " " +
+          (data.printMessage || "") +
+          "\n(Nuk u krijua kupon i ri fiskal)";
+        setFrlOpsMsg(line, !!data.printed || !data.printMessage);
+        const tabMsg = document.getElementById("kuponet-msg");
+        if (tabMsg) tabMsg.textContent = line;
       } catch (e) {
         setFrlOpsMsg(e.message || "Kopje dështoi", false);
       }
@@ -19881,21 +20055,13 @@
             "<td class=\"" + statusClassFiscalReceipt(r) + "\">" + escHtmlFrl(r.status) + "</td>" +
             '<td class="frl-row-actions">' +
             '<button type="button" class="btn-frl-view" data-frl-preview="' + escHtmlFrl(r.id) + '">Preview</button>' +
-            '<button type="button" class="btn-frl-view" data-frl-print="' + escHtmlFrl(r.id) + '">Print</button>' +
-            '<button type="button" class="btn-frl-view" data-frl-copy="' + escHtmlFrl(r.id) + '">Kopje</button>' +
-            '<button type="button" class="btn-frl-view" data-frl-id="' + escHtmlFrl(r.id) + '">Shiko</button>' +
+            '<button type="button" class="btn-frl-view" data-frl-copy="' + escHtmlFrl(r.id) + '">Printo Kopje</button>' +
             "</td>";
           tbody.appendChild(tr);
         }
         if (countEl) countEl.textContent = String(rows.length) + " kuponë";
-        tbody.querySelectorAll("[data-frl-id]").forEach((btn) => {
-          btn.addEventListener("click", () => hapFiscalReceiptView(btn.getAttribute("data-frl-id")));
-        });
         tbody.querySelectorAll("[data-frl-preview]").forEach((btn) => {
           btn.addEventListener("click", () => frlOpenReceiptPreview(btn.getAttribute("data-frl-preview")));
-        });
-        tbody.querySelectorAll("[data-frl-print]").forEach((btn) => {
-          btn.addEventListener("click", () => frlPrintReceipt(btn.getAttribute("data-frl-print")));
         });
         tbody.querySelectorAll("[data-frl-copy]").forEach((btn) => {
           btn.addEventListener("click", () => frlPrintReceiptCopy(btn.getAttribute("data-frl-copy")));
@@ -19929,6 +20095,9 @@
     document.getElementById("frl-close")?.addEventListener("click", mbyllFiscalReceiptsModal);
     document.getElementById("frv-backdrop")?.addEventListener("click", mbyllFiscalReceiptViewModal);
     document.getElementById("frv-close")?.addEventListener("click", mbyllFiscalReceiptViewModal);
+    document.getElementById("frv-view-only")?.addEventListener("click", mbyllFiscalReceiptViewModal);
+    window.hapFiscalReceiptView = hapFiscalReceiptView;
+    window.frlPrintReceiptCopy = frlPrintReceiptCopy;
     document.getElementById("frv-email")?.addEventListener("click", async () => {
       const id = window.__frvPreviewId;
       const msg = document.getElementById("frv-email-msg");
