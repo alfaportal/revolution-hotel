@@ -110,10 +110,20 @@
     renderTable();
   }
 
+  function showRegistered(result) {
+    const msg = document.getElementById("pi-msg");
+    const existing = result.existing_count != null ? result.existing_count : (result.skipped_count || 0);
+    const text = `${result.new_count || 0} produkte të reja u regjistruan. ${existing} produkte ekzistonin (nuk u prekën). ${result.error_count || 0} gabime.`;
+    if (msg) msg.textContent = text;
+    rows = [];
+    renderTable();
+    loadHistory();
+  }
+
   async function uploadFile(file) {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch("/api/products/import/upload", { method: "POST", body: fd });
+    const r = await fetch("/api/products/import/register", { method: "POST", body: fd });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || r.statusText);
     return j;
@@ -128,10 +138,9 @@
       return;
     }
     try {
-      if (msg) msg.textContent = "Duke lexuar skedarin…";
+      if (msg) msg.textContent = "Duke regjistruar të gjitha…";
       const data = await uploadFile(f);
-      if (msg) msg.textContent = "";
-      applyPreviewData(data);
+      showRegistered(data);
     } catch (e) {
       if (msg) msg.textContent = e.message || String(e);
     }
@@ -148,6 +157,26 @@
     if (upBtn) upBtn.hidden = mode !== "folder" || !parentPath;
     if (drivesBtn) drivesBtn.hidden = mode !== "folder";
     if (upBtn) upBtn.dataset.parent = parentPath || "";
+  }
+
+  function ensureSampleBack() {
+    let el = document.getElementById("pi-sample-back");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "pi-sample-back";
+    el.className = "pi-browser-overlay hidden";
+    el.setAttribute("aria-hidden", "true");
+    el.innerHTML = '<div class="pi-browser-inner"><button type="button" class="btn btn-primary" id="pi-sample-back-btn">← Kthehu</button><p id="pi-sample-back-text" style="margin-top:14px"></p></div>';
+    document.getElementById("panel-importo-produkte")?.appendChild(el);
+    const close = () => {
+      el.classList.add("hidden");
+      el.setAttribute("aria-hidden", "true");
+    };
+    el.querySelector("#pi-sample-back-btn")?.addEventListener("click", close);
+    el.addEventListener("click", (e) => {
+      if (e.target === el) close();
+    });
+    return el;
   }
 
   function openUsbBrowser() {
@@ -259,15 +288,14 @@
     const msg = document.getElementById("pi-msg");
     if (!filePath) return;
     try {
-      if (msg) msg.textContent = "Duke lexuar skedarin…";
-      const data = await apiJson("/api/products/import/upload-from-path", {
+      if (msg) msg.textContent = "Duke regjistruar të gjitha…";
+      const data = await apiJson("/api/products/import/register-from-path", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: filePath }),
       });
-      if (msg) msg.textContent = "";
       closeUsbBrowser();
-      applyPreviewData(data);
+      showRegistered(data);
     } catch (e) {
       if (msg) msg.textContent = e.message || String(e);
     }
@@ -406,8 +434,38 @@
     const confirmBtn = document.getElementById("pi-confirm-btn");
     const tbody = document.getElementById("pi-preview-body");
 
-    sampleBtn?.addEventListener("click", () => {
-      window.location.href = "/api/products/import/sample";
+    sampleBtn?.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const back = ensureSampleBack();
+      const text = document.getElementById("pi-sample-back-text");
+      if (text) text.textContent = "Duke shkarkuar shembullin…";
+      back.classList.remove("hidden");
+      back.setAttribute("aria-hidden", "false");
+      try {
+        const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+        const r = await fetch("/api/products/import/sample?download=1", {
+          headers: {
+            Accept: "text/csv",
+            ...(u?.token ? { "X-Session-Token": u.token } : {}),
+          },
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.gabim || j.error || "Nuk u shkarkua shembulli.");
+        }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "import-produkte-shembull.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        if (text) text.textContent = "Shembulli u shkarkua.";
+      } catch (err) {
+        if (text) text.textContent = err.message || "Nuk u shkarkua shembulli.";
+      }
     });
 
     pickBtn?.addEventListener("click", () => input?.click());

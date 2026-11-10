@@ -1,5 +1,17 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-10 — Importi i barkodeve: vetëm të rejat, shembulli dhe ← Kthehu
+
+USB dhe «Zgjidh skedarin» fusin barkodin që s’ekziston, me emër, çmim, TVSH, kategori dhe stok. Barkodi që ekziston nuk preket. Në ekran: «X produkte të reja u regjistruan. Y produkte ekzistonin (nuk u prekën). Z gabime.» «Shkarko shembullin» nuk e lë panelin. Pas shkarkimit del ← Kthehu.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `product-import-service.js` | Vetëm të rejat; ekzistueset numërohen |
+| `product-import-routes.js` | Një lexim i barkodeve, futje në një hap, shembulli nuk e zëvendëson panelin |
+| `public/js/product-import-ui.js` | Raporti, shkarkimi dhe ← Kthehu |
+
+Provë: 100000 të reja, 1 ekzistonte, 1 gabim, 1.4 s. I vjetri mbeti 9.99 €, TVSH 18, stok 7. I ri: 2.50 €, TVSH 8, stok 4. Herën e dytë 0 të reja, 100001 ekzistonin. Nuk u bë Setup.
+
 ## 2026-11-10 — Ditari, filtri Restoranti / Recepsioni
 
 Kur Ditari filtrohet te Restoranti ose Recepsioni, kutia Kartë tani mblidhet në panel: debit, kredit, mobile (`sms`), çek, transfer, voucher dhe `karte`. Pagesa e përzier mbetet vetëm `card_amount`. «Të gjitha» vjen nga serveri, si më parë. KAFENE nuk e ka këtë filtër.

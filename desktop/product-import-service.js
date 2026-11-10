@@ -15,6 +15,7 @@ const HEADER_ALIASES = {
   price: ["price", "cmimi", "çmimi", "cmim", "çmim"],
   category: ["category", "kategoria", "kategori", "pos_category"],
   stock: ["stock", "sasia", "stok", "stoku", "qty", "quantity"],
+  vat: ["vat", "tvsh", "tvsh_rate", "vat_rate", "norma", "norma_tvsh"],
 };
 
 function buildSampleCsv() {
@@ -35,7 +36,7 @@ function normalizeHeaderCell(v) {
 }
 
 function mapHeaderIndexes(headerRow) {
-  const idx = { barcode: -1, name: -1, price: -1, category: -1, stock: -1 };
+  const idx = { barcode: -1, name: -1, price: -1, category: -1, stock: -1, vat: -1 };
   headerRow.forEach((cell, i) => {
     const h = normalizeHeaderCell(cell);
     for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
@@ -135,6 +136,7 @@ function toDataRows(matrix) {
       priceRaw: pick(idx.price),
       category: pick(idx.category) || "Të tjera",
       stockRaw: pick(idx.stock),
+      vatRaw: pick(idx.vat),
     });
   }
   return data;
@@ -163,6 +165,15 @@ function validateRow(row) {
   if (row.stockRaw !== "" && row.stockRaw != null && !Number.isFinite(stockNum)) {
     return { ok: false, status: "error", error_message: "Sasia nuk është numër" };
   }
+  const vatRaw = String(row.vatRaw == null ? "" : row.vatRaw).trim().replace("%", "").replace(",", ".");
+  let vat = "18";
+  if (vatRaw !== "") {
+    if (vatRaw === "0" || vatRaw === "8" || vatRaw === "18") vat = vatRaw;
+    else if (Number(vatRaw) === 0) vat = "0";
+    else if (Number(vatRaw) === 8) vat = "8";
+    else if (Number(vatRaw) === 18) vat = "18";
+    else return { ok: false, status: "error", error_message: "TVSH e pavlefshme" };
+  }
   return {
     ok: true,
     barcode,
@@ -170,6 +181,7 @@ function validateRow(row) {
     price: Math.round(priceNum * 100) / 100,
     category: String(row.category || "Të tjera").trim() || "Të tjera",
     stock: Number.isFinite(stockNum) && stockNum >= 0 ? stockNum : 0,
+    vat,
   };
 }
 
@@ -222,6 +234,53 @@ function previewFromParsedRows(db, parsedRows) {
   return {
     rows,
     summary: { new: newCount, exists: existsCount, errors },
+  };
+}
+
+async function prepareProductImport(buffer, filename) {
+  const matrix = await parseFileBuffer(buffer, filename);
+  if (!matrix.length) throw new Error("Skedari është bosh");
+  const parsed = toDataRows(matrix);
+  if (!parsed.length) throw new Error("Nuk u gjetën rreshta të dhënash");
+  return { filename: String(filename || ""), parsed };
+}
+
+function registerParsedProducts(db, parsed, filename) {
+  const have = db.listBarcodeSet();
+  const fresh = [];
+  let existing = 0;
+  let errors = 0;
+  for (const raw of parsed) {
+    const v = validateRow(raw);
+    if (!v.ok) {
+      errors += 1;
+      continue;
+    }
+    const key = v.barcode.toLowerCase();
+    if (have.has(key)) {
+      existing += 1;
+      continue;
+    }
+    have.add(key);
+    fresh.push(v);
+  }
+  if (fresh.length) db.insertProductsBatch(fresh);
+  const name = String(filename || "import.csv");
+  db.insertProductImportRecord({
+    filename: name,
+    total_rows: parsed.length,
+    new_count: fresh.length,
+    updated_count: 0,
+    skipped_count: existing,
+    error_count: errors,
+  });
+  return {
+    new_count: fresh.length,
+    existing_count: existing,
+    skipped_count: existing,
+    updated_count: 0,
+    error_count: errors,
+    total_rows: parsed.length,
   };
 }
 
@@ -356,6 +415,8 @@ module.exports = {
   buildUploadPreview,
   confirmProductImport,
   extractMultipartFile,
+  prepareProductImport,
   previewFromParsedRows,
+  registerParsedProducts,
   parseCsvText,
 };
