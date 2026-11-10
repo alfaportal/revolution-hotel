@@ -2605,6 +2605,7 @@
       <button type="button" class="admin-tab-btn" data-panel="cilësimet">Cilësimet</button>
       <button type="button" class="admin-tab-btn" data-panel="licenca">Licenca</button>
       <button type="button" class="admin-tab-btn" data-panel="blerjet">Blerjet</button>
+      <button type="button" class="admin-tab-btn" data-panel="furnitoret">Furnitorët</button>
       <button type="button" class="admin-tab-btn" data-panel="kontabilisti">Kontabilisti</button>
       <button type="button" class="admin-tab-btn" data-panel="ai">AI</button>
     </nav>
@@ -2949,48 +2950,71 @@
       <div class="card">
         <h3 class="card-title">Produktet</h3>
         <form id="forma-produkt-shto" class="form-row" style="margin:0.75rem 0 1rem;flex-wrap:wrap;align-items:flex-end">
+          <div style="flex:1;min-width:160px">
+            <label for="prod-shto-emri">Emri</label>
+            <input type="text" id="prod-shto-emri" placeholder="p.sh. Cappuccino" required autocomplete="off">
+          </div>
           <div style="min-width:140px">
             <label for="prod-shto-kat">Kategoria</label>
             <select id="prod-shto-kat" required></select>
           </div>
-          <div style="flex:1;min-width:160px">
-            <label for="prod-shto-emri">Emri i produktit</label>
-            <input type="text" id="prod-shto-emri" placeholder="p.sh. Cappuccino" required autocomplete="off">
-          </div>
           <div style="flex:0;min-width:110px">
-            <label for="prod-shto-cmim">Çmimi shitjes (€)</label>
+            <label for="prod-shto-cmim">Çmimi (€)</label>
             <input type="number" id="prod-shto-cmim" min="0" step="0.0001" placeholder="2.50" required>
           </div>
-          <div style="flex:0;min-width:140px">
-            <label for="prod-shto-skadence">Skadenca</label>
-            <input type="date" id="prod-shto-skadence" title="Lëreni bosh nëse produkti nuk ka skadencë">
-          </div>
-          <div style="flex:0;min-width:120px">
-            <label for="prod-shto-kosto">Çmimi i blerjes (kosto)</label>
-            <input type="number" id="prod-shto-kosto" min="0" step="0.01" placeholder="0.00" title="Kosto për njësi — për blerjet dhe stokun">
-          </div>
-          <div style="flex:0;min-width:150px">
-            <label for="prod-shto-unit">Njësia ATK</label>
-            <select id="prod-shto-unit" title="Njësia matëse për fiskalizim"></select>
-          </div>
-          <div style="flex:0;min-width:180px">
-            <label for="prod-shto-atk-cat">Kategoria ATK</label>
-            <select id="prod-shto-atk-cat" title="Lloji artikullit për ATK"></select>
-          </div>
-          <div style="flex:0;min-width:160px">
-            <label for="prod-shto-foto">Foto (opsionale, max 5 MB — kompresohet automatikisht)</label>
-            <input type="file" id="prod-shto-foto" accept="image/*">
+          <div style="flex:0;min-width:110px">
+            <label for="prod-shto-vat">TVSH</label>
+            <select id="prod-shto-vat">
+              <option value="18">18%</option>
+              <option value="8">8%</option>
+              <option value="0">0%</option>
+            </select>
           </div>
           <div style="flex:0">
             <label>&nbsp;</label>
-            <button type="submit" class="btn btn-primary">Shto produktin</button>
+            <button type="button" class="btn btn-ghost" id="prod-shto-more">Më shumë ↓</button>
+          </div>
+          <div id="prod-shto-more-box" hidden style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
+            <div style="flex:0;min-width:140px">
+              <label for="prod-shto-skadence">Skadenca</label>
+              <input type="date" id="prod-shto-skadence">
+            </div>
+            <div style="flex:0;min-width:120px">
+              <label for="prod-shto-kosto">Çmimi i blerjes</label>
+              <input type="number" id="prod-shto-kosto" min="0" step="0.01" placeholder="0.00">
+            </div>
+            <div style="flex:0;min-width:140px">
+              <label for="prod-shto-barcode">Barkodi</label>
+              <input type="text" id="prod-shto-barcode" inputmode="numeric" autocomplete="off">
+            </div>
+            <div style="flex:0;min-width:150px">
+              <label for="prod-shto-unit">Njësia</label>
+              <select id="prod-shto-unit"></select>
+            </div>
+            <div style="flex:0;min-width:180px">
+              <label for="prod-shto-atk-cat">Kategoria ATK</label>
+              <select id="prod-shto-atk-cat"></select>
+            </div>
+            <div style="flex:0;min-width:160px">
+              <label for="prod-shto-foto">Foto</label>
+              <input type="file" id="prod-shto-foto" accept="image/*">
+            </div>
+            <div style="flex-basis:100%">
+              <label for="prod-shto-desc">Përshkrimi</label>
+              <input type="text" id="prod-shto-desc" maxlength="2000">
+            </div>
+          </div>
+          <div style="flex:0;display:flex;gap:8px">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn btn-primary">Ruaje</button>
+            <button type="button" class="btn btn-ghost" id="prod-shto-cancel">Anulo</button>
           </div>
         </form>
         <p id="prod-shto-foto-preview-wrap" hidden style="margin:0 0 0.75rem">
           <img id="prod-shto-foto-preview" alt="Parapamje foto produkti" style="max-height:88px;border-radius:8px;border:1px solid var(--ngjyr-border,#334155)">
         </p>
         <div id="prod-shto-status" class="fiscal-save-msg" hidden style="margin:0 0 0.75rem"></div>
-        <button type="button" id="btn-update-vat-all" style="background:#FF6B35;color:#fff;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin:10px 0;">🔄 Përditëso TVSH të gjitha produkteve</button>
+        <button type="button" id="btn-update-vat-all" style="display:none">🔄 Përditëso TVSH të gjitha produkteve</button>
         <div id="msg-update-vat-all" class="fiscal-save-msg" hidden style="margin:0 0 10px"></div>
         <div id="product-cat-filter" class="product-cat-filter" role="tablist" aria-label="Filtro sipas kategorisë"></div>
         <div id="product-grid" class="product-grid"></div>
@@ -3953,6 +3977,57 @@
     </section>
 
     <!-- BLERJET -->
+    <section id="panel-furnitoret" class="panel">
+      <style>
+        #panel-furnitoret .sup-form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+        #panel-furnitoret .sup-form label { display:block; font-size:12px; margin-bottom:4px; }
+        #panel-furnitoret .sup-form input { width:100%; }
+        #sup-pay-card[hidden] { display:none !important; }
+      </style>
+      <div class="purchases-panel-header">
+        <div>
+          <h2 class="purchases-panel-title">Regjistri i furnitorëve</h2>
+          <p class="purchases-panel-sub">Emri, kontakti, NUI, TVSH · borxhi = blerë minus paguar. Pagesat këtu nuk hyjnë te librat ATK.</p>
+        </div>
+      </div>
+      <div class="card settings-card">
+        <div class="sup-form">
+          <input type="hidden" id="sup-id" value="">
+          <div style="flex:1.2;min-width:140px"><label for="sup-name">Emri *</label><input type="text" id="sup-name" placeholder="p.sh. Metro"></div>
+          <div style="flex:0.8;min-width:110px"><label for="sup-phone">Telefoni</label><input type="text" id="sup-phone" placeholder="044…"></div>
+          <div style="flex:1;min-width:140px"><label for="sup-email">Email</label><input type="email" id="sup-email" placeholder="info@…"></div>
+          <div style="flex:1.2;min-width:160px"><label for="sup-address">Adresa</label><input type="text" id="sup-address"></div>
+          <div style="flex:0.7;min-width:110px"><label for="sup-nui">NUI</label><input type="text" id="sup-nui"></div>
+          <div style="flex:0.7;min-width:110px"><label for="sup-vat">Nr. TVSH</label><input type="text" id="sup-vat"></div>
+          <div><label>&nbsp;</label><button type="button" class="btn btn-primary" id="btn-sup-save">Ruaj furnitorin</button></div>
+        </div>
+        <p class="fiscal-save-msg" id="sup-msg"></p>
+      </div>
+      <div class="card settings-card">
+        <div class="card-title">Lista me bilancin</div>
+        <div class="purchases-table-wrap">
+          <table class="dashboard-top-table">
+            <thead><tr><th>Furnitori</th><th>Telefoni</th><th>NUI</th><th>Blerë</th><th>Paguar</th><th>Borxhi</th><th></th></tr></thead>
+            <tbody id="sup-list-body"><tr><td colspan="7" class="purchases-empty">Duke ngarkuar…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card settings-card" id="sup-pay-card" hidden>
+        <div class="card-title" id="sup-pay-title">Pagesë ndaj furnitorit</div>
+        <div class="sup-form">
+          <div style="flex:0.7;min-width:110px"><label for="sup-pay-amount">Shuma €</label><input type="number" id="sup-pay-amount" min="0.01" step="0.01"></div>
+          <div style="flex:0.7;min-width:130px"><label for="sup-pay-date">Data</label><input type="date" id="sup-pay-date"></div>
+          <div style="flex:1;min-width:140px"><label for="sup-pay-note">Shënim</label><input type="text" id="sup-pay-note" placeholder="opsionale"></div>
+          <div><label>&nbsp;</label><button type="button" class="btn btn-primary" id="btn-sup-pay">Regjistro pagesën</button></div>
+        </div>
+        <div class="purchases-table-wrap" style="margin-top:0.75rem">
+          <table class="dashboard-top-table">
+            <thead><tr><th>Data</th><th>Shuma</th><th>Shënim</th></tr></thead>
+            <tbody id="sup-pay-list"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
     <section id="panel-blerjet" class="panel">
       <div class="purchases-panel-header">
         <div>
@@ -6119,6 +6194,12 @@
         <button type="button" class="btn btn-ghost btn-sm" id="staff-modal-card-del-btn" hidden>Hiq kartelën</button>
         <button type="button" class="btn btn-danger btn-sm" id="staff-modal-delete-btn">Fshi punonjësin</button>
       </div>
+      <div id="staff-permissions-block">
+        <h4 style="margin:12px 0 8px;font-size:0.95rem">Lejet e punonjësit</h4>
+        <div id="staff-permissions-list" class="op-permissions-grid"></div>
+        <button type="button" class="btn btn-primary btn-sm" id="staff-permissions-save" style="margin-top:8px">Ruaj lejet</button>
+      </div>
+      </div>
       <button type="button" class="btn btn-ghost" id="staff-modal-close" style="margin-top:0.75rem;width:100%">Mbyll</button>
     </div>
   </div>
@@ -6856,6 +6937,7 @@
 
   <script src="/js/hotel-business-date.js?v=1"></script>
   <script src="/js/app.js?v=13"></script>
+  <script src="/js/hotel-suppliers-ui.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=2"></script>
   <script src="/js/virt-window.js?v=1"></script>
   <script src="/js/vat-smart-mapping.js"></script>
@@ -6874,7 +6956,10 @@
   <script src="/js/hotel-advanced-reports-ui.js?v=1"></script>
   <script src="https://revolution-pos.com/js/qrcode.js?v=1" defer></script>
   <script>
-    const user = kerkonHyrje("admin");
+    const sesHyrje = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+    const user = sesHyrje && (sesHyrje.roli === "kamarier" || sesHyrje.roli === "recepsion")
+      ? kerkonHyrje(sesHyrje.roli)
+      : kerkonHyrje("admin");
     if (user) {
 
     /** pako_1 / pako_2 / pako_3 → tier-rank 1–3 (nuk ka Pako 4) */
@@ -7530,6 +7615,7 @@
           .catch((err) => alert(err.message || "Gabim menu"));
       }
       if (name === "blerjet") ngarkoBlerjet();
+      if (name === "furnitoret") window.HotelSuppliers?.load?.().catch((err) => alert(err.message || "Gabim"));
       if (name === "kontabilisti") {
         // Gjithmonë nis me «Ky muaj» që blerjet e fundit të duken (jo vetëm «Sot»)
         applyKontPeriod("muaj").catch((err) => alert(err.message || "Gabim kontabilisti"));
@@ -7548,6 +7634,35 @@
       });
     });
     bindAdminTabDragReorder();
+
+    async function applyWorkerGrantUi() {
+      const u = typeof lexoSesionin === "function" ? lexoSesionin() : null;
+      const worker = u && (u.roli === "kamarier" || u.roli === "recepsion") && u.staff_id;
+      if (!worker) return;
+      document.body.classList.add("worker-grant-mode");
+      let data;
+      try {
+        data = await api(`/api/staff/${u.staff_id}/tab-permissions`);
+      } catch (e) {
+        location.href = "/waiter.html";
+        return;
+      }
+      const allowed = new Set((data.permissions || []).filter((p) => Number(p.allowed) === 1).map((p) => p.tab_key));
+      document.querySelectorAll(".admin-tab-btn[data-panel]").forEach((b) => {
+        const ok = allowed.has(b.dataset.panel);
+        b.hidden = !ok;
+        b.classList.toggle("kasa-top-tab", ok);
+      });
+      const q = new URLSearchParams(location.search).get("tab");
+      const open = q && allowed.has(q) ? q : [...allowed][0];
+      if (!open) {
+        location.href = "/waiter.html";
+        return;
+      }
+      if (typeof switchAdminPanel === "function") switchAdminPanel(open);
+      else if (typeof window.tryOpenAdminPanel === "function") window.tryOpenAdminPanel(open);
+    }
+    applyWorkerGrantUi();
 
     bindHotelTabGates();
 
@@ -9556,24 +9671,36 @@
             <div class="product-card-inner">
               ${productCardHeader(it, true)}
               <div class="product-card-edit-fields">
+                <label>Emri</label>
                 <input type="text" class="menu-in-name" value="${escMenuAttr(it.name)}" placeholder="Emri">
+                <label>Kategoria</label>
                 <select class="menu-in-cat">${catOpts}</select>
+                <label>Çmimi (€)</label>
                 <input type="number" class="menu-in-price" min="0" step="0.0001" value="${formatMenuPriceInput(it.price)}">
-                <input type="number" class="menu-in-stock" min="0" step="1" value="${Number(it.stock_qty ?? 0)}" title="Stoku aktual — ndryshimet regjistrohen për verifikimin e stokut (jo te Kontabilisti)" placeholder="Stoku">
-                <input type="number" class="menu-in-threshold" min="0" step="1" value="${Number(it.low_stock_threshold || 0)}" title="Pragu i stokut të ulët (0 = alarm vetëm kur stoku=0)" placeholder="Prag stoku">
-                <input type="date" class="menu-in-expiry" value="${escMenuAttr(it.expiry_date || "")}" title="Skadenca">
+                <label>TVSH</label>
                 <div class="menu-vat-row">
-                  <select class="menu-in-vat" title="Norma e TVSH-së (vat_category)">${vatOpts}</select>
+                  <select class="menu-in-vat">${vatOpts}</select>
                   <span class="menu-vat-letter" aria-live="polite"></span>
                 </div>
+                <button type="button" class="btn btn-ghost btn-sm menu-more-btn">Më shumë ↓</button>
+                <div class="menu-more-box" hidden>
+                  <label>Barkodi</label>
+                  <input type="text" class="menu-in-barcode" value="${escMenuAttr(it.barcode || "")}">
+                  <label>Stoku</label>
+                  <input type="number" class="menu-in-stock" min="0" step="1" value="${Number(it.stock_qty ?? 0)}">
+                  <label>Pragu</label>
+                  <input type="number" class="menu-in-threshold" min="0" step="1" value="${Number(it.low_stock_threshold || 0)}">
+                  <label>Skadenca</label>
+                  <input type="date" class="menu-in-expiry" value="${escMenuAttr(it.expiry_date || "")}">
+                  <label class="menu-in-desc-label">Përshkrimi</label>
+                  <textarea class="menu-in-desc" rows="3" maxlength="2000">${escMenuAttr(it.description || "")}</textarea>
+                </div>
                 <p class="menu-vat-hint" hidden></p>
-                <label class="menu-in-desc-label">Përmbajtja / Përshkrimi</label>
-                <textarea class="menu-in-desc" rows="3" maxlength="2000" placeholder="p.sh. Salcë domate, mozzarella, speca, proshutë…">${escMenuAttr(it.description || "")}</textarea>
-                <p class="field-hint" style="margin:0.35rem 0 0">Receta: tab-i Receptat.</p>
               </div>
               <div class="product-card-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-save="${it.id}">Ruaje</button>
                 <button type="button" class="btn btn-ghost btn-sm" data-cancel="${it.id}">Anulo</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-print="${it.id}">Printo etiketë</button>
               </div>
             </div>`;
         } else {
@@ -13311,6 +13438,35 @@
       const btn = e.target.closest("button");
       if (!btn) return;
 
+      if (btn.classList.contains("menu-more-btn")) {
+        const box = btn.closest(".product-card")?.querySelector(".menu-more-box");
+        if (!box) return;
+        box.hidden = !box.hidden;
+        btn.textContent = box.hidden ? "Më shumë ↓" : "Më pak ↑";
+        return;
+      }
+
+      if (btn.dataset.print) {
+        const card = btn.closest(".product-card");
+        const barcode = String(card?.querySelector(".menu-in-barcode")?.value || "").trim();
+        const name = String(card?.querySelector(".menu-in-name")?.value || "").trim();
+        const price = card?.querySelector(".menu-in-price")?.value || "";
+        if (!barcode) {
+          alert("Shtoni barkod fillimisht");
+          return;
+        }
+        const w = window.open("", "etikete", "width=360,height=280");
+        if (!w) return;
+        w.document.open();
+        w.document.write("<!DOCTYPE html><title>Etiketë</title><pre id=\"t\" style=\"font:16px monospace\"></pre>");
+        w.document.close();
+        const pre = w.document.getElementById("t");
+        if (pre) pre.textContent = name + "\n" + price + " €\n" + barcode;
+        w.focus();
+        w.print();
+        return;
+      }
+
       if (btn.dataset.edit) {
         menuEditingId = btn.dataset.edit;
         renderProductGrid();
@@ -13335,6 +13491,7 @@
         const expiry_date = card?.querySelector(".menu-in-expiry")?.value || "";
         const vat_category = card?.querySelector(".menu-in-vat")?.value || "18";
         const description = card?.querySelector(".menu-in-desc")?.value?.trim() || "";
+        const barcode = card?.querySelector(".menu-in-barcode")?.value?.trim() || "";
         if (!name || !category) {
           alert("Emri dhe kategoria janë të detyrueshme.");
           return;
@@ -13363,6 +13520,7 @@
               low_stock_threshold,
               vat_category,
               description,
+              barcode,
               expiry_date,
             }),
           });
@@ -13437,6 +13595,20 @@
       if (wrap) wrap.hidden = false;
     });
 
+    document.getElementById("prod-shto-more")?.addEventListener("click", () => {
+      const box = document.getElementById("prod-shto-more-box");
+      const b = document.getElementById("prod-shto-more");
+      if (!box || !b) return;
+      box.hidden = !box.hidden;
+      b.textContent = box.hidden ? "Më shumë ↓" : "Më pak ↑";
+    });
+    document.getElementById("prod-shto-cancel")?.addEventListener("click", () => {
+      document.getElementById("forma-produkt-shto")?.reset();
+      const box = document.getElementById("prod-shto-more-box");
+      const b = document.getElementById("prod-shto-more");
+      if (box) box.hidden = true;
+      if (b) b.textContent = "Më shumë ↓";
+    });
     document.getElementById("forma-produkt-shto")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = String(document.getElementById("prod-shto-emri")?.value || "").trim();
@@ -13470,19 +13642,13 @@
           category,
           price,
           cost_price,
-          vat_category: "18",
+          vat_category: document.getElementById("prod-shto-vat")?.value || "18",
           unit_code: document.getElementById("prod-shto-unit")?.value || "EA",
           category_code: document.getElementById("prod-shto-atk-cat")?.value || "TT",
           expiry_date: document.getElementById("prod-shto-skadence")?.value || "",
+          barcode: document.getElementById("prod-shto-barcode")?.value?.trim() || "",
+          description: document.getElementById("prod-shto-desc")?.value?.trim() || "",
         };
-        if (window.VatSmartMapping) {
-          try {
-            const vat = await VatSmartMapping.resolveVatFromName(name);
-            if (!vat.disputed) {
-              body.vat_category = VatSmartMapping.letterToVatCategory(vat.letter, vat.rate);
-            }
-          } catch { /* TVSH default 18% */ }
-        }
         const created = await api("/api/menu", {
           method: "POST",
           body: JSON.stringify(body),
@@ -17015,6 +17181,47 @@
       stafModalAktual = null;
     }
 
+    function pikturoLejet(list) {
+      const box = document.getElementById("staff-permissions-list");
+      if (!box) return;
+      box.innerHTML = (list || [])
+        .map((p) => {
+          const label = String(p.label || p.tab_key).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+          const key = String(p.tab_key).replace(/"/g, "");
+          return `<label><input type="checkbox" data-perm-key="${key}"${Number(p.allowed) === 1 ? " checked" : ""} /> ${label}</label>`;
+        })
+        .join("");
+    }
+
+    async function ngarkoLejetEPunonjesit(id) {
+      if (!id) return;
+      try {
+        const data = await api(`/api/staff/${id}/tab-permissions`);
+        pikturoLejet(data.permissions || []);
+      } catch (e) {
+        pikturoLejet([]);
+      }
+    }
+
+    document.getElementById("staff-permissions-save")?.addEventListener("click", async () => {
+      const id = stafModalAktual && stafModalAktual.id;
+      if (!id) return;
+      const permissions = [...document.querySelectorAll("#staff-permissions-list [data-perm-key]")].map((el) => ({
+        tab_key: el.dataset.permKey,
+        allowed: el.checked ? 1 : 0,
+      }));
+      try {
+        const data = await api(`/api/staff/${id}/tab-permissions`, {
+          method: "PUT",
+          body: JSON.stringify({ permissions }),
+        });
+        pikturoLejet(data.permissions || permissions);
+        alert("Lejet u ruajtën");
+      } catch (e) {
+        alert(e.message || "Gabim");
+      }
+    });
+
     async function hapModalStafit(s) {
       if (!s) return;
       try {
@@ -17044,6 +17251,7 @@
       refreshStaffModalCloudWaiterUi(s);
       await refreshStaffModalLocalWifiUi(s);
       document.getElementById("modal-staff").hidden = false;
+      ngarkoLejetEPunonjesit(s.id);
     }
 
     document.getElementById("btn-staff-add-toggle").addEventListener("click", () => {

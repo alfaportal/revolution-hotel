@@ -28,6 +28,7 @@ async function lookupOpenFoodFacts(barcode) {
       Accept: "application/json",
       "User-Agent": "RevolutionHOTEL/1.0 (menu barcode lookup)",
     },
+    signal: AbortSignal.timeout(3000),
   });
   if (!res.ok) {
     const err = new Error(`Open Food Facts HTTP ${res.status}`);

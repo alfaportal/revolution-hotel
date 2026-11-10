@@ -7,6 +7,64 @@ function normalizeCouponType(raw) {
   return v === "fiscal" ? "fiscal" : "thermal";
 }
 
+const CARD_PAY_METHODS = new Set([
+  "credit_card",
+  "debit_card",
+  "card",
+  "karte",
+  "kartë",
+  "kartela",
+  "pos",
+]);
+
+function paymentPartLabel(part) {
+  return String(part?.method || part?.payment_method || part?.id || "")
+    .trim()
+    .toLowerCase();
+}
+
+function paymentCouponKind(method, splits) {
+  const parts = Array.isArray(splits)
+    ? splits.filter((p) => Number(p?.amount) > 0)
+    : [];
+  if (parts.some((p) => CARD_PAY_METHODS.has(paymentPartLabel(p)))) return "fiscal";
+  const label = String(method || "cash").trim().toLowerCase();
+  if (CARD_PAY_METHODS.has(label)) return "fiscal";
+  return "thermal";
+}
+
+async function printFiscalPhoneClose(closed, pay, closeTotal) {
+  let fiscalResult = null;
+  let fiscalError = "";
+  try {
+    const fiscalConfig = require("./fiscal/fiscal-config");
+    const fiscalMain = require("./fiscal/fiscal-main");
+    if (!fiscalConfig.isFiscalEnabled()) {
+      fiscalError = "fiskalizimi i fikur";
+    } else if (!(closeTotal > 0)) {
+      fiscalError = "total_amount=0 — nuk mund të fiskalizohet (kontrollo çmimet e artikujve)";
+    } else {
+      fiscalResult = await fiscalMain.processFiscalReceipt(closed.id, pay, {
+        operator_name: closed.waiter_name || "Kamarier",
+        operator_id: "PHONE",
+        total_amount: closeTotal,
+      });
+    }
+  } catch (e) {
+    fiscalError = e.message || String(e);
+    console.warn("[close-print] fiscal processFiscalReceipt:", fiscalError);
+  }
+  return {
+    printed: !!fiscalResult?.printed,
+    skipped: false,
+    reason: fiscalResult?.printed ? "sef_fiscal_only" : "fiscal_not_printed",
+    order_id: closed.id,
+    fiscal_receipt: fiscalResult,
+    fiscal_error: fiscalError || (fiscalResult?.printed ? null : "fiscal_not_printed"),
+    coupon_type: "fiscal",
+  };
+}
+
 function parseOrderItemsSafe(raw) {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === "string") {
@@ -296,6 +354,14 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
       if (closeTotal > 0 && Number(closedOrder.total) !== closeTotal) {
         closedOrder.total = closeTotal;
       }
+      const payKind = paymentCouponKind(pay, opts.paymentSplits || opts.payment_splits);
+      if (payKind === "fiscal") {
+        return printFiscalPhoneClose(
+          { ...closedOrder, total: closeTotal > 0 ? closeTotal : closedOrder.total },
+          pay,
+          closeTotal,
+        );
+      }
       const printResult = await printClosedTableReceipt(db, {
         order: { ...closedOrder, total: closeTotal > 0 ? closeTotal : closedOrder.total },
         receipt,
@@ -335,67 +401,14 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
     closed.total = closeTotal;
   }
 
-  /* SEF ON → processFiscalReceipt (rrit FIS · N + printon kuponin fiskal) */
-  let fiscalResult = null;
-  let fiscalError = "";
-  try {
-    const fiscalConfig = require("./fiscal/fiscal-config");
-    const fiscalMain = require("./fiscal/fiscal-main");
-    if (fiscalConfig.isFiscalEnabled()) {
-      if (closeTotal <= 0) {
-        fiscalError = "total_amount=0 — nuk mund të fiskalizohet (kontrollo çmimet e artikujve)";
-        console.warn("[close-print] cloud close " + tag + " fiscal SKIP:", fiscalError);
-      } else {
-        fiscalResult = await fiscalMain.processFiscalReceipt(
-          closed.id,
-          pay,
-          {
-            operator_name: closed.waiter_name || "Kamarier",
-            operator_id: "PHONE",
-            total_amount: closeTotal,
-          },
-        );
-        console.log("[close-print] cloud close " + tag + " fiscal:", {
-          ok: !!fiscalResult?.ok,
-          printed: !!fiscalResult?.printed,
-          daily_number: fiscalResult?.daily_number,
-          receipt_id: fiscalResult?.fiscal_receipt_id,
-        });
-      }
-    }
-  } catch (e) {
-    fiscalError = e.message || String(e);
-    console.warn("[close-print] fiscal processFiscalReceipt:", fiscalError);
-  }
-
-  let shouldPrintNormal = true;
-  try {
-    const fiscalMain = require("./fiscal/fiscal-main");
-    shouldPrintNormal = fiscalMain.shouldPrintClosingNormalReceipt();
-  } catch {
-    shouldPrintNormal = true;
-  }
-
-  // SEF replace: vetëm fiskal — por nëse fiskali dështon, bëj fallback thermal.
-  if (!shouldPrintNormal && fiscalResult?.printed) {
-    console.log("[close-print] SEF replace — skip kupon normal (cloud close " + tag + ")", {
-      fiscal_printed: true,
+  if (paymentCouponKind(pay, opts.paymentSplits || opts.payment_splits) === "fiscal") {
+    const fiscalOut = await printFiscalPhoneClose(closed, pay, closeTotal);
+    console.log("[close-print] cloud close " + tag + " fiscal:", {
+      printed: !!fiscalOut.printed,
       order_id: closed.id,
+      reason: fiscalOut.reason,
     });
-    return {
-      printed: true,
-      skipped: false,
-      reason: "sef_fiscal_only",
-      order_id: closed.id,
-      fiscal_receipt: fiscalResult,
-    };
-  }
-  if (!shouldPrintNormal && !fiscalResult?.printed) {
-    console.warn("[close-print] SEF fiscal dështoi — fallback thermal " + tag, {
-      error: fiscalError || "fiscal_not_printed",
-      order_id: closed.id,
-      total: closeTotal,
-    });
+    return fiscalOut;
   }
 
   const printResult = await printClosedTableReceipt(db, {
@@ -407,20 +420,19 @@ async function printClosingReceiptIfActiveCloudOrder(db, tableNumber, opts = {})
   console.log("[close-print] cloud close " + tag, {
     printed: !!printResult?.printed,
     order_id: closed.id,
-    fiscal_printed: !!fiscalResult?.printed,
-    fiscal_error: fiscalError || null,
+    coupon_type: "thermal",
     total: closeTotal,
   });
   return {
     ...printResult,
     order_id: closed.id,
-    fiscal_receipt: fiscalResult,
-    fiscal_error: fiscalError || null,
+    coupon_type: "thermal",
   };
 }
 
 module.exports = {
   normalizeCouponType,
+  paymentCouponKind,
   printClosedTableReceipt,
   printClosingReceiptIfActiveCloudOrder,
 };

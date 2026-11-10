@@ -693,6 +693,9 @@ tr:active td { background: #f8fafc; }
 }
 
 .form-row > * { flex: 1; min-width: 120px; }
+#prod-shto-more-box[hidden],
+.menu-more-box[hidden] { display: none !important; }
+#btn-update-vat-all { display: none !important; }
 
 .badge {
   display: inline-block;
@@ -954,3 +957,22 @@ tr:active td { background: #f8fafc; }
   justify-content: center;
   box-sizing: border-box;
 }
+
+.kasa-grant-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kasa-grant-tabs[hidden] { display: none !important; }
+.kasa-top-tab {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #38bdf866;
+  background: #172554;
+  color: #e0f2fe;
+  font-weight: 800;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.kasa-top-tab.active { background: #1d4ed8; }
+.op-permissions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-top: 8px; }
+.op-permissions-grid label { display: flex; gap: 6px; align-items: center; font-size: 0.85rem; }
+body.worker-grant-mode .admin-tab-btn[hidden] { display: none !important; }
+body.worker-grant-mode .admin-tab-btn.kasa-top-tab { display: inline-flex; align-items: center; }

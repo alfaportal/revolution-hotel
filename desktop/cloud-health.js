@@ -12,7 +12,7 @@ const {
 } = require("./cloud-server-url");
 
 const HEALTH_CHECK_MS = 20000;
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 3000;
 /** Pairing / join — kohë për të futur kod + email dhe përgjigje cloud (jo 8s). */
 const TERMINAL_PAIR_TIMEOUT_MS = 2 * 60 * 1000;
 const OUTAGE_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -78,6 +78,11 @@ function onReconnect(fn) {
 }
 
 function requestJsonOnce(method, baseUrl, path, payload, timeoutMs = REQUEST_TIMEOUT_MS, extraHeaders = {}) {
+  const asked = Number(timeoutMs);
+  const n = Number.isFinite(asked) && asked > 0 ? asked : REQUEST_TIMEOUT_MS;
+  const host = String(baseUrl || "");
+  const external = /revolution-pos\.com|railway\.app/i.test(host);
+  const waitMs = external ? Math.min(n, REQUEST_TIMEOUT_MS) : n;
   return new Promise((resolve, reject) => {
     let url;
     try {
@@ -98,7 +103,7 @@ function requestJsonOnce(method, baseUrl, path, payload, timeoutMs = REQUEST_TIM
         path: url.pathname + url.search,
         method,
         headers,
-        timeout: timeoutMs,
+        timeout: waitMs,
       },
       res => {
         let data = "";
@@ -281,7 +286,11 @@ async function requestJsonWithFallback(method, path, payload, options = {}) {
   ) {
     throw new Error("Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.");
   }
-  const timeoutMs = options.timeoutMs || REQUEST_TIMEOUT_MS;
+  const asked = Number(options.timeoutMs);
+  const timeoutMs = Math.min(
+    Number.isFinite(asked) && asked > 0 ? asked : REQUEST_TIMEOUT_MS,
+    REQUEST_TIMEOUT_MS,
+  );
   const extraHeaders = options.headers || {};
   let order = [activeServerUrl, ...CLOUD_SERVER_URLS.filter(u => u !== activeServerUrl)].filter(
     Boolean,

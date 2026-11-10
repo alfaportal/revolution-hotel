@@ -109,6 +109,11 @@ whenReady = async () => {
       : () => {};
   dbReady = true;
   try {
+    require("./hotel-staff-permissions").init(sqlite);
+  } catch (e) {
+    console.warn("[hotel] lejet e punonjësit:", e.message);
+  }
+  try {
     localizeDefaultLayoutNames();
   } catch {
     /* ignore */
@@ -1938,6 +1943,7 @@ const DEFAULT_ADMIN_TAB_ORDER = [
   "cilësimet",
   "licenca",
   "blerjet",
+  "furnitoret",
   "kontabilisti",
   "ai",
 ];
@@ -2854,7 +2860,7 @@ function applySmartVatToAllMenuItems() {
 }
 
 function addMenuItem({
-  name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, operator_name, expiry_date,
+  name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, operator_name, expiry_date, description,
 } = {}) {
   if (!categoryExists(category)) throw new Error("Kategoria nuk ekziston");
   let vat = VAT_CATEGORIES.includes(String(vat_category)) ? String(vat_category) : null;
@@ -2894,6 +2900,12 @@ function addMenuItem({
   }
   if (expiry_date !== undefined) {
     sqlite.prepare("UPDATE menu_items SET expiry_date = ? WHERE id = ?").run(normalizeExpiryDate(expiry_date), id);
+  }
+  if (description !== undefined) {
+    sqlite.prepare("UPDATE menu_items SET description = ? WHERE id = ?").run(
+      String(description || "").trim().slice(0, 2000),
+      id,
+    );
   }
   try {
     const stock = require("./menu-stock-photos").stockPhotoForName(name.trim());
@@ -15352,6 +15364,19 @@ function addSupplierPayment({ supplier_id, invoice_id, amount, paid_at, note } =
   return getSupplierBalance(sid);
 }
 
+function deleteSupplier(id) {
+  const supplier = getSupplier(id);
+  if (!supplier) throw new Error("Furnitori nuk u gjet");
+  sqlite.prepare(`DELETE FROM supplier_payments WHERE supplier_id = ?`).run(supplier.id);
+  try {
+    sqlite.prepare(`UPDATE purchase_invoices SET supplier_id = NULL WHERE supplier_id = ?`).run(supplier.id);
+  } catch {
+    /* kolona e vjetër */
+  }
+  sqlite.prepare(`DELETE FROM suppliers WHERE id = ?`).run(supplier.id);
+  return { ok: true };
+}
+
 function getPurchaseStats30Days() {
   const from = bizDate.addBusinessDays(businessTodayYmd(), -29);
   const row = sqlite.prepare(`
@@ -20248,6 +20273,7 @@ function getVersionInfo() {
     upsertSupplier,
     listSupplierPayments,
     addSupplierPayment,
+    deleteSupplier,
     listPurchases,
     getPurchaseInvoice,
     findPurchaseInvoiceDuplicate,

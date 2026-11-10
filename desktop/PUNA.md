@@ -1,5 +1,11 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-09 — Forma e produktit: 5 fusha + Më shumë
+
+Te Produktet, «Shto» dhe «Ndrysho» tregojnë Emri, Kategoria, Çmimi, TVSH dhe Ruaje / Anulo. Barkodi, stoku, pragu, skadenca dhe përshkrimi hapen me «Më shumë». «Printo etiketë» është pranë Ruaje. Butoni i TVSH-së së përgjithshme është i fshehur. Përshkrimi tani ruhet edhe kur shtohet produkt i ri.
+
+Prova në databazë të re: «pershkrim hotel», pastaj «rihapur hotel», çmim 2, TVSH 18. Databaza e provës u fshi. Databaza e instaluar nuk u prek. Git nuk u prek. Nuk u bë Setup.
+
 ## 2026-11-09 — TVSH 8% te cloud
 
 Katalogu dërgon TVSH-në e produktit (8 ose 18) te cloud, që raporti i pronarit të mos i fusë te 18%. Në PC pas Setup-it të ri + Sinkronizo. Git jo u bë.

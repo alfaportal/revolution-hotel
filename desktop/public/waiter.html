@@ -1025,6 +1025,7 @@
           <div class="waiter-topbar-left">
             <span class="waiter-topbar-greeting">Hyrja,</span>
             <strong id="hdr-kamarier-top">Kamarier</strong>
+            <div id="kasa-grant-tabs" class="kasa-grant-tabs" hidden></div>
           </div>
         </div>
         <span class="app-version-pill" id="waiter-app-version" hidden></span>
@@ -1799,6 +1800,7 @@
 
   <div class="offline-pending-banner offline-pending-banner-foot" id="footer-offline-queue" role="status" aria-live="polite" aria-hidden="true"></div>
   <script src="/js/app.js?v=13"></script>
+  <script src="/js/hotel-worker-tabs.js?v=1"></script>
   <script src="/js/offline-retry-queue.js?v=1"></script>
   <script src="/js/local-staff-events.js?v=1"></script>
   <script src="/js/i18n-client.js"></script>
@@ -4199,16 +4201,17 @@
       startWaiterRealtime();
       const pollReschedulers = [];
       /** fastMs = normal (pa WS); slowMs = backup kur WS është lidhur (~2–3 min). Si KAFENE. */
-      function guardedPoll(fn, fastMs, slowMs) {
+      function guardedPoll(fn, fastMs, slowMs, fixedMs = 0) {
         let busy = false;
         let lastStart = 0;
         let timer = null;
         const reschedule = () => {
           if (timer) clearTimeout(timer);
-          const ms =
-            typeof waiterPollIntervalMs === "function"
+          const ms = fixedMs > 0
+            ? fixedMs
+            : (typeof waiterPollIntervalMs === "function"
               ? waiterPollIntervalMs(fastMs, slowMs)
-              : fastMs;
+              : fastMs);
           timer = setTimeout(tick, ms);
         };
         const tick = async () => {
@@ -4234,7 +4237,7 @@
         pollReschedulers.push(reschedule);
         return reschedule;
       }
-      guardedPoll(ngarkoTavolinat, 6000, 120000);
+      guardedPoll(ngarkoTavolinat, 2000, 2000, 2000);
       guardedPoll(() => {
         if (waiterView === "rooms") return ngarkoDhomatWaiter();
         if (waiterView === "reservations") return ngarkoRezervimetWaiter();
@@ -5220,7 +5223,8 @@
             t.status,
             t.order && t.order.id,
             t.order && t.order.waiter_name,
-            (t.items || []).length,
+            t.order && t.order.total,
+            (t.items || []).map((i) => [i.menu_item_id || i.name, i.quantity, i.price]),
           ]),
         ]),
         pendingIds,
@@ -5255,10 +5259,13 @@
       }
     }
 
+    let tablesLoadSeq = 0;
     async function ngarkoTavolinat(skipOnlinePoll = false) {
+      const seq = ++tablesLoadSeq;
       const msg = document.getElementById("waiter-tables-msg");
       try {
         const layout = await api("/api/tables?layout=1&reservations=1");
+        if (seq !== tablesLoadSeq) return;
         lastTableZones = layout.zones || [];
         lastTablesFlat = lastTableZones.flatMap(z => z.tables || []);
         if (msg) { msg.hidden = true; msg.textContent = ""; }
@@ -6245,12 +6252,12 @@
         totalTavBar.hidden = false;
         const eHuaj = tavolinaAktive?.order && tavolinaAktive.order.waiter_name !== user.emri;
         neTavLista.innerHTML = artikujNeTavoline.map((it, idx) =>
-          `<div class="sent-line">
+          `<label class="sent-line">
+            ${eHuaj ? "" : `<input type="checkbox" data-zhvendos-idx="${idx}" aria-label="Zgjidh">`}
             ${sentLineThumb(it)}
             <span class="sent-line-name">${it.quantity}× ${it.name}</span>
             <span class="sent-line-price">${formatEuro(it.price * it.quantity)}</span>
-            ${eHuaj ? "" : `<button type="button" class="btn btn-ghost" data-hiq-sent="${idx}">Hiq</button>`}
-          </div>`,
+          </label>`,
         ).join("");
         const btnZhvendos = document.getElementById("btn-zhvendos");
         if (btnZhvendos) btnZhvendos.hidden = !!eHuaj;
@@ -6259,6 +6266,8 @@
         neTavWrap.hidden = true;
         totalTavBar.hidden = true;
         neTavLista.innerHTML = "";
+        const btnZhvendos = document.getElementById("btn-zhvendos");
+        if (btnZhvendos) btnZhvendos.hidden = true;
       }
 
       const lista = document.getElementById("lista-porosia");
@@ -6555,9 +6564,12 @@
       const modal = document.getElementById("modal-zhvendos");
       const box = document.getElementById("zhvendos-artikuj");
       const tablesBox = document.getElementById("zhvendos-tavolina");
+      const checked = new Set(
+        [...document.querySelectorAll("#lista-ne-tavoline input:checked")].map((el) => el.dataset.zhvendosIdx),
+      );
       box.innerHTML = artikujNeTavoline.map((it, idx) =>
         `<label style="display:flex;gap:0.4rem;align-items:center;margin:0.25rem 0">
-          <input type="checkbox" data-zhvendos-idx="${idx}">
+          <input type="checkbox" data-zhvendos-idx="${idx}"${checked.has(String(idx)) ? " checked" : ""}>
           <span>${it.quantity}× ${it.name}</span>
         </label>`,
       ).join("");
@@ -6565,11 +6577,9 @@
       modal.hidden = false;
       try {
         const tables = await api("/api/tables?reservations=1");
-        const others = (tables || []).filter(t => t.id !== tavolinaId && (
-          t.status !== "occupied" || !t.order || t.order.waiter_name === user.emri
-        ));
+        const others = (tables || []).filter((t) => t.id !== tavolinaId && t.status === "occupied" && t.order);
         if (!others.length) {
-          tablesBox.textContent = "Nuk ka tavolinë tjetër.";
+          tablesBox.textContent = "Nuk ka tavolinë tjetër të hapur.";
           return;
         }
         tablesBox.innerHTML = others.map(t =>
@@ -6678,34 +6688,42 @@
       if (waiterOnlinePopOpen) renderWaiterOnlinePreview([waiterOnlineOrders[idx] || order]);
     }
 
-    document.getElementById("ndrysho-takeaway-rreshta").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-ndrysho-hiq]");
-      if (!btn) return;
-      ndryshoTakeawayLines.splice(Number(btn.dataset.ndryshoHiq), 1);
-      vizatoNdryshoTakeaway();
-    });
-    document.getElementById("btn-ndrysho-takeaway-shto").addEventListener("click", () => {
-      const sel = document.getElementById("ndrysho-takeaway-menu");
-      const id = Number(sel.value);
-      const item = (menuItems || []).find((it) => Number(it.id) === id);
-      if (!item) return;
-      const prev = ndryshoTakeawayLines.find((it) => Number(it.menu_item_id) === id);
-      if (prev) prev.quantity += 1;
-      else ndryshoTakeawayLines.push({
-        menu_item_id: item.id,
-        name: item.name,
-        price: Number(item.price) || 0,
-        quantity: 1,
+    document.addEventListener("DOMContentLoaded", () => {
+      const rreshta = document.getElementById("ndrysho-takeaway-rreshta");
+      if (rreshta) rreshta.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-ndrysho-hiq]");
+        if (!btn) return;
+        ndryshoTakeawayLines.splice(Number(btn.dataset.ndryshoHiq), 1);
+        vizatoNdryshoTakeaway();
       });
-      vizatoNdryshoTakeaway();
+      const shto = document.getElementById("btn-ndrysho-takeaway-shto");
+      if (shto) shto.addEventListener("click", () => {
+        const sel = document.getElementById("ndrysho-takeaway-menu");
+        if (!sel) return;
+        const id = Number(sel.value);
+        const item = (menuItems || []).find((it) => Number(it.id) === id);
+        if (!item) return;
+        const prev = ndryshoTakeawayLines.find((it) => Number(it.menu_item_id) === id);
+        if (prev) prev.quantity += 1;
+        else ndryshoTakeawayLines.push({
+          menu_item_id: item.id,
+          name: item.name,
+          price: Number(item.price) || 0,
+          quantity: 1,
+        });
+        vizatoNdryshoTakeaway();
+      });
+      const ruaj = document.getElementById("btn-ndrysho-takeaway-ruaj");
+      if (ruaj) ruaj.addEventListener("click", () => {
+        ruajNdryshoTakeaway().catch((err) => alert(err.message || "Nuk u ruajt"));
+      });
+      const mbyllTake = document.getElementById("btn-ndrysho-takeaway-mbyll");
+      if (mbyllTake) mbyllTake.addEventListener("click", () => {
+        const modal = document.getElementById("modal-ndrysho-takeaway");
+        if (modal) modal.hidden = true;
+      });
     });
-    document.getElementById("btn-ndrysho-takeaway-ruaj").addEventListener("click", () => {
-      ruajNdryshoTakeaway().catch((err) => alert(err.message || "Nuk u ruajt"));
-    });
-    document.getElementById("btn-ndrysho-takeaway-mbyll").addEventListener("click", () => {
-      document.getElementById("modal-ndrysho-takeaway").hidden = true;
-    });
-    document.getElementById("btn-waiter-online-edit").addEventListener("click", () => {
+    document.getElementById("btn-waiter-online-edit")?.addEventListener("click", () => {
       const o = (waiterOnlineOrders || [])[0];
       if (o) hapNdryshoTakeaway(o);
     });
@@ -6733,41 +6751,49 @@
       }
     }
 
-    document.getElementById("kuponat-lista").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-riprinto]");
-      if (!btn) return;
-      btn.disabled = true;
-      api(`/api/staff/fiscal/receipts/${btn.dataset.riprinto}/print`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      }).then((res) => {
-        alert(res.printed ? `U riprintua ${res.nuikf || ""}` : (res.printMessage || `Kuponi ${res.nuikf || ""}`));
-      }).catch((err) => {
-        alert(err.message || "Nuk u riprintua");
-      }).finally(() => {
-        btn.disabled = false;
+    document.addEventListener("DOMContentLoaded", () => {
+      const listaKupon = document.getElementById("kuponat-lista");
+      if (listaKupon) listaKupon.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-riprinto]");
+        if (!btn) return;
+        btn.disabled = true;
+        api(`/api/staff/fiscal/receipts/${btn.dataset.riprinto}/print`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }).then((res) => {
+          alert(res.printed ? `U riprintua ${res.nuikf || ""}` : (res.printMessage || `Kuponi ${res.nuikf || ""}`));
+        }).catch((err) => {
+          alert(err.message || "Nuk u riprintua");
+        }).finally(() => {
+          btn.disabled = false;
+        });
+      });
+      const mbyllKupon = document.getElementById("btn-kuponat-mbyll");
+      if (mbyllKupon) mbyllKupon.addEventListener("click", () => {
+        const modal = document.getElementById("modal-kuponat");
+        if (modal) modal.hidden = true;
+      });
+      const mbyllZhv = document.getElementById("btn-zhvendos-mbyll");
+      if (mbyllZhv) mbyllZhv.addEventListener("click", () => {
+        const modal = document.getElementById("modal-zhvendos");
+        if (modal) modal.hidden = true;
+      });
+      const tavZhv = document.getElementById("zhvendos-tavolina");
+      if (tavZhv) tavZhv.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-zhvendos-target]");
+        if (!btn) return;
+        kryejZhvendosjen(btn.dataset.zhvendosTarget);
       });
     });
-    document.getElementById("btn-nav-kuponat").addEventListener("click", () => {
+    document.getElementById("btn-nav-kuponat")?.addEventListener("click", () => {
       hapKuponat().catch((err) => alert(err.message || "Gabim"));
     });
-    document.getElementById("btn-kuponat-mbyll").addEventListener("click", () => {
-      document.getElementById("modal-kuponat").hidden = true;
-    });
 
-    document.getElementById("btn-zhvendos").addEventListener("click", () => {
+    document.getElementById("btn-zhvendos")?.addEventListener("click", () => {
       hapZhvendos().catch(err => shfaqGabim(document.getElementById("gabim-porosi"), err.message || "Gabim"));
     });
-    document.getElementById("btn-zhvendos-mbyll").addEventListener("click", () => {
-      document.getElementById("modal-zhvendos").hidden = true;
-    });
-    document.getElementById("zhvendos-tavolina").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-zhvendos-target]");
-      if (!btn) return;
-      kryejZhvendosjen(btn.dataset.zhvendosTarget);
-    });
 
-    document.getElementById("btn-dergo").addEventListener("click", async () => {
+    document.getElementById("btn-dergo")?.addEventListener("click", async () => {
       const gabimEl = document.getElementById("gabim-porosi");
       shfaqGabim(gabimEl, "");
       commitWaiterPriceEdits();
@@ -6827,7 +6853,7 @@
       }
     });
 
-    document.getElementById("btn-anullo").addEventListener("click", async () => {
+    document.getElementById("btn-anullo")?.addEventListener("click", async () => {
       const gabimEl = document.getElementById("gabim-porosi");
       shfaqGabim(gabimEl, "");
       if (!tavolinaId) return;
@@ -7192,14 +7218,14 @@
       mbyllMePagese(method, { checkout: true, fiscalSkip: true, couponType: "thermal" });
     });
 
-    document.getElementById("btn-mbyll-cash").addEventListener("click", async () => {
+    document.getElementById("btn-mbyll-cash")?.addEventListener("click", async () => {
       const method = window.FiscalPaymentModal
         ? await FiscalPaymentModal.resolvePaymentMethod(api, "cash", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
         : "cash";
       if (method == null) return;
       mbyllMePagese(method);
     });
-    document.getElementById("btn-mbyll-karte").addEventListener("click", async () => {
+    document.getElementById("btn-mbyll-karte")?.addEventListener("click", async () => {
       const method = window.FiscalPaymentModal
         ? await FiscalPaymentModal.resolvePaymentMethod(api, "karte", pricingPreview ? pricingPreview.total : llogaritTotalin(allOrderItemsForPricing()))
         : "karte";

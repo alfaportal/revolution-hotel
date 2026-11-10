@@ -1280,3 +1280,65 @@ body.waiter-screen:has(#ekrani-porosia.active) {
 .menu-item-detail-add:hover {
   background: #e85a28;
 }
+
+#ekrani-porosia #lista-ne-tavoline .sent-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.08rem 0;
+  width: 100%;
+  color: var(--ngjyr-muted, #64748b);
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+#ekrani-porosia #lista-ne-tavoline .sent-line input[type="checkbox"],
+#modal-zhvendos #zhvendos-artikuj input[type="checkbox"] {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 28px;
+  border-radius: 4px;
+}
+
+#ekrani-porosia #lista-ne-tavoline .sent-line-thumb {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  max-height: 28px;
+  flex: 0 0 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  object-fit: cover;
+  display: block;
+}
+
+#ekrani-porosia #lista-ne-tavoline .sent-line-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ekrani-porosia #lista-ne-tavoline .sent-line-price {
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+#ekrani-porosia #lista-ne-tavoline .sent-line .btn {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.72rem;
+}

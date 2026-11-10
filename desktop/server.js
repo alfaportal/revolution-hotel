@@ -27,6 +27,7 @@ try {
   console.warn("[hotel] fiscal-boot:", e.message);
 }
 const db = require("./database");
+const staffTabPerms = require("./hotel-staff-permissions");
 const { isDrinkCategory } = require("./menu-groups");
 
 function menuItemEligibleForRecipe(menuItem) {
@@ -2618,10 +2619,12 @@ function auth(req, res, next) {
 }
 
 function adminOnly(req, res, next) {
-  if (req.session.role !== "admin") {
-    return res.status(403).json({ gabim: "Vetëm admini ka akses." });
+  if (req.session.role === "admin") return next();
+  const worker = req.session.role === "kamarier" || req.session.role === "recepsion";
+  if (worker && req.session.staff_id && staffTabPerms.requestAllowed(req.session.staff_id, req.path, req.method)) {
+    return next();
   }
-  next();
+  return res.status(403).json({ gabim: "Vetëm admini ka akses." });
 }
 
 function waiterOnly(req, res, next) {
@@ -3518,26 +3521,14 @@ app.get("/api/login/online-orders", async (_req, res) => {
   try {
     ensureOnlineOrdersWatcher();
     const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
-    let snap;
-    try {
-      snap = await onlineOrdersWatcher.refreshOnlineOrders(db, printBarTicket);
-    } catch {
-      snap = onlineOrdersWatcher.getOnlineOrdersSnapshot();
-    }
-    let data = cloudSync.buildLoginNotifyFromOrders(db, snap.orders || [], snap);
-    if (typeof cloudSync.isCloudConfigured === "function" && cloudSync.isCloudConfigured(db)) {
-      try {
-        const cloud = await cloudSync.fetchLoginOrderNotify(db);
-        data.connected = !!cloud.connected;
-        const snapTotal = (data.pending || 0) + (data.bar_pending || 0);
-        const cloudTotal = (cloud.pending || 0) + (cloud.bar_pending || 0);
-        if (snapTotal <= 0 && cloudTotal > 0) {
-          data = cloud;
-        }
-      } catch {
-        /* mbet snap lokale */
-      }
-    }
+    const fresh = onlineOrdersWatcher.refreshOnlineOrders(db, printBarTicket);
+    const snap = await Promise.race([
+      fresh.catch(() => onlineOrdersWatcher.getOnlineOrdersSnapshot()),
+      new Promise((resolve) => {
+        setTimeout(() => resolve(onlineOrdersWatcher.getOnlineOrdersSnapshot()), 3000);
+      }),
+    ]);
+    const data = cloudSync.buildLoginNotifyFromOrders(db, snap?.orders || [], snap || {});
     res.json({
       ok: data.ok !== false,
       connected: data.connected,
@@ -6933,6 +6924,11 @@ app.post("/api/orders", auth, async (req, res) => {
           if (incomingKey === existingKey) {
             const tSkip = db.db.prepare("SELECT number FROM tables WHERE id = ?").get(Number(table_id));
             res.json({ ok: true, id: existing.id, skipped: true });
+            notifyWaitersRealtime("tables", {
+              table_id: Number(table_id),
+              table_number: tSkip?.number || 0,
+              action: "sent",
+            });
             setImmediate(() => {
               try {
                 cloudSync.pushWaiterOrderToCloudBackground(db, existing, {
@@ -6970,8 +6966,13 @@ app.post("/api/orders", auth, async (req, res) => {
         console.warn("[orders] batch:", err.message);
       }
     }
-    res.json({ ok: true, id, batch_no: batchNo, printed_items: deltaItems.length, items: deltaItems });
     const tableNumber = t?.number || 0;
+    res.json({ ok: true, id, batch_no: batchNo, printed_items: deltaItems.length, items: deltaItems });
+    notifyWaitersRealtime("tables", {
+      table_id: Number(table_id),
+      table_number: tableNumber,
+      action: "sent",
+    });
     const slipAt = new Date().toISOString();
     setImmediate(() => {
       try {
@@ -8297,7 +8298,7 @@ app.post("/api/products/update-vat-all", auth, adminOnly, (_req, res) => {
 });
 
 app.post("/api/menu", auth, adminOnly, (req, res) => {
-  const { name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, expiry_date } = req.body;
+  const { name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, expiry_date, description } = req.body;
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e artikullit" });
   try {
     const id = db.addMenuItem({
@@ -8309,6 +8310,7 @@ app.post("/api/menu", auth, adminOnly, (req, res) => {
       low_stock_threshold,
       barcode,
       expiry_date,
+      description,
       auto_vat: auto_vat !== false && auto_vat !== 0 && auto_vat !== "0",
       operator_name: req.session?.emri || "Admin",
     });
@@ -8849,6 +8851,31 @@ app.post("/api/admin/reports/waiter/:shiftId/print", auth, adminOnly, async (req
   }
 });
 
+app.get("/api/staff/:id/tab-permissions", auth, (req, res) => {
+  const id = Number(req.params.id);
+  const worker = req.session.role === "kamarier" || req.session.role === "recepsion";
+  const own = worker && Number(req.session.staff_id) === id;
+  if (req.session.role !== "admin" && !own) {
+    return res.status(403).json({ gabim: "Nuk keni akses." });
+  }
+  try {
+    res.json(staffTabPerms.get(id));
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.put("/api/staff/:id/tab-permissions", auth, (req, res) => {
+  if (req.session.role !== "admin") {
+    return res.status(403).json({ gabim: "Vetëm admini ka akses." });
+  }
+  try {
+    res.json(staffTabPerms.set(req.params.id, req.body?.permissions || []));
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
 app.get("/api/staff", auth, adminOnly, async (_req, res) => {
   const staff = db.getStaffForAdmin();
   const kdsEnabled = canShowKdsStaffLinks();
@@ -9059,6 +9086,16 @@ app.put("/api/suppliers/:id", auth, adminOnly, (req, res) => {
   try {
     const supplier = db.upsertSupplier({ ...(req.body || {}), id: Number(req.params.id) });
     res.json({ ok: true, supplier: db.getSupplierBalance(supplier.id) });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
+});
+
+app.delete("/api/suppliers/:id", auth, adminOnly, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ gabim: "ID e pavlefshme" });
+    res.json(db.deleteSupplier(id));
   } catch (e) {
     res.status(400).json({ gabim: e.message });
   }

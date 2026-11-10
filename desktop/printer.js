@@ -2,7 +2,7 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 const net = require("net");
-const { execSync } = require("child_process");
+const { execSync, execFile } = require("child_process");
 const {
   plainTextFromServerBundle,
   finalizeReceiptText,
@@ -119,41 +119,71 @@ function getWindowsDefaultPrinterName() {
   }
 }
 
+function windowsPrinterListScript() {
+  return [
+    "$def = (Get-CimInstance Win32_Printer -Filter 'Default=True').Name",
+    "Get-Printer | Select-Object Name, PrinterStatus, PortName, DriverName, @{N='IsDefault';E={$_.Name -eq $def}} | ConvertTo-Json -Compress",
+  ].join("; ");
+}
+
+function mapWindowsPrinterRows(out) {
+  const trimmed = String(out || "").trim();
+  if (!trimmed) return [];
+  const data = JSON.parse(trimmed);
+  const arr = Array.isArray(data) ? data : [data];
+  return arr
+    .filter(p => p && p.Name)
+    .map(p => {
+      const info = classifyPrinter(p.Name, p.DriverName, p.PortName);
+      return {
+        name: p.Name,
+        status: mapWinPrinterStatus(p.PrinterStatus),
+        port: p.PortName || "",
+        driver: p.DriverName || "",
+        isDefault: !!p.IsDefault,
+        type: info.type,
+        typeLabel: info.label,
+        suggestedPaper: info.paper,
+      };
+    });
+}
+
 function listWindowsPrintersPowerShell() {
   if (os.platform() !== "win32") return [];
   try {
-    const script = [
-      "$def = (Get-CimInstance Win32_Printer -Filter 'Default=True').Name",
-      "Get-Printer | Select-Object Name, PrinterStatus, PortName, DriverName,",
-      "@{N='IsDefault';E={$_.Name -eq $def}} | ConvertTo-Json -Compress",
-    ].join("; ");
     const out = execSync(
-      `powershell -NoProfile -ExecutionPolicy Bypass -Command "${script}"`,
+      `powershell -NoProfile -ExecutionPolicy Bypass -Command "${windowsPrinterListScript()}"`,
       { encoding: "utf8", timeout: 20000 },
     );
-    const trimmed = out.trim();
-    if (!trimmed) return [];
-    const data = JSON.parse(trimmed);
-    const arr = Array.isArray(data) ? data : [data];
-    return arr
-      .filter(p => p && p.Name)
-      .map(p => {
-        const info = classifyPrinter(p.Name, p.DriverName, p.PortName);
-        return {
-          name: p.Name,
-          status: mapWinPrinterStatus(p.PrinterStatus),
-          port: p.PortName || "",
-          driver: p.DriverName || "",
-          isDefault: !!p.IsDefault,
-          type: info.type,
-          typeLabel: info.label,
-          suggestedPaper: info.paper,
-        };
-      });
+    return mapWindowsPrinterRows(out);
   } catch (e) {
     console.error("listWindowsPrintersPowerShell:", e.message);
     return [];
   }
+}
+
+function listWindowsPrintersPowerShellAsync() {
+  if (os.platform() !== "win32") return Promise.resolve([]);
+  return new Promise((resolve) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", windowsPrinterListScript()],
+      { encoding: "utf8", timeout: 8000, windowsHide: true },
+      (err, stdout) => {
+        if (err) {
+          console.error("listWindowsPrintersPowerShell:", err.message);
+          resolve([]);
+          return;
+        }
+        try {
+          resolve(mapWindowsPrinterRows(stdout));
+        } catch (e) {
+          console.error("listWindowsPrintersPowerShell:", e.message);
+          resolve([]);
+        }
+      },
+    );
+  });
 }
 
 async function listPrintersElectron() {
@@ -184,7 +214,7 @@ async function listPrintersElectron() {
 async function listPrinters() {
   const electronList = await listPrintersElectron();
   if (electronList && electronList.length) return electronList;
-  return listWindowsPrintersPowerShell();
+  return listWindowsPrintersPowerShellAsync();
 }
 
 function isThermalItem(item) {
@@ -202,6 +232,7 @@ function pickAutoPrinter(printers) {
   const items = printers
     .map(p => (typeof p === "string" ? { name: p } : p))
     .filter(p => p.name && !isVirtualPrinter(p.name));
+  if (!items.length) return null;
 
   for (const item of items) {
     if (isThermalItem(item)) return item.name;
