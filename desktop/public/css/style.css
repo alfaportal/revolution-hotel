@@ -693,6 +693,44 @@ tr:active td { background: #f8fafc; }
 }
 
 .form-row > * { flex: 1; min-width: 120px; }
+#forma-produkt-shto.product-add-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.55rem 0.65rem;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+#forma-produkt-shto.product-add-form-row > * {
+  min-width: 0;
+  max-width: 100%;
+}
+#forma-produkt-shto .product-add-break {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+}
+#forma-produkt-shto > .product-add-field {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+#forma-produkt-shto .product-add-field input,
+#forma-produkt-shto .product-add-field select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+#forma-produkt-shto > .product-add-actions {
+  flex: 0 0 auto;
+  min-width: max-content;
+  max-width: none;
+}
+#forma-produkt-shto label { white-space: normal; }
 #prod-shto-more-box[hidden],
 .menu-more-box[hidden] { display: none !important; }
 #btn-update-vat-all { display: none !important; }

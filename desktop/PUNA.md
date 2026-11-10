@@ -1,5 +1,17 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-10 — Produktet: dy rreshta, barkod, kategoritë ATK
+
+Rreshti i regjistrimit te Produktet ndahet në dy rreshta pa rrëshqitje anash. Fusha e parë është Barkod; «Emri i produktit» është veç. Skanimi shkon te Barkod. Nëse barkodi ekziston, plotësohen të dhënat dhe nuk shtohet dy herë. Kategoria ATK tregon 25 kodet. Zgjedhja ruhet te `category_code` dhe `unit_code`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/admin.html` | Forma dy rreshta, Barkod, kërkimi i barkodit |
+| `public/css/style.css` | Pa scroll horizontal |
+| `database.js` | Ruan njësinë dhe kategorinë ATK; barkod i përsëritur nuk futet |
+| `db-engine.js` | Kolonat `unit_code`, `category_code` |
+| `server.js` | POST `/api/menu` i kalon të dyja |
+
 ## 2026-11-10 — Importi i barkodeve: vetëm të rejat, shembulli dhe ← Kthehu
 
 USB dhe «Zgjidh skedarin» fusin barkodin që s’ekziston, me emër, çmim, TVSH, kategori dhe stok. Barkodi që ekziston nuk preket. Në ekran: «X produkte të reja u regjistruan. Y produkte ekzistonin (nuk u prekën). Z gabime.» «Shkarko shembullin» nuk e lë panelin. Pas shkarkimit del ← Kthehu.

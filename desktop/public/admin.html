@@ -3100,20 +3100,24 @@
 
       <div class="card">
         <h3 class="card-title">Produktet</h3>
-        <form id="forma-produkt-shto" class="form-row" style="margin:0.75rem 0 1rem;flex-wrap:wrap;align-items:flex-end">
-          <div style="flex:1;min-width:160px">
-            <label for="prod-shto-emri">Emri</label>
+        <form id="forma-produkt-shto" class="form-row product-add-form-row" style="margin:0.75rem 0 1rem">
+          <div class="product-add-field">
+            <label for="prod-shto-barcode">Barkod</label>
+            <input type="text" id="prod-shto-barcode" inputmode="numeric" autocomplete="off" placeholder="Skano ose shkruaj">
+          </div>
+          <div class="product-add-field">
+            <label for="prod-shto-emri">Emri i produktit</label>
             <input type="text" id="prod-shto-emri" placeholder="p.sh. Cappuccino" required autocomplete="off">
           </div>
-          <div style="min-width:140px">
+          <div class="product-add-field">
             <label for="prod-shto-kat">Kategoria</label>
             <select id="prod-shto-kat" required></select>
           </div>
-          <div style="flex:0;min-width:110px">
+          <div class="product-add-field">
             <label for="prod-shto-cmim">Çmimi (€)</label>
             <input type="number" id="prod-shto-cmim" min="0" step="0.0001" placeholder="2.50" required>
           </div>
-          <div style="flex:0;min-width:110px">
+          <div class="product-add-field">
             <label for="prod-shto-vat">TVSH</label>
             <select id="prod-shto-vat">
               <option value="18">18%</option>
@@ -3121,7 +3125,20 @@
               <option value="0">0%</option>
             </select>
           </div>
-          <div style="flex:0">
+          <div class="product-add-break" aria-hidden="true"></div>
+          <div class="product-add-field">
+            <label for="prod-shto-unit">Njësia ATK</label>
+            <select id="prod-shto-unit"></select>
+          </div>
+          <div class="product-add-field">
+            <label for="prod-shto-atk-cat">Kategoria ATK</label>
+            <select id="prod-shto-atk-cat"></select>
+          </div>
+          <div class="product-add-field">
+            <label for="prod-shto-kosto">Çmimi i blerjes</label>
+            <input type="number" id="prod-shto-kosto" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="product-add-actions">
             <label>&nbsp;</label>
             <button type="button" class="btn btn-ghost" id="prod-shto-more">Më shumë ↓</button>
           </div>
@@ -3129,22 +3146,6 @@
             <div style="flex:0;min-width:140px">
               <label for="prod-shto-skadence">Skadenca</label>
               <input type="date" id="prod-shto-skadence">
-            </div>
-            <div style="flex:0;min-width:120px">
-              <label for="prod-shto-kosto">Çmimi i blerjes</label>
-              <input type="number" id="prod-shto-kosto" min="0" step="0.01" placeholder="0.00">
-            </div>
-            <div style="flex:0;min-width:140px">
-              <label for="prod-shto-barcode">Barkodi</label>
-              <input type="text" id="prod-shto-barcode" inputmode="numeric" autocomplete="off">
-            </div>
-            <div style="flex:0;min-width:150px">
-              <label for="prod-shto-unit">Njësia</label>
-              <select id="prod-shto-unit"></select>
-            </div>
-            <div style="flex:0;min-width:180px">
-              <label for="prod-shto-atk-cat">Kategoria ATK</label>
-              <select id="prod-shto-atk-cat"></select>
             </div>
             <div style="flex:0;min-width:160px">
               <label for="prod-shto-foto">Foto</label>
@@ -3155,10 +3156,12 @@
               <input type="text" id="prod-shto-desc" maxlength="2000">
             </div>
           </div>
-          <div style="flex:0;display:flex;gap:8px">
+          <div class="product-add-actions">
             <label>&nbsp;</label>
-            <button type="submit" class="btn btn-primary">Ruaje</button>
-            <button type="button" class="btn btn-ghost" id="prod-shto-cancel">Anulo</button>
+            <span style="display:flex;gap:8px">
+              <button type="submit" class="btn btn-primary">Ruaje</button>
+              <button type="button" class="btn btn-ghost" id="prod-shto-cancel">Anulo</button>
+            </span>
           </div>
         </form>
         <p id="prod-shto-foto-preview-wrap" hidden style="margin:0 0 0.75rem">
@@ -7768,7 +7771,10 @@
       if (name === "menuja") {
         ngarkoKategoriteUI()
           .then(() => ngarkoMenu())
-          .then(() => applyMenuAiUiState())
+          .then(() => {
+            applyMenuAiUiState();
+            document.getElementById("prod-shto-barcode")?.focus();
+          })
           .catch((err) => alert(err.message || "Gabim menu"));
       }
       if (name === "blerjet") ngarkoBlerjet();
@@ -13776,6 +13782,109 @@
       if (box) box.hidden = true;
       if (b) b.textContent = "Më shumë ↓";
     });
+    function menuItemByBarcode(code) {
+      const needle = String(code || "").trim().replace(/\s+/g, "").toLowerCase();
+      if (!needle) return null;
+      return (menuItemsCache || []).find((p) => String(p.barcode || "").trim().replace(/\s+/g, "").toLowerCase() === needle) || null;
+    }
+    let prodShtoBarcodeApplied = "";
+    let prodShtoFilledId = 0;
+    function resetProdShtoAfterMiss() {
+      const nameEl = document.getElementById("prod-shto-emri");
+      const priceEl = document.getElementById("prod-shto-cmim");
+      const vatEl = document.getElementById("prod-shto-vat");
+      if (nameEl) nameEl.value = "";
+      if (priceEl) priceEl.value = "";
+      if (vatEl) vatEl.value = "18";
+      if (prodShtoFilledId) {
+        const katEl = document.getElementById("prod-shto-kat");
+        const unitEl = document.getElementById("prod-shto-unit");
+        const atkEl = document.getElementById("prod-shto-atk-cat");
+        if (katEl && katEl.options.length) katEl.selectedIndex = 0;
+        if (unitEl) unitEl.value = "EA";
+        if (atkEl) atkEl.value = "TT";
+        prodShtoFilledId = 0;
+      }
+    }
+    function fillProdShtoFromItem(hit) {
+      const nameEl = document.getElementById("prod-shto-emri");
+      const priceEl = document.getElementById("prod-shto-cmim");
+      const katEl = document.getElementById("prod-shto-kat");
+      const vatEl = document.getElementById("prod-shto-vat");
+      const unitEl = document.getElementById("prod-shto-unit");
+      const atkEl = document.getElementById("prod-shto-atk-cat");
+      const costEl = document.getElementById("prod-shto-kosto");
+      if (nameEl) nameEl.value = hit.name || "";
+      if (priceEl) priceEl.value = Number(hit.price || 0).toFixed(2);
+      if (katEl && hit.category) katEl.value = hit.category;
+      const vat = String(hit.vat_category || "18");
+      if (vatEl && [...vatEl.options].some((o) => o.value === vat)) vatEl.value = vat;
+      if (unitEl && hit.unit_code) unitEl.value = hit.unit_code;
+      if (atkEl && hit.category_code) atkEl.value = hit.category_code;
+      if (costEl) costEl.value = Number(hit.cost_price || 0).toFixed(2);
+      prodShtoFilledId = Number(hit.id) || 0;
+      setProdShtoStatus(`Ky barkod ekziston: ${hit.name || ""}`, true);
+    }
+    async function onProdShtoBarcodeReady(code) {
+      const raw = String(code || "").trim().replace(/\s+/g, "");
+      if (!raw || raw === prodShtoBarcodeApplied) return;
+      prodShtoBarcodeApplied = raw;
+      if (!menuItemsCache.length) {
+        try { await ngarkoMenu(); } catch { }
+      }
+      const hit = menuItemByBarcode(raw);
+      const bc = document.getElementById("prod-shto-barcode");
+      if (hit) {
+        fillProdShtoFromItem(hit);
+        bc?.focus();
+        bc?.select();
+        return;
+      }
+      resetProdShtoAfterMiss();
+      setProdShtoStatus("", true);
+      document.getElementById("prod-shto-emri")?.focus();
+    }
+    const prodShtoBarkodEl = document.getElementById("prod-shto-barcode");
+    if (prodShtoBarkodEl) {
+      prodShtoBarkodEl.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        onProdShtoBarcodeReady(prodShtoBarkodEl.value).catch(() => {});
+      });
+      let prodShtoBarkodTimer = 0;
+      prodShtoBarkodEl.addEventListener("input", () => {
+        clearTimeout(prodShtoBarkodTimer);
+        prodShtoBarkodTimer = setTimeout(() => {
+          const v = String(prodShtoBarkodEl.value || "").trim();
+          if (v.length >= 6) onProdShtoBarcodeReady(v).catch(() => {});
+        }, 180);
+      });
+    }
+    const prodShtoNameScan = { buf: "", last: 0 };
+    document.addEventListener("keydown", (e) => {
+      if (!document.getElementById("panel-menuja")?.classList.contains("active")) return;
+      const t = e.target;
+      if (!t || t.id !== "prod-shto-emri") return;
+      const now = Date.now();
+      if (now - prodShtoNameScan.last > 40) prodShtoNameScan.buf = "";
+      prodShtoNameScan.last = now;
+      if (e.key.length !== 1 || e.key < "0" || e.key > "9") {
+        prodShtoNameScan.buf = "";
+        return;
+      }
+      prodShtoNameScan.buf += e.key;
+      if (prodShtoNameScan.buf.length < 2) return;
+      const bc = document.getElementById("prod-shto-barcode");
+      if (!bc) return;
+      e.preventDefault();
+      if (String(t.value || "").endsWith(prodShtoNameScan.buf.slice(0, -1))) {
+        t.value = String(t.value || "").slice(0, -(prodShtoNameScan.buf.length - 1));
+      }
+      bc.value = prodShtoNameScan.buf;
+      bc.focus();
+      prodShtoNameScan.buf = "";
+    }, true);
+
     document.getElementById("forma-produkt-shto")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = String(document.getElementById("prod-shto-emri")?.value || "").trim();
@@ -13798,6 +13907,12 @@
       }
       if (!KATEGORITE?.length) {
         setProdShtoStatus("Shtoni së pari një kategori te «Kategoritë e menusë».", false);
+        return;
+      }
+      const barcodeNow = String(document.getElementById("prod-shto-barcode")?.value || "").trim().replace(/\s+/g, "");
+      const existingBarcode = barcodeNow ? menuItemByBarcode(barcodeNow) : null;
+      if (existingBarcode) {
+        fillProdShtoFromItem(existingBarcode);
         return;
       }
       const btn = e.target.querySelector('button[type="submit"]');
@@ -13832,6 +13947,8 @@
           }
         }
         e.target.reset();
+        prodShtoBarcodeApplied = "";
+        prodShtoFilledId = 0;
         const fotoInput = document.getElementById("prod-shto-foto");
         if (fotoInput) fotoInput.value = "";
         const wrap = document.getElementById("prod-shto-foto-preview-wrap");

@@ -2728,7 +2728,7 @@ function getMenuItems(activeOnly = true, opts = {}) {
   const photoCol = includePhoto
     ? "photo"
     : "CASE WHEN photo IS NOT NULL AND length(trim(COALESCE(photo,''))) > 0 THEN 1 ELSE 0 END AS has_photo";
-  const cols = `id, name, category, price, active, ${photoCol}, COALESCE(stock_qty, 0) AS stock_qty, COALESCE(low_stock_threshold, 0) AS low_stock_threshold, COALESCE(vat_category, '18') AS vat_category, COALESCE(sort_order, 0) AS sort_order, COALESCE(barcode, '') AS barcode, COALESCE(description, '') AS description, COALESCE(expiry_date, '') AS expiry_date`;
+  const cols = `id, name, category, price, active, ${photoCol}, COALESCE(stock_qty, 0) AS stock_qty, COALESCE(low_stock_threshold, 0) AS low_stock_threshold, COALESCE(vat_category, '18') AS vat_category, COALESCE(sort_order, 0) AS sort_order, COALESCE(barcode, '') AS barcode, COALESCE(description, '') AS description, COALESCE(expiry_date, '') AS expiry_date, COALESCE(unit_code, 'EA') AS unit_code, COALESCE(category_code, 'TT') AS category_code`;
   const sql = activeOnly
     ? `SELECT ${cols} FROM menu_items
        WHERE active = 1
@@ -2762,7 +2762,9 @@ function getMenuItemById(id) {
       COALESCE(vat_category, '18') AS vat_category,
       COALESCE(sort_order, 0) AS sort_order,
       COALESCE(barcode, '') AS barcode,
-      COALESCE(description, '') AS description
+      COALESCE(description, '') AS description,
+      COALESCE(unit_code, 'EA') AS unit_code,
+      COALESCE(category_code, 'TT') AS category_code
     FROM menu_items WHERE id = ?
   `).get(Number(id));
   if (!row) return null;
@@ -2908,8 +2910,19 @@ function listProductImportHistory(limit = 50) {
   ).all(lim);
 }
 
+const HOTEL_ATK_CATEGORY_CODES = new Set(["TT","UR","AU","PJA","PAL","DUH","VM","KO","PP","PE","PS","BM","SM","ST","HT","STI","KB","MPM","PMI","SEA","STR","AP","PTI","MN","SHN"]);
+const HOTEL_ATK_UNIT_CODES = new Set(["EA","CP","LTR","GRM","KGB","KGN","TN","MIN","HUR","DAY","UDH","KMT","LM","PK","SET","XBX","PAL"]);
+function normalizeHotelAtkCategory(raw) {
+  const c = String(raw ?? "TT").trim().toUpperCase();
+  return HOTEL_ATK_CATEGORY_CODES.has(c) ? c : "TT";
+}
+function normalizeHotelAtkUnit(raw) {
+  const c = String(raw ?? "EA").trim().toUpperCase();
+  return HOTEL_ATK_UNIT_CODES.has(c) ? c : "EA";
+}
+
 function addMenuItem({
-  name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, operator_name, expiry_date, description,
+  name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, operator_name, expiry_date, description, unit_code, category_code,
 } = {}) {
   if (!categoryExists(category)) throw new Error("Kategoria nuk ekziston");
   let vat = VAT_CATEGORIES.includes(String(vat_category)) ? String(vat_category) : null;
@@ -2929,9 +2942,12 @@ function addMenuItem({
   ).get(category)?.m;
   const sortOrder = Number(maxSort) + 1;
   const barcodeVal = barcode != null ? String(barcode).trim() : "";
+  if (barcodeVal && findMenuItemByBarcode(barcodeVal)) {
+    throw new Error("Ky kod është në përdorim. Gjenero një tjetër ose shkruaj kod tjetër.");
+  }
   const r = sqlite.prepare(
-    "INSERT INTO menu_items (name, category, price, active, vat_category, sort_order, barcode) VALUES (?, ?, ?, 1, ?, ?, ?)",
-  ).run(name.trim(), category, round4(price), vat, sortOrder, barcodeVal || null);
+    "INSERT INTO menu_items (name, category, price, active, vat_category, sort_order, barcode, unit_code, category_code) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)",
+  ).run(name.trim(), category, round4(price), vat, sortOrder, barcodeVal || null, normalizeHotelAtkUnit(unit_code), normalizeHotelAtkCategory(category_code));
   const id = r.lastInsertRowid;
   if (stock_qty != null && Number.isFinite(Number(stock_qty))) {
     setMenuItemStockAbsolute(

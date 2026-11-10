@@ -8298,7 +8298,7 @@ app.post("/api/products/update-vat-all", auth, adminOnly, (_req, res) => {
 });
 
 app.post("/api/menu", auth, adminOnly, (req, res) => {
-  const { name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, expiry_date, description } = req.body;
+  const { name, category, price, vat_category, stock_qty, low_stock_threshold, barcode, auto_vat, expiry_date, description, unit_code, category_code } = req.body;
   if (!name?.trim()) return res.status(400).json({ gabim: "Shkruani emrin e artikullit" });
   try {
     const id = db.addMenuItem({
@@ -8311,6 +8311,8 @@ app.post("/api/menu", auth, adminOnly, (req, res) => {
       barcode,
       expiry_date,
       description,
+      unit_code,
+      category_code,
       auto_vat: auto_vat !== false && auto_vat !== 0 && auto_vat !== "0",
       operator_name: req.session?.emri || "Admin",
     });

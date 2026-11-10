@@ -1336,6 +1336,16 @@ function initSchema() {
   );
 
   migrateAddColumns(
+    "menu-items-atk-codes",
+    "menu_items",
+    [
+      ["unit_code", "TEXT NOT NULL DEFAULT 'EA'"],
+      ["category_code", "TEXT NOT NULL DEFAULT 'TT'"],
+    ],
+    backupCtx,
+  );
+
+  migrateAddColumns(
     "tables-columns",
     "tables",
     [
