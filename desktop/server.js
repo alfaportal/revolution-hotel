@@ -11048,15 +11048,89 @@ function enrichFiscalReceiptRowsForApi(rows) {
   }));
 }
 
+function hotelThermalOrderId(body) {
+  const direct = Number(body?.order_id);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const s = String(body?.nuikf || body?.order_id || "")
+    .trim()
+    .replace(/^#/, "");
+  if (/^\d+$/.test(s)) return Number(s);
+  return 0;
+}
+
+function hotelFiscalReturnMarks() {
+  const marks = new Map();
+  try {
+    const rows = db.db.prepare(`
+      SELECT nuikf, original_nuikf, receipt_type, total_amount, items_json
+      FROM fiscal_receipts
+      WHERE original_nuikf IS NOT NULL AND TRIM(original_nuikf) != ''
+      ORDER BY id ASC
+    `).all();
+    for (const row of rows) {
+      const key = String(row.original_nuikf || "").trim().toUpperCase();
+      if (!key) continue;
+      const list = marks.get(key) || [];
+      list.push(row);
+      marks.set(key, list);
+    }
+  } catch {
+    return marks;
+  }
+  return marks;
+}
+
+function hotelFiscalMarkLabel(list, originalTotal) {
+  if (!list || !list.length) return "";
+  const last = String(list[list.length - 1].receipt_type || "").toLowerCase();
+  if (last === "storno") return "Storno";
+  if (last === "cancel") return "Anuluar";
+  if (last === "exchange") return "Ndërruar";
+  const returned = list
+    .filter((c) => String(c.receipt_type) === "return")
+    .reduce((s, c) => s + Math.abs(Number(c.total_amount) || 0), 0);
+  if (returned + 0.009 >= Math.abs(Number(originalTotal) || 0) && returned > 0) return "Kthyer krejt";
+  let n = 0;
+  for (const c of list) {
+    if (String(c.receipt_type) !== "return") continue;
+    try {
+      const items = JSON.parse(c.items_json || "[]");
+      n += Array.isArray(items) ? items.filter((it) => Number(it.quantity || it.qty) > 0).length : 0;
+    } catch {
+      n += 1;
+    }
+  }
+  if (n === 1) return "Kthyer 1 artikull";
+  if (n > 1) return `Kthyer ${n} artikuj`;
+  return returned > 0 ? "Kthyer krejt" : "";
+}
+
 function handleGetFiscalReceiptsList(req, res) {
   try {
-    if (!fiscalConfig.isFiscalEnabled()) {
-      return res.status(400).json({ gabim: "Fiskalizimi nuk është i aktivizuar" });
-    }
     const limit = Number(req.query.limit) || 500;
+    if (!fiscalConfig.isFiscalEnabled()) {
+      const receipts = db.listHotelSaleCoupons(limit);
+      return res.json({ ok: true, mode: "thermal", count: receipts.length, receipts });
+    }
     const raw = getFiscalReceiptsList().listFiscalReceipts(limit) || [];
-    const receipts = enrichFiscalReceiptRowsForApi(raw);
-    res.json({ ok: true, count: receipts.length, receipts });
+    const marks = hotelFiscalReturnMarks();
+    const receipts = enrichFiscalReceiptRowsForApi(raw).map((r) => {
+      const label = hotelFiscalMarkLabel(marks.get(String(r.nuikf || "").toUpperCase()), r.total_amount);
+      return label ? { ...r, return_status: label, mode: "fiscal" } : { ...r, mode: "fiscal" };
+    });
+    let fiscalSaleIds = new Set();
+    try {
+      fiscalSaleIds = new Set(
+        db.db.prepare("SELECT sale_id FROM fiscal_receipts WHERE sale_id IS NOT NULL").all()
+          .map((r) => Number(r.sale_id))
+          .filter((n) => n > 0),
+      );
+    } catch {
+      fiscalSaleIds = new Set();
+    }
+    const thermal = db.listHotelSaleCoupons(limit).filter((r) => !fiscalSaleIds.has(Number(r.order_id)));
+    const merged = receipts.concat(thermal);
+    res.json({ ok: true, mode: "mixed", count: merged.length, receipts: merged });
   } catch (e) {
     res.status(500).json({ gabim: e.message, error: e.message });
   }
@@ -11220,8 +11294,11 @@ app.get("/api/fiscal/pending", auth, adminOnly, (_req, res) => {
 /** Lookup artikujsh për kthim / ndërrim */
 app.get("/api/fiscal/receipts/lookup", auth, adminOnly, (req, res) => {
   try {
-    if (!fiscalConfig.isFiscalEnabled()) {
-      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    const thermalId = hotelThermalOrderId({ nuikf: req.query.nuikf, order_id: req.query.order_id });
+    if (!fiscalConfig.isFiscalEnabled() || thermalId) {
+      if (!thermalId) throw new Error("Numri i shitjes mungon.");
+      const receipt = db.getHotelSaleForCorrection(thermalId);
+      return res.json({ ok: true, mode: "thermal", receipt });
     }
     const lookupInput = String(req.query.nuikf || req.query.serial_no || "").trim();
     if (!lookupInput) throw new Error("NUIKF ose numri serik mungon");
@@ -11329,12 +11406,63 @@ app.post("/api/fiscal/receipts/:id/print-copy", auth, adminOnly, async (req, res
   }
 });
 
+function hotelCorrectionReason(body, type) {
+  const reason = String(body?.reason || "").trim();
+  if ((type === "storno" || type === "cancel") && !reason) {
+    throw new Error("Shkruani arsyen.");
+  }
+  return reason;
+}
+
+async function processHotelThermalCorrection(req) {
+  const typeRaw = String(req.body?.type || "cancel").toLowerCase();
+  const orderId = hotelThermalOrderId(req.body);
+  if (!orderId) throw new Error("Numri i shitjes mungon.");
+  const reason = hotelCorrectionReason(req.body, typeRaw);
+  const cashier = String(req.body?.operator_name || req.body?.waiter_name || req.session?.emri || "Pronari").trim() || "Pronari";
+  let result;
+  if (typeRaw === "exchange") {
+    result = db.exchangeHotelSale(orderId, req.body?.exchange_lines || req.body?.items || [], reason, cashier);
+  } else if (typeRaw === "return") {
+    result = db.partialRefundHotelSale(orderId, req.body?.items || [], reason || "Kthim malli", cashier);
+  } else {
+    const kind = typeRaw === "storno" ? "storno" : "cancel";
+    result = db.refundHotelSale(orderId, cashier, reason, kind);
+  }
+  const text = db.hotelCorrectionReceiptText(result);
+  let printed = false;
+  let printMessage = "";
+  if (!req.body?.skip_print) {
+    try {
+      await printer.printPlainTextAt(text, db, "bar");
+      printed = true;
+    } catch (e) {
+      printMessage = e.message || "Printimi dështoi";
+    }
+  }
+  return {
+    ok: true,
+    mode: "thermal",
+    fiscal: false,
+    ...result,
+    print_text: text,
+    printed,
+    printMessage,
+    atk_message: "Kupon termik — pa dërgim te ATK",
+  };
+}
+
 /** Storno / cancel / return kupon korrigjues */
 app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
   try {
     const blocked = recordsGuardResponse(res);
     if (blocked) return blocked;
-    if (!fiscalConfig.isFiscalEnabled()) {
+    const thermalId = hotelThermalOrderId(req.body);
+    if (!fiscalConfig.isFiscalEnabled() || thermalId) {
+      if (thermalId) {
+        const payload = await processHotelThermalCorrection(req);
+        return res.json(payload);
+      }
       const returned = db.recordSaleReturn({
         items: req.body?.items || [],
         payment_method: req.body?.payment_method || req.body?.payment || "cash",
@@ -11342,6 +11470,8 @@ app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
         amount: req.body?.amount,
         shift_id: req.body?.shift_id,
         staff_id: req.body?.staff_id,
+        correction_type: String(req.body?.type || "return").toLowerCase(),
+        reason: req.body?.reason,
       });
       return res.json({
         ok: true,
@@ -11375,14 +11505,22 @@ app.post("/api/fiscal/storno", auth, adminOnly, async (req, res) => {
       op
     );
     try {
+      let saleId = 0;
+      try {
+        const orig = db.db.prepare("SELECT sale_id FROM fiscal_receipts WHERE nuikf = ?").get(result.original_nuikf);
+        saleId = Number(orig?.sale_id) || 0;
+      } catch { /* */ }
       db.recordSaleReturn({
-        items: req.body?.items || [],
-        payment_method: req.body?.payment_method || req.body?.payment || "cash",
+        items: req.body?.items || result.items || [],
+        payment_method: req.body?.payment_method || result.payment_method || "cash",
         waiter_name: req.body?.waiter_name || req.session?.emri || "Pronari",
         amount: Math.abs(Number(result.total_amount) || 0) || req.body?.amount,
         shift_id: req.body?.shift_id,
         staff_id: req.body?.staff_id,
         restore_stock: false,
+        correction_type: correctionType,
+        reason: req.body?.reason,
+        ref_order_id: saleId || undefined,
       });
     } catch (retErr) {
       console.warn("[storno] arka:", retErr.message);
@@ -11451,8 +11589,14 @@ app.post("/api/fiscal/exchange", auth, adminOnly, async (req, res) => {
   try {
     const blocked = recordsGuardResponse(res);
     if (blocked) return blocked;
-    if (!fiscalConfig.isFiscalEnabled()) {
-      return res.status(400).json({ ok: false, gabim: "Fiskalizimi nuk është i aktivizuar" });
+    const thermalId = hotelThermalOrderId(req.body);
+    if (!fiscalConfig.isFiscalEnabled() || thermalId) {
+      if (!thermalId) {
+        return res.status(400).json({ ok: false, gabim: "Numri i shitjes mungon." });
+      }
+      req.body = { ...req.body, type: "exchange" };
+      const payload = await processHotelThermalCorrection(req);
+      return res.json(payload);
     }
     const { runFiscalExchange } = require("./fiscal/fiscal-exchange");
     const op = {

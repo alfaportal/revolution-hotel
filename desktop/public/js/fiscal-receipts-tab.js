@@ -106,11 +106,21 @@
         .map((r) => {
           const atkOk = Number(r.sent_to_atk) === 1 || r.status === "Dërguar te ATK";
           const atkColor = atkOk ? "#4ade80" : "#fbbf24";
-          const atkLbl = esc(r.status || (atkOk ? "ATK OK" : "Në pritje"));
+          const atkLbl = esc(r.return_status && (r.receipt_type === "shitje" || r.receipt_type === "regular")
+            ? r.return_status
+            : (r.status || (atkOk ? "ATK OK" : "Në pritje")));
+          const canFix = r.receipt_type === "shitje" || r.receipt_type === "regular";
+          const tip = `${esc(r.receipt_type_label || r.receipt_type)}${canFix && r.return_status ? " · " + esc(r.return_status) : ""}`;
+          const acts = canFix
+            ? `<button type="button" class="btn btn-ghost btn-sm kuponet-act-storno" data-nuikf="${esc(r.nuikf)}">Storno</button>
+              <button type="button" class="btn btn-ghost btn-sm kuponet-act" data-nuikf="${esc(r.nuikf)}">Anulo</button>
+              <button type="button" class="btn btn-ghost btn-sm kuponet-act-ex" data-nuikf="${esc(r.nuikf)}">Ndërrim</button>
+              <button type="button" class="btn btn-primary btn-sm kuponet-act-ret" data-nuikf="${esc(r.nuikf)}">Kthim</button>`
+            : "";
           return `<tr>
             <td>${r.id}</td>
             <td><code>${esc(r.nuikf)}</code></td>
-            <td>${esc(r.receipt_type_label || r.receipt_type)}</td>
+            <td>${tip}</td>
             <td>${esc(r.daily_number)}</td>
             <td>${euro(r.total_amount)}</td>
             <td>${esc((r.fiscal_date || "") + " " + (r.fiscal_time || ""))}</td>
@@ -119,9 +129,7 @@
             <td style="white-space:nowrap">
               <button type="button" class="btn btn-ghost btn-sm kuponet-act-view" data-id="${esc(r.id)}">Preview</button>
               <button type="button" class="btn btn-primary btn-sm kuponet-act-copy" data-id="${esc(r.id)}">Printo Kopje</button>
-              <button type="button" class="btn btn-ghost btn-sm kuponet-act" data-nuikf="${esc(r.nuikf)}">Anulo</button>
-              <button type="button" class="btn btn-ghost btn-sm kuponet-act-ex" data-nuikf="${esc(r.nuikf)}">Ndërrim</button>
-              <button type="button" class="btn btn-primary btn-sm kuponet-act-ret" data-nuikf="${esc(r.nuikf)}">Kthim</button>
+              ${acts}
             </td>
           </tr>`;
         })
@@ -134,6 +142,12 @@
       body.querySelectorAll(".kuponet-act-copy").forEach((b) => {
         b.addEventListener("click", () => {
           if (typeof global.frlPrintReceiptCopy === "function") global.frlPrintReceiptCopy(b.dataset.id);
+        });
+      });
+      body.querySelectorAll(".kuponet-act-storno").forEach((b) => {
+        b.addEventListener("click", () => {
+          fillNuikf(b.dataset.nuikf);
+          doCorrection("storno");
         });
       });
       body.querySelectorAll(".kuponet-act").forEach((b) => {
@@ -181,10 +195,17 @@
           reason: reason || type + " ATK",
         }),
       });
-      setMsg(
-        `OK · ${type}\nOrigjinal: ${data.correction?.original_nuikf}\nI ri: ${data.correction?.nuikf}\n${data.atk_message || ""}`,
-        !!data.atk_sent
-      );
+      if (data.mode === "thermal") {
+        setMsg(
+          `OK · ${data.correction_label || type} · ${data.original_ref || ""} · kthim ${euro(data.refund_total)} · mbetur ${euro(data.remaining_total)}`,
+          true
+        );
+      } else {
+        setMsg(
+          `OK · ${type}\nOrigjinal: ${data.correction?.original_nuikf}\nI ri: ${data.correction?.nuikf}\n${data.atk_message || ""}`,
+          !!data.atk_sent
+        );
+      }
       await loadReceiptsTable(false);
     } catch (e) {
       setMsg(e.message, false);
@@ -213,6 +234,7 @@
       const qty = Number(qtyEl?.value || 0);
       if (qty <= 0) return;
       out.push({
+        menu_item_id: it.menu_item_id,
         name: it.name,
         quantity: qty,
         price: it.unit_price ?? it.price,
@@ -300,10 +322,17 @@
         }),
       });
       closeReturnPanel();
-      setMsg(
-        `Kthim OK · ${result.correction?.nuikf}\n${result.atk_message || ""}`,
-        !!result.atk_sent
-      );
+      if (result.mode === "thermal") {
+        setMsg(
+          `Kthim OK · ${result.original_ref || ""} · kthim ${euro(result.refund_total)} · mbetur ${euro(result.remaining_total)}`,
+          true
+        );
+      } else {
+        setMsg(
+          `Kthim OK · ${result.correction?.nuikf}\n${result.atk_message || ""}`,
+          !!result.atk_sent
+        );
+      }
       await loadReceiptsTable(false);
     } catch (e) {
       setMsg(e.message, false);
@@ -429,10 +458,17 @@
         body: JSON.stringify(body),
       });
       closeExchangePanel();
-      setMsg(
-        `Ndërrim OK · kthim ${data.return_coupon?.nuikf || "—"} · shitje e re ${data.sale_coupon?.nuikf || "—"}`,
-        true
-      );
+      if (data.mode === "thermal") {
+        setMsg(
+          `Ndërrim OK · ${data.original_ref || ""} · mbetur ${euro(data.remaining_total)}`,
+          true
+        );
+      } else {
+        setMsg(
+          `Ndërrim OK · kthim ${data.return_coupon?.nuikf || "—"} · shitje e re ${data.sale_coupon?.nuikf || "—"}`,
+          true
+        );
+      }
       await loadReceiptsTable(false);
     } catch (e) {
       setMsg(e.message, false);
@@ -448,6 +484,7 @@
       if (menu) menu.hidden = !menu.hidden;
     });
     $("kuponet-refresh")?.addEventListener("click", () => loadReceiptsTable(true));
+    $("kuponet-btn-storno")?.addEventListener("click", () => doCorrection("storno"));
     $("kuponet-btn-cancel")?.addEventListener("click", () => doCorrection("cancel"));
     $("kuponet-btn-return")?.addEventListener("click", () => openReturnPanel());
     $("kuponet-btn-exchange")?.addEventListener("click", () => openExchangePanel());

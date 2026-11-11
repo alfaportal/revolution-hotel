@@ -14278,6 +14278,150 @@ function restaurantMoneyForReception(fromYmd, toYmd) {
   return Math.round(Math.max(Number(room?.t) || 0, food) * 100) / 100;
 }
 
+function localDateKey(value) {
+  const raw = String(value || "").trim();
+  const head = raw.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(head) && raw.indexOf("Z") < 0 && raw.indexOf("+") < 0) return head;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function localTodayKey() {
+  const row = sqlite.prepare("SELECT date('now','localtime') AS d").get();
+  return String((row && row.d) || localDateKey(new Date()));
+}
+
+function attachDayOrphans(shiftId, registerId, day, onlyOpen) {
+  if (onlyOpen) {
+    sqlite.prepare(`
+      UPDATE daily_log SET shift_id = ?
+      WHERE shift_id IS NULL AND date = ?
+    `).run(shiftId, day);
+    return;
+  }
+  const reg = Number(registerId) || 0;
+  if (!reg) return;
+  try {
+    sqlite.prepare(`
+      UPDATE daily_log SET shift_id = ?
+      WHERE shift_id IS NULL AND date = ? AND register_id = ?
+    `).run(shiftId, day, reg);
+  } catch {
+    /* */
+  }
+}
+
+function sealShiftForDay(shiftId, closedAt) {
+  const shift = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(shiftId);
+  if (!shift || (shift.closed_at && String(shift.closed_at).trim())) return;
+  const totals = computeShiftTotals(shiftId);
+  const opening = shift.opening_cash != null ? Number(shift.opening_cash) : 0;
+  const cashInTill = Math.round((Number(totals.cash_total) || 0) * 100) / 100;
+  const expected = Math.round((opening + cashInTill) * 100) / 100;
+  sqlite.prepare(`
+    UPDATE waiter_shifts SET
+      closed_at = ?,
+      opening_cash = ?,
+      closing_cash_actual = ?,
+      expected_closing_cash = ?,
+      cash_difference = 0,
+      cash_sales_total = ?,
+      card_sales_total = ?,
+      order_count_total = ?,
+      total_sales = ?,
+      discount_total = ?,
+      closing_reason = ?
+    WHERE id = ?
+  `).run(
+    closedAt,
+    opening,
+    expected,
+    expected,
+    cashInTill,
+    Number(totals.card_total) || 0,
+    Number(totals.order_count) || 0,
+    Number(totals.total_sales) || 0,
+    Number(totals.discount_total) || 0,
+    "Mbyllje automatike e ditës",
+    shiftId,
+  );
+}
+
+function openFreshDayShift(shift, day) {
+  const r = sqlite.prepare(`
+    INSERT INTO waiter_shifts (staff_id, waiter_name, opened_at, opening_cash)
+    VALUES (?, ?, ?, 0)
+  `).run(shift.staff_id, shift.waiter_name, `${day}T00:00:01`);
+  const id = Number(r.lastInsertRowid);
+  try {
+    if (shift.register_id != null) {
+      sqlite.prepare("UPDATE waiter_shifts SET register_id = ? WHERE id = ?").run(shift.register_id, id);
+    }
+  } catch {
+    /* */
+  }
+  try {
+    insertLanOutbox("shift_open", { ref: id });
+  } catch {
+    /* */
+  }
+  return id;
+}
+
+let shiftDayRollBusy = false;
+
+function rollOpenShiftsToLocalDay() {
+  if (!sqlite || shiftDayRollBusy) return;
+  shiftDayRollBusy = true;
+  try {
+    const today = localTodayKey();
+    const openShifts = sqlite.prepare(`
+      SELECT * FROM waiter_shifts
+      WHERE closed_at IS NULL OR TRIM(COALESCE(closed_at, '')) = ''
+    `).all();
+    const onlyOpen = openShifts.length === 1;
+    for (const shift of openShifts) {
+      const openedDay = localDateKey(shift.opened_at);
+      if (!openedDay) continue;
+      if (openedDay >= today) {
+        if (openedDay === today) attachDayOrphans(shift.id, shift.register_id, today, onlyOpen);
+        continue;
+      }
+      sqlite.transaction(() => {
+        const fresh = sqlite.prepare("SELECT * FROM waiter_shifts WHERE id = ?").get(shift.id);
+        if (!fresh || (fresh.closed_at && String(fresh.closed_at).trim())) return;
+        const opened = localDateKey(fresh.opened_at);
+        if (!opened || opened >= today) return;
+        const dayRows = sqlite.prepare(`
+          SELECT DISTINCT date AS d FROM daily_log
+          WHERE shift_id = ? AND date IS NOT NULL AND TRIM(date) != ''
+        `).all(fresh.id);
+        const pastDays = dayRows.map((row) => String(row.d || "")).filter((d) => d && d < today && d !== opened);
+        const todayId = openFreshDayShift(fresh, today);
+        sqlite.prepare(`
+          UPDATE daily_log SET shift_id = ? WHERE shift_id = ? AND date = ?
+        `).run(todayId, fresh.id, today);
+        attachDayOrphans(todayId, fresh.register_id, today, onlyOpen);
+        for (const day of pastDays) {
+          const midId = openFreshDayShift(fresh, day);
+          sqlite.prepare(`
+            UPDATE daily_log SET shift_id = ? WHERE shift_id = ? AND date = ?
+          `).run(midId, fresh.id, day);
+          sealShiftForDay(midId, `${day}T23:59:59`);
+        }
+        attachDayOrphans(fresh.id, fresh.register_id, opened, onlyOpen);
+        sealShiftForDay(fresh.id, `${opened}T23:59:59`);
+      })();
+    }
+  } finally {
+    shiftDayRollBusy = false;
+  }
+}
+
 function getWaiterShiftSummary(staffId, opts = {}) {
   const id = Number(staffId);
   if (!id) return null;
@@ -14685,6 +14829,7 @@ function listShiftReports({ from, to, staff_id, staff_role, include_open } = {})
 }
 
 function shiftMetaForWaiter(waiterName, opts = {}) {
+  rollOpenShiftsToLocalDay();
   const staff = findStaffByName(waiterName);
   if (!staff) return { staff_id: null, shift_id: null };
   const shift = getOpenShift(staff.id);
@@ -18308,10 +18453,11 @@ function addDailyLogEntry({
   checkout_token = null,
   date = null,
   time = null,
+  skipDedup = false,
 }) {
   const oid = order_id != null ? Number(order_id) : null;
   const csid = cloud_sale_id ? String(cloud_sale_id).trim() : null;
-  const dup = findExistingDailyLogForPayment({
+  const dup = skipDedup ? null : findExistingDailyLogForPayment({
     cloudSaleId: csid,
     orderId: oid,
     tableNum: table_number,
@@ -18411,6 +18557,487 @@ function addDailyLogEntry({
   return logId;
 }
 
+function hotelOrderItemKey(it) {
+  const id = Number(it?.menu_item_id || it?.id) || 0;
+  if (id) return `id:${id}`;
+  return `name:${String(it?.name || "").trim().toLowerCase()}`;
+}
+
+function parseHotelOrderItemsFull(itemsJson) {
+  let raw = [];
+  try { raw = JSON.parse(itemsJson || "[]"); } catch { raw = []; }
+  if (!Array.isArray(raw)) return [];
+  return raw.map((it) => {
+    const menu_item_id = Number(it.menu_item_id || it.id) || 0;
+    const quantity = Number(it.quantity ?? it.qty) || 0;
+    const price = Number(it.price ?? it.unit_price) || 0;
+    return {
+      ...it,
+      menu_item_id,
+      id: menu_item_id,
+      quantity,
+      qty: quantity,
+      name: String(it.name || "").trim(),
+      price,
+      unit_price: price,
+    };
+  }).filter((it) => (it.menu_item_id || it.name) && it.quantity > 0);
+}
+
+function hotelCorrectionTypeLabel(type) {
+  const t = String(type || "").toLowerCase();
+  if (t === "cancel") return "anulim";
+  if (t === "storno") return "storno";
+  if (t === "return") return "kthim malli";
+  if (t === "exchange") return "ndërrim";
+  return "";
+}
+
+function hotelReturnedCountLabel(touched, fully, correctionType) {
+  if (fully) {
+    if (correctionType === "storno") return "Storno";
+    if (correctionType === "cancel") return "Anuluar";
+    return "Kthyer krejt";
+  }
+  if (touched === 1) return "Kthyer 1 artikull";
+  if (touched > 1) return `Kthyer ${touched} artikuj`;
+  return "";
+}
+
+function hotelCorrectionLogsForOrder(orderId) {
+  const id = Number(orderId);
+  if (!id) return [];
+  try {
+    return sqlite.prepare(`
+      SELECT id, date, time, items_json, total, status, payment_method, waiter_name,
+             correction_type, void_reason
+      FROM daily_log
+      WHERE ref_order_id = ?
+        AND correction_type IN ('return', 'cancel', 'storno', 'exchange')
+      ORDER BY id ASC
+    `).all(id);
+  } catch {
+    return [];
+  }
+}
+
+function hotelReturnedQtyMap(orderId) {
+  const map = new Map();
+  for (const log of hotelCorrectionLogsForOrder(orderId)) {
+    if (String(log.correction_type || "") === "exchange") continue;
+    for (const it of parseHotelOrderItemsFull(log.items_json)) {
+      const key = hotelOrderItemKey(it);
+      const qty = Math.abs(Number(it.quantity) || 0);
+      map.set(key, (map.get(key) || 0) + qty);
+    }
+  }
+  return map;
+}
+
+function hotelRemainingLines(order) {
+  const cancelled = String(order?.status || "") === "cancelled";
+  const base = parseHotelOrderItemsFull(order?.items_json);
+  const returned = hotelReturnedQtyMap(order?.id);
+  return base.map((it) => {
+    const orig = Number(it.quantity) || 0;
+    const already = cancelled ? orig : (returned.get(hotelOrderItemKey(it)) || 0);
+    const left = cancelled ? 0 : Math.max(0, Math.round((orig - already) * 1000) / 1000);
+    return {
+      ...it,
+      original_quantity: orig,
+      already_returned: Math.round(already * 1000) / 1000,
+      remaining_quantity: left,
+    };
+  });
+}
+
+function hotelSaleReturnStatus(order) {
+  const logs = hotelCorrectionLogsForOrder(order.id);
+  const lastType = String(logs.length ? logs[logs.length - 1].correction_type : "") || "";
+  const lines = hotelRemainingLines({ ...order, status: "completed" });
+  let touched = 0;
+  let fully = lines.length > 0;
+  for (const it of lines) {
+    if ((Number(it.already_returned) || 0) > 0) touched += 1;
+    if ((Number(it.remaining_quantity) || 0) > 1e-9) fully = false;
+  }
+  if (String(order.status) === "cancelled") fully = true;
+  const label = hotelReturnedCountLabel(touched, fully, lastType);
+  if (label) return label;
+  if (logs.some((l) => String(l.correction_type) === "exchange")) return "Ndërruar";
+  return "completed";
+}
+
+function hotelMarkOrder(orderId, status, reason) {
+  const id = Number(orderId);
+  const why = String(reason || "").trim();
+  if (status) {
+    try {
+      sqlite.prepare("UPDATE orders SET status = ?, void_reason = ? WHERE id = ?").run(status, why, id);
+      return;
+    } catch {
+      sqlite.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, id);
+      return;
+    }
+  }
+  if (why) {
+    try { sqlite.prepare("UPDATE orders SET void_reason = ? WHERE id = ?").run(why, id); } catch { /* */ }
+  }
+}
+
+function hotelStampCorrection(logId, kind, reason, orderId) {
+  if (!logId) return;
+  try {
+    sqlite.prepare(
+      "UPDATE daily_log SET correction_type = ?, void_reason = ?, ref_order_id = ? WHERE id = ?",
+    ).run(kind || null, String(reason || "").trim(), Number(orderId) || null, logId);
+  } catch (e) {
+    console.warn("[kthim] shenja:", e.message);
+  }
+}
+
+function hotelRefundPaySplit(order, refundTotal) {
+  const refund = roundDailyLogMoney(Math.abs(Number(refundTotal) || 0));
+  const method = normalizePaymentMethod(order?.payment_method);
+  if (isDailyLogCardMethod(method)) return { cash_amount: 0, card_amount: -refund };
+  return { cash_amount: -refund, card_amount: 0 };
+}
+
+function hotelLoadSaleOrder(orderId) {
+  const id = Number(orderId);
+  if (!id) throw new Error("Numri i shitjes nuk është valid.");
+  const order = sqlite.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+  if (!order) throw new Error("Shitja nuk u gjet.");
+  if (String(order.status) === "active") throw new Error("Kjo porosi nuk është mbyllur.");
+  return order;
+}
+
+function hotelCorrectionSlip(order, lines, refundTotal, remainingTotal, correctionType, reason, cashier) {
+  return {
+    order_id: order.id,
+    original_ref: `#${order.id}`,
+    correction_type: correctionType,
+    correction_label: hotelCorrectionTypeLabel(correctionType),
+    items: lines.map((it) => ({
+      menu_item_id: it.menu_item_id,
+      name: it.name,
+      quantity: Math.abs(Number(it.quantity) || 0),
+      price: Number(it.price || it.unit_price) || 0,
+      side: it.side || "",
+    })),
+    refund_total: roundDailyLogMoney(Math.abs(refundTotal)),
+    remaining_total: roundDailyLogMoney(Math.max(0, remainingTotal)),
+    delta_total: correctionType === "exchange" ? roundDailyLogMoney(refundTotal) : null,
+    payment_method: order.payment_method,
+    reason: String(reason || "").trim(),
+    cashier,
+    mode: "thermal",
+  };
+}
+
+function hotelWriteCorrectionLog(order, cashier, lines, signedTotal, paySplit, kind, reason, shift) {
+  const table = sqlite.prepare("SELECT number FROM tables WHERE id = ?").get(order.table_id);
+  const logId = addDailyLogEntry({
+    table_number: Number(table?.number) || 0,
+    waiter_name: cashier,
+    items_json: JSON.stringify(lines),
+    total: signedTotal,
+    payment_method: order.payment_method || "cash",
+    cash_amount: paySplit.cash_amount,
+    card_amount: paySplit.card_amount,
+    status: "completed",
+    subtotal: signedTotal,
+    staff_id: shift ? shift.staff_id : null,
+    shift_id: shift ? shift.id : null,
+    skipDedup: true,
+  });
+  hotelStampCorrection(logId, kind, reason, order.id);
+  return logId;
+}
+
+function refundHotelSale(orderId, cashierName, reason = "", correctionType = "cancel") {
+  const order = hotelLoadSaleOrder(orderId);
+  if (String(order.status) === "cancelled") throw new Error("Kjo shitje është kthyer tashmë.");
+  const kind = correctionType === "storno" ? "storno" : correctionType === "return" ? "return" : "cancel";
+  const left = hotelRemainingLines(order).filter((it) => (Number(it.remaining_quantity) || 0) > 1e-9);
+  if (!left.length) throw new Error("Kjo shitje është kthyer tashmë.");
+  const logItems = left.map((it) => ({
+    menu_item_id: it.menu_item_id,
+    name: it.name,
+    quantity: it.remaining_quantity,
+    price: Number(it.price) || 0,
+  }));
+  const refundTotal = roundDailyLogMoney(logItems.reduce((s, it) => s + it.price * it.quantity, 0));
+  const cashier = String(cashierName || order.waiter_name || "Pronari").trim() || "Pronari";
+  const reasonStr = String(reason || "").trim();
+  const paySplit = hotelRefundPaySplit(order, refundTotal);
+  sqlite.transaction(() => {
+    rollOpenShiftsToLocalDay();
+    const shift = pickOpenShiftForReturn(cashier, null, null);
+    hotelMarkOrder(order.id, "cancelled", reasonStr);
+    hotelWriteCorrectionLog(order, cashier, logItems, -Math.abs(refundTotal), paySplit, kind, reasonStr, shift);
+    restoreMenuItemStockFromSale(logItems);
+  })();
+  return {
+    ok: true,
+    refunded: true,
+    cancelled: true,
+    ...hotelCorrectionSlip(order, logItems, refundTotal, 0, kind, reasonStr, cashier),
+  };
+}
+
+function partialRefundHotelSale(orderId, refundItems, reason, cashierName) {
+  const order = hotelLoadSaleOrder(orderId);
+  if (String(order.status) === "cancelled") throw new Error("Kjo shitje është anuluar tashmë.");
+  const reqLines = Array.isArray(refundItems) ? refundItems : [];
+  if (!reqLines.length) throw new Error("Zgjidhni të paktën një artikull për kthim.");
+  const leftLines = hotelRemainingLines(order);
+  let refundTotal = 0;
+  const logItems = [];
+  for (const req of reqLines) {
+    const pid = Number(req.menu_item_id || req.id) || 0;
+    const name = String(req.name || "").trim().toLowerCase();
+    const rqty = Number(req.quantity ?? req.qty) || 0;
+    if (rqty <= 0) continue;
+    const line = leftLines.find((l) => (pid && Number(l.menu_item_id) === pid) || (!pid && name && l.name.toLowerCase() === name));
+    if (!line) throw new Error("Artikulli nuk është në këtë shitje.");
+    if (rqty > (Number(line.remaining_quantity) || 0) + 1e-9) {
+      throw new Error(`Sasia e kthimit te «${line.name}» tejkalon të mbeturën.`);
+    }
+    const unit = Number(line.price) || Number(req.price) || 0;
+    refundTotal += unit * rqty;
+    line.remaining_quantity = roundDailyLogMoney((Number(line.remaining_quantity) || 0) - rqty);
+    logItems.push({ menu_item_id: line.menu_item_id, name: line.name, quantity: rqty, price: unit });
+  }
+  if (!logItems.length) throw new Error("Zgjidhni të paktën një artikull për kthim.");
+  refundTotal = roundDailyLogMoney(refundTotal);
+  const remainingTotal = roundDailyLogMoney(
+    leftLines.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.remaining_quantity) || 0), 0),
+  );
+  const fully = leftLines.every((l) => (Number(l.remaining_quantity) || 0) <= 1e-9);
+  const cashier = String(cashierName || order.waiter_name || "Pronari").trim() || "Pronari";
+  const reasonStr = String(reason || "").trim();
+  const paySplit = hotelRefundPaySplit(order, refundTotal);
+  sqlite.transaction(() => {
+    rollOpenShiftsToLocalDay();
+    const shift = pickOpenShiftForReturn(cashier, null, null);
+    if (fully) hotelMarkOrder(order.id, "cancelled", reasonStr);
+    else hotelMarkOrder(order.id, "", reasonStr);
+    hotelWriteCorrectionLog(order, cashier, logItems, -Math.abs(refundTotal), paySplit, "return", reasonStr, shift);
+    restoreMenuItemStockFromSale(logItems);
+  })();
+  return {
+    ok: true,
+    refunded: true,
+    partial: !fully,
+    cancelled: fully,
+    order_total_after: remainingTotal,
+    ...hotelCorrectionSlip(order, logItems, refundTotal, remainingTotal, "return", reasonStr, cashier),
+  };
+}
+
+function exchangeHotelSale(orderId, exchangeLines, reason, cashierName) {
+  const order = hotelLoadSaleOrder(orderId);
+  if (String(order.status) === "cancelled") throw new Error("Kjo shitje është anuluar tashmë.");
+  const reqs = Array.isArray(exchangeLines) ? exchangeLines : [];
+  if (!reqs.length) throw new Error("Zgjidhni artikullin e ri.");
+  const lines = parseHotelOrderItemsFull(order.items_json);
+  const slipItems = [];
+  let delta = 0;
+  const stockBack = [];
+  const stockOut = [];
+  for (const req of reqs) {
+    const qty = Number(req.quantity ?? req.qty) || 0;
+    const newId = Number(req.new_menu_item_id || req.new_item_id) || 0;
+    const oldId = Number(req.menu_item_id || req.old_menu_item_id || req.old_item_id) || 0;
+    const oldName = String(req.name || "").trim().toLowerCase();
+    if (!(qty > 0) || !newId) continue;
+    const oldLine = lines.find((l) => (oldId && Number(l.menu_item_id) === oldId) || (!oldId && oldName && l.name.toLowerCase() === oldName));
+    if (!oldLine) throw new Error("Artikulli i vjetër nuk është në këtë shitje.");
+    if (qty > oldLine.quantity + 1e-9) throw new Error("Sasia e ndërrimit tejkalon shitjen.");
+    const fresh = sqlite.prepare(
+      "SELECT id, name, price, active FROM menu_items WHERE id = ?",
+    ).get(newId);
+    if (!fresh || Number(fresh.active) === 0) throw new Error("Produkti i ri nuk u gjet.");
+    const oldUnit = Number(oldLine.price) || 0;
+    const newUnit = Number(fresh.price) || 0;
+    delta += (newUnit - oldUnit) * qty;
+    oldLine.quantity = roundDailyLogMoney(oldLine.quantity - qty);
+    oldLine.qty = oldLine.quantity;
+    const existingNew = lines.find((l) => Number(l.menu_item_id) === newId && l !== oldLine);
+    if (existingNew && existingNew.quantity > 0) {
+      existingNew.quantity = roundDailyLogMoney(existingNew.quantity + qty);
+      existingNew.qty = existingNew.quantity;
+    } else if (Number(oldLine.menu_item_id) === newId) {
+      oldLine.quantity = roundDailyLogMoney(oldLine.quantity + qty);
+      oldLine.qty = oldLine.quantity;
+    } else {
+      lines.push({
+        menu_item_id: newId,
+        id: newId,
+        name: fresh.name,
+        quantity: qty,
+        qty,
+        price: newUnit,
+        unit_price: newUnit,
+      });
+    }
+    stockBack.push({ menu_item_id: oldLine.menu_item_id, name: oldLine.name, quantity: qty });
+    stockOut.push({ menu_item_id: newId, name: fresh.name, quantity: qty });
+    slipItems.push({ menu_item_id: oldLine.menu_item_id, name: oldLine.name, quantity: -qty, price: oldUnit, side: "out" });
+    slipItems.push({ menu_item_id: newId, name: fresh.name, quantity: qty, price: newUnit, side: "in" });
+  }
+  if (!slipItems.length) throw new Error("Zgjidhni artikullin e ri.");
+  const updated = lines.filter((l) => (Number(l.quantity) || 0) > 1e-9);
+  const newTotal = roundDailyLogMoney(updated.reduce((s, l) => s + (Number(l.price) || 0) * l.quantity, 0));
+  delta = roundDailyLogMoney(delta);
+  const cashier = String(cashierName || order.waiter_name || "Pronari").trim() || "Pronari";
+  const reasonStr = String(reason || "").trim();
+  const paySplit = delta < 0 ? hotelRefundPaySplit(order, Math.abs(delta)) : {
+    cash_amount: isDailyLogCardMethod(order.payment_method) ? 0 : delta,
+    card_amount: isDailyLogCardMethod(order.payment_method) ? delta : 0,
+  };
+  sqlite.transaction(() => {
+    rollOpenShiftsToLocalDay();
+    const shift = pickOpenShiftForReturn(cashier, null, null);
+    sqlite.prepare("UPDATE orders SET items_json = ?, total = ? WHERE id = ?").run(JSON.stringify(updated), newTotal, order.id);
+    restoreMenuItemStockFromSale(stockBack);
+    decrementMenuItemStock(stockOut);
+    hotelWriteCorrectionLog(order, cashier, slipItems, delta, paySplit, "exchange", reasonStr, shift);
+    hotelMarkOrder(order.id, "", reasonStr);
+  })();
+  return {
+    ok: true,
+    exchanged: true,
+    order_total_after: newTotal,
+    ...hotelCorrectionSlip(order, slipItems, delta, newTotal, "exchange", reasonStr, cashier),
+  };
+}
+
+function getHotelSaleForCorrection(orderId) {
+  const order = hotelLoadSaleOrder(orderId);
+  const items = hotelRemainingLines(order).map((it) => ({
+    menu_item_id: it.menu_item_id,
+    name: it.name,
+    quantity: it.remaining_quantity,
+    original_quantity: it.original_quantity,
+    already_returned: it.already_returned,
+    remaining_quantity: it.remaining_quantity,
+    price: it.price,
+    unit_price: it.price,
+    vat_norm: "E",
+  }));
+  const created = String(order.created_at || "");
+  const [fiscal_date, fiscal_time = ""] = created.includes(" ") ? created.split(" ") : [created.slice(0, 10), created.slice(11, 19)];
+  return {
+    id: order.id,
+    order_id: order.id,
+    nuikf: `#${order.id}`,
+    receipt_type: "thermal",
+    total_amount: Number(order.total) || 0,
+    fiscal_date,
+    fiscal_time,
+    operator_name: order.waiter_name,
+    payment_method: order.payment_method,
+    mode: "thermal",
+    items,
+  };
+}
+
+function listHotelSaleCoupons(limit = 200) {
+  const lim = Math.min(2000, Math.max(1, Number(limit) || 200));
+  const rows = sqlite.prepare(`
+    SELECT id, created_at, total, payment_method, waiter_name, items_json, status
+    FROM orders
+    WHERE status IN ('completed', 'cancelled')
+    ORDER BY id DESC
+    LIMIT ?
+  `).all(lim);
+  const sales = rows.map((row) => {
+    const created = String(row.created_at || "");
+    const [fiscal_date, fiscal_time = ""] = created.includes(" ")
+      ? created.split(" ")
+      : [created.slice(0, 10), created.slice(11, 19)];
+    const returnStatus = hotelSaleReturnStatus(row);
+    return {
+      id: row.id,
+      order_id: row.id,
+      nuikf: `#${row.id}`,
+      receipt_type: "shitje",
+      receipt_type_label: "shitje",
+      daily_number: "",
+      fiscal_date,
+      fiscal_time,
+      total_amount: Number(row.total) || 0,
+      payment_method: row.payment_method,
+      payment_label: paymentMethodLabel(row.payment_method),
+      status: returnStatus === "completed" ? "" : returnStatus,
+      return_status: returnStatus === "completed" ? "" : returnStatus,
+      mode: "thermal",
+      sort_key: `${fiscal_date} ${fiscal_time}`,
+    };
+  });
+  let logs = [];
+  try {
+    logs = sqlite.prepare(`
+      SELECT id, date, time, total, payment_method, waiter_name, correction_type, ref_order_id
+      FROM daily_log
+      WHERE ref_order_id IS NOT NULL
+        AND correction_type IN ('return', 'cancel', 'storno', 'exchange')
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(lim);
+  } catch {
+    logs = [];
+  }
+  const corrections = logs.map((log) => {
+    const label = hotelCorrectionTypeLabel(log.correction_type) || "kthim malli";
+    return {
+      id: log.id,
+      order_id: log.ref_order_id,
+      nuikf: `#${log.ref_order_id}`,
+      receipt_type: log.correction_type,
+      receipt_type_label: label,
+      daily_number: "",
+      fiscal_date: log.date,
+      fiscal_time: log.time,
+      total_amount: Number(log.total) || 0,
+      payment_method: log.payment_method,
+      payment_label: paymentMethodLabel(log.payment_method),
+      status: label,
+      return_status: label,
+      mode: "thermal",
+      sort_key: `${log.date || ""} ${log.time || ""}`,
+    };
+  });
+  return sales.concat(corrections).sort((a, b) => String(b.sort_key).localeCompare(String(a.sort_key)) || Number(b.id) - Number(a.id));
+}
+
+function hotelCorrectionReceiptText(result) {
+  const settings = getSettings();
+  const { buildCorrectionReceiptText } = require("./receipt-text");
+  const kind = String(result?.correction_type || "");
+  const titles = {
+    return: "KTHIM MALLI",
+    cancel: "ANULIM",
+    storno: "STORNO",
+    exchange: "NDERIM ARTIKULLI",
+  };
+  return buildCorrectionReceiptText({
+    restaurantName: settings.business_name || settings.restaurant_name || "HOTEL",
+    title: titles[kind] || "KTHIM MALLI",
+    originalRef: result.original_ref || (result.order_id ? `#${result.order_id}` : ""),
+    items: result.items || [],
+    refundTotal: result.refund_total,
+    remainingTotal: result.remaining_total,
+    delta: kind === "exchange" ? result.delta_total : null,
+    reason: result.reason,
+    paymentMethod: result.payment_method,
+    cashierName: result.cashier,
+    closedAt: new Date().toISOString(),
+  });
+}
+
 function pickOpenShiftForReturn(waiterName, staffId, shiftId) {
   const sid = Number(shiftId);
   if (sid) {
@@ -18446,6 +19073,7 @@ function pickOpenShiftForReturn(waiterName, staffId, shiftId) {
 
 function recordSaleReturn({
   items, payment_method, waiter_name, amount, restore_stock, shift_id, staff_id,
+  correction_type, ref_order_id, reason,
 } = {}) {
   const lines = (Array.isArray(items) ? items : [])
     .map((it) => {
@@ -18464,12 +19092,13 @@ function recordSaleReturn({
   if (!(sum > 0)) throw new Error("Shuma e kthimit mungon");
   if (restore_stock !== false && !lines.length) throw new Error("Zgjidhni artikullin e kthimit");
   if (restore_stock !== false) restoreMenuItemStockFromSale(lines);
+  rollOpenShiftsToLocalDay();
   const method = normalizePaymentMethod(payment_method || "cash");
   const card = isDailyLogCardMethod(method);
   const shift = pickOpenShiftForReturn(waiter_name, staff_id, shift_id);
   const waiterLabel = String((shift && shift.waiter_name) || waiter_name || "Pronari").trim() || "Pronari";
   const receptionReturn = shift && sessionRoleForStaffId(shift.staff_id) === "recepsion";
-  addDailyLogEntry({
+  const logId = addDailyLogEntry({
     table_number: 0,
     waiter_name: waiterLabel,
     items_json: JSON.stringify(lines),
@@ -18483,8 +19112,13 @@ function recordSaleReturn({
     receipt_number: receptionReturn ? `RC-KTH-${shift.id}-${Date.now()}` : null,
     staff_id: shift ? shift.staff_id : null,
     shift_id: shift ? shift.id : null,
+    skipDedup: true,
   });
-  return { amount: sum, items: lines, shift_id: shift ? shift.id : null };
+  const kind = String(correction_type || "").toLowerCase();
+  const refId = Number(ref_order_id) || 0;
+  if (kind || refId) hotelStampCorrection(logId, kind, reason, refId);
+  if (refId && (kind === "storno" || kind === "cancel")) hotelMarkOrder(refId, "cancelled", reason);
+  return { amount: sum, items: lines, shift_id: shift ? shift.id : null, log_id: logId };
 }
 
 function shiftClosedLocalDay(closedAt) {
@@ -20294,6 +20928,7 @@ function getVersionInfo() {
     getOpenShift,
     openWaiterShiftWithCash,
     getWaiterShiftSummary,
+    rollOpenShiftsToLocalDay,
     closeWaiterShift,
     acceptShiftHandover,
     getPendingHandoverForStaff,
@@ -20310,6 +20945,12 @@ function getVersionInfo() {
     buildZReportData,
     buildDailyZReport,
     recordSaleReturn,
+    refundHotelSale,
+    partialRefundHotelSale,
+    exchangeHotelSale,
+    getHotelSaleForCorrection,
+    listHotelSaleCoupons,
+    hotelCorrectionReceiptText,
     getUnprintedClosedZShift,
     markShiftZReportPrinted,
     markShiftsZReported,

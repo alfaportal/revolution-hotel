@@ -1104,6 +1104,13 @@ function initSchema() {
       WHERE payment_method IN ('card','karte','debit_card','credit_card')
         AND (card_amount IS NULL OR card_amount = 0) AND total > 0
     `);
+    try { sqlExec("ALTER TABLE daily_log ADD COLUMN correction_type TEXT"); } catch { /* kolona ekziston */ }
+    try { sqlExec("ALTER TABLE daily_log ADD COLUMN void_reason TEXT"); } catch { /* kolona ekziston */ }
+    try { sqlExec("ALTER TABLE daily_log ADD COLUMN ref_order_id INTEGER"); } catch { /* kolona ekziston */ }
+    try { sqlExec("CREATE INDEX IF NOT EXISTS idx_daily_log_ref_order ON daily_log(ref_order_id)"); } catch { /* index ekziston */ }
+  }
+  if (tableExists("orders")) {
+    try { sqlExec("ALTER TABLE orders ADD COLUMN void_reason TEXT"); } catch { /* kolona ekziston */ }
   }
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_cloud_sale ON daily_log(cloud_sale_id)");
   sqlRun("CREATE INDEX IF NOT EXISTS idx_daily_log_order_id ON daily_log(order_id)");

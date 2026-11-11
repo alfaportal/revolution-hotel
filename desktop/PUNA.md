@@ -1,5 +1,31 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-11 — Storno, Anulo, Kthim, Ndërrim
+
+Te Kuponët janë katër butona: Storno, Anulo, Kthim malli, Ndërrim. Secili shton një rresht të ri. Kuponi i vjetër shënohet Storno, Anuluar, Kthyer krejt / Kthyer N artikuj, ose Ndërruar. Storno dhe Anulo kërkojnë arsye. Kthimi hap tabelën e artikujve. Ndërrimi hap zgjedhjen e produktit të ri. Shitja termike printon kupon termik. Shitja fiskale printon kupon fiskal.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | Kthimi zbret arkën, kthen stokun, shkruan ditarin |
+| `server.js` | Termike dhe fiskale nuk përzihen |
+| `receipt-text.js` | Teksti i kuponit të kthimit |
+| `public/admin.html` | Butoni Storno |
+| `public/js/fiscal-receipts-tab.js` | Katër veprimet në listë |
+| `db-engine.js` | Shënimi i llojit te ditari |
+
+Prova: 10 € + 8 € + 6 €, pastaj storno −10 €, kthim −4 €, anulim −6 €. Ditari, arka dhe raporti dolën 4.00 €. Stoku u kthye. Ndërrimi 5 € me 8 €: ditari, arka dhe raporti 8.00 €. Nuk u dërgua te ATK. Nuk u printua. Ekrani: NOT VERIFIED, vetëm pas Setup-it të ri.
+
+## 2026-11-11 — Shitja shkon te data e sotme
+
+Nuk ka kontroll në sfond. Kur bëhet shitja ose kthimi, nëse ndërrimi është i djeshëm, ajo shkon te data e sotme. Arka e re niset nga 0 €.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | Kontrolli i datës vetëm te shitja dhe kthimi |
+| `server.js` | U hoq kontrolli çdo 20 sekonda |
+
+Prova: shikimi i arkës nuk e ndan ditën. Kthimi pas mesnate shkon te sot (−3 €), dje mbetet 8 €, arka e re 0 €. Kaloi. Ekrani i programit të instaluar: NOT VERIFIED, vetëm pas Setup-it të ri.
+
 ## 2026-11-10 — Fatura e shitjes: logo e firmës
 
 Logoja që ngarkohet te Cilësimet → Lokal & biznesi del lart majtas në PDF-në e email-it. Nëse ajo mungon, përdoret logoja e faturës.
