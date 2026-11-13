@@ -2753,6 +2753,38 @@ function getMenuItems(activeOnly = true, opts = {}) {
   });
 }
 
+function listProducts() {
+  return getMenuItems(true);
+}
+
+function previewSaleTotals(payload = {}) {
+  const itemsIn = Array.isArray(payload.items) ? payload.items : [];
+  const catalog = listProducts();
+  const items = [];
+  let total = 0;
+  for (const it of itemsIn) {
+    const p = it.product_id
+      ? catalog.find((m) => Number(m.id) === Number(it.product_id))
+      : null;
+    const price = Number(it.price ?? it.unit_price ?? p?.price ?? 0);
+    const qty = Number(it.quantity ?? it.qty ?? 1);
+    const line = price * qty;
+    total += line;
+    items.push({
+      ...it,
+      product_id: it.product_id ?? p?.id ?? 0,
+      name: it.name || p?.name || "",
+      price,
+      unit_price: price,
+      quantity: qty,
+      unit_code: String(p?.unit_code || it.unit_code || "EA").toUpperCase(),
+      category_code: String(p?.category_code || it.category_code || "TT").toUpperCase(),
+      vat_norm: it.vat_norm || p?.vat_norm || "E",
+    });
+  }
+  return { total, items };
+}
+
 function getMenuItemById(id) {
   const row = sqlite.prepare(`
     SELECT id, name, category, price, active,
@@ -20650,6 +20682,8 @@ function getVersionInfo() {
     reorderCategories,
     normalizeMenuCategoriesToAlbanian,
     getMenuItems,
+    listProducts,
+    previewSaleTotals,
     getMenuItemById,
     getLowStockItems,
     getExpiringMenuItems,

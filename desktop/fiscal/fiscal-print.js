@@ -1,4 +1,4 @@
-/**
+﻿/**
  * fiscal/fiscal-print.js — HAPI 6: gjenerimi i tekstit të kuponit fiskal (layout ATK).
  * NUK printon — vetëm kthen stringun. Thirret kur isFiscalEnabled()=true.
  * ESC/POS: ESC E/G (bold) për krejt; emri biznesit bold + madhësi NORMALE (pa GS ! 0x11).
@@ -101,20 +101,80 @@ function atkColWidths(width = WIDTH) {
   return { nameW, midW, sumW };
 }
 
-/** Emri artikullit — kufi i rreptë (12 char / 80mm). Pa "..." — vetëm germa deri në fund të kolonës (Shtojca F). */
 function truncateAtkColText(text, maxLen) {
   const s = String(text ?? "").trim();
   if (maxLen <= 0) return "";
   return s.slice(0, maxLen);
 }
 
+function wrapReceiptFullNameLines(name, width) {
+  const raw = String(name ?? "").trim() || "-";
+  const maxW = Math.max(8, Number(width) || WIDTH);
+  const out = [];
+  let rest = raw;
+  while (rest.length > 0) {
+    if (rest.length <= maxW) {
+      out.push(rest);
+      break;
+    }
+    const window = rest.slice(0, maxW);
+    let chunkLen = maxW;
+    const lastSpace = window.lastIndexOf(" ");
+    if (lastSpace > 0) {
+      chunkLen = lastSpace;
+    }
+    const chunk = rest.slice(0, chunkLen).trimEnd();
+    if (!chunk.length) {
+      out.push(rest.slice(0, maxW));
+      rest = rest.slice(maxW);
+      continue;
+    }
+    out.push(chunk);
+    rest = rest.slice(chunkLen).trimStart();
+  }
+  return out.length ? out : ["-"];
+}
+
+const ATK_ITEM_SUM_AMOUNT_W = 6;
+
+function formatAtkSumColumnCell(text, width = WIDTH) {
+  const { sumW } = atkColWidths(width);
+  return pad(String(text ?? ""), sumW, "right").slice(0, sumW);
+}
+
+function formatAtkItemSumBody(amount, letter, opts = {}) {
+  const L = String(letter || "E")
+    .trim()
+    .toUpperCase()
+    .slice(0, 1);
+  let amt = moneyPrint(Math.abs(Number(amount) || 0));
+  if (opts.negative && Number(amount) < 0) amt = `-${amt}`;
+  return `${pad(amt, ATK_ITEM_SUM_AMOUNT_W, "right")} ${L}`;
+}
+
+function formatAtkItemTableColumns(leftText, midText, sumText, width = WIDTH) {
+  const { nameW, midW, sumW } = atkColWidths(width);
+  const w = Math.max(sumW + 2, Number(width) || WIDTH);
+  const prefixW = w - sumW;
+  const sumPart = formatAtkSumColumnCell(sumText, w);
+  const l = pad(String(leftText ?? ""), nameW, "left").slice(0, nameW);
+  const c = pad(String(midText ?? ""), midW, "center").slice(0, midW);
+  let prefix = `${l}${c}`;
+  if (prefix.length > prefixW) prefix = prefix.slice(0, prefixW);
+  prefix = pad(prefix, prefixW, "left").slice(0, prefixW);
+  return `${prefix}${sumPart}`.slice(0, w);
+}
+
 /** Tre kolona: ARTIKULLI (majtas) | SASIA X CMIMI (qendër) | SHUMA (djathtas). */
 function padThreeCol(left, center, right, width = WIDTH) {
-  const { nameW, midW, sumW } = atkColWidths(width);
+  const { nameW } = atkColWidths(width);
   const l = truncateAtkColText(left, nameW);
-  const c = pad(String(center ?? ""), midW, "center").slice(0, midW);
-  const r = pad(String(right ?? ""), sumW, "right").slice(0, sumW);
-  return `${pad(l, nameW, "left").slice(0, nameW)}${c}${r}`;
+  return formatAtkItemTableColumns(l, center, right, width);
+}
+
+function formatAtkItemPriceRow(qtyPriceMid, amount, letter, width = WIDTH, opts = {}) {
+  const sumText = formatAtkItemSumBody(amount, letter, opts);
+  return formatAtkItemTableColumns("", qtyPriceMid, sumText, width);
 }
 
 /** Markera — vetëm qendër (pa ^H/^B — print më i hollë në Tysso). */
@@ -151,7 +211,7 @@ function resolvePrintOfflineBanner(order, fiscal) {
 /** Vetëm pa internet — jo LOKAL/test. Shkruan OFFLINE (pa prefiks ATK). */
 function appendOfflineBanner(lines, width) {
   atkGap(lines);
-  lines.push(`${ATK_TITLE_CENTER}${pad("OFFLINE", width, "center")}`);
+  lines.push(`${ATK_TITLE_CENTER}^H^B${pad("OFFLINE", width, "center")}`);
   atkGap(lines);
 }
 
@@ -160,7 +220,7 @@ function appendAtkCenterLine(lines, text, width) {
   lines.push(pad(String(text ?? ""), width, "center"));
 }
 
-/** Çmimi njësi — 2 presje + suffix EUR */
+/** Çmimi njësi — si i ruajtur, deri në 4 presje + suffix EUR */
 function formatAtkUnitPrice(price) {
   return `${money4Print(price)}${ATK_EURO_SUFFIX}`;
 }
@@ -564,9 +624,6 @@ function normalizeSplitMethod(method) {
   const v = String(method || "cash")
     .trim()
     .toLowerCase();
-  if (["room", "ne_dhome", "në_dhomë", "nedehome", "charge_to_room", "charge-to-room"].includes(v)) {
-    return "room";
-  }
   if (["card", "karte", "kartë", "pos", "debit", "credit"].includes(v)) return "card";
   if (v === "debit_card") return "debit_card";
   if (v === "credit_card") return "credit_card";
@@ -585,7 +642,6 @@ function paymentSplitPrintLabel(method) {
   if (v === "check") return t("pay_check");
   if (v === "bank_account") return t("pay_bank");
   if (v === "sms") return t("pay_sms");
-  if (v === "room") return t("pay_room") || "Në dhomë";
   return paymentLabelSq(method);
 }
 
@@ -696,7 +752,7 @@ function formatItemRow(item, width = WIDTH, opts = {}) {
   const unitStr = formatUnitPricePrint(unit);
   const valStr = moneyPrint(lineTotal);
   const letter = itemVatLetter(item);
-  const qtyStr = formatQtyPrint(item?.qty ?? item?.quantity ?? qty);
+  const qtyStr = formatQtyPrint(qty);
   const tail = `${qtyStr}  ${unitStr}  ${valStr}  ${letter}`;
   const nameMax = Math.max(4, width - tail.length - 1);
   let name = String(item.name || item.emri || "").trim() || "-";
@@ -877,10 +933,7 @@ function formatAtkMoneyEuro(v) {
 
 /** Etiketë bold (^B) — vetëm markerët ^ (jo ESC raw) që printeri i njeh. */
 function padLineBoldLabelNormalAmount(label, amount, width = WIDTH) {
-  const l = String(label ?? "");
-  const r = String(amount ?? "");
-  const gap = Math.max(1, width - l.length - r.length);
-  return `^B${l}${" ".repeat(gap)}${r}`;
+  return `^H^B${padLine(label, amount, width)}`;
 }
 
 function formatAtkUljeLabel(meta, amount, baseAmount) {
@@ -968,7 +1021,13 @@ function appendOriginalCouponRefLines(lines, width, original, fallback = {}) {
 /** Përmbledhje kthimi — TOTALI I KTHIMIT + TOTALI I MBETUR (origjinali ATK). */
 function appendAtkReturnSummary(lines, width, returnTotal, remaining) {
   appendAtkRule(lines, width);
-  lines.push(padLine(t("atk_return_total"), `-${moneyAmt(returnTotal)}${ATK_EURO_SUFFIX}`, width));
+  lines.push(
+    padLineBoldLabelNormalAmount(
+      t("atk_return_total"),
+      `-${moneyAmt(returnTotal)}${ATK_EURO_SUFFIX}`,
+      width
+    )
+  );
   lines.push(
     padLineBoldLabelNormalAmount(t("atk_remaining_total"), formatAtkMoneyEuro(remaining), width)
   );
@@ -1011,7 +1070,6 @@ function loadOriginalReceiptByNuikf(nuikf) {
   }
 }
 
-/** Rresht artikulli Shtojca F — 3 kolona si origjinali ATK */
 function formatAtkItemRow(item, width = WIDTH, opts = {}) {
   const qty = normalizeQty(itemQty(item));
   const ld = Number(item.line_discount_amount) || 0;
@@ -1024,20 +1082,19 @@ function formatAtkItemRow(item, width = WIDTH, opts = {}) {
   let lineTotal = lineTotalAmount(qty, calcUnit);
   if (opts.negative) lineTotal = -Math.abs(lineTotal);
   const letter = itemVatLetter(item);
-  const rawQty = item?.qty ?? item?.quantity;
-  const qtyForPrint =
-    rawQty == null || rawQty === ""
-      ? Math.abs(qty)
-      : typeof rawQty === "number"
-        ? Math.abs(rawQty)
-        : typeof rawQty === "string" && rawQty.trim().startsWith("-")
-          ? rawQty.trim().slice(1)
-          : rawQty;
-  const qtyStr = formatQtyPrint(qtyForPrint);
+  const qtyStr = formatQtyPrint(Math.abs(qty));
   const mid = `${qtyStr} X ${formatAtkUnitPrice(displayUnit)}`;
-  const right = `${moneyPrint(lineTotal)} ${letter}`;
-  let name = String(item.name || item.emri || "").trim() || "-";
-  return padThreeCol(name, mid, right, width);
+  const name = String(item.name || item.emri || "").trim() || "-";
+  const rows = [];
+  for (const nl of wrapReceiptFullNameLines(name, width)) {
+    const line = String(nl ?? "").trimEnd();
+    if (line.length) rows.push(line.slice(0, width));
+  }
+  if (!rows.length) rows.push("-");
+  rows.push(
+    formatAtkItemPriceRow(mid, lineTotal, letter, width, { negative: !!opts.negative })
+  );
+  return rows;
 }
 
 function appendAtkItemTableHeader(lines, width) {
@@ -1141,9 +1198,9 @@ function appendAtkHeader(lines, width, ctx) {
   if (ctx.city) appendAtkCenterLine(lines, `${t("atk_place")}: ${ctx.city}`, width);
   appendAtkCenterLine(lines, `NR. NJESISE: ${ctx.unitNumber || "-"}`, width);
   if (ctx.unitPhone) appendAtkCenterLine(lines, `${t("atk_phone")}: ${ctx.unitPhone}`, width);
-  lines.push(`^C^B${pad(`${t("atk_nf_nui")}: ${ctx.nui || "-"}`, width, "center")}`);
+  lines.push(`^B${pad(`${t("atk_nf_nui")}: ${ctx.nui || "-"}`, width, "center")}`);
   if (hasTaxpayerVatNumber(ctx.vatNo)) {
-    lines.push(`^C^B${pad(`${t("atk_vat_number")}: ${ctx.vatNo}`, width, "center")}`);
+    lines.push(`^B${pad(`${t("atk_vat_number")}: ${ctx.vatNo}`, width, "center")}`);
   }
   appendAtkRule(lines, width);
 }
@@ -1198,12 +1255,13 @@ function appendAtkItemsBlock(lines, width, items, opts = {}) {
     const item = items[i];
     const ld = Number(item.line_discount_amount) || 0;
     const ls = Number(item.line_surcharge_amount) || 0;
-    lines.push(
-      formatAtkItemRow(item, width, {
-        gross: ld > 0 || ls > 0,
-        negative: !!opts.negative,
-      })
-    );
+    const itemRows = formatAtkItemRow(item, width, {
+      gross: ld > 0 || ls > 0,
+      negative: !!opts.negative,
+    });
+    for (const rowLine of itemRows) {
+      lines.push(rowLine);
+    }
     if (ld > 0 && !opts.skipLineDiscount) {
       appendAtkLineDiscountRow(lines, item, width);
     }
@@ -1228,11 +1286,18 @@ function resolveAtkPaymentSplits(order, fiscal, paymentMethod, totalPay) {
   return splits;
 }
 
+/** Pagesë e vetme: MENYRA E PAGESES | KESH. E përzier: etiketë + një rresht për çdo mënyrë me shumën. */
 function appendAtkPaymentLines(lines, width, order, fiscal, paymentMethod, totalPay) {
   const splits = resolveAtkPaymentSplits(order, fiscal, paymentMethod, totalPay);
-  lines.push(`^C${pad(t("atk_payment_method"), width, "center")}`);
+  lines.push(padLine(t("atk_payment_method"), "", width));
+  const { midW } = atkColWidths(width);
+  const names = splits.length
+    ? splits.map((sp) => atkPaymentModeShort(sp.method))
+    : [atkPaymentModeShort(paymentMethod)];
+  const inset = Math.max(0, Math.floor((midW - Math.min(...names.map((n) => n.length))) / 2));
   const modeLine = (method, amount) => {
-    lines.push(padThreeCol("", atkPaymentModeShort(method), amount || "", width));
+    const mid = pad(`${" ".repeat(inset)}${atkPaymentModeShort(method)}`, midW, "left");
+    lines.push(padThreeCol("", mid, amount, width));
   };
   if (splits.length >= 2) {
     for (const sp of splits) {
@@ -1272,7 +1337,7 @@ function appendAtkTotalsBlock(lines, width, block) {
   }
 
   atkGap(lines);
-  lines.push(`^H${padLineBoldLabelNormalAmount(t("atk_total_pay"), formatAtkMoneyEuro(totalPay), width)}`);
+  lines.push(padLineBoldLabelNormalAmount(t("atk_total_pay"), formatAtkMoneyEuro(totalPay), width));
   atkGap(lines);
 
   appendAtkPaymentLines(
@@ -1296,6 +1361,52 @@ function appendAtkTotalsBlock(lines, width, block) {
   }
 }
 
+function resolvePaperBlockFooterMeta(fiscal, order) {
+  const rt = String(fiscal?.receipt_type || order?.receipt_type || "")
+    .trim()
+    .toLowerCase();
+  if (rt !== "paper_block") return null;
+  const fid = Number(
+    fiscal?.fiscal_receipt_id ?? fiscal?.id ?? order?.fiscal_receipt_id ?? 0
+  );
+  if (fid > 0) {
+    try {
+      const { getPaperBlockMetaForFiscalReceipt } = require("./fiscal-paper-block");
+      const fromDb = getPaperBlockMetaForFiscalReceipt(fid);
+      if (fromDb) return fromDb;
+    } catch (_e) {}
+  }
+  const serial =
+    String(
+      fiscal?.paper_serial_no ??
+        order?.paper_serial_no ??
+        fiscal?.paper_serial ??
+        order?.paper_serial ??
+        ""
+    ).trim() || "";
+  const block =
+    String(
+      fiscal?.paper_block_code ??
+        fiscal?.block_batch ??
+        order?.paper_block_code ??
+        order?.block_batch ??
+        ""
+    ).trim() || "";
+  if (serial || block) {
+    return { serial_no: serial, block_code: block };
+  }
+  return null;
+}
+
+function paperBlockFooterFields(fiscal, order) {
+  const meta = resolvePaperBlockFooterMeta(fiscal, order);
+  if (!meta) return {};
+  return {
+    paperSerialNo: meta.serial_no || "",
+    paperBlockCode: meta.block_code || "",
+  };
+}
+
 function appendAtkFooter(lines, width, footer) {
   const {
     itemLineCount,
@@ -1306,6 +1417,8 @@ function appendAtkFooter(lines, width, footer) {
     nuikf,
     dailyNumber,
     articleLabel,
+    paperSerialNo,
+    paperBlockCode,
   } = footer;
 
   const artLabel = articleLabel || `${t("atk_items_count")} - ${itemLineCount}`;
@@ -1317,6 +1430,12 @@ function appendAtkFooter(lines, width, footer) {
   );
   lines.push(padLine(t("atk_sef_id"), sefId || "-", width));
   lines.push(`^BNUIKF: ${nuikf || "-"}`);
+  if (paperSerialNo) {
+    lines.push(`NR. SERIK I KUPONIT: ${paperSerialNo}`);
+  }
+  if (paperBlockCode) {
+    lines.push(`KODI UNIK I BLOKUT: ${paperBlockCode}`);
+  }
   lines.push(
     `^C${pad(`${t("fiscal_coupon_daily_nr")} ${formatAtkDailyNumber(dailyNumber)}`, width, "center")}`
   );
@@ -1396,19 +1515,13 @@ function generateFiscalReceipt(orderData, fiscalData) {
     .toLowerCase();
   const isReturn = receiptType === "return";
   const isCancel = receiptType === "cancel" || receiptType === "storno";
+  const pbFooter = paperBlockFooterFields(fiscal, order);
 
-  let unifiedBiz = "";
-  try {
-    unifiedBiz = require("../database").getUnifiedBusinessName();
-  } catch {
-    unifiedBiz = "";
-  }
   const legalName =
     fiscal.taxpayer_legal_name ||
     fiscal.taxpayer_name ||
     order.taxpayer_legal_name ||
-    unifiedBiz ||
-    "";
+    t("business_fallback");
   const brandName =
     fiscal.taxpayer_trade_name ||
     fiscal.business_name ||
@@ -1532,10 +1645,11 @@ function generateFiscalReceipt(orderData, fiscalData) {
       cartDiscount: origCtx.cartDiscount,
       rentotal: origCtx.rentotal,
       cartDiscountMeta: origCtx.cartDiscountMeta,
+      vatNo,
     });
 
     appendAtkRule(lines, w);
-    lines.push(`${ATK_TITLE_CENTER}${pad(t("atk_return_items_title"), w, "center")}`);
+    lines.push(`${ATK_TITLE_CENTER}^H^B${pad(t("atk_return_items_title"), w, "center")}`);
     appendAtkItemsBlock(lines, w, items, { negative: true, skipLineDiscount: true });
 
     const returnTotal = Math.abs(saleCtx.totalPay);
@@ -1553,6 +1667,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
       nuikf,
       dailyNumber,
       articleLabel: `${t("atk_returned_items")} - ${items.length}`,
+      ...pbFooter,
     });
   } else if (isCancel && originalReceipt) {
     const origItems = enrichItemsForPrint(
@@ -1585,6 +1700,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
       cartDiscount: origCtx.cartDiscount,
       rentotal: origCtx.rentotal,
       cartDiscountMeta: origCtx.cartDiscountMeta,
+      vatNo,
     });
 
     appendAtkFooter(lines, w, {
@@ -1595,10 +1711,13 @@ function generateFiscalReceipt(orderData, fiscalData) {
       sefId,
       nuikf,
       dailyNumber,
+      ...pbFooter,
     });
   } else if (isReturn) {
-    appendOriginalCouponRefLines(lines, w, originalReceipt, { ...order, ...fiscal });
-    lines.push(`${ATK_TITLE_CENTER}${pad(t("atk_return_items_title"), w, "center")}`);
+    appendOriginalCouponRefLines(lines, w, originalReceipt, { ...order, ...fiscal }, {
+      splitDate: !!originalReceipt,
+    });
+    lines.push(`${ATK_TITLE_CENTER}^H^B${pad(t("atk_return_items_title"), w, "center")}`);
     appendAtkItemsBlock(lines, w, items, { negative: true, skipLineDiscount: true });
     const returnTotal = Math.abs(saleCtx.totalPay);
     let remaining = returnTotal;
@@ -1617,6 +1736,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
       nuikf,
       dailyNumber,
       articleLabel: `${t("atk_returned_items")} - ${items.length}`,
+      ...pbFooter,
     });
   } else {
     appendAtkItemsBlock(lines, w, items);
@@ -1631,6 +1751,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
       cartDiscount: saleCtx.cartDiscount,
       rentotal: saleCtx.rentotal,
       cartDiscountMeta: saleCtx.cartDiscountMeta,
+      vatNo,
     });
 
     appendAtkFooter(lines, w, {
@@ -1641,6 +1762,7 @@ function generateFiscalReceipt(orderData, fiscalData) {
       sefId,
       nuikf,
       dailyNumber,
+      ...pbFooter,
     });
   }
 
@@ -1649,8 +1771,8 @@ function generateFiscalReceipt(orderData, fiscalData) {
     .replace(/\b\d{2}\.\d{2}\.\d{4}\b/g, "")
     .replace(/\b\d{1,2}:\d{2}\b/g, "")
     .replace(/\b\d{2}\/\d{2}\/\d{4}\b/g, "");
-  if (/\d+\.\d{3,}/.test(moneyProbe)) {
-    throw new Error("Kupon fiskal: shuma me më shumë se 2 presje në printim");
+  if (/\d+\.\d{5,}/.test(moneyProbe)) {
+    throw new Error("Kupon fiskal: shuma me më shumë se 4 presje në printim");
   }
   return text;
 }

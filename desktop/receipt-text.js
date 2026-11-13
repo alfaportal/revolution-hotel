@@ -699,4 +699,5 @@ module.exports = {
   qrDarkHexFromPrintDensity,
   prependPrintDensityEscPos,
   buildPrintDensityEscChunks,
+  isRongtaPrinterName,
 };

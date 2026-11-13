@@ -11,16 +11,25 @@ const {
 } = require("./fiscal-numbering");
 const { generateFiscalReceipt } = require("./fiscal-print");
 const { syncLanguageFromSettings } = require("./fiscal-i18n");
-const { calculateVatBreakdown, calculateVatTaxBreakdown, round4, lineTotalAmount } = require("./fiscal-vat");
+const {
+  calculateVatBreakdown,
+  calculateVatTaxBreakdown,
+  round4,
+  lineTotalAmount,
+  lineAmountAfterCart,
+  normalizeQty,
+  round2Money,
+} = require("./fiscal-vat");
+const { resolveLineDiscountAmount } = require("./fiscal-line-discount");
 const { logFiscalAction } = require("./fiscal-audit");
 const { insertFiscalReceipt, getFiscalReceiptById } = require("./fiscal-db");
 const { getFiscalTodayParts } = require("./fiscal-time-sync");
 const { attachChainToFiscalData } = require("./fiscal-hash-chain");
 const { ATK_CORRECTION_REF_ERROR } = require("./atk-model-builder");
 const { getOfflineStatus } = require("./fiscal-offline");
+const { isAtkTransmissionBlocked } = require("./fiscal-test-mode-store");
 
 const CORRECTION_TYPES = Object.freeze(["cancel", "return", "storno"]);
-const CORRECTABLE_ORIGINAL_TYPES = Object.freeze(["regular", "paper_block"]);
 
 function getSqlite() {
   const database = require("../database");
@@ -54,27 +63,15 @@ function parseItemsJson(raw) {
 }
 
 function normalizeItem(item) {
-  const letterRaw = String(item.vat_norm || item.vat_letter || "").trim().toUpperCase();
-  let L = /^[A-E]$/.test(letterRaw) ? letterRaw : "";
-  if (!L) {
-    const pct = Number(item.vat_category ?? item.vat_percent ?? item.vat_rate);
-    if (pct === 8) L = "D";
-    else if (pct === 18) L = "E";
-    else if (pct === 0) L = "A";
-    else L = "E";
-  }
-  const rate = L === "D" ? 8 : L === "E" ? 18 : 0;
   return {
     name: String(item.name || item.emri || "-").trim(),
     quantity: Number(item.quantity ?? item.qty ?? 1) || 0,
     qty: Number(item.quantity ?? item.qty ?? 1) || 0,
     price: Number(item.price ?? item.unit_price ?? item.cmimi ?? 0) || 0,
     unit_price: Number(item.unit_price ?? item.price ?? item.cmimi ?? 0) || 0,
-    vat_norm: L,
-    vat_letter: L,
-    vat_category: String(rate),
-    vat_rate: rate,
-    vat_percent: rate,
+    vat_norm: String(item.vat_norm || item.vat_letter || "E")
+      .trim()
+      .toUpperCase(),
     menu_item_id: item.menu_item_id ?? item.id ?? null,
   };
 }
@@ -85,13 +82,16 @@ function itemMatchKey(item) {
 }
 
 function getReturnedQuantitiesByItem(nuikf) {
+  const original = getOriginalReceipt(nuikf);
+  const originalItemsFull = original ? parseItemsJson(original.items_json) : [];
   const history = getCorrectionHistory(nuikf);
   const map = {};
   for (const corr of history) {
     if (String(corr.receipt_type || "").toLowerCase() !== "return") continue;
-    for (const it of (corr.items || []).map(normalizeItem)) {
-      const key = itemMatchKey(it);
-      map[key] = round4((map[key] || 0) + (Number(it.quantity) || 0));
+    for (const raw of corr.items || []) {
+      const origLine = findOriginalLineForReturn(originalItemsFull, raw);
+      const key = itemMatchKey(origLine || raw);
+      map[key] = round4((map[key] || 0) + (Number(raw.quantity ?? raw.qty) || 0));
     }
   }
   return map;
@@ -111,12 +111,21 @@ function getReturnableItemsForReceipt(nuikf) {
   const original = getOriginalReceipt(nuikf);
   if (!original) return null;
   const returnedMap = getReturnedQuantitiesByItem(original.nuikf);
-  return (original.items || []).map(normalizeItem).map((it) => {
+  return (original.items || []).map((raw) => {
+    const it = {
+      ...(raw && typeof raw === "object" ? raw : {}),
+      ...normalizeItem(raw),
+    };
     const origQty = Number(it.quantity) || 0;
     const alreadyReturned = Number(returnedMap[itemMatchKey(it)]) || 0;
     const remaining = getRemainingQuantityForItem(it, returnedMap);
+    const lineNet = lineAmountAfterCart(it);
+    const netUnit =
+      origQty > 0 ? round4(lineNet / origQty) : round4(Number(it.unit_price ?? it.price) || 0);
     return {
       ...it,
+      line_paid_net: lineNet,
+      net_unit_price: netUnit,
       original_quantity: origQty,
       already_returned: alreadyReturned,
       remaining_quantity: remaining,
@@ -133,6 +142,58 @@ function lineGross(item) {
 
 function sumItems(items) {
   return (items || []).reduce((s, it) => s + lineGross(it), 0);
+}
+
+function sumItemsNetPaid(items) {
+  return (items || []).reduce((s, it) => s + lineAmountAfterCart(it), 0);
+}
+
+function findOriginalLineForReturn(originalItemsFull, sel) {
+  const selNorm = normalizeItem(sel);
+  const name = selNorm.name;
+  const candidates = (originalItemsFull || []).filter(
+    (o) => String(o.name || o.emri || "").trim() === name
+  );
+  if (!candidates.length) return null;
+  const priceMatch = candidates.find(
+    (o) => Math.abs(Number(o.price ?? o.unit_price ?? 0) - selNorm.price) < 0.0001
+  );
+  if (priceMatch) return priceMatch;
+  if (candidates.length === 1) return candidates[0];
+  const selId = sel.menu_item_id ?? selNorm.menu_item_id;
+  if (selId != null && selId !== "") {
+    const idMatch = candidates.find(
+      (o) => String(o.menu_item_id ?? o.id ?? "") === String(selId)
+    );
+    if (idMatch) return idMatch;
+  }
+  return candidates[0];
+}
+
+function scaleReturnItemFromOriginal(orig, returnQty) {
+  if (!orig || typeof orig !== "object") {
+    throw new Error("Artikull origjinal mungon për kthim");
+  }
+  const origQty = normalizeQty(orig.quantity ?? orig.qty ?? 1);
+  const rq = normalizeQty(returnQty);
+  if (rq <= 0 || origQty <= 0) {
+    throw new Error("Sasi e pavlefshme për kthim");
+  }
+  const fullNet = lineAmountAfterCart(orig);
+  const returnNet = round4((fullNet / origQty) * rq);
+  const ratio = rq / origQty;
+  const out = { ...orig, quantity: rq, qty: rq };
+  const cartDisc = Number(orig.cart_discount_share ?? orig.cartDiscountShare ?? 0) || 0;
+  const cartSur = Number(orig.cart_surcharge_share ?? orig.cartSurchargeShare ?? 0) || 0;
+  const lineDisc = resolveLineDiscountAmount(orig);
+  if (cartDisc > 0) out.cart_discount_share = round4(cartDisc * ratio);
+  if (cartSur > 0) out.cart_surcharge_share = round4(cartSur * ratio);
+  if (lineDisc > 0) out.line_discount_amount = round4(lineDisc * ratio);
+  out.fiscal_line_total = round2Money(returnNet);
+  const netUnit = rq > 0 ? round4(returnNet / rq) : 0;
+  out.price = netUnit;
+  out.unit_price = netUnit;
+  return out;
 }
 
 function computeTaxBreakdownFromGross(items, totalAmount) {
@@ -193,49 +254,23 @@ function rowToReceipt(row) {
 }
 
 /**
- * NUIKF ose numër serik bllok letër (pas regjistrimit në SEF) → NUIKF origjinal.
- */
-function resolveOriginalNuikfInput(input) {
-  assertFiscalOn();
-  const raw = String(input || "").trim();
-  if (!raw) return null;
-  const key = raw.toUpperCase();
-  if (/^[A-Z0-9]{16}$/.test(key)) return key;
-
-  const sqlite = getSqlite();
-  const paper = sqlite
-    .prepare(
-      `SELECT registered_fiscal_receipt_id FROM paper_block_receipts
-       WHERE UPPER(serial_no) = ?
-       LIMIT 1`
-    )
-    .get(key);
-  const fid = Number(paper?.registered_fiscal_receipt_id) || 0;
-  if (!fid) return null;
-  const fr = sqlite
-    .prepare(`SELECT nuikf FROM fiscal_receipts WHERE id = ? LIMIT 1`)
-    .get(fid);
-  const nuikf = String(fr?.nuikf || "").trim().toUpperCase();
-  return nuikf || null;
-}
-
-/**
- * Kupon origjinal sipas NUIKF (regular ose paper_block pas regjistrimit në SEF).
+ * Kupon origjinal sipas NUIKF.
  */
 function getOriginalReceipt(nuikf) {
   assertFiscalOn();
-  const key = resolveOriginalNuikfInput(nuikf);
+  const key = String(nuikf || "")
+    .trim()
+    .toUpperCase();
   if (!key) return null;
 
   const sqlite = getSqlite();
-  const placeholders = CORRECTABLE_ORIGINAL_TYPES.map(() => "?").join(",");
   const row = sqlite
     .prepare(
       `SELECT * FROM fiscal_receipts
-       WHERE UPPER(nuikf) = ? AND receipt_type IN (${placeholders})
+       WHERE UPPER(nuikf) = ? AND receipt_type = 'regular'
        LIMIT 1`
     )
-    .get(key, ...CORRECTABLE_ORIGINAL_TYPES);
+    .get(key);
   return rowToReceipt(row);
 }
 
@@ -298,9 +333,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
 
   const original = getOriginalReceipt(originalNuikf);
   if (!original) {
-    throw new Error(
-      "Kuponi origjinal nuk u gjet (regular ose bllok letër i regjistruar në SEF)"
-    );
+    throw new Error("Kuponi origjinal nuk u gjet (vetëm kuponë regular)");
   }
 
   const origCouponRef = Number(original.total_number) || 0;
@@ -312,7 +345,8 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     throw new Error("Ky kupon ka tashmë korrigjim — anulimi/storno nuk lejohet përsëri");
   }
 
-  const originalItems = (original.items || []).map(normalizeItem);
+  const originalItemsFull = parseItemsJson(original.items_json);
+  const originalItems = originalItemsFull.map(normalizeItem);
   let correctionItems;
 
   if (type === "return") {
@@ -321,6 +355,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
       throw new Error("Për kthim malli zgjidhni të paktën një artikull");
     }
     const returnedMap = getReturnedQuantitiesByItem(original.nuikf);
+    correctionItems = [];
     for (const sel of selected) {
       if (sel.quantity <= 0) {
         throw new Error(`Sasia e pavlefshme për: ${sel.name}`);
@@ -339,15 +374,18 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
           `Sasia e kthimit tejkalon të mbeturën për: ${sel.name} (max ${remaining})`
         );
       }
+      const raw = findOriginalLineForReturn(originalItemsFull, sel);
+      if (!raw) {
+        throw new Error(`Artikulli nuk u lidh me rreshtin origjinal: ${sel.name}`);
+      }
+      correctionItems.push(scaleReturnItemFromOriginal(raw, sel.quantity));
     }
-    correctionItems = selected;
   } else {
-    // cancel / storno — krejt artikujt e origjinalit
-    correctionItems = originalItems.map((it) => ({ ...it }));
+    correctionItems = originalItemsFull.map((it) => ({ ...it }));
   }
 
   const settings = getFiscalSettings();
-  const subtotal = round4(sumItems(correctionItems));
+  const subtotal = round4(sumItemsNetPaid(correctionItems));
   const discount = 0;
   const totalAmount = round4(subtotal);
   const taxResult = calculateVatTaxBreakdown(correctionItems, {
@@ -391,13 +429,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   const taxpayerVat =
     original.taxpayer_vat || settings.taxpayer_vat_number || "";
   const taxpayerName =
-    original.taxpayer_name || settings.taxpayer_legal_name || (() => {
-      try {
-        return require("../database").getUnifiedBusinessName();
-      } catch {
-        return "";
-      }
-    })();
+    original.taxpayer_name || settings.taxpayer_legal_name || "Biznesi";
   const taxpayerAddress =
     original.taxpayer_address || settings.taxpayer_address || "";
   const unitName = settings.unit_name || "";
@@ -415,8 +447,10 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
   let printOfflineBanner = opts.no_internet === true || opts.print_offline_banner === true;
   if (!printOfflineBanner) {
     try {
-      const st = getOfflineStatus();
-      printOfflineBanner = !!(st && st.online === false);
+      if (!isAtkTransmissionBlocked()) {
+        const st = getOfflineStatus();
+        printOfflineBanner = !!(st && st.online === false);
+      }
     } catch {
       printOfflineBanner = false;
     }
@@ -487,7 +521,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     original_nuikf: original.nuikf,
     correction_reason: reasonText,
     is_offline: !!printOfflineBanner,
-    print_offline_banner: !!printOfflineBanner,
+    print_offline_banner: printOfflineBanner,
     fiscal_date,
     fiscal_time,
     vat_breakdown: vatBreak,
@@ -515,21 +549,6 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     console.warn("[fiscal-correction] audit:", e.message);
   }
 
-  try {
-    const db = require("../database");
-    const restoreItems = (correctionItems || []).map((it) => ({
-      menu_item_id: it.menu_item_id,
-      name: it.name,
-      quantity: Number(it.quantity) || 0,
-      qty: Number(it.quantity) || 0,
-    }));
-    if (restoreItems.length && typeof db.restoreMenuItemStockFromSale === "function") {
-      db.restoreMenuItemStockFromSale(restoreItems);
-    }
-  } catch (e) {
-    console.warn("[fiscal-correction] stock restore:", e.message);
-  }
-
   return {
     id: insertedId,
     nuikf,
@@ -537,6 +556,7 @@ function createCorrectionReceipt(originalNuikf, correctionType, items, reason, o
     receipt_type: type,
     original_nuikf: original.nuikf,
     daily_number: dailyNumber,
+    total_number: totalNumber,
     fiscal_date,
     fiscal_time,
     operator_name: operatorName,
@@ -591,7 +611,6 @@ function buildExchangeCorrectionReason(selectedOld, saleItems) {
 
 module.exports = {
   CORRECTION_TYPES,
-  resolveOriginalNuikfInput,
   getOriginalReceipt,
   hasCorrection,
   getCorrectionHistory,

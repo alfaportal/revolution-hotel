@@ -8,16 +8,20 @@ const ALLOWED_UNITS = new Set([
 
 function lookupProductMeta(productId) {
   if (productId == null || !Number.isFinite(Number(productId))) return null;
+  const sqlite = require("../database").db;
+  const id = Number(productId);
   try {
-    const sqlite = require("../database").db;
-    return (
-      sqlite
-        .prepare("SELECT id, unit_code, category_code FROM products WHERE id = ? AND active = 1")
-        .get(Number(productId)) ||
-      sqlite
-        .prepare("SELECT id, unit_code, category_code FROM menu_items WHERE id = ?")
-        .get(Number(productId))
-    );
+    const row = sqlite
+      .prepare("SELECT id, unit_code, category_code FROM products WHERE id = ? AND active = 1")
+      .get(id);
+    if (row) return row;
+  } catch {
+    /* */
+  }
+  try {
+    return sqlite
+      .prepare("SELECT id, unit_code, category_code FROM menu_items WHERE id = ?")
+      .get(id);
   } catch {
     return null;
   }
@@ -28,12 +32,27 @@ function lookupProductMetaByName(name) {
   if (!n) return null;
   try {
     const sqlite = require("../database").db;
-    const rows = sqlite
-      .prepare(
-        "SELECT id, unit_code, category_code FROM products WHERE name = ? AND active = 1"
-      )
-      .all(n);
-    return rows.length === 1 ? rows[0] : null;
+    let rows = [];
+    try {
+      rows = sqlite
+        .prepare(
+          "SELECT id, unit_code, category_code FROM products WHERE name = ? AND active = 1"
+        )
+        .all(n);
+      if (rows.length === 1) return rows[0];
+    } catch {
+      /* */
+    }
+    try {
+      rows = sqlite
+        .prepare(
+          "SELECT id, unit_code, category_code FROM menu_items WHERE name = ?"
+        )
+        .all(n);
+      return rows.length === 1 ? rows[0] : null;
+    } catch {
+      return null;
+    }
   } catch {
     return null;
   }

@@ -569,6 +569,7 @@ function getFiscalLogoForPrint(opts = {}) {
     };
   }
 
+  // Fallback tekst i stilizuar (center + bold)
   const textBody = Buffer.from(`${FALLBACK_TEXT}\n`, "ascii");
   return {
     mode: "text",
@@ -582,13 +583,9 @@ const BUSINESS_LOGO_MAX_BYTES = 350000;
 const BUSINESS_LOGO_MAX_W = 384;
 const BUSINESS_LOGO_MAX_H = 160;
 
-function getBusinessLogoDir() {
-  const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "restaurant.db");
-  return path.dirname(path.resolve(dbPath));
-}
-
 function getBusinessLogoPath() {
-  return path.join(getBusinessLogoDir(), BUSINESS_LOGO_FILENAME);
+  const portable = require("../portable-path");
+  return path.join(portable.getDataDir(), BUSINESS_LOGO_FILENAME);
 }
 
 function hasBusinessLogo() {
@@ -644,9 +641,11 @@ function getBusinessLogoForPrint(opts = {}) {
   const decoded = decodePngToRgba(getBusinessLogoPath());
   if (!decoded) return null;
   return buildCenteredRasterPrintBuffer(decoded, {
+    printDensity: opts.printDensity,
     printerName: opts.printerName || "",
     maxWidthDots: BUSINESS_LOGO_MAX_W,
     maxHeightDots: BUSINESS_LOGO_MAX_H,
+    solidRaster: true,
   });
 }
 

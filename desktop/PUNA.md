@@ -1,3 +1,19 @@
+﻿## 2026-11-13 - Test 22 lokal OK
+
+Testi 22/22. Cilësimet u kthyen. Pa dërgim.
+
+## 2026-11-13 - Kupon fiskal njesoj si referenca
+
+Print, logo RKS/MF, kthim/anulim/kthim malli, kopje, email online/offline. Pa ATK. Nuk u be build.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `fiscal/fiscal-print.js` | layout kupon |
+| `fiscal/fiscal-receipt-guard.js` | kontroll kupon |
+| `fiscal/fiscal-logo.js` + logo | logo RKS/MF |
+| `fiscal/fiscal-correction.js` | kthim/anulim |
+| `fiscal/fiscal-receipts-list.js` | kopje |
+| `fiscal/fiscal-receipt-email.js` | email + radhe |
 # PUNA.md — HOTEL desktop
 
 ## 2026-11-13 — Kupon termik i kuq / fiskal i bardhë
@@ -3239,3 +3255,4 @@ Kur kamarieri (POS ose telefon) mbyll tavolinë me `payment_method = "room"`, re
 - `manifest-kamarier.json`, `manifest-recepsion.json`, `manifest-sherbimi.json`, `sw-staff.js`, `icon-192.png`
 - `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/demo-hotel/kamarier`
 - `serveStaffLoginPage` injekton PWA; pas PIN: `waiter.html` / `kasa-recepcion.html` me manifest rol
+
