@@ -1352,6 +1352,70 @@ function initSchema() {
     backupCtx,
   );
 
+  runSchemaMigration(
+    "menu-items-atk-unit-type-v1",
+    backupCtx,
+    () => {
+      if (!tableExists("menu_items") || !tableExists("settings")) return false;
+      const row = sqlGet("SELECT value FROM settings WHERE key = 'atk_unit_type_v1'");
+      return !row || String(row.value) !== "1";
+    },
+    () => {
+      function inferHotelAtkUnitAndType(name, posCategory) {
+        const n = String(name || "")
+          .toLowerCase()
+          .replace(/[ëé]/g, "e")
+          .replace(/[çč]/g, "c");
+        const c = String(posCategory || "")
+          .toLowerCase()
+          .replace(/[ëé]/g, "e")
+          .replace(/[çč]/g, "c");
+        let unit = "EA";
+        let type = "TT";
+        if (/dhome|akomod|fjetje|recepsion/.test(n) || /dhome|akomod/.test(c)) {
+          return { unit_code: "EA", category_code: "ST" };
+        }
+        if (/sherbim/.test(n) || /sherbim/.test(c)) {
+          return { unit_code: "EA", category_code: "ST" };
+        }
+        if (/birra|vere|raki|vodk|uiski|xhin|konjak|prosecco|alkool/.test(n)) type = "PAL";
+        else if (
+          /coca|fanta|sprite|pepsi|leng|nektar|uje|red bull|hell|energj|limonad|pije/.test(n) ||
+          /pije/.test(c)
+        ) {
+          type = "PJA";
+        } else if (/kafe|caj|kakao|espresso|macchiato|cappuccino|latte/.test(n)) type = "UR";
+        else if (
+          /buke|miell|makaron|oriz|qumesht|kos|djath|gjalp|veze|mish|suxhuk|salam|fruta|perime|embelsir|byrek|pizza|sallat|sup/.test(
+            n
+          ) ||
+          /ushqim|kuzhine|embelsira|sallata|restorant/.test(c)
+        ) {
+          type = "AU";
+        }
+        if (/\d+(?:[.,]\d+)?\s*kg\b/.test(n) || /\b1kg\b/.test(n)) unit = "KGN";
+        else if (/\d+(?:[.,]\d+)?\s*(g|gr|gram)\b/.test(n)) unit = "KGN";
+        else if (/\d+(?:[.,]\d+)?\s*(ml|l)\b/.test(n) || /\b1l\b/.test(n) || /0\.5l|0\.75l/.test(n)) {
+          unit = "LTR";
+        }
+        return { unit_code: unit, category_code: type };
+      }
+      const rows = sqlAll("SELECT id, name, category, unit_code, category_code FROM menu_items");
+      for (const row of rows) {
+        const inf = inferHotelAtkUnitAndType(row.name, row.category);
+        const unit = String(row.unit_code || "EA").trim().toUpperCase() || "EA";
+        const cat = String(row.category_code || "TT").trim().toUpperCase() || "TT";
+        if (unit === inf.unit_code && cat === inf.category_code) continue;
+        sqlRun("UPDATE menu_items SET unit_code = ?, category_code = ? WHERE id = ?", [
+          inf.unit_code,
+          inf.category_code,
+          row.id,
+        ]);
+      }
+      sqlRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('atk_unit_type_v1', '1')");
+    },
+  );
+
   migrateAddColumns(
     "tables-columns",
     "tables",

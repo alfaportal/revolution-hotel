@@ -11118,19 +11118,7 @@ function handleGetFiscalReceiptsList(req, res) {
       const label = hotelFiscalMarkLabel(marks.get(String(r.nuikf || "").toUpperCase()), r.total_amount);
       return label ? { ...r, return_status: label, mode: "fiscal" } : { ...r, mode: "fiscal" };
     });
-    let fiscalSaleIds = new Set();
-    try {
-      fiscalSaleIds = new Set(
-        db.db.prepare("SELECT sale_id FROM fiscal_receipts WHERE sale_id IS NOT NULL").all()
-          .map((r) => Number(r.sale_id))
-          .filter((n) => n > 0),
-      );
-    } catch {
-      fiscalSaleIds = new Set();
-    }
-    const thermal = db.listHotelSaleCoupons(limit).filter((r) => !fiscalSaleIds.has(Number(r.order_id)));
-    const merged = receipts.concat(thermal);
-    res.json({ ok: true, mode: "mixed", count: merged.length, receipts: merged });
+    res.json({ ok: true, mode: "fiscal", count: receipts.length, receipts });
   } catch (e) {
     res.status(500).json({ gabim: e.message, error: e.message });
   }

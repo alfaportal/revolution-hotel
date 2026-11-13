@@ -1,5 +1,31 @@
 # PUNA.md — HOTEL desktop
 
+## 2026-11-13 — Kupon termik i kuq / fiskal i bardhë
+
+Lista e kuponëve: termik i kuq. Nuk u be build.
+
+## 2026-11-13 — Testo SEF-in te Fiskalizimi
+
+Butoni «Testo SEF-in» (22 teste lokale). Nuk u be build. Pa tag ngrirje.
+
+## 2026-11-13 — Fiskal dhe termik te ndare
+
+`/api/fiscal-receipts` vetëm kuponë fiskalë. Pa tag ngrirje.
+
+## 2026-11-13 — ATK njesi/lloj si BIZNES
+
+Menu restoranti: AU/PJA/UR + KGN/LTR. Dhoma/sherbim ST. Operatori ishte OK.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `db-engine.js` | migrim `menu-items-atk-unit-type-v1` |
+
+Nuk u be build. Nuk u derguan kupone te ATK. Nuk u prek tag ngrirje.
+
+## 2026-11-11 — Setup 1.0.665
+
+Versioni u ngrit nga 1.0.664 në 1.0.665. Setup i ri: `dist\Revolution HOTEL Setup.exe` dhe në Desktop. 1.0.664 mbeti për kthim prapa. Mbyll Hotelin plotësisht, instaloje dhe hape përsëri.
+
 ## 2026-11-11 — Storno, Anulo, Kthim, Ndërrim
 
 Te Kuponët janë katër butona: Storno, Anulo, Kthim malli, Ndërrim. Secili shton një rresht të ri. Kuponi i vjetër shënohet Storno, Anuluar, Kthyer krejt / Kthyer N artikuj, ose Ndërruar. Storno dhe Anulo kërkojnë arsye. Kthimi hap tabelën e artikujve. Ndërrimi hap zgjedhjen e produktit të ri. Shitja termike printon kupon termik. Shitja fiskale printon kupon fiskal.

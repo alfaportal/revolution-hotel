@@ -4584,8 +4584,14 @@
         <div class="settings-form-actions settings-form-actions-inline">
           <button type="button" class="btn btn-primary btn-sm" id="btn-fiscalizimi-save" data-fi18n="save_fiscalization">Ruaj Fiskalizimin</button>
           <button type="button" class="btn btn-sm" id="btn-kupon-korrigjues" data-fi18n="corrective_coupon" hidden>Kupon Korrigjues</button>
+          <button type="button" class="btn btn-sm" id="btn-fiscal-self-test">Testo SEF-in</button>
           <button type="button" class="btn btn-sm" id="btn-fiscal-receipts-list" data-fi18n="view_fiscal_receipts" hidden>Shiko Kuponët Fiskalë</button>
           <div class="fiscal-save-msg" id="msg-fiscalizimi"></div>
+        </div>
+        <div class="sef-self-test-box" id="sef-self-test-box" hidden>
+          <div class="sef-self-test-title">Rezultati i testit fiskal (lokal — pa ATK)</div>
+          <ul class="sef-self-test-list" id="sef-self-test-list"></ul>
+          <div class="sef-self-test-summary" id="sef-self-test-summary"></div>
         </div>
       </div>
 
@@ -18234,19 +18240,26 @@
         tbody.innerHTML = "";
         for (const r of rows) {
           const tr = document.createElement("tr");
+          const thermal = r.mode === "thermal" || r.coupon_kind === "termik";
+          const ink = thermal ? "color:#ff3b30" : "";
+          const statusText = thermal ? (r.return_status || "Termik") : (r.status || "");
+          const numCell = thermal ? "T-" + (Number(r.daily_number) || 0) : r.daily_number;
+          const copyBtn = thermal
+            ? ""
+            : '<button type="button" class="btn-frl-view" data-frl-copy="' + escHtmlFrl(r.id) + '">Kopje</button>';
           tr.innerHTML =
-            "<td><code>" + escHtmlFrl(r.nuikf) + "</code></td>" +
-            "<td>" + escHtmlFrl(r.daily_number) + "</td>" +
+            "<td><code style=\"" + ink + "\">" + escHtmlFrl(r.nuikf) + "</code></td>" +
+            "<td style=\"" + ink + "\">" + escHtmlFrl(numCell) + "</td>" +
             "<td>" + escHtmlFrl((r.fiscal_date || "") + " " + (r.fiscal_time || "")) + "</td>" +
-            "<td>" + escHtmlFrl(r.receipt_type_label || r.receipt_type) + "</td>" +
+            "<td style=\"" + ink + "\">" + escHtmlFrl(r.receipt_type_label || r.receipt_type) + "</td>" +
             "<td>" + Number(r.total_amount || 0).toFixed(2) + " €</td>" +
             "<td>" + escHtmlFrl(r.payment_label || r.payment_method) + "</td>" +
             "<td>" + escHtmlFrl(r.operator_name) + "</td>" +
-            "<td class=\"" + statusClassFiscalReceipt(r) + "\">" + escHtmlFrl(r.status) + "</td>" +
+            "<td class=\"" + (thermal ? "" : statusClassFiscalReceipt(r)) + "\" style=\"" + (thermal ? "color:#ff3b30" : "") + "\"><strong>" + escHtmlFrl(statusText) + "</strong></td>" +
             '<td class="frl-row-actions">' +
             '<button type="button" class="btn-frl-view" data-frl-preview="' + escHtmlFrl(r.id) + '">Preview</button>' +
             '<button type="button" class="btn-frl-view" data-frl-print="' + escHtmlFrl(r.id) + '">Print</button>' +
-            '<button type="button" class="btn-frl-view" data-frl-copy="' + escHtmlFrl(r.id) + '">Kopje</button>' +
+            copyBtn +
             '<button type="button" class="btn-frl-view" data-frl-id="' + escHtmlFrl(r.id) + '">Shiko</button>' +
             "</td>";
           tbody.appendChild(tr);
@@ -18272,6 +18285,55 @@
 
     document.getElementById("btn-kupon-korrigjues")?.addEventListener("click", hapFiscalCorrectionModal);
     document.getElementById("btn-fiscal-receipts-list")?.addEventListener("click", hapFiscalReceiptsModal);
+    document.getElementById("btn-fiscal-self-test")?.addEventListener("click", async () => {
+      const box = document.getElementById("sef-self-test-box");
+      const list = document.getElementById("sef-self-test-list");
+      const summary = document.getElementById("sef-self-test-summary");
+      const msg = document.getElementById("msg-fiscalizimi");
+      const btn = document.getElementById("btn-fiscal-self-test");
+      if (!box || !list || !summary) return;
+      btn.disabled = true;
+      box.hidden = false;
+      list.innerHTML = "<li>Duke testuar 22 pika (pa dërgim te ATK)…</li>";
+      summary.textContent = "";
+      summary.className = "sef-self-test-summary";
+      try {
+        const report = await api("/api/fiscal-self-test", {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        const rows = Array.isArray(report.results) ? report.results : [];
+        list.innerHTML = "";
+        for (const r of rows) {
+          const li = document.createElement("li");
+          li.className = r.pass ? "pass" : "fail";
+          li.textContent = (r.pass ? "✅ " : "❌ ") + r.name + (r.detail ? " — " + r.detail : "");
+          list.appendChild(li);
+        }
+        const passed = Number(report.summary?.passed);
+        const total = Number(report.summary?.total) || rows.length;
+        summary.className = "sef-self-test-summary " + (report.ok ? "ok" : "bad");
+        summary.textContent = (report.ok ? "OK " : "DËSHTIM ") + (Number.isFinite(passed) ? passed : rows.filter((x) => x.pass).length) + "/" + total;
+        if (msg) {
+          msg.textContent = report.ok ? "Testi fiskal: 22/22 OK" : "Testi fiskal: ka gabime";
+          msg.style.color = report.ok ? "#4ade80" : "#f87171";
+        }
+      } catch (err) {
+        list.innerHTML = "";
+        const li = document.createElement("li");
+        li.className = "fail";
+        li.textContent = "❌ " + (err.message || "Gabim gjatë testit");
+        list.appendChild(li);
+        summary.className = "sef-self-test-summary bad";
+        summary.textContent = "Testi nuk u kompletua";
+        if (msg) {
+          msg.textContent = err.message || "Testi dështoi";
+          msg.style.color = "#f87171";
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
     document.getElementById("frl-btn-lookup")?.addEventListener("click", () => frlLookupReceiptByNuikf());
     document.getElementById("frl-btn-cancel")?.addEventListener("click", () => frlConfirmFullCancel());
     document.getElementById("frl-storno-reason-btn")?.addEventListener("click", (e) => {
