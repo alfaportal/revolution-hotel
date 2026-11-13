@@ -1,4 +1,13 @@
-﻿## 2026-11-13 - Test 22 lokal OK
+## 2026-11-13 - Zbritje kupon dhe rresht si referenca
+
+Zbritja e kuponit hyn te rreshtat ATK. Discount i rreshtit mbetet. Pa waiter/admin.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `fiscal/atk-model-builder.js` | zbritja e shportës te rreshtat; pa heqje të discount |
+| `fiscal/fiscal-self-test.js` | testi 6c pas zbritjes së kuponit |
+
+## 2026-11-13 - Test 22 lokal OK
 
 Testi 22/22. Cilësimet u kthyen. Pa dërgim.
 
