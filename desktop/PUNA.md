@@ -1,3 +1,65 @@
+## 2026-11-14 — Setup 1.0.600 (pa v)
+
+`HOTEL_BUILD_NO_BUMP=1 node build-packages.js` — një Setup, kod 0. Versioni në Setup **1.0.600** (FileVersion/ProductVersion). Në ekran del vetëm numri, pa `v`. 1.0.666 dhe 1.0.665 mbeten. Nuk u bë git. Nuk u prek tag ngrirje.
+
+PC: instalo Setup 1.0.600 → mbyll programin plotësisht → hape përsëri.
+
+| Skedar / veprim | Ndryshimi |
+|-----------------|-----------|
+| `package.json` | version 1.0.600 |
+| `public/js/app.js` | badge pa `v` — vetëm numri |
+| `dist\Revolution HOTEL Setup.exe` | 122310512 byte, 1.0.600 |
+| Desktop | kopja e Setup 1.0.600 |
+
+## 2026-11-14 — Renditja e skedave të pronarit
+
+Renditja e Naserit u shkrua në kod. Pronari mund ta ndryshojë me tërheqje. Pa build.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | DEFAULT_ADMIN_TAB_ORDER si në panel |
+| `public/admin.html` | butonat e skedave në të njëjtin rend |
+
+## 2026-11-14 — Syri te Monedha në arkë
+
+Shuma e arkës nuk del hapur. Vetëm syri; kur e shtyp, del shuma. Njësoj si KAFENE. HUMBJE STOKU mbeti. Pa build.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/waiter.html` | syri te kutia e arkës dhe te pazari |
+
+## 2026-11-14 — Arka restoranti si KAFENE + Rregullimi i tavolinave
+
+Pamja e tavolinave e zezë me dritë, harta 2D, Kryesore/Terrasa/Online. Te pronari tab i ri «Rregullimi i tavolinave». Butoni HUMBJE STOKU mbeti. Pa build. Pa git. Pa tag ngrirje.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` + `db-engine.js` | vendet x/y të tavolinave |
+| `server.js` | ruajtja e hartës |
+| `public/js/hotel-table-floor-ui.js` | tab-i i pronarit |
+| `public/admin.html` + CSS | Rregullimi i tavolinave |
+| `public/waiter.html` + CSS | Arka e restorantit |
+
+## 2026-11-14 — Setup 1.0.666
+
+`node build-packages.js` e ngriti versionin 1.0.665 → **1.0.666** dhe mbaroi me kod 0. Audit: 80 module, teste 17/17. Instaluesi: `dist\Revolution HOTEL Setup.exe`, arkiva `Revolution HOTEL Setup 1.0.666.exe` (122177861 byte), kopja në Desktop. 1.0.665 dhe më të vjetrit mbeten. Nuk u bë git. Nuk u prek tag ngrirje.
+
+PC: instalo Setup 1.0.666 → mbyll programin plotësisht → hape përsëri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `package.json` | version 1.0.666 (auto-bump i skriptit) |
+| `build/create-desktop-backup.ps1` | mungonte — NSIS e kërkonte; `exit 0` |
+
+## 2026-11-13 — Audit storno/kthim: 15 € kudo
+
+Shitje test 22+30+16, storno −22, kthim −15, anulim −16. Totalet ishin 15 €. Lista e produkteve shtonin sasi pa minus. Arka tregonte 0 sepse rreshtat s’kanë register_id. Pa waiter/admin. Pa ATK. Pa GIT. Pa build. Pa tag ngrirje.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | topItems me minus; Arka merr shitjet pa register_id |
+| `hotel-advanced-reports.js` | xhiro/produktet me minus |
+
 ## 2026-11-13 - Zbritje kupon dhe rresht si referenca
 
 Zbritja e kuponit hyn te rreshtat ATK. Discount i rreshtit mbetet. Pa waiter/admin.

@@ -269,7 +269,7 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
 }
 
 #ekrani-tavolina .waiter-kpi-row.waiter-kpi-row-tables {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
 #ekrani-tavolina button.waiter-kpi-loss {
@@ -633,4 +633,125 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
 
 @media (hover: none), (pointer: coarse) {
   .waiter-table-hover { display: none !important; }
+}
+
+#ekrani-tavolina .waiter-main {
+  overflow-x: hidden;
+  background: #0b1220;
+}
+
+#ekrani-tavolina .waiter-topbar {
+  background: #0b1220;
+  border-bottom: none;
+  color: #e2e8f0;
+  width: 100%;
+}
+
+#ekrani-tavolina .waiter-kpi-kryesore {
+  background: linear-gradient(135deg, #ddd6fe, #c4b5fd);
+  color: #5b21b6;
+}
+
+#ekrani-tavolina .waiter-kpi-terrasa {
+  background: linear-gradient(135deg, #a5f3fc, #67e8f9);
+  color: #155e75;
+}
+
+#ekrani-tavolina .waiter-kpi-online {
+  background: linear-gradient(135deg, #fed7aa, #fdba74);
+  color: #9a3412;
+}
+
+#ekrani-tavolina .waiter-kpi-online .waiter-kpi-label,
+#ekrani-tavolina .waiter-kpi-terrasa .waiter-kpi-label,
+#ekrani-tavolina .waiter-kpi-kryesore .waiter-kpi-label {
+  font-size: 0.52rem;
+  line-height: 1.15;
+}
+
+#ekrani-tavolina .waiter-zones-scroll {
+  background: #0b1220;
+}
+
+#ekrani-tavolina .table-floor-map {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 440px;
+  height: min(68vh, 740px);
+  width: 100%;
+  overflow: hidden;
+  background: #0b1220;
+  border-radius: 12px;
+}
+
+#ekrani-tavolina .table-floor-map .table-card {
+  position: absolute;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+  height: 110px;
+  min-height: 110px !important;
+  max-height: 110px;
+  padding: 0.45rem 0.35rem 0.4rem !important;
+  gap: 0.12rem !important;
+}
+
+#ekrani-tavolina .waiter-main-title {
+  color: #f8fafc;
+  font-weight: 900;
+}
+
+#ekrani-tavolina .waiter-main-sub {
+  color: #f1f5f9;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+#ekrani-tavolina .waiter-zone-section[data-zone-kind="dining"] .waiter-zone-head,
+#ekrani-tavolina .waiter-zone-section[data-zone-kind="terrace"] .waiter-zone-head {
+  border-bottom: 1px solid #ef4444;
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.55rem;
+}
+
+#ekrani-tavolina .waiter-zone-title {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+#ekrani-tavolina .table-card.free {
+  background: linear-gradient(180deg, #123526 0%, #0a1f18 100%) !important;
+  color: #ecfdf5 !important;
+  border: 1px solid rgba(52, 211, 153, 0.75);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25), 0 0 18px rgba(16, 185, 129, 0.42);
+}
+
+#ekrani-tavolina .table-card.occupied,
+#ekrani-tavolina .table-card.cloud-occupied,
+#ekrani-tavolina .table-card.pending-cloud {
+  background: linear-gradient(180deg, #3d1f08 0%, #1a0e05 100%) !important;
+  color: #fff7ed !important;
+  border: 1px solid rgba(251, 146, 60, 0.85);
+  box-shadow: 0 0 0 1px rgba(234, 88, 12, 0.3), 0 0 20px rgba(234, 88, 12, 0.5);
+}
+
+#ekrani-tavolina .table-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.92;
+}
+
+#ekrani-tavolina .table-card-bar {
+  width: 70%;
+  height: 4px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #fb923c, #f59e0b);
+}
+
+#ekrani-tavolina .waiter-zone-section.is-collapsed .table-floor-map {
+  display: none;
 }

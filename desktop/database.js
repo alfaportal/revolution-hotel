@@ -24,6 +24,11 @@ function isOnlineOrdersZoneName(name) {
   return n === "porosi online" || n === "commandes en ligne";
 }
 
+function isTerraceZoneName(name) {
+  const n = String(name || "").trim().toLowerCase();
+  return /^(terrasa|terrace|terrasse|terras|terasa|terraca|ballokoni|ballkoni|balcony|ballkon|balcon|patio|veranda)\b/.test(n);
+}
+
 function localizeDefaultLayoutNames() {
   let fr = false;
   try {
@@ -1087,7 +1092,15 @@ function getAdminRegisterStatus() {
     ...localRegs.map((reg) => {
       const openShift = getPrimaryOpenWaiterShift();
       const isOpen = !!(openShift && !openShift.closed_at && openShift.opening_cash != null);
-      const sales = salesMap.get(reg.id) || { total: 0, order_count: 0 };
+      const assigned = salesMap.get(reg.id) || { total: 0, order_count: 0 };
+      const unassigned = salesMap.get(0) || { total: 0, order_count: 0 };
+      const takeOrphans = localRegs.length === 1 || Number(reg.number) === 1;
+      const sales = takeOrphans
+        ? {
+            total: Math.round((assigned.total + unassigned.total) * 100) / 100,
+            order_count: assigned.order_count + unassigned.order_count,
+          }
+        : assigned;
       let closedAt = null;
       let closingCashActual = null;
       let lastWaiter = null;
@@ -1919,33 +1932,36 @@ function getAppWindowTitle({ business_subtype, business_type, restaurant_name } 
 /** Rendi default i skedave Admin (data-panel). */
 const DEFAULT_ADMIN_TAB_ORDER = [
   "pasqyra",
+  "importo-produkte",
   "menuja",
-  "promocione",
-  "rezervime",
   "stoku",
+  "blerjet",
+  "faturat",
+  "furnitoret",
   "receta-perberesit",
   "stafi",
-  "tavolinat",
+  "mysafiret",
+  "pastrimi",
   "dhomat",
   "sherbimet",
   "rezervime-dhomash",
-  "mysafiret",
-  "pastrimi",
-  "qr-tavolinat",
-  "raportet",
-  "faturat",
-  "ditari",
+  "promocione",
+  "rezervime",
   "ditari-hoteli",
-  "fiskalizimi",
+  "ditari",
+  "raportet",
+  "raporte-avancuara",
+  "tavolinat",
+  "rregullimi-tavolinave",
   "kuponet-fiskale",
   "audit",
+  "fiskalizimi",
   "paper-block",
   "cilësimet",
   "licenca",
-  "blerjet",
-  "furnitoret",
-  "kontabilisti",
+  "qr-tavolinat",
   "ai",
+  "kontabilisti",
 ];
 
 function parseAdminTabOrder(raw) {
@@ -1954,21 +1970,29 @@ function parseAdminTabOrder(raw) {
   try {
     const parsed = JSON.parse(String(raw || "[]"));
     if (Array.isArray(parsed)) {
-      arr = parsed.map((id) => String(id)).filter((id) => allowed.has(id));
+      const seen = new Set();
+      for (const id of parsed) {
+        const s = String(id);
+        if (!allowed.has(s) || seen.has(s)) continue;
+        seen.add(s);
+        arr.push(s);
+      }
     }
   } catch {
     arr = [];
   }
   for (const id of DEFAULT_ADMIN_TAB_ORDER) {
-    if (!arr.includes(id)) arr.push(id);
-  }
-  const recetaId = "receta-perberesit";
-  const stokuIdx = arr.indexOf("stoku");
-  const recetaIdx = arr.indexOf(recetaId);
-  if (stokuIdx >= 0 && recetaIdx >= 0 && recetaIdx !== stokuIdx + 1) {
-    arr.splice(recetaIdx, 1);
-    const st = arr.indexOf("stoku");
-    arr.splice(st + 1, 0, recetaId);
+    if (arr.includes(id)) continue;
+    const defIdx = DEFAULT_ADMIN_TAB_ORDER.indexOf(id);
+    let insertAt = arr.length;
+    for (let j = defIdx + 1; j < DEFAULT_ADMIN_TAB_ORDER.length; j++) {
+      const pos = arr.indexOf(DEFAULT_ADMIN_TAB_ORDER[j]);
+      if (pos >= 0) {
+        insertAt = pos;
+        break;
+      }
+    }
+    arr.splice(insertAt, 0, id);
   }
   return arr;
 }
@@ -8115,7 +8139,103 @@ function getRoomFolioPreview(roomId, opts = {}) {
   });
 }
 
+function pragmaColumnNames(table) {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() || [];
+  return new Set(rows.map((c) => String(c.name || c.Name || "")));
+}
+
+function ensureFloorPlanColumns() {
+  const zc = pragmaColumnNames("table_zones");
+  if (!zc.has("layout_rows")) {
+    sqlite.exec("ALTER TABLE table_zones ADD COLUMN layout_rows INTEGER NOT NULL DEFAULT 0");
+  }
+  const tc = pragmaColumnNames("tables");
+  if (!tc.has("layout_col")) {
+    sqlite.exec("ALTER TABLE tables ADD COLUMN layout_col INTEGER NOT NULL DEFAULT -1");
+  }
+  if (!tc.has("layout_row")) {
+    sqlite.exec("ALTER TABLE tables ADD COLUMN layout_row INTEGER NOT NULL DEFAULT -1");
+  }
+  if (!tc.has("layout_x")) {
+    sqlite.exec("ALTER TABLE tables ADD COLUMN layout_x REAL NOT NULL DEFAULT -1");
+  }
+  if (!tc.has("layout_y")) {
+    sqlite.exec("ALTER TABLE tables ADD COLUMN layout_y REAL NOT NULL DEFAULT -1");
+  }
+}
+
+function saveTableFloorPlan(payload) {
+  ensureFloorPlanColumns();
+  const terrasaEnabled = payload?.terrasa_enabled === true
+    || payload?.terrasa_enabled === 1
+    || payload?.terrasa_enabled === "1";
+  setSetting("terrasa_enabled", terrasaEnabled ? "1" : "0");
+  const zonesIn = Array.isArray(payload?.zones) ? payload.zones : [];
+  sqlite.transaction(() => {
+    for (const z of zonesIn) {
+      const id = Number(z.id);
+      if (!id) continue;
+      const zone = sqlite.prepare("SELECT * FROM table_zones WHERE id = ?").get(id);
+      if (!zone || isOnlineOrdersZoneName(zone.name)) continue;
+      const isT = isTerraceZoneName(zone.name);
+      const min = isT ? 2 : 1;
+      let rows = Math.round(Number(z.layout_rows));
+      if (!Number.isFinite(rows) || rows <= 0) rows = isT ? 2 : 3;
+      rows = Math.max(min, Math.min(3, rows));
+      try {
+        sqlite.prepare("UPDATE table_zones SET layout_rows = ? WHERE id = ?").run(rows, id);
+      } catch {
+      }
+      for (const t of z.tables || []) {
+        const tid = Number(t.id);
+        if (!tid) continue;
+        const tbl = sqlite.prepare("SELECT id FROM tables WHERE id = ?").get(tid);
+        if (!tbl) continue;
+        let lx = Number(t.layout_x);
+        let ly = Number(t.layout_y);
+        if (!Number.isFinite(lx) || lx < 0) lx = -1;
+        else lx = Math.max(0, Math.min(92, lx));
+        if (!Number.isFinite(ly) || ly < 0) ly = -1;
+        else ly = Math.max(0, Math.min(90, ly));
+        const col = lx >= 0 ? Math.min(7, Math.max(0, Math.round(lx / 12.5))) : Math.max(0, Math.min(7, Number(t.layout_col) || 0));
+        const r = ly >= 0 ? Math.min(rows - 1, Math.max(0, Math.round(ly / 40))) : Math.max(0, Math.min(rows - 1, Number(t.layout_row) || 0));
+        sqlite.prepare("UPDATE tables SET layout_col = ?, layout_row = ?, layout_x = ?, layout_y = ?, sort_order = ? WHERE id = ?")
+          .run(col, r, lx, ly, r * 8 + col, tid);
+      }
+    }
+  })();
+  return getTableLayout();
+}
+
+try {
+  ensureFloorPlanColumns();
+} catch (e) {
+  console.warn("[floor] columns:", e && e.message);
+}
+
+function isTerrasaLayoutEnabled() {
+  const v = getSetting("terrasa_enabled", null);
+  if (v === "0") return false;
+  if (v === "1") return true;
+  try {
+    const zones = sqlite.prepare("SELECT id, name FROM table_zones").all();
+    for (const z of zones) {
+      if (!isTerraceZoneName(z.name)) continue;
+      const c = sqlite.prepare("SELECT COUNT(*) AS c FROM tables WHERE zone_id = ?").get(z.id).c;
+      if (Number(c) > 0) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function getTableLayout() {
+  try {
+    ensureFloorPlanColumns();
+  } catch (err) {
+    console.warn("[floor] columns:", err.message);
+  }
   try {
     reconcileOnlinePickupTableLabels();
   } catch (err) {
@@ -8154,6 +8274,7 @@ function getTableLayout() {
   return {
     zones: zonesOut,
     table_count: tables.length,
+    terrasa_enabled: isTerrasaLayoutEnabled(),
   };
 }
 
@@ -12756,16 +12877,17 @@ function buildTopItemsFromDailyLogEntries(entryList) {
     const paid = Number(e.total) || 0;
     const scale = raw ? paid / raw : 0;
     for (const line of lines) {
-      itemCounts[line.name] = (itemCounts[line.name] || 0) + line.qty;
+      itemCounts[line.name] = (itemCounts[line.name] || 0) + line.qty * scale;
       itemRevenue[line.name] = (itemRevenue[line.name] || 0) + line.rev * scale;
     }
   }
   return Object.keys(itemCounts)
-    .sort((a, b) => itemCounts[b] - itemCounts[a] || itemRevenue[b] - itemRevenue[a])
+    .filter((name) => Math.abs(itemRevenue[name] || 0) >= 0.005 || Math.abs(itemCounts[name] || 0) >= 0.005)
+    .sort((a, b) => itemRevenue[b] - itemRevenue[a] || itemCounts[b] - itemCounts[a])
     .slice(0, 15)
     .map((name) => ({
       name,
-      quantity: itemCounts[name],
+      quantity: Number((itemCounts[name] || 0).toFixed(2)),
       revenue: Number((itemRevenue[name] || 0).toFixed(2)),
     }));
 }
@@ -20711,6 +20833,7 @@ function getVersionInfo() {
     purgeTodaySalesData,
     getTablesWithOrders,
     getTableLayout,
+    saveTableFloorPlan,
     getTableCount,
     getPhysicalTableCount,
     tableLabel,

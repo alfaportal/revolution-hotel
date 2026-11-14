@@ -1423,6 +1423,10 @@ function initSchema() {
       ["display_name", "TEXT NOT NULL DEFAULT ''"],
       ["zone_id", "INTEGER"],
       ["sort_order", "INTEGER NOT NULL DEFAULT 0"],
+      ["layout_col", "INTEGER NOT NULL DEFAULT -1"],
+      ["layout_row", "INTEGER NOT NULL DEFAULT -1"],
+      ["layout_x", "REAL NOT NULL DEFAULT -1"],
+      ["layout_y", "REAL NOT NULL DEFAULT -1"],
     ],
     backupCtx,
   );

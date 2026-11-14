@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Revolution HOTEL</title>
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/admin-modern.css?v=20261004tabwrap">
+  <link rel="stylesheet" href="/css/admin-modern.css?v=20261114floor">
   <style>
     .table-modal {
       position: fixed;
@@ -2642,35 +2642,36 @@
 
     <nav class="admin-tabbar" id="tabs">
       <button type="button" class="admin-tab-btn active" data-panel="pasqyra">Pasqyra</button>
-      <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
       <button type="button" class="admin-tab-btn" data-panel="importo-produkte">Importo Produkte</button>
-      <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
-      <button type="button" class="admin-tab-btn" data-panel="tavolinat">Tavolinat</button>
-      <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
+      <button type="button" class="admin-tab-btn" data-panel="menuja">Produktet</button>
       <button type="button" class="admin-tab-btn" data-panel="stoku">Stoku</button>
+      <button type="button" class="admin-tab-btn" data-panel="blerjet">Blerjet</button>
+      <button type="button" class="admin-tab-btn" data-panel="faturat">Faturat</button>
+      <button type="button" class="admin-tab-btn" data-panel="furnitoret">Furnitorët</button>
       <button type="button" class="admin-tab-btn" data-panel="receta-perberesit">Receptat</button>
       <button type="button" class="admin-tab-btn" data-panel="stafi">Punonjësit</button>
+      <button type="button" class="admin-tab-btn" data-panel="mysafiret">Mysafirët</button>
+      <button type="button" class="admin-tab-btn" data-panel="pastrimi">Pastrimi</button>
       <button type="button" class="admin-tab-btn" data-panel="dhomat">Dhomat</button>
       <button type="button" class="admin-tab-btn" data-panel="sherbimet">Shërbimet</button>
       <button type="button" class="admin-tab-btn" data-panel="rezervime-dhomash">Rezervimet</button>
-      <button type="button" class="admin-tab-btn" data-panel="mysafiret">Mysafirët</button>
-      <button type="button" class="admin-tab-btn" data-panel="pastrimi">Pastrimi</button>
-      <button type="button" class="admin-tab-btn" data-panel="qr-tavolinat">QR Kodet</button>
+      <button type="button" class="admin-tab-btn" data-panel="promocione">Promocione</button>
+      <button type="button" class="admin-tab-btn" data-panel="rezervime">Rezervime tavolinash</button>
+      <button type="button" class="admin-tab-btn" data-panel="ditari-hoteli">Ditari i hotelit</button>
+      <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
       <button type="button" class="admin-tab-btn" data-panel="raportet">Raportet</button>
       <button type="button" class="admin-tab-btn" data-panel="raporte-avancuara" id="tab-raporte-avancuara" hidden>Raporte të avancuara</button>
-      <button type="button" class="admin-tab-btn" data-panel="faturat">Faturat</button>
-      <button type="button" class="admin-tab-btn" data-panel="ditari">Ditari</button>
-      <button type="button" class="admin-tab-btn" data-panel="ditari-hoteli">Ditari i hotelit</button>
-      <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
+      <button type="button" class="admin-tab-btn" data-panel="tavolinat">Tavolinat</button>
+      <button type="button" class="admin-tab-btn" data-panel="rregullimi-tavolinave">Rregullimi i tavolinave</button>
       <button type="button" class="admin-tab-btn" data-panel="kuponet-fiskale">Kuponët fiskalë</button>
       <button type="button" class="admin-tab-btn" data-panel="audit">Audit</button>
+      <button type="button" class="admin-tab-btn" data-panel="fiskalizimi">Fiskalizimi</button>
       <button type="button" class="admin-tab-btn" data-panel="paper-block">Blloku i letrës</button>
       <button type="button" class="admin-tab-btn" data-panel="cilësimet">Cilësimet</button>
       <button type="button" class="admin-tab-btn" data-panel="licenca">Licenca</button>
-      <button type="button" class="admin-tab-btn" data-panel="blerjet">Blerjet</button>
-      <button type="button" class="admin-tab-btn" data-panel="furnitoret">Furnitorët</button>
-      <button type="button" class="admin-tab-btn" data-panel="kontabilisti">Kontabilisti</button>
+      <button type="button" class="admin-tab-btn" data-panel="qr-tavolinat">QR Kodet</button>
       <button type="button" class="admin-tab-btn" data-panel="ai">AI</button>
+      <button type="button" class="admin-tab-btn" data-panel="kontabilisti">Kontabilisti</button>
     </nav>
 
     <nav class="settings-subnav settings-subnav-global" id="settings-subnav-bar" hidden>
@@ -3372,6 +3373,29 @@
       </div>
       <div class="card tables-panel-card">
         <div id="grida-tavolinave" class="admin-tables-grid"></div>
+      </div>
+    </section>
+
+    <section id="panel-rregullimi-tavolinave" class="panel">
+      <div class="tables-panel-header">
+        <div>
+          <h2 class="tables-panel-title">Rregullimi i tavolinave</h2>
+          <p class="tables-panel-sub">Zvarrit tavolinat në hartë. Arka i tregon aty ku i vendos.</p>
+        </div>
+        <div class="tables-panel-actions">
+          <button type="button" class="btn btn-primary" id="btn-floor-plan-save">Ruaj vendosjen</button>
+        </div>
+      </div>
+      <div id="floor-plan-msg" class="fiscal-save-msg"></div>
+      <div class="floor-plan-toolbar">
+        <label class="floor-check">
+          <input type="checkbox" id="floor-terrasa-on">
+          Terrasa e hapur
+        </label>
+      </div>
+      <div id="floor-dining-boards"></div>
+      <div id="floor-terrace-box" hidden>
+        <div id="floor-terrace-boards"></div>
       </div>
     </section>
 
@@ -7120,6 +7144,7 @@
   <script src="/js/fiscal-receipts-tab.js?v=4"></script>
   <script src="/js/kontabilisti-atk-ui.js?v=6"></script>
   <script src="/js/hotel-advanced-reports-ui.js?v=1"></script>
+  <script src="/js/hotel-table-floor-ui.js?v=1"></script>
   <script src="https://revolution-pos.com/js/qrcode.js?v=1" defer></script>
   <script>
     const sesHyrje = typeof lexoSesionin === "function" ? lexoSesionin() : null;
@@ -7561,9 +7586,15 @@
       const map = new Map(
         [...nav.querySelectorAll(".admin-tab-btn")].map((b) => [b.dataset.panel, b]),
       );
+      const placed = new Set();
       for (const id of order) {
         const el = map.get(id);
-        if (el) nav.appendChild(el);
+        if (!el) continue;
+        nav.appendChild(el);
+        placed.add(id);
+      }
+      for (const [id, el] of map) {
+        if (!placed.has(id)) nav.appendChild(el);
       }
     }
 
@@ -7742,6 +7773,7 @@
         ngarkoMenaxhimTavolinash();
         ngarkoTavolinat();
       }
+      if (name === "rregullimi-tavolinave") window.ngarkoRregullimiTavolinave?.();
       if (name === "rezervime") ngarkoRezervimet();
       if (name === "promocione") ngarkoPromocionet();
       if (name === "raportet") {

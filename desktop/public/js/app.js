@@ -238,10 +238,10 @@ function applyAppVersionBadge(settings, elementId) {
     el.textContent = "";
     return;
   }
-  el.textContent = `v${raw}`;
+  el.textContent = raw;
   el.hidden = false;
   const brand = String(settings.app_brand || "").trim();
-  el.title = brand ? `${brand} — v${raw}` : `Versioni ${raw}`;
+  el.title = brand ? `${brand} — ${raw}` : `Versioni ${raw}`;
 }
 
 function mbushSelectKategorive(sel, kategorite) {

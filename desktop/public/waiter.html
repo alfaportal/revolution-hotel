@@ -26,6 +26,11 @@
       display: flex !important;
     }
 
+    .pos-pazar-eye { border: 0; background: transparent; color: inherit; padding: 4px; line-height: 0; cursor: pointer; }
+    .waiter-kpi-cash { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px; }
+    .pos-shift-pazar-box:not([hidden]) { display: flex; flex-direction: column; align-items: flex-end; }
+    body.waiter-kpi-rooms #kpi-pazar-eye { display: none; }
+
     .waiter-shell {
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
@@ -992,7 +997,7 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=3">
+  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=5">
 </head>
 <body class="waiter-screen">
   <div id="waiter-fiscal-alerts">
@@ -1057,10 +1062,40 @@
           <span class="waiter-kpi-label">HUMBJE STOKU</span>
           <span class="waiter-kpi-value waiter-kpi-loss-icon" aria-hidden="true">＋</span>
         </button>
-        <button type="button" class="waiter-kpi waiter-kpi-cash" id="kpi-cash-wrap" aria-label="Monedha në arkë">
-          <span class="waiter-kpi-label" id="kpi-label-4">MONEDHA NË ARKË</span>
-          <span class="waiter-kpi-value" id="kpi-arke">0</span>
+        <button type="button" class="waiter-kpi waiter-kpi-kryesore" id="kpi-kryesore-wrap" hidden aria-label="Hap restorantin">
+          <span class="waiter-kpi-label">KRYESORE</span>
+          <span class="waiter-kpi-value" id="kpi-kryesore">0</span>
         </button>
+        <button type="button" class="waiter-kpi waiter-kpi-terrasa" id="kpi-terrasa-wrap" hidden aria-label="Hap Terrasën">
+          <span class="waiter-kpi-label">TERRASA</span>
+          <span class="waiter-kpi-value" id="kpi-terrasa">0</span>
+        </button>
+        <button type="button" class="waiter-kpi waiter-kpi-online" id="kpi-online-wrap" hidden aria-label="Hap Porosi Online">
+          <span class="waiter-kpi-label">POROSI ONLINE</span>
+          <span class="waiter-kpi-value" id="kpi-online">0</span>
+        </button>
+        <div class="waiter-kpi waiter-kpi-cash" id="kpi-cash-wrap">
+          <button type="button" class="pos-pazar-eye" id="kpi-pazar-eye" aria-label="Shfaq pazarin">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <div class="pos-shift-pazar-box" id="kpi-pazar-box" hidden>
+            <span class="waiter-kpi-label" id="kpi-label-4">MONEDHA NË ARKË</span>
+            <span class="waiter-kpi-value" id="kpi-arke">0.00 €</span>
+          </div>
+        </div>
+        <script>
+        document.addEventListener("click", function (ev) {
+          var btn = ev.target.closest ? ev.target.closest(".pos-pazar-eye") : null;
+          if (!btn) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          var box = btn.parentElement ? btn.parentElement.querySelector(".pos-shift-pazar-box") : null;
+          if (!box) return;
+          var show = box.hidden;
+          box.hidden = !show;
+          btn.setAttribute("aria-label", show ? "Fshih pazarin" : "Shfaq pazarin");
+        }, true);
+        </script>
       </div>
 
       <nav class="waiter-main-tabs" role="tablist" aria-label="Pamjet e recepsionit">
@@ -1108,7 +1143,10 @@
           <p class="waiter-main-sub" id="waiter-main-sub">Tavolina — restoranti / bari i hotelit</p>
         </div>
         <div class="waiter-toolbar-actions">
-          <span class="waiter-shift-total" id="hdr-pazari" title="Pazari i nderrimit">0.00 €</span>
+          <button type="button" class="pos-pazar-eye" aria-label="Shfaq pazarin">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <span class="waiter-shift-total pos-shift-pazar-box" id="hdr-pazari" title="Pazari i nderrimit" hidden>0.00 €</span>
           <button type="button" class="btn btn-shift-close btn-sm" id="btn-mbyll-nderrimin">Mbyll nderrimin</button>
         </div>
       </div>
@@ -1873,6 +1911,17 @@
     const kpiReWrap = document.getElementById("kpi-re-wrap");
     const waiterOnlinePop = document.getElementById("waiter-online-pop");
     let waiterTableKpiFilter = null;
+    let lastTerrasaEnabled = false;
+    function lexoSallaWaiter() {
+      try {
+        const v = String(new URLSearchParams(window.location.search).get("salla") || "").trim().toLowerCase();
+        if (v === "terrasa" || v === "online") return v;
+      } catch {
+      }
+      return "kryesore";
+    }
+    let waiterSalla = lexoSallaWaiter();
+    document.getElementById("ekrani-tavolina")?.setAttribute("data-salla", waiterSalla);
     const WAITER_ACK_CLOUD_KEY = "waiter-accepted-cloud-ids-v1";
 
     function loadWaiterAcceptedCloudIds() {
@@ -2754,26 +2803,51 @@
       const lossWrap = document.getElementById("kpi-stock-loss-wrap");
       const kpiRow = document.querySelector(".waiter-kpi-row");
       const tablesMode = view === "tables";
+      const sallaWraps = [
+        document.getElementById("kpi-kryesore-wrap"),
+        document.getElementById("kpi-terrasa-wrap"),
+        document.getElementById("kpi-online-wrap"),
+      ];
+      const pazarBox = document.getElementById("kpi-pazar-box");
+      const pazarEye = document.getElementById("kpi-pazar-eye");
+      document.body.classList.toggle("waiter-kpi-rooms", !tablesMode);
       if (tablesMode) {
         if (l1) l1.textContent = "E HAPUR";
         if (l2) l2.textContent = "LIRË";
         if (l3) l3.textContent = "QR TAVOLINA";
         if (l4) l4.textContent = "MONEDHA NË ARKË";
+        if (pazarBox) pazarBox.hidden = true;
+        if (pazarEye) {
+          pazarEye.hidden = false;
+          pazarEye.removeAttribute("hidden");
+          pazarEye.setAttribute("aria-label", "Shfaq pazarin");
+        }
         if (lossWrap) {
           lossWrap.hidden = false;
           lossWrap.removeAttribute("hidden");
         }
+        sallaWraps.forEach((el) => {
+          if (!el) return;
+          el.hidden = false;
+          el.removeAttribute("hidden");
+        });
         kpiRow?.classList.add("waiter-kpi-row-tables");
       } else {
-        /* Dhomat + tab-et e tjera hotel — KPI dhomash */
         if (l1) l1.textContent = "TË ZËNA";
         if (l2) l2.textContent = "TË LIRA";
         if (l3) l3.textContent = "TË PAPASTRA";
         if (l4) l4.textContent = "TË REZERVUARA";
+        if (pazarEye) pazarEye.hidden = true;
+        if (pazarBox) pazarBox.hidden = false;
         if (lossWrap) {
           lossWrap.hidden = true;
           lossWrap.setAttribute("hidden", "");
         }
+        sallaWraps.forEach((el) => {
+          if (!el) return;
+          el.hidden = true;
+          el.setAttribute("hidden", "");
+        });
         kpiRow?.classList.remove("waiter-kpi-row-tables");
         waiterTableKpiFilter = null;
         syncWaiterTableKpiSelectedUi();
@@ -2788,6 +2862,22 @@
       document.getElementById("kpi-free-wrap")?.classList.toggle(
         "waiter-kpi-selected",
         waiterTableKpiFilter === "free",
+      );
+      document.getElementById("kpi-re-wrap")?.classList.toggle(
+        "waiter-kpi-selected",
+        waiterTableKpiFilter === "qr",
+      );
+      document.getElementById("kpi-kryesore-wrap")?.classList.toggle(
+        "waiter-kpi-selected",
+        waiterSalla === "kryesore" && waiterView === "tables",
+      );
+      document.getElementById("kpi-terrasa-wrap")?.classList.toggle(
+        "waiter-kpi-selected",
+        waiterSalla === "terrasa" && waiterView === "tables",
+      );
+      document.getElementById("kpi-online-wrap")?.classList.toggle(
+        "waiter-kpi-selected",
+        waiterSalla === "online" && waiterView === "tables",
       );
     }
 
@@ -4654,14 +4744,29 @@
     function perditesoKpi(tables, shift) {
       if (waiterView !== "tables") return;
       setKpiLabelsForView("tables");
-      const mine = tables.filter(t => t.order && t.order.waiter_name === user.emri).length;
-      const free = tables.filter(t => !t.order && t.status === "free" && !t.reserved).length;
+      const visible = tavolinatESalles(tables);
+      const mine = visible.filter(t => t.order && t.order.waiter_name === user.emri).length;
+      const free = visible.filter(t => !t.order && t.status === "free" && !t.reserved).length;
       document.getElementById("kpi-hapur").textContent = String(mine);
       document.getElementById("kpi-lire").textContent = String(free);
       document.getElementById("kpi-arke").textContent = formatEuro(
         (shift?.opening_cash || 0) + (shift?.cash_total || 0),
       );
+      const kryesoreCount = (tables || []).filter((t) => {
+        if (eshteZoneOnlinePickup({ name: t.zone_name })) return false;
+        if (eshteZoneTerrasaSalla(t.zone_name)) return false;
+        if (/^Online\s+\d+$/i.test(String(t.label || t.display_name || "").trim())) return false;
+        return true;
+      }).length;
+      const kryesoreEl = document.getElementById("kpi-kryesore");
+      if (kryesoreEl) kryesoreEl.textContent = String(kryesoreCount);
+      const terrasaCount = (tables || []).filter((t) => eshteZoneTerrasaSalla(t.zone_name)).length;
+      const terrasaEl = document.getElementById("kpi-terrasa");
+      if (terrasaEl) terrasaEl.textContent = String(terrasaCount);
+      const onlineEl = document.getElementById("kpi-online");
+      if (onlineEl) onlineEl.textContent = String(porosiOnlineNePritje().length);
       perditesoKpiTavolinaQr(tables, lastQrPublicCount, lastOnlinePendingWaiter);
+      syncWaiterTableKpiSelectedUi();
     }
 
     function hoverVetemDesktop() {
@@ -4789,26 +4894,25 @@
       else if (isForeign) statusText = t.order.waiter_name;
       else if (t.order) statusText = user.emri;
 
-      let inner = `<div class="table-card-name">${label}${t.reserved ? " 🔒" : ""}</div>`;
-      inner += `<div class="table-card-status">${statusText}</div>`;
+      const chair = `<div class="table-card-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 11h10v2H7z"/><path d="M9 13v5M15 13v5M8 18h8"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/></svg></div>`;
+      let inner = `<div class="table-card-name">${label}${t.reserved ? " 🔒" : ""}</div>${chair}`;
+      if (statusText) inner += `<div class="table-card-status">${statusText}</div>`;
       if (cloudLive) {
         const clo = cloudLive.order || {};
-        inner += `<div class="table-card-meta">${formatEuro(clo.total || 0)}</div>`;
-        const items = (clo.items || []).slice(0, 2).map(it => `${Number(it.quantity)||1}× ${it.name||"—"}`).join(", ");
-        if (items) inner += `<div class="table-card-hint">${items}</div>`;
-        inner += `<div class="table-card-hint">${tt("Kliko → hap & mbyll")}</div>`;
+        const cloItems = clo.items || [];
+        const cloCount = cloItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+        inner += `<div class="table-card-bar" aria-hidden="true"></div>`;
+        inner += `<div class="table-card-meta">${cloCount || cloItems.length} ${tt("artikuj")} - ${formatEuro(clo.total || 0)}</div>`;
       } else if (cloudPending) {
-        const items = (cloudPending.items || []).slice(0, 3)
-          .map(it => `${Number(it.quantity) || 1}× ${it.name || "—"}`).join(", ");
-        inner += `<div class="table-card-meta">${formatEuro(cloudPending.total || 0)}</div>`;
-        if (items) inner += `<div class="table-card-hint">${items}</div>`;
-        inner += `<div class="table-card-hint">${tt("Kliko → prano")}</div>`;
+        const items = cloudPending.items || [];
+        const count = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+        inner += `<div class="table-card-bar" aria-hidden="true"></div>`;
+        inner += `<div class="table-card-meta">${count || items.length} ${tt("artikuj")} - ${formatEuro(cloudPending.total || 0)}</div>`;
       } else if (!isFree && t.order) {
         const count = (t.items || []).reduce((s, i) => s + i.quantity, 0);
         const total = (t.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
-        if (count) inner += `<div class="table-card-meta">${count} ${tt("artikuj")} · ${formatEuro(total)}</div>`;
-        const src = t.order.source_label || "";
-        if (src) inner += `<div class="table-card-hint">${src}</div>`;
+        inner += `<div class="table-card-bar" aria-hidden="true"></div>`;
+        if (count) inner += `<div class="table-card-meta">${count} ${tt("artikuj")} - ${formatEuro(total)}</div>`;
         if (isForeign) inner += `<div class="table-card-hint">${tt("Vetëm shikim")}</div>`;
       }
       if (t.reservation && isFree) {
@@ -5029,6 +5133,61 @@
       return /^(bari|bar|barı|terrasa|terrace|terras|terasa|terraca|ballokoni|ballkoni|balcony|ballkon|patio|veranda)\b/.test(n);
     }
 
+    function eshteZoneTerrasaSalla(name) {
+      const n = String(name || "").trim().toLowerCase();
+      return /^(terrasa|terrace|terrasse|terras|terasa|terraca|ballokoni|ballkoni|balcony|ballkon|balcon|patio|veranda)\b/.test(n);
+    }
+
+    function tavolinatESalles(tables) {
+      const list = tables || [];
+      if (waiterSalla === "terrasa") {
+        return list.filter((t) => eshteZoneTerrasaSalla(t.zone_name));
+      }
+      if (waiterSalla === "online") {
+        return list.filter((t) => eshteZoneOnlinePickup({ name: t.zone_name })
+          || /^Online\s+\d+$/i.test(String(t.label || t.display_name || "").trim()));
+      }
+      return list.filter((t) => {
+        if (eshteZoneOnlinePickup({ name: t.zone_name })) return false;
+        if (eshteZoneTerrasaSalla(t.zone_name)) return false;
+        return true;
+      });
+    }
+
+    function hapSallaPage(salla) {
+      const next = salla === "terrasa" || salla === "online" ? salla : "kryesore";
+      waiterSalla = next;
+      waiterTableKpiFilter = null;
+      document.getElementById("ekrani-tavolina")?.setAttribute("data-salla", waiterSalla);
+      try {
+        const url = new URL(window.location.href);
+        if (waiterSalla === "kryesore") url.searchParams.delete("salla");
+        else url.searchParams.set("salla", waiterSalla);
+        history.replaceState({}, "", url.pathname + url.search + url.hash);
+      } catch {
+      }
+      syncWaiterTableKpiSelectedUi();
+      if (typeof ndertoRjetenTavolinave === "function") {
+        ndertoRjetenTavolinave._sig = null;
+        ndertoRjetenTavolinave();
+      }
+      if (typeof perditesoKpi === "function") {
+        perditesoKpi(lastTablesFlat, lastShiftSummary);
+      }
+    }
+
+    function waiterTableXY(t, i) {
+      const x = Number(t.layout_x);
+      const y = Number(t.layout_y);
+      if (x >= 0 && y >= 0) return { x, y };
+      const col = Number(t.layout_col);
+      const row = Number(t.layout_row);
+      if (col >= 0 && row >= 0) {
+        return { x: (col / 8) * 86 + 3, y: (row / 3) * 68 + 5 };
+      }
+      return { x: 5 + (i % 7) * 12, y: 8 + Math.floor(i / 7) * 16 };
+    }
+
     function ndarjaZonaveTavolinave(zones) {
       const dining = [];
       const deferred = [];
@@ -5077,9 +5236,10 @@
       return section;
     }
 
-    function ndertoSeksioninZone(zone, isFirstSection) {
+    function ndertoSeksioninZone(zone, isFirstSection, opts = {}) {
       const section = document.createElement("section");
       section.className = "waiter-zone-section";
+      if (opts.kind) section.setAttribute("data-zone-kind", opts.kind);
       const zoneHead = document.createElement("div");
       zoneHead.className = "waiter-zone-head";
       const zoneTitle = document.createElement("h2");
@@ -5098,10 +5258,21 @@
       }
       section.appendChild(zoneHead);
       const grid = document.createElement("div");
-      grid.className = "table-cards-grid";
-      for (const t of zone.tables || []) {
-        if (!tavolinaPerputhetMeKpiFilter(t)) continue;
-        grid.appendChild(ndertoKartelenTavoline(t));
+      const visible = (zone.tables || []).filter(tavolinaPerputhetMeKpiFilter);
+      const useMap = opts.kind === "dining" || opts.kind === "terrace";
+      if (useMap) {
+        grid.className = "table-floor-map";
+        visible.forEach((t, i) => {
+          const card = ndertoKartelenTavoline(t);
+          const p = waiterTableXY(t, i);
+          card.style.position = "absolute";
+          card.style.left = p.x + "%";
+          card.style.top = p.y + "%";
+          grid.appendChild(card);
+        });
+      } else {
+        grid.className = "table-cards-grid";
+        for (const t of visible) grid.appendChild(ndertoKartelenTavoline(t));
       }
       section.appendChild(grid);
       return { section, cards: grid.childElementCount };
@@ -5218,6 +5389,7 @@
       });
       const sig = JSON.stringify({
         kpi: waiterTableKpiFilter,
+        salla: waiterSalla,
         z: (lastTableZones || []).map(zone => [
           zone.id,
           (zone.tables || []).map(t => [
@@ -5240,20 +5412,32 @@
       wrap.innerHTML = "";
       const zones = Array.isArray(lastTableZones) ? lastTableZones : [];
       const { dining, onlineZone, deferred } = ndarjaZonaveTavolinave(zones);
-      let totalCards = 0;
+      const terrace = deferred.filter((z) => eshteZoneTerrasaSalla(z.name));
+      const diningAll = [
+        ...dining,
+        ...deferred.filter((z) => !eshteZoneTerrasaSalla(z.name)),
+      ];
       let firstSection = true;
-      const appendZone = (zone) => {
-        const { section, cards } = ndertoSeksioninZone(zone, firstSection);
+      const appendZone = (zone, opts) => {
+        if (!(zone?.tables || []).length) return;
+        const { section } = ndertoSeksioninZone(zone, firstSection, opts);
         firstSection = false;
-        totalCards += cards;
         wrap.appendChild(section);
       };
-      for (const zone of dining) appendZone(zone);
-      wrap.appendChild(ndertoSeksioninPorosiOnline(onlineZone, firstSection));
-      firstSection = false;
-      totalCards += (lastCloudOnlineSlots || []).filter(s => s.status !== "free" && s.order).length;
-      for (const zone of deferred) appendZone(zone);
-      if (!totalCards) {
+      if (waiterSalla === "online") {
+        wrap.appendChild(ndertoSeksioninPorosiOnline(onlineZone, firstSection));
+        return;
+      }
+      if (waiterSalla === "terrasa") {
+        if (!terrace.some((z) => (z.tables || []).length)) {
+          wrap.innerHTML = '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">Nuk ka tavolina te Terrasa.</p>';
+          return;
+        }
+        for (const zone of terrace) appendZone(zone, { kind: "terrace" });
+        return;
+      }
+      for (const zone of diningAll) appendZone(zone, { kind: "dining" });
+      if (!wrap.childElementCount) {
         wrap.innerHTML =
           '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">' +
           "Nuk ka tavolina. Shtoni tavolina te Admin → Tavolinat, pastaj rifreskoni." +
@@ -5269,6 +5453,7 @@
         const layout = await api("/api/tables?layout=1&reservations=1");
         if (seq !== tablesLoadSeq) return;
         lastTableZones = layout.zones || [];
+        lastTerrasaEnabled = !!layout.terrasa_enabled;
         lastTablesFlat = lastTableZones.flatMap(z => z.tables || []);
         if (msg) { msg.hidden = true; msg.textContent = ""; }
         ndertoRjetenTavolinave();
@@ -5416,13 +5601,16 @@
     document.getElementById("kpi-stock-loss-wrap")?.addEventListener("click", () => {
       window.location.href = "/stock-loss.html";
     });
-    document.getElementById("waiter-zones-wrap")?.addEventListener("scroll", fshihHoverTavoline, { passive: true });
-    document.getElementById("kpi-cash-wrap")?.addEventListener("click", () => {
-      const pazari = document.getElementById("hdr-pazari");
-      document.querySelector(".waiter-table-toolbar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      pazari?.classList.add("waiter-kpi-cash-flash");
-      setTimeout(() => pazari?.classList.remove("waiter-kpi-cash-flash"), 1600);
+    document.getElementById("kpi-kryesore-wrap")?.addEventListener("click", () => {
+      hapSallaPage("kryesore");
     });
+    document.getElementById("kpi-terrasa-wrap")?.addEventListener("click", () => {
+      hapSallaPage("terrasa");
+    });
+    document.getElementById("kpi-online-wrap")?.addEventListener("click", () => {
+      hapSallaPage("online");
+    });
+    document.getElementById("waiter-zones-wrap")?.addEventListener("scroll", fshihHoverTavoline, { passive: true });
     kpiReWrap?.addEventListener("click", () => {
       if (waiterOnlineOrders.length) {
         vendosPorosiOnlinePrioritet(waiterOnlineOrders[0]);

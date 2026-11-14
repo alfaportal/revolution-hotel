@@ -5447,7 +5447,11 @@ app.get("/api/tables", auth, (req, res) => {
           console.warn("attachReservationsToTables:", err.message);
         }
       }
-      return res.json({ zones, table_count: layout.table_count });
+      return res.json({
+        zones,
+        table_count: layout.table_count,
+        terrasa_enabled: !!layout.terrasa_enabled,
+      });
     }
 
     let tables = enrichTablesList(db.getTablesWithOrders(), req.session);
@@ -5467,6 +5471,17 @@ app.get("/api/tables", auth, (req, res) => {
 
 app.get("/api/admin/table-layout", auth, adminOnly, (_req, res) => {
   res.json(db.getTableLayout());
+});
+
+app.put("/api/admin/table-floor-plan", auth, adminOnly, (req, res) => {
+  try {
+    const layout = db.saveTableFloorPlan(req.body || {});
+    auditReq(req, "Rregullim tavolinash", "floor plan");
+    notifyWaitersRealtime("tables", { reason: "floor_plan" });
+    res.json({ ok: true, ...layout });
+  } catch (e) {
+    res.status(400).json({ gabim: e.message });
+  }
 });
 
 app.get("/api/admin/table-zones", auth, adminOnly, (_req, res) => {

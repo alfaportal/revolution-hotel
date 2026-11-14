@@ -227,14 +227,21 @@ function getTurnoverReport(from, to) {
   const cats = new Map();
   const products = new Map();
   for (const row of rows) {
-    for (const it of itemsOf(row)) {
+    const items = itemsOf(row);
+    let raw = 0;
+    for (const it of items) {
+      const storedQty = Number(it.quantity ?? it.qty) || 1;
+      raw += storedQty * (Number(it.price) || 0);
+    }
+    const scale = raw ? (Number(row.total) || 0) / raw : 0;
+    for (const it of items) {
       const name = String(it.name || "").trim();
       if (!name) continue;
       const storedQty = Number(it.quantity ?? it.qty) || 1;
       const prefix = name.match(/^(\d+(?:[.,]\d+)?)\s*[×xX]\s*/);
       const prefixQty = prefix ? Number(String(prefix[1]).replace(",", ".")) : 0;
-      const qty = prefixQty > 0 && storedQty === 1 ? prefixQty : storedQty;
-      const rev = storedQty * (Number(it.price) || 0);
+      const qty = (prefixQty > 0 && storedQty === 1 ? prefixQty : storedQty) * scale;
+      const rev = storedQty * (Number(it.price) || 0) * scale;
       const bare = bareSaleName(name);
       const menuRow = menuRowForSale(it, name, bare);
       const cat = menuRow?.category || "Të tjera";
@@ -268,6 +275,7 @@ function getTurnoverReport(from, to) {
       revenue: round2(p.revenue),
       stock_qty: p.stock_qty,
     }))
+    .filter((p) => Math.abs(p.revenue) >= 0.005 || Math.abs(p.qty) >= 0.005)
     .sort((a, b) => b.revenue - a.revenue || String(a.name).localeCompare(String(b.name), "sq"));
   const categories = [...cats.values()]
     .map((c) => ({
@@ -276,6 +284,7 @@ function getTurnoverReport(from, to) {
       revenue: round2(c.revenue),
       stock_qty: round2(c.stock_qty),
     }))
+    .filter((c) => Math.abs(c.revenue) >= 0.005 || Math.abs(c.qty) >= 0.005)
     .sort((a, b) => b.revenue - a.revenue);
   return { ok: true, from: start, to: end, categories, products: productRows, summary: summarize(rows) };
 }
