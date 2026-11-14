@@ -997,7 +997,7 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=5">
+  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=6">
 </head>
 <body class="waiter-screen">
   <div id="waiter-fiscal-alerts">
@@ -2541,6 +2541,47 @@
       });
     }
 
+    function slotiOnlineIZene(s) {
+      return !!(s && s.order && s.status !== "free");
+    }
+
+    function kartelatPorosiOnlineTeZena() {
+      const slotSource = (lastCloudOnlineSlots && lastCloudOnlineSlots.length)
+        ? lastCloudOnlineSlots
+        : defaultCloudOnlineSlots();
+      const slots = filtroSlotetOnlinePaQr(slotSource);
+      const ids = new Set();
+      const cards = [];
+      for (const s of slots) {
+        if (!slotiOnlineIZene(s)) continue;
+        cards.push(s);
+        if (s.order?.id) ids.add(String(s.order.id));
+      }
+      for (const o of porosiTakeawayNePritje()) {
+        if (!o?.id || ids.has(String(o.id))) continue;
+        cards.push({ status: "pending", order: o });
+        ids.add(String(o.id));
+      }
+      const onlineZone = ndarjaZonaveTavolinave(lastTableZones || []).onlineZone;
+      for (const t of onlineZone?.tables || []) {
+        if (!t.order) continue;
+        const label = String(t.label || t.display_name || "").trim().toLowerCase();
+        const already = slots.some((s) => {
+          const sl = String(s.label || `Online ${s.slot}`).trim().toLowerCase();
+          return sl === label && slotiOnlineIZene(s);
+        });
+        if (already) continue;
+        const oid = String(t.order.cloud_order_id || t.order.id || "");
+        if (oid && ids.has(oid)) continue;
+        cards.push({
+          status: t.status === "pending" ? "pending" : "occupied",
+          order: t.order,
+        });
+        if (oid) ids.add(oid);
+      }
+      return cards;
+    }
+
     function numriPorosiveQrPublike(tables, apiCount) {
       const fromTables = (tables || []).filter(eshtePorosiQrPublike).length;
       return Math.max(fromTables, Number(apiCount) || 0);
@@ -2621,20 +2662,24 @@
           lastTableZones = layout.zones || [];
           lastTablesFlat = lastTableZones.flatMap(z => z.tables || []);
         }
-        perditesoKpiTavolinaQr(lastTablesFlat, myExternal, pending);
-        try {
-          const slotData = await api("/api/waiter/online-slots");
-          lastCloudOnlineSlots = slotData.online_slots || [];
-        } catch {
-          if (!lastCloudOnlineSlots.length) {
-            lastCloudOnlineSlots = defaultCloudOnlineSlots();
-          }
-        }
-        ndertoRjetenTavolinave();
-        syncWaiterSidebarPorosiActions();
       } catch {
         /* cloud offline */
       }
+      try {
+        const slotData = await api("/api/waiter/online-slots");
+        lastCloudOnlineSlots = slotData.online_slots || [];
+      } catch {
+        if (!lastCloudOnlineSlots.length) {
+          lastCloudOnlineSlots = defaultCloudOnlineSlots();
+        }
+      }
+      if (typeof perditesoKpi === "function") {
+        perditesoKpi(lastTablesFlat, lastShiftSummary);
+      } else {
+        perditesoKpiTavolinaQr(lastTablesFlat, lastMyExternalOrders.length, lastOnlinePendingWaiter);
+      }
+      ndertoRjetenTavolinave();
+      syncWaiterSidebarPorosiActions();
     }
 
     const ngarkoPorosiOnlinePranuara = ngarkoPorosiOnlineWaiter;
@@ -4764,7 +4809,15 @@
       const terrasaEl = document.getElementById("kpi-terrasa");
       if (terrasaEl) terrasaEl.textContent = String(terrasaCount);
       const onlineEl = document.getElementById("kpi-online");
-      if (onlineEl) onlineEl.textContent = String(porosiOnlineNePritje().length);
+      const onlineCards = kartelatPorosiOnlineTeZena();
+      const onlineN = onlineCards.length;
+      if (onlineEl) onlineEl.textContent = String(onlineN);
+      const onlineWrap = document.getElementById("kpi-online-wrap");
+      onlineWrap?.classList.toggle("waiter-kpi-pending", onlineCards.some((s) => s.status === "pending"));
+      onlineWrap?.setAttribute(
+        "aria-label",
+        onlineN > 0 ? `${onlineN} porosi online` : "Hap Porosi Online",
+      );
       perditesoKpiTavolinaQr(tables, lastQrPublicCount, lastOnlinePendingWaiter);
       syncWaiterTableKpiSelectedUi();
     }
@@ -5406,7 +5459,10 @@
         slotSig,
         cloudSig,
       });
-      if (sig === ndertoRjetenTavolinave._sig && wrap.childElementCount) return;
+      if (sig === ndertoRjetenTavolinave._sig && wrap.childElementCount) {
+        if (typeof perditesoKpi === "function") perditesoKpi(lastTablesFlat, lastShiftSummary);
+        return;
+      }
       ndertoRjetenTavolinave._sig = sig;
       fshihHoverTavoline();
       wrap.innerHTML = "";
@@ -5426,23 +5482,22 @@
       };
       if (waiterSalla === "online") {
         wrap.appendChild(ndertoSeksioninPorosiOnline(onlineZone, firstSection));
-        return;
-      }
-      if (waiterSalla === "terrasa") {
+      } else if (waiterSalla === "terrasa") {
         if (!terrace.some((z) => (z.tables || []).length)) {
           wrap.innerHTML = '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">Nuk ka tavolina te Terrasa.</p>';
-          return;
+        } else {
+          for (const zone of terrace) appendZone(zone, { kind: "terrace" });
         }
-        for (const zone of terrace) appendZone(zone, { kind: "terrace" });
-        return;
+      } else {
+        for (const zone of diningAll) appendZone(zone, { kind: "dining" });
+        if (!wrap.childElementCount) {
+          wrap.innerHTML =
+            '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">' +
+            "Nuk ka tavolina. Shtoni tavolina te Admin → Tavolinat, pastaj rifreskoni." +
+            "</p>";
+        }
       }
-      for (const zone of diningAll) appendZone(zone, { kind: "dining" });
-      if (!wrap.childElementCount) {
-        wrap.innerHTML =
-          '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">' +
-          "Nuk ka tavolina. Shtoni tavolina te Admin → Tavolinat, pastaj rifreskoni." +
-          "</p>";
-      }
+      if (typeof perditesoKpi === "function") perditesoKpi(lastTablesFlat, lastShiftSummary);
     }
 
     let tablesLoadSeq = 0;

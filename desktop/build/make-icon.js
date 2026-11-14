@@ -1,4 +1,3 @@
-/** Gjeneron ikonat Windows — logo origjinale e firmës, pa germa RH, sfond i zi. */
 const fs = require("fs");
 const path = require("path");
 

@@ -1,3 +1,35 @@
+## 2026-11-15 — KPI POROSI ONLINE tregon numrin
+
+Si KAFENE: lart tregonte 0 ndërsa slotet Online kishin porosi. Numri lart = slotet e zëna + takeaway në pritje. Rifreskohet pas sloteve. Pulson kur ka PRANO. QR tavolinë mbetet te QR, jo te ky numër.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/public/waiter.html` | KPI = kartelat e zëna, jo vetëm lista e pritjes |
+| `desktop/public/css/pos-tables-truffle.css` | pulson kur ka porosi në pritje |
+
+Pa git. Pa build. Pa tag ngrirje. Te PC del pas Setup të ri.
+
+## 2026-11-14 — Ikona HOTEL: u kthye (nuk ishte për HOTEL)
+
+Naseri tha që ikona e instalimit ishte për projektin restaurant, jo HOTEL. `make-icon.js` / `icon.ico` u kthyen si para ndryshimit. Setup 1.0.601 nuk u ndërtua përsëri.
+
+## 2026-11-14 — Ikona e Setup: KAFENE vs HOTEL (ANULUAR)
+
+U ndryshua gabimisht HOTEL. U kthye. Shih shënimin e kthimit më lart.
+
+## 2026-11-14 — Setup 1.0.601 (version i ri)
+
+`node scripts/pre-build-check.js` + `node build-packages.js` — një Setup (HOTEL ka vetëm Pako 3 në skript; `4` do të dilte bosh). Auto-bump 1.0.600 → **1.0.601**. Kod 0. FileVersion/ProductVersion 1.0.601. Arkiva 1.0.600 mbetet. Nuk u bë git. Nuk u prek tag ngrirje.
+
+PC: instalo Setup 1.0.601 → mbyll programin plotësisht → hape përsëri.
+
+| Skedar / veprim | Ndryshimi |
+|-----------------|-----------|
+| `package.json` | version 1.0.600 → 1.0.601 |
+| `dist\Revolution HOTEL Setup.exe` | 122317027 byte, FileVersion 1.0.601 |
+| Desktop | `Revolution HOTEL Setup.exe` i njëjtë 1.0.601 |
+| `dist\Revolution HOTEL Setup 1.0.600.exe` | rollback 122310512 byte, mbeti |
+
 ## 2026-11-14 — Porositë online mos të fshihen te kamarieri
 
 Si KAFENE: takeaway WEB-PUBLIC nuk duhet të fshihet te paneli pas hyrjes. Nëse i jepej numër tavoline (slot Online), kthehej QR dhe fshihej nga Porosi Online. Paneli priste cloud në çdo rifreskim.

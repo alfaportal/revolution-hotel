@@ -662,6 +662,11 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
   color: #9a3412;
 }
 
+#ekrani-tavolina .waiter-kpi-online.waiter-kpi-pending {
+  animation: waiter-kpi-pulse 1s ease-in-out infinite;
+  box-shadow: 0 0 0 3px #ea580c;
+}
+
 #ekrani-tavolina .waiter-kpi-online .waiter-kpi-label,
 #ekrani-tavolina .waiter-kpi-terrasa .waiter-kpi-label,
 #ekrani-tavolina .waiter-kpi-kryesore .waiter-kpi-label {
