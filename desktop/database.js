@@ -10443,7 +10443,7 @@ function isCloudOnlinePickupOrder(cloudOrder) {
   const blob = orderTextBlob(cloudOrder);
   if (tn > 0 && (device === "WEB-KIOSK" || /qr|kiosk|tavolin/i.test(blob))) return false;
   if (device === "WEB-PUBLIC" || device === "WEB-PUBLIC-LOCAL") {
-    return tn <= 0;
+    return true;
   }
   if (/\btakeaway\b|\bdelivery\b/.test(blob)) return true;
   const src = String(cloudOrder?.source || cloudOrder?.source_label || "").toLowerCase();

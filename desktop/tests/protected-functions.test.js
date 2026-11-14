@@ -377,6 +377,20 @@ test("importCloudOrderToLocal returns batch_items when same cloud id adds items 
   assert.strictEqual(items[0].quantity, 3);
 });
 
+test("WEB-PUBLIC takeaway stays pickup even if table_number is an online slot", () => {
+  const cloudOrder = {
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeff01",
+    device_id: "WEB-PUBLIC",
+    table_number: 1,
+    source_label: "Takeaway",
+    waiter_name: "Takeaway: naser (044)",
+    items: [{ name: "Americano", price: 1.5, quantity: 1 }],
+    total: 1.5,
+  };
+  assert.strictEqual(db.isCloudOnlinePickupOrder(cloudOrder), true);
+  assert.strictEqual(db.isCloudQrTableOrder(cloudOrder), false);
+});
+
 test("WEB-KIOSK QR T1 with source online is qr_table not takeaway pickup", () => {
   const cloudOrder = {
     id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",

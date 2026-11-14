@@ -4166,13 +4166,12 @@ app.post("/api/waiter/orders/ready-dismiss", auth, waiterOnly, async (req, res) 
 app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req, res) => {
   try {
     ensureOnlineOrdersWatcher();
-    const printBarTicket = opts => autoPrintKitchenTicket(db, opts);
-    let data;
-    try {
-      data = await onlineOrdersWatcher.refreshOnlineOrders(db, printBarTicket);
-    } catch {
-      data = onlineOrdersWatcher.getOnlineOrdersSnapshot();
-    }
+    const data = onlineOrdersWatcher.getOnlineOrdersSnapshot() || {
+      orders: [],
+      connected: false,
+      has_new: false,
+      message: "",
+    };
     let orders = filterWaiterPosPendingOrders(
       [...(data.orders || []), ...(db.listPendingCloudOrders() || [])],
       req.session?.emri,
@@ -4209,6 +4208,34 @@ app.get("/api/waiter/online-orders/pending", auth, waiterOrRecepsion, async (req
   }
 });
 
+let waiterOnlineSlotsCache = { key: "", slots: [], at: 0, inflight: null };
+
+function waiterOnlineSlotsCacheKey(who) {
+  return `${String(who?.waiterId || "")}|${String(who?.waiterName || "")}`;
+}
+
+function loadWaiterOnlineSlotsRaw(who) {
+  const key = waiterOnlineSlotsCacheKey(who);
+  if (waiterOnlineSlotsCache.inflight && waiterOnlineSlotsCache.key === key) {
+    return waiterOnlineSlotsCache.inflight;
+  }
+  const pending = cloudSync.fetchOnlineSlotLayout(db, who).then((raw) => {
+    waiterOnlineSlotsCache = {
+      key,
+      slots: Array.isArray(raw) ? raw : [],
+      at: Date.now(),
+      inflight: null,
+    };
+    return waiterOnlineSlotsCache.slots;
+  }).catch((err) => {
+    if (waiterOnlineSlotsCache.key === key) waiterOnlineSlotsCache.inflight = null;
+    throw err;
+  });
+  waiterOnlineSlotsCache.inflight = pending;
+  waiterOnlineSlotsCache.key = key;
+  return pending;
+}
+
 app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
   if (rejectStaffCloud(req, res, {
     ok: true,
@@ -4217,7 +4244,15 @@ app.get("/api/waiter/online-slots", auth, waiterOnly, async (req, res) => {
   })) return;
   try {
     const who = resolveStaffCloudWaiterIdentity(req.session);
-    const rawSlots = await cloudSync.fetchOnlineSlotLayout(db, who);
+    const key = waiterOnlineSlotsCacheKey(who);
+    const cacheHit = waiterOnlineSlotsCache.key === key && Array.isArray(waiterOnlineSlotsCache.slots);
+    const cacheAge = Date.now() - (Number(waiterOnlineSlotsCache.at) || 0);
+    let rawSlots = cacheHit ? waiterOnlineSlotsCache.slots : [];
+    if (!cacheHit) {
+      rawSlots = await loadWaiterOnlineSlotsRaw(who);
+    } else if (cacheAge > 1500 && !waiterOnlineSlotsCache.inflight) {
+      void loadWaiterOnlineSlotsRaw(who).catch(() => {});
+    }
     const slots = rawSlots.map(slot => {
       const oid = String(slot?.order?.id || "").trim();
       if (!oid) return slot;
@@ -4982,7 +5017,11 @@ function filterQrOrdersForWaiterName(orders, waiterName) {
 
 function isWaiterPosOrderStillPending(o) {
   if (!o?.id) return false;
-  const isAcceptPending = db.isCloudPosAcceptQueueOrder(o) || db.isCloudOnlinePickupOrder(o);
+  const device = String(o?.device_id || "").trim().toUpperCase();
+  const isAcceptPending = db.isCloudPosAcceptQueueOrder(o)
+    || db.isCloudOnlinePickupOrder(o)
+    || device === "WEB-PUBLIC"
+    || device === "WEB-PUBLIC-LOCAL";
   if (!isAcceptPending) return false;
   if (
     typeof db.isCloudQrTableOrder === "function"

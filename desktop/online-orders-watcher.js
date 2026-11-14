@@ -287,6 +287,11 @@ function splitUntouchedExpiredPending(db, orders) {
       live.push(o);
       continue;
     }
+    const device = String(o?.device_id || "").trim().toUpperCase();
+    if (device === "WEB-PUBLIC" || device === "WEB-PUBLIC-LOCAL") {
+      live.push(o);
+      continue;
+    }
     const firstSeenIso = firstSeenMap.get(String(o.id));
     const firstMs = firstSeenIso ? new Date(firstSeenIso).getTime() : NaN;
     if (!Number.isFinite(firstMs) || nowMs - firstMs <= UNTOUCHED_POPUP_EXPIRE_MS) {
@@ -635,6 +640,32 @@ function broadcastInstantPosRefresh(extra = {}) {
   }
 }
 
+function injectPendingIntoSnapshot(orders) {
+  const incoming = (orders || []).map(normalizePendingOrder).filter(o => o?.id);
+  if (!incoming.length) return false;
+  const byId = new Map((lastSnapshot.orders || []).map(o => [String(o.id), o]));
+  let added = false;
+  for (const o of incoming) {
+    const id = String(o.id);
+    if (byId.has(id)) continue;
+    byId.set(id, o);
+    added = true;
+  }
+  if (!added) return false;
+  const next = [...byId.values()];
+  lastSnapshot = {
+    ...lastSnapshot,
+    ok: true,
+    connected: true,
+    pending: next.length,
+    orderIds: next.map(o => o.id),
+    orders: next,
+    has_pending: next.length > 0,
+    has_new: true,
+  };
+  return true;
+}
+
 /**
  * Import i një porosie cloud → SQLite + print slip (nëse ka).
  * @returns {{ imported: boolean, result?: object, order?: object, waiterName?: string }}
@@ -705,13 +736,12 @@ async function autoImportOneCloudOrder(db, printBarTicket, rawOrder) {
       console.warn("[online-orders] QR skip import — emri i pranuesit nuk është staf lokal:", wName || "(bosh)");
       return { imported: false };
     }
-    const localStaff =
-      typeof db.findStaffByNameInsensitive === "function"
-        ? db.findStaffByNameInsensitive(wName)
-        : null;
-    if (localStaff?.name) wName = String(localStaff.name).trim();
   } else if (!wName) {
     wName = "Kamarier";
+  }
+  if (typeof db.findStaffByNameInsensitive === "function") {
+    const localStaff = db.findStaffByNameInsensitive(wName);
+    if (localStaff?.name) wName = String(localStaff.name).trim();
   }
 
   try {
@@ -784,12 +814,25 @@ async function runKitchenSseInstantImport(db, payload) {
 
   const printBarTicket = printBarTicketRef;
   const { hits, allOrders } = await fetchCloudOrdersForKitchenSse(db, payload);
+  const pool = (hits.length ? hits : allOrders || []).map(o => mergeKitchenSseIntoOrder(o, payload)).filter(Boolean);
+  const pendingNow = pool.filter(o => isLoginNotifyPendingOrder(o, db));
+  if (injectPendingIntoSnapshot(pendingNow)) {
+    broadcastInstantPosRefresh({
+      status,
+      pending: true,
+      order_ids: pendingNow.map(o => o.id).filter(Boolean),
+    });
+  }
+
   let targets = hits.length
     ? hits
     : (ssePayloadOrderIds(payload).length
       ? []
       : (allOrders || []).filter(o => isOrderEligibleForAutoImport(o, db)));
-  targets = await attachOnlineSlotForPickupOrders(db, targets);
+  const hasPickup = targets.some(o => typeof db.isCloudOnlinePickupOrder === "function" && db.isCloudOnlinePickupOrder(o));
+  if (hasPickup) {
+    targets = await attachOnlineSlotForPickupOrders(db, targets);
+  }
 
   let importedAny = false;
   const tablesUpdated = new Set();

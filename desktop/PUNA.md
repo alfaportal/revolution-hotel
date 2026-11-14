@@ -1,3 +1,15 @@
+## 2026-11-14 — Porositë online mos të fshihen te kamarieri
+
+Si KAFENE: takeaway WEB-PUBLIC nuk duhet të fshihet te paneli pas hyrjes. Nëse i jepej numër tavoline (slot Online), kthehej QR dhe fshihej nga Porosi Online. Paneli priste cloud në çdo rifreskim.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `database.js` | WEB-PUBLIC mbetet takeaway, jo QR tavolinë |
+| `server.js` | Pending lokal menjëherë; WEB-PUBLIC në pritje; cache slotesh |
+| `online-orders-watcher.js` | SSE njofton POS menjëherë; WEB-PUBLIC nuk skadon 60s |
+
+Pa build, pa git, pa tag ngrirje.
+
 ## 2026-11-14 — Setup 1.0.600 (pa v)
 
 `HOTEL_BUILD_NO_BUMP=1 node build-packages.js` — një Setup, kod 0. Versioni në Setup **1.0.600** (FileVersion/ProductVersion). Në ekran del vetëm numri, pa `v`. 1.0.666 dhe 1.0.665 mbeten. Nuk u bë git. Nuk u prek tag ngrirje.
