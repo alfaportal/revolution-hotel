@@ -1,3 +1,14 @@
+function localYmd(d) {
+  const x = d instanceof Date ? d : new Date();
+  if (Number.isNaN(x.getTime())) {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  }
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 /* Master Admin desktop dashboard — /admin/dashboard */
 let token = localStorage.getItem("rip_token") || "";
 let currentUser = null;
@@ -1786,8 +1797,8 @@ async function loadBilling() {
   from.setDate(1);
   const invFrom = document.getElementById("inv-from");
   const invTo = document.getElementById("inv-to");
-  if (invFrom && !invFrom.value) invFrom.value = from.toISOString().slice(0, 10);
-  if (invTo && !invTo.value) invTo.value = today.toISOString().slice(0, 10);
+  if (invFrom && !invFrom.value) invFrom.value = localYmd(from);
+  if (invTo && !invTo.value) invTo.value = localYmd(today);
 
   const d = await api("/api/super/dashboard/billing/invoices");
   document.getElementById("inv-body").innerHTML = (d.invoices || [])

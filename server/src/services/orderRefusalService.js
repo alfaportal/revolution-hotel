@@ -2,6 +2,7 @@ const { getSupabase } = require("../db");
 const { ensureOrderRefusalSchema } = require("../lib/ensureOrderRefusalSchema");
 const { normalizeItems } = require("./salesService");
 const { getZonedParts } = require("./aiDailyReportService");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 const DEFAULT_REASON = "Pa arsye";
 
@@ -77,7 +78,7 @@ function dayBounds(dateStr) {
 function addDays(dateStr, n) {
   const d = new Date(`${dateStr}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
+  return businessYmd(d);
 }
 
 async function getRefusalStats(clientId) {

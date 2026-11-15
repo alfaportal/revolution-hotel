@@ -1,3 +1,14 @@
+function localYmd(d) {
+  const x = d instanceof Date ? d : new Date();
+  if (Number.isNaN(x.getTime())) {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  }
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 /**
  * Faturat A4 shitje — panel pronari (listë / form / preview).
  */
@@ -56,7 +67,7 @@
   }
 
   function todayYmd() {
-    return new Date().toISOString().slice(0, 10);
+    return localYmd();
   }
 
   function euro(n) {

@@ -212,20 +212,29 @@ function applyAppWindowTitle(settingsOrTitle) {
   return title;
 }
 
-function sotISO() {
+function localYmd(d) {
+  const x = d instanceof Date ? d : new Date();
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function sotISO(d) {
   if (typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd) {
-    return HotelBusinessDate.businessYmd();
+    return HotelBusinessDate.businessYmd(d instanceof Date ? d : new Date());
   }
-  return new Date().toISOString().slice(0, 10);
+  return localYmd(d instanceof Date ? d : new Date());
 }
 
 function addDaysISO(ymd, days) {
   if (typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.addBusinessDays) {
     return HotelBusinessDate.addBusinessDays(ymd, days);
   }
-  const d = new Date(`${String(ymd).slice(0, 10)}T12:00:00`);
-  d.setDate(d.getDate() + (Number(days) || 0));
-  return d.toISOString().slice(0, 10);
+  const [y, m, day] = String(ymd || sotISO()).slice(0, 10).split("-").map(Number);
+  const dt = new Date(y || 1970, (m || 1) - 1, day || 1);
+  dt.setDate(dt.getDate() + (Number(days) || 0));
+  return localYmd(dt);
 }
 
 /** Badge versioni në UI (login, admin, kamarier). */

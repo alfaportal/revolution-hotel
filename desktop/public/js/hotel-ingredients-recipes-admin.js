@@ -289,7 +289,7 @@
     const toEl = document.getElementById("variance-to");
     const fromEl = document.getElementById("variance-from");
     if (!toEl || toEl.value) return;
-    const to = typeof sotISO === "function" ? sotISO() : new Date().toISOString().slice(0, 10);
+    const to = typeof sotISO === "function" ? sotISO() : (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
     const from = typeof addDaysISO === "function" ? addDaysISO(to, -6) : to;
     toEl.value = to;
     fromEl.value = from;

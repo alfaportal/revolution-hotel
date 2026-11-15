@@ -1,3 +1,59 @@
+## 2026-11-15 — QR dhomë / minibar nuk hynte te folio
+
+Porosia `POST /api/guest/room-order` (jo minibar) shkonte te kamarieri pa `room_charges`. PRANO e importonte si tavolinë, jo te fatura e dhomës. Checkout-preview tregonte vetëm natën.
+
+Fix: kur kamarieri pranon (`fromAcceptFlow` / performer), `tryApplyCloudRoomMenuOrder` shton artikujt te folio. Preview = natë + porositë e dhomës.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `tryApplyCloudRoomMenuOrder` + `importCloudOrderToLocal` — folio në PRANO |
+| `desktop/tests/guest-room-qr-folio.test.js` | 3 artikuj QR → preview natë + charges |
+
+Commit/push. Pa build.
+
+## 2026-11-15 — Barazimi ditor 0€ ndërsa Ditari kishte shitje
+
+`GET /api/admin/daily-balance` mblidhte vetëm ndërrimet e **mbyllura** (`listShiftReports` pa `include_open`). Ndërrimi i hapur + shitje pa `shift_id` (p.sh. mbyllje nga admini) nuk hynin — grand_total 0. Ditari lexon `daily_log`.
+
+Fix: totalet e barazimit merren nga `getDitari` i së njëjtës ditë (restorant / recepsion / cash / kartë / grand). Lista e ndërrimeve mbetet, tani edhe të hapurat.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `getDailyBalanceReport` — totalet = Ditari |
+| `desktop/tests/daily-balance-report.test.js` | daily_log + ndërrim i hapur duhet të përputhet me Ditari |
+
+Commit/push. Pa build.
+
+## 2026-11-15 — Mbyllja e tavolinës: transaksion i nested (first click)
+
+`POST /api/orders/close` dështonte herën e parë me HTTP 400 `cannot start a transaction within a transaction`. Shkaku: `closeTable` hap `BEGIN`, pastaj `shiftMetaForWaiter` → `rollOpenShiftsToLocalDay` hapte `BEGIN` të dytë kur ndërrimi ishte nga dje. Herën e dytë zakonisht kalonte sepse ndërrimi ishte rrokullisur tashmë jashtë transaksionit.
+
+Fix: `sqlite.transaction()` në `database.js` hyn te transaksioni ekzistues, nuk bën `BEGIN` të dytë. Shitja, stoku, ditari dhe rrokullisja e ndërrimit mbeten në **një** transaksion. `closeTable` (protected) nuk u ndryshua.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `transaction()` — nëse `inTransaction`, ekzekuto `fn()` pa `BEGIN` të ri |
+| `desktop/tests/protected-functions.test.js` | test: closeTable herën e parë me ndërrim nga dje |
+
+Commit/push. Pa build. Te PC i instaluar del pas Setup të ri.
+
+## 2026-11-15 — Cloud/server «Sot» Europe/Belgrade
+
+`hotel-system/server`: `salesService.dateRanges` dhe shërbimet e tjera me `businessYmd`, jo UTC. Commit/push. Pa build.
+
+## 2026-11-15 — «Sot» me datën lokale, jo UTC
+
+Pas mesnate «Sot» te Ditari/Raportet/Pasqyra mund të tregonte dje nëse `sotISO` binte te UTC. Tani: Europe/Belgrade, përndryshe `getFullYear/getMonth/getDate`. Ditari/API ishin tashmë `businessTodayYmd`. Pasqyra: `hotelTodayLocalYmd`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/js/app.js`, `app.js` | `sotISO()` lokale, jo `toISOString` |
+| `public/admin.html` | barazimi ditor / ndërrimet sot |
+| `database.js` | muaji TVSH lokal |
+| `server.js` + faturat/AI/cloud-sync | data «sot» lokale |
+
+Pa git. Pa build. Te PC del pas Setup të ri.
+
 ## 2026-11-15 — KPI POROSI ONLINE tregon numrin
 
 Si KAFENE: lart tregonte 0 ndërsa slotet Online kishin porosi. Numri lart = slotet e zëna + takeaway në pritje. Rifreskohet pas sloteve. Pulson kur ka PRANO. QR tavolinë mbetet te QR, jo te ky numër.

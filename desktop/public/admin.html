@@ -7780,10 +7780,7 @@
         if (!document.getElementById("raport-nga").value) applyRaportPreset("sot");
         const balIn = document.getElementById("daily-balance-date");
         if (balIn && !balIn.value) {
-          balIn.value =
-            typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
-              ? HotelBusinessDate.businessYmd()
-              : new Date().toISOString().slice(0, 10);
+          balIn.value = sotISO();
         }
         ngarkoBaraziminDitor().catch(() => {});
         ngarkoRaportet();
@@ -16454,10 +16451,7 @@
     async function ngarkoDashSotmeNderrimet() {
       const body = document.getElementById("dash-today-shifts-body");
       if (!body) return;
-      const today =
-        typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
-          ? HotelBusinessDate.businessYmd()
-          : new Date().toISOString().slice(0, 10);
+      const today = sotISO();
       try {
         const data = await api(
           `/api/admin/shift-reports?from=${encodeURIComponent(today)}&to=${encodeURIComponent(today)}`,
@@ -16519,10 +16513,7 @@
           const deri = document.getElementById("raport-deri")?.value;
           if (nga && deri) ngarkoShiftRaportet(nga, deri);
           const balDate = document.getElementById("daily-balance-date")?.value;
-          const today =
-            typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
-              ? HotelBusinessDate.businessYmd()
-              : new Date().toISOString().slice(0, 10);
+          const today = sotISO();
           if (balDate === today) ngarkoBaraziminDitor(balDate);
         }
       });
@@ -16627,10 +16618,7 @@
       const input = document.getElementById("daily-balance-date");
       const body = document.getElementById("daily-balance-body");
       if (!body) return;
-      const today =
-        typeof HotelBusinessDate !== "undefined" && HotelBusinessDate.businessYmd
-          ? HotelBusinessDate.businessYmd()
-          : new Date().toISOString().slice(0, 10);
+      const today = sotISO();
       const date = String(dateOverride || input?.value || today).slice(0, 10);
       if (input && !input.value) input.value = date;
       try {

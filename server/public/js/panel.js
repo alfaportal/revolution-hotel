@@ -1,3 +1,14 @@
+function localYmd(d) {
+  const x = d instanceof Date ? d : new Date();
+  if (Number.isNaN(x.getTime())) {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  }
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 let token = localStorage.getItem("rip_token") || "";
 let licensesPollTimer = null;
 let publicAppOrigin = "https://revolution-pos.com";
@@ -171,7 +182,7 @@ function fmtDateTime(d) {
 
 function licenseIsExpired(l) {
   if (!l?.data_skadimit) return false;
-  return l.data_skadimit < new Date().toISOString().slice(0, 10);
+  return l.data_skadimit < localYmd();
 }
 
 function licenseProblems(l) {
@@ -2414,7 +2425,7 @@ async function loadEmergencyCode() {
       + dateLabel
       + timeLabel;
     codeEl.textContent = code || "—";
-    emergencyCodeDate = data.valid_for_date || new Date().toISOString().slice(0, 10);
+    emergencyCodeDate = data.valid_for_date || localYmd();
   } catch (e) {
     hint.textContent = e.message || "Nuk u ngarkua kodi emergjence.";
     codeEl.textContent = "—";
@@ -2424,7 +2435,7 @@ async function loadEmergencyCode() {
 
 let emergencyCodeDate = null;
 setInterval(() => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localYmd();
   if (emergencyCodeDate && emergencyCodeDate !== today) {
     loadEmergencyCode().catch(() => {});
   }

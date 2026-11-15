@@ -7,8 +7,10 @@ function sendCsv(res, filename, csv) {
   res.send(csv);
 }
 
+const { businessYmd } = require("./lib/hotel-business-date");
+
 function stamp() {
-  return new Date().toISOString().slice(0, 10);
+  return businessYmd();
 }
 
 function advancedReportsGuard(_req, res, next) {

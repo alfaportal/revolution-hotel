@@ -1,5 +1,6 @@
 const { getAiConfig, isAiPaused } = require("../lib/aiConfig");
 const { getOwnerReport } = require("./salesService");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 function roundMoney(n) {
   return Math.round(Number(n) * 100) / 100;
@@ -12,7 +13,7 @@ function getReportHelpers() {
 function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T12:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return businessYmd(d);
 }
 
 function pctChange(current, previous) {

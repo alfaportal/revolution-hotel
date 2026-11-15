@@ -8,6 +8,7 @@ const { resolveOwnerEmail } = require("./stockService");
 const { isEmailConfigured, sendLowStockCriticalEmail } = require("./emailService");
 const { getZonedParts } = require("./aiDailyReportService");
 const { analyzeLowStockIngredients } = require("./supplySuggestionService");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 function roundQty(n) {
   return Math.round(Number(n) * 1000) / 1000;
@@ -16,7 +17,7 @@ function roundQty(n) {
 function dateDaysAgo(days) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
+  return businessYmd(d);
 }
 
 /**

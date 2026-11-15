@@ -295,7 +295,8 @@ function buildDailySummaryLines({ fiscal = {}, restaurantName = "", data = {}, p
   const f = fiscal || {};
   const bizName = unifiedPrintBusinessName();
   const w = paperChars(paper);
-  const day = dt(`${data.date || new Date().toISOString().slice(0, 10)}T12:00:00`).date;
+  const todayYmd = require("./lib/hotel-business-date").businessYmd();
+  const day = dt(`${data.date || todayYmd}T12:00:00`).date;
 
   const lines = textHeader({ f, bizName, title: "PËRMBLEDHJE DITORE", w });
   lines.push(`Data: ${day}`);

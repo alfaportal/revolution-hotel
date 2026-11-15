@@ -1,3 +1,14 @@
+function localYmd(d) {
+  const x = d instanceof Date ? d : new Date();
+  if (Number.isNaN(x.getTime())) {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  }
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 let token = localStorage.getItem("owner_token") || "";
 
 const HOTEL_PREFIX = "/hotel";
@@ -686,7 +697,7 @@ function refuseDefaultRange() {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 30);
-  const fmt = (d) => d.toISOString().slice(0, 10);
+  const fmt = (d) => localYmd(d);
   return { from: fmt(from), to: fmt(to) };
 }
 
@@ -950,7 +961,7 @@ async function deleteExpense(id) {
 }
 
 const expenseDateInput = document.getElementById("expense-date");
-if (expenseDateInput) expenseDateInput.value = new Date().toISOString().slice(0, 10);
+if (expenseDateInput) expenseDateInput.value = localYmd();
 document.getElementById("btn-expense-add")?.addEventListener("click", addExpense);
 
 function formatLicenseKey(raw) {
@@ -1039,21 +1050,21 @@ let currentReportMode = "Z";
 
 function zReportDate() {
   const el = document.getElementById("zreport-date");
-  return el?.value || new Date().toISOString().slice(0, 10);
+  return el?.value || localYmd();
 }
 
 function periodicFromDate() {
   const el = document.getElementById("periodic-from");
-  return el?.value || new Date().toISOString().slice(0, 10);
+  return el?.value || localYmd();
 }
 
 function periodicToDate() {
   const el = document.getElementById("periodic-to");
-  return el?.value || new Date().toISOString().slice(0, 10);
+  return el?.value || localYmd();
 }
 
 function initPeriodicDateInputs() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localYmd();
   const fromEl = document.getElementById("periodic-from");
   const toEl = document.getElementById("periodic-to");
   if (fromEl && !fromEl.value) fromEl.value = today;
@@ -2545,7 +2556,7 @@ let reservationsFilter = "today";
 function isoDateOffset(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localYmd(d);
 }
 
 function reservationStatusLabel(status) {
@@ -3366,10 +3377,10 @@ document.getElementById("btn-staff-add")?.addEventListener("click", async () => 
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localYmd();
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 6);
-  document.getElementById("raport-nga").value = weekAgo.toISOString().slice(0, 10);
+  document.getElementById("raport-nga").value = localYmd(weekAgo);
   document.getElementById("raport-deri").value = today;
   const zDate = document.getElementById("zreport-date");
   if (zDate) zDate.value = today;

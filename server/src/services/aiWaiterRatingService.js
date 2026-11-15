@@ -5,6 +5,7 @@ const { insertAiUsageLog } = require("./aiUsageService");
 const { getZonedParts } = require("./aiDailyReportService");
 const { ensureAiExtraSchema } = require("../lib/ensureAiExtraSchema");
 const { normalizeItems } = require("./salesService");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 function daysAgoIso(days) {
   const d = new Date();
@@ -160,7 +161,7 @@ async function analyzeWaiterRatings(clientId, { days = 30, force = false } = {})
   const periodStart = (() => {
     const d = new Date(`${periodEnd}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() - days);
-    return d.toISOString().slice(0, 10);
+    return businessYmd(d);
   })();
 
   const db = getSupabase();

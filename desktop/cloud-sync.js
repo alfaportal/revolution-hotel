@@ -2453,7 +2453,7 @@ async function syncClosedWebWaiterSales(db) {
     : "";
   // Nëse s'ka cursor, mos merr shitje të vjetra — fillo nga sot
   if (!since) {
-    since = new Date().toISOString().slice(0, 10) + "T00:00:00";
+    since = require("./lib/hotel-business-date").businessYmd() + "T00:00:00";
   }
   console.log("[cloud/sync] GET /api/v1/license/waiter-closed-sales since=" + since);
 

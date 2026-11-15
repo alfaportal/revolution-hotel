@@ -1,6 +1,7 @@
 "use strict";
 
 const dbMod = require("./database");
+const { businessYmd } = require("./lib/hotel-business-date");
 
 function sqlite() {
   return dbMod.db;
@@ -332,7 +333,7 @@ function saveInvoice(payload, { id, number: fixedNumber } = {}) {
   };
   const totals = computeTotals(lines, vatForTotals);
   const number = fixedNumber || String(payload.number || "").trim() || allocateInvoiceNumber();
-  const date = String(payload.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const date = String(payload.date || businessYmd()).slice(0, 10);
   const status = String(payload.status || "final").trim() || "final";
   const orderId = payload.orderId != null ? Number(payload.orderId) : null;
   const now = new Date().toISOString();
@@ -469,7 +470,7 @@ function addInvoicePayment(invoiceId, body = {}) {
   if (balance <= 0) throw new Error("Fatura është e paguar.");
   const payAmount = add > balance + 0.02 ? balance : add;
   const method = normalizeB2bPaymentMethod(body.payment_method);
-  const paymentDate = String(body.payment_date || body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const paymentDate = String(body.payment_date || body.date || businessYmd()).slice(0, 10);
   const note = String(body.note || body.notes || "").trim();
   const waiterName = String(body.waiter_name || "Recepsion").trim() || "Recepsion";
 

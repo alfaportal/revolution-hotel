@@ -9,11 +9,12 @@ const { sendTelegramMessage, isTelegramConfigured } = require("./telegramService
 const { sendSms, isSmsConfigured } = require("./smsService");
 const { isTelegramBotPaused, isSmsPaused } = require("../lib/botPause");
 const { ensureNotificationSchema } = require("../lib/ensureNotificationSchema");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T12:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return businessYmd(d);
 }
 
 function formatMoney(n) {

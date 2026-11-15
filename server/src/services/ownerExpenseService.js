@@ -1,5 +1,6 @@
 const { getSupabase } = require("../db");
 const { logOwnerActivity } = require("./ownerAuditService");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 /** Shpenzime operative ditore (jashtë blerjeve të stokut) — pastrim, shërbime,
  * shpenzime të papritura, etj. CRUD i plotë, çdo ndryshim regjistrohet te
@@ -25,7 +26,7 @@ function normalizeAmount(raw) {
 }
 
 function normalizeExpenseDate(raw) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(raw || "")) ? raw : new Date().toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(raw || "")) ? raw : businessYmd();
 }
 
 function normalizeVendorName(raw) {

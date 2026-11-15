@@ -1,3 +1,4 @@
+const { businessYmd } = require("../lib/hotelBusinessDate");
 /**
  * Faturë e thjeshtë PDF (pa varësi të jashtme) për faturimin e tokenëve AI.
  */
@@ -52,7 +53,7 @@ function buildAiUsageInvoicePdf({
 
   lines.push("");
   lines.push("Faleminderit — Revolution Invest");
-  lines.push(new Date().toISOString().slice(0, 10));
+  lines.push(businessYmd());
 
   const contentLines = lines.map((line, i) => {
     const y = 800 - i * 16;

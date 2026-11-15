@@ -88,6 +88,29 @@ test("closeTable creates exactly 1 daily_log entry", () => {
   );
 });
 
+test("closeTable first call succeeds when open shift is from yesterday", () => {
+  const waiter = openShiftForNewWaiter("RollDay");
+  const shift = db.getOpenShift(waiter.id);
+  assert.ok(shift, "expected an open shift");
+  const yest = db.db.prepare("SELECT date('now','localtime','-1 day') AS d").get().d;
+  db.db.prepare("UPDATE waiter_shifts SET opened_at = ? WHERE id = ?").run(`${yest}T10:00:00`, shift.id);
+  const table = db.getTableByNumber(9);
+  db.sendOrder({
+    table_id: table.id,
+    waiter_name: waiter.name,
+    items: [{ menu_item_id: menuItemId, name: "Test Kafe", price: 1.5, quantity: 1 }],
+  });
+  const closed = db.closeTable(table.id, waiter.name, false, "cash");
+  assert.ok(closed, "closeTable must succeed on the first call");
+  assert.strictEqual(closed.status, "completed");
+  const logs = db.db.prepare(
+    "SELECT COUNT(*) AS n FROM daily_log WHERE order_id = ? AND status = 'completed'",
+  ).get(closed.id).n;
+  assert.strictEqual(logs, 1, "exactly 1 daily_log after first close");
+  const tableRow = db.db.prepare("SELECT status FROM tables WHERE id = ?").get(table.id);
+  assert.strictEqual(tableRow.status, "free");
+});
+
 // --- b) computeShiftTotals only counts entries with matching shift_id ---
 test("computeShiftTotals only counts entries with matching shift_id", () => {
   const waiterA = openShiftForNewWaiter("ShiftA");

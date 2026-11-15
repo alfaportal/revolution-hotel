@@ -9568,7 +9568,7 @@ app.get("/api/kontabilisti/atk/payroll/withholding/export.pdf", auth, adminOnly,
     "Formulari-Tatim-ne-Burim.pdf",
     atkPdf.fillWithholdingPayrollPdf({
       withholding: bundle.withholding,
-      header: atkBizHeader({ period: req.query.year_month || "", createDate: new Date().toISOString().slice(0, 10) }),
+      header: atkBizHeader({ period: req.query.year_month || "", createDate: businessTodayYmd() }),
     }),
   );
 });

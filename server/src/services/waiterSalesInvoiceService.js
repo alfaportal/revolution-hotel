@@ -1,4 +1,5 @@
 const { getSupabase } = require("../db");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 const {
   getSellerSnapshot,
   getInvoiceSettings,
@@ -37,8 +38,8 @@ async function loadClosedSale(clientId, saleOrderId) {
 function invoiceDateFromSale(sale) {
   const raw = sale?.closed_at || new Date().toISOString();
   const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return businessYmd();
+  return businessYmd(d);
 }
 
 /** Prefill faturë A4 nga shitja e mbyllur (waiter / recepsion). */
@@ -64,7 +65,7 @@ async function prefillFromSale(clientId, body = {}) {
       companyLogoUrl: settings.companyLogoUrl || "",
     },
     lines,
-    date: sale ? invoiceDateFromSale(sale) : new Date().toISOString().slice(0, 10),
+    date: sale ? invoiceDateFromSale(sale) : businessYmd(),
     sale: sale
       ? {
           id: sale.id,

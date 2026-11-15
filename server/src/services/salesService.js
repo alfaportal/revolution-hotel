@@ -3,6 +3,7 @@ const { getSupabase } = require("../db");
 const { findLicenseByKey, normalizeKey } = require("./licenseService");
 const { assertLicenseUsable } = require("../lib/licenseEnforcement");
 const { logOwnerActivity } = require("./ownerAuditService");
+const { businessYmd, addBusinessDays } = require("../lib/hotelBusinessDate");
 
 /** Arsyet e lejuara për anulimin e një fature të printuar (owner panel). */
 const VOID_REASONS = {
@@ -13,15 +14,11 @@ const VOID_REASONS = {
 };
 
 function dateRanges() {
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 6);
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const today = businessYmd();
   return {
     today,
-    week_from: weekAgo.toISOString().slice(0, 10),
-    month_from: monthStart,
+    week_from: addBusinessDays(today, -6),
+    month_from: `${today.slice(0, 7)}-01`,
   };
 }
 
@@ -998,7 +995,7 @@ async function getOwnerOrderFilters(clientId) {
 async function getOwnerReport(clientId, from, to) {
   const db = getSupabase();
   const maps = await loadWaiterStaffMaps(clientId);
-  const fromD = from || new Date().toISOString().slice(0, 10);
+  const fromD = from || businessYmd();
   const toD = to || fromD;
 
   const { data, error } = await db

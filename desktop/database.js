@@ -202,6 +202,9 @@ whenReady = async () => {
 
   function transaction(fn) {
     return () => {
+      if (inTransaction) {
+        return fn();
+      }
       inTransaction = true;
       callDb({ op: "begin" });
       try {
@@ -10262,7 +10265,7 @@ function tryApplyCloudRoomMenuOrder(cloudOrder, performer) {
   }
 
   if (isGuestRoomMenuKitchenOrder(cloudOrder) && !guestRoomMenuFolioAlreadyApplied(cloudOrder)) {
-    return null;
+    if (!performer) return null;
   }
 
   if (guestRoomMenuFolioAlreadyApplied(cloudOrder)) {
@@ -10714,8 +10717,11 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
     const hydrated = hydrateCloudOrderForAccept(cloudOrder);
     const waiterKitchen = isGuestRoomMenuKitchenOrder(hydrated)
       && !guestRoomMenuFolioAlreadyApplied(hydrated);
-    if (!waiterKitchen) {
-      const roomApplied = tryApplyCloudRoomMenuOrder(hydrated);
+    if (!waiterKitchen || options.fromAcceptFlow) {
+      const roomApplied = tryApplyCloudRoomMenuOrder(
+        hydrated,
+        options.fromAcceptFlow ? { name } : undefined,
+      );
       if (roomApplied?.ok) {
         return {
           ok: true,
@@ -10724,7 +10730,9 @@ function importCloudOrderToLocal(cloudOrder, waiterName, options = {}) {
           ...roomApplied,
         };
       }
-      throw new Error("Porosia menu dhomë nuk u faturua — kontrolloni mysafirin dhe artikujt.");
+      if (!waiterKitchen) {
+        throw new Error("Porosia menu dhomë nuk u faturua — kontrolloni mysafirin dhe artikujt.");
+      }
     }
   }
 
@@ -14836,7 +14844,8 @@ function getDailyBalanceReport(dateYmd) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error("Data e pavlefshme (YYYY-MM-DD).");
   }
-  const rows = listShiftReports({ from: date, to: date });
+  const ditari = getDitari({ dateFrom: date, dateTo: date });
+  const rows = listShiftReports({ from: date, to: date, include_open: true });
   const sideEmpty = () => ({
     shifts: [],
     subtotal_cash: 0,
@@ -14862,16 +14871,18 @@ function getDailyBalanceReport(dateYmd) {
       total,
       order_count: Number(row.order_count_total) || 0,
     });
-    bucket.subtotal_cash = Math.round((bucket.subtotal_cash + cash) * 100) / 100;
-    bucket.subtotal_card = Math.round((bucket.subtotal_card + card) * 100) / 100;
-    bucket.subtotal = Math.round((bucket.subtotal + total) * 100) / 100;
   }
 
-  const grand_total_cash =
-    Math.round((restaurant.subtotal_cash + reception.subtotal_cash) * 100) / 100;
-  const grand_total_card =
-    Math.round((restaurant.subtotal_card + reception.subtotal_card) * 100) / 100;
-  const grand_total = Math.round((restaurant.subtotal + reception.subtotal) * 100) / 100;
+  restaurant.subtotal_cash = Number(ditari.restaurantCash) || 0;
+  restaurant.subtotal_card = Number(ditari.restaurantKarte) || 0;
+  restaurant.subtotal = Number(ditari.restaurantSales) || 0;
+  reception.subtotal_cash = Number(ditari.receptionCash) || 0;
+  reception.subtotal_card = Number(ditari.receptionKarte) || 0;
+  reception.subtotal = Number(ditari.receptionSales) || 0;
+
+  const grand_total_cash = Number(ditari.totalCash) || 0;
+  const grand_total_card = Number(ditari.totalKarte) || 0;
+  const grand_total = Number(ditari.totalSales) || 0;
 
   const fiscal_z_total = readFiscalZTotalForDay(date);
   const difference =
@@ -17623,7 +17634,7 @@ function getSalesLedger({ from, to } = {}) {
 }
 
 function getVatReport({ month } = {}) {
-  const m = /^\d{4}-\d{2}$/.test(String(month)) ? String(month) : new Date().toISOString().slice(0, 7);
+  const m = /^\d{4}-\d{2}$/.test(String(month)) ? String(month) : businessTodayYmd().slice(0, 7);
   const fromDate = `${m}-01`;
   const [y, mo] = m.split("-").map(Number);
   const lastDay = new Date(y, mo, 0).getDate();

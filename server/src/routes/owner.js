@@ -1,5 +1,6 @@
 const express = require("express");
 const { authOwner, ownerOnly } = require("../middleware/auth");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 const {
   getOwnerStats,
   getOwnerStatsForGroup,
@@ -495,7 +496,7 @@ router.put("/register-switch/mode", async (req, res) => {
 
 router.get("/x-report", async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = req.query.date || businessYmd();
     const report = await buildDailyXReport(req.user.client_id, date);
     res.json({ ok: true, report });
   } catch (e) {
@@ -505,7 +506,7 @@ router.get("/x-report", async (req, res) => {
 
 router.get("/x-report/export", async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = req.query.date || businessYmd();
     const format = String(req.query.format || "csv").toLowerCase();
     const report = await buildDailyXReport(req.user.client_id, date);
 
@@ -527,7 +528,7 @@ router.get("/x-report/export", async (req, res) => {
 
 router.get("/z-report", async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = req.query.date || businessYmd();
     const report = await buildDailyZReport(req.user.client_id, date);
     res.json({ ok: true, report });
   } catch (e) {
@@ -537,7 +538,7 @@ router.get("/z-report", async (req, res) => {
 
 router.post("/z-report/close", async (req, res) => {
   try {
-    const date = req.body?.date || new Date().toISOString().slice(0, 10);
+    const date = req.body?.date || businessYmd();
     const report = await saveDailyZReport(req.user.client_id, date, {
       close: true,
       closing_cash_actual: req.body?.closing_cash_actual,
@@ -551,7 +552,7 @@ router.post("/z-report/close", async (req, res) => {
 
 router.put("/z-report/opening-float", async (req, res) => {
   try {
-    const date = req.body?.date || new Date().toISOString().slice(0, 10);
+    const date = req.body?.date || businessYmd();
     const report = await setOpeningFloat(req.user.client_id, date, req.body?.opening_float);
     res.json({ ok: true, report });
   } catch (e) {
@@ -570,7 +571,7 @@ router.get("/z-report/history", async (req, res) => {
 
 router.get("/z-report/export", async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = req.query.date || businessYmd();
     const format = String(req.query.format || "csv").toLowerCase();
     const report = await buildDailyZReport(req.user.client_id, date);
 

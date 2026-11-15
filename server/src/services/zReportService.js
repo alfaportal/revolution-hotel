@@ -3,9 +3,10 @@ const { VAT_CATEGORIES, VAT_KEYS, emptyVatBreakdown, sumVatBreakdowns } = requir
 const { getFiscalSettings } = require("./fiscalService");
 const { normalizeItems } = require("./salesService");
 const { getFiscalLogoHtmlFooter, FISCAL_LOGO_CSS } = require("../lib/fiscalLogoHtml");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return businessYmd();
 }
 
 function dayBounds(dateStr) {

@@ -4,6 +4,7 @@
  */
 const crypto = require("crypto");
 const { getSupabase } = require("../db");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 const {
   packagePriceEur,
   planToPackageTier,
@@ -81,7 +82,7 @@ async function findByToken(token) {
 }
 
 function invoiceNoFor(row) {
-  const d = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const d = businessYmd().replace(/-/g, "");
   const short = String(row.token || "").replace(/-/g, "").slice(0, 6).toUpperCase();
   return `INV-BANK-${d}-${short}`;
 }
@@ -323,7 +324,7 @@ async function confirmBankPaymentAndIssueInvoice(token, { adminEmail } = {}) {
   }
 
   const invoiceNo = invoiceNoFor(fresh);
-  const invoiceDate = new Date().toISOString().slice(0, 10);
+  const invoiceDate = businessYmd();
   const amountEur = Number(fresh.amount_cents || 0) / 100;
   const pdfBuffer = buildLicenseInvoicePdf({
     invoiceNo,

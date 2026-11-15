@@ -1,14 +1,15 @@
 const { resolveOwnerEmail } = require("./stockService");
 const { isEmailConfigured, sendShiftCloseReportEmail } = require("./emailService");
+const { businessYmd } = require("../lib/hotelBusinessDate");
 
 function formatShiftDate(raw) {
   const s = String(raw || "").trim();
   if (!s) {
-    return new Date().toISOString().slice(0, 10);
+    return businessYmd();
   }
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
-    return d.toISOString().slice(0, 10);
+    return businessYmd(d);
   }
   return s.slice(0, 10);
 }

@@ -321,7 +321,7 @@ function validateReceiptScanApply(
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = require("../lib/hotel-business-date").businessYmd();
   let invDate = String(invoice_date || "").trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(invDate)) {
     const fixed = normalizeInvoiceDateFromScan(invoice_date, invNum);
@@ -545,7 +545,7 @@ function applyReceiptToStock(db, {
     throw new Error(`Asnjë rresht i vlefshëm për stok.${detail}`);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = require("../lib/hotel-business-date").businessYmd();
   let invDate = String(invoice_date || today).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(invDate)) invDate = today;
 

@@ -59,7 +59,7 @@
 
     let guest = emptyGuest();
     let lines = [];
-    let date = new Date().toISOString().slice(0, 10);
+    let date = typeof sotISO === "function" ? sotISO() : (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
     let seller = {};
     let settings = { vatEnabled: false, vatPercent: 18 };
     let invoiceNumber = "";

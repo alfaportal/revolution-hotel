@@ -74,7 +74,8 @@
     if (card) card.hidden = false;
     document.getElementById("sup-pay-title").textContent = `Pagesë — ${s.name} (borxh ${euro(s.balance)})`;
     document.getElementById("sup-pay-amount").value = s.balance > 0 ? Number(s.balance).toFixed(2) : "";
-    document.getElementById("sup-pay-date").value = new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    document.getElementById("sup-pay-date").value = typeof sotISO === "function" ? sotISO() : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     document.getElementById("sup-pay-note").value = "";
     const list = document.getElementById("sup-pay-list");
     const pays = data.payments || [];
