@@ -1,3 +1,16 @@
+## 2026-11-15 — Setup 1.0.603
+
+`node scripts/pre-build-check.js` + `node build-packages.js` — një Setup (Pako 3). Auto-bump 1.0.602 → **1.0.603**. Kod 0. FileVersion/ProductVersion 1.0.603. Arkiva 1.0.602 mbetet. Nuk u bë git. Nuk u prek tag ngrirje.
+
+PC: instalo **Revolution HOTEL Setup.exe** 1.0.603 → mbyll programin plotësisht → hape përsëri.
+
+| Skedar / veprim | Ndryshimi |
+|-----------------|-----------|
+| `desktop/package.json` | version 1.0.603 |
+| `dist/Revolution HOTEL Setup.exe` | 122321998 byte, FileVersion 1.0.603 |
+| Desktop | `Revolution HOTEL Setup.exe` i njëjtë 1.0.603 |
+| `dist/Revolution HOTEL Setup 1.0.602.exe` | rollback, mbeti |
+
 ## 2026-11-15 — Zbritja 3 numra (Shitja / Zbritja / Pagesa) si MARKET
 
 Shitja origjinale, zbritja dhe pagesa neto dalin në Ditari, Pasqyra, Raportet, Ndërrimi, Arka (Pasqyra), Barazimi. Recepsioni (check-out) e shkruan `discount_total` te `daily_log`. TVSH mbetet mbi neto (20€, jo 23€) — `computeItemsVat` / `prepareItemsForVatLedger` nuk u prek.
