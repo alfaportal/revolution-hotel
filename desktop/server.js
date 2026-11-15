@@ -3602,14 +3602,17 @@ app.post("/api/login/emergency-request", async (req, res) => {
   try {
     const waiterName = String(req.body.waiter_name || req.body.emri || "").trim();
     const result = await license.requestEmergencyCodeToOwner(electronApp(), { waiterName });
-    /* Gjithmonë 200 + mesazh publik — mos ekspozo detaje / kod. */
+    const sent = !!(result && (result.ok || result.sent));
+    const gabim = sent ? "" : String(result?.gabim || result?.message || "").trim();
     res.json({
-      ok: true,
-      sent: !!(result.ok || result.sent),
-      message: publicMsg,
+      ok: sent,
+      sent,
+      message: sent ? publicMsg : gabim || publicMsg,
+      gabim: sent ? undefined : gabim || publicMsg,
     });
-  } catch {
-    res.json({ ok: true, sent: false, message: publicMsg });
+  } catch (e) {
+    const gabim = String(e?.message || "").trim() || publicMsg;
+    res.json({ ok: false, sent: false, message: gabim, gabim });
   }
 });
 
@@ -5673,6 +5676,7 @@ app.post("/api/admin/rooms/:id/check-out", auth, adminOnly, (req, res) => {
     const result = db.checkOutGuest(req.params.id, {
       check_out_date: body.check_out_date,
       extra_services: body.extra_services != null ? body.extra_services : body.services_total,
+      discount_total: body.discount_total,
     });
     auditReq(
       req,
@@ -5999,6 +6003,7 @@ app.post("/api/waiter/rooms/:id/check-out", auth, staffOrAdmin, async (req, res)
       payment_splits: payInfo.payment_splits,
       waiter_name: req.session.emri || "Recepcion",
       checkout_token: checkoutToken || undefined,
+      discount_total: body.discount_total,
     });
     let folio = null;
     try {

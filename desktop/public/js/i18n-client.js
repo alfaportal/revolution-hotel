@@ -81,9 +81,9 @@
   const patchApi = () => {
     if (typeof window.api !== "function" || window.api.__i18nPatched) return;
     const orig = window.api;
-    window.api = async function (...args) {
+    window.api = async function (cale, opts) {
       try {
-        return await orig.apply(this, args);
+        return await orig(cale, opts);
       } catch (err) {
         if (err && err.message) err.message = t(err.message);
         throw err;

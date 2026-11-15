@@ -231,8 +231,8 @@ function parseOnlineResponse(parsed, status) {
   return { valid: false, message: `Liçenca nuk u validua (HTTP ${status}).` };
 }
 
-function requestJson(method, _baseUrl, reqPath, payload) {
-  return cloudHealth.requestJsonWithFallback(method, reqPath, payload);
+function requestJson(method, _baseUrl, reqPath, payload, options) {
+  return cloudHealth.requestJsonWithFallback(method, reqPath, payload, options);
 }
 
 function activationRecordPath(app) {
@@ -1961,6 +1961,7 @@ async function requestEmergencyCodeToOwner(app, { waiterName } = {}) {
         app_type: "hotel",
         waiter_name: String(waiterName || "").trim() || undefined,
       },
+      { timeoutMs: 25000 },
     );
     let parsed = {};
     try {
@@ -1978,6 +1979,10 @@ async function requestEmergencyCodeToOwner(app, { waiterName } = {}) {
     return {
       ok: false,
       sent: false,
+      gabim:
+        parsed.gabim ||
+        parsed.message ||
+        "Kodi u dërgua te pronari juaj — kontaktoni pronarin.",
       message:
         parsed.gabim ||
         parsed.message ||

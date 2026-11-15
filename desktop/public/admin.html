@@ -2720,7 +2720,15 @@
           <div class="dashboard-kpi-sub">Përqindja e zënies</div>
         </div>
         <div class="dashboard-kpi">
-          <div class="dashboard-kpi-label">TË ARDHURAT DITORE</div>
+          <div class="dashboard-kpi-label">SHITJA</div>
+          <div class="dashboard-kpi-val" id="dash-revenue-shitja">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">ZBRITJA</div>
+          <div class="dashboard-kpi-val" id="dash-revenue-zbritja">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">PAGESA</div>
           <div class="dashboard-kpi-val" id="dash-revenue">0.00 €</div>
           <div class="dashboard-kpi-sub dash-revenue-sub-lines" id="dash-revenue-sub">Restoranti · Recepsioni · Netët + Shërbimet</div>
         </div>
@@ -2761,12 +2769,14 @@
                 <th>Fundi</th>
                 <th>Cash</th>
                 <th>Kartë</th>
-                <th>Total</th>
+                <th>Shitja</th>
+                <th>Zbritja</th>
+                <th>Pagesa</th>
                 <th>Porosi</th>
               </tr>
             </thead>
             <tbody id="dash-today-shifts-body">
-              <tr><td colspan="8" style="color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
+              <tr><td colspan="10" style="color:var(--ngjyr-muted)">Duke ngarkuar…</td></tr>
             </tbody>
           </table>
         </div>
@@ -2898,7 +2908,7 @@
           <table>
             <thead>
               <tr>
-                <th>Data</th><th>Ora</th><th>Burimi</th><th>Tavolina</th><th>Kamarieri</th><th>Pagesa</th><th>Artikujt</th><th>Totali</th><th>Statusi</th>
+                <th>Data</th><th>Ora</th><th>Burimi</th><th>Tavolina</th><th>Kamarieri</th><th>Pagesa</th><th>Artikujt</th><th>Shitja</th><th>Zbritja</th><th>Pagesa €</th><th>Statusi</th>
               </tr>
             </thead>
             <tbody id="ditari-lista"></tbody>
@@ -2912,7 +2922,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>Stafi</th><th>Stacioni</th><th>Hapur</th><th>Mbyllur</th><th>Shitje cash</th><th>Kartë</th><th>Në dhomë</th><th>Shitje totale</th><th>Cash i numëruar</th><th>Diferenca</th>
+                  <th>Stafi</th><th>Stacioni</th><th>Hapur</th><th>Mbyllur</th><th>Shitje cash</th><th>Kartë</th><th>Në dhomë</th><th>Shitja</th><th>Zbritja</th><th>Pagesa</th><th>Cash i numëruar</th><th>Diferenca</th>
                 </tr>
               </thead>
               <tbody id="ditari-shifts"></tbody>
@@ -3741,8 +3751,16 @@
 
       <div class="dashboard-kpi-row reports-kpi-row">
         <div class="dashboard-kpi">
-          <div class="dashboard-kpi-label">TOTALI</div>
+          <div class="dashboard-kpi-label">SHITJA</div>
           <div class="dashboard-kpi-val" id="raport-revenue">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">ZBRITJA</div>
+          <div class="dashboard-kpi-val" id="raport-discount">0.00 €</div>
+        </div>
+        <div class="dashboard-kpi">
+          <div class="dashboard-kpi-label">PAGESA</div>
+          <div class="dashboard-kpi-val" id="raport-pagesa">0.00 €</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">RESTORANT</div>
@@ -3771,10 +3789,6 @@
           <div class="dashboard-kpi-label">MESATARJA</div>
           <div class="dashboard-kpi-val" id="raport-average">0.00 €</div>
           <div class="dashboard-kpi-sub">Për porosi restorant</div>
-        </div>
-        <div class="dashboard-kpi">
-          <div class="dashboard-kpi-label">ZBRITJE (PROMO)</div>
-          <div class="dashboard-kpi-val" id="raport-discount">0.00 €</div>
         </div>
         <div class="dashboard-kpi">
           <div class="dashboard-kpi-label">CASH</div>
@@ -4017,7 +4031,9 @@
                 <th>Shitje cash</th>
                 <th>Kartë</th>
                 <th>Në dhomë</th>
-                <th>Shitje totale</th>
+                <th>Shitja</th>
+                <th>Zbritja</th>
+                <th>Pagesa</th>
                 <th>Pritshme</th>
                 <th>Numëruar</th>
                 <th>Diferenca</th>
@@ -4026,7 +4042,7 @@
               </tr>
             </thead>
             <tbody id="shift-reports-body">
-              <tr><td colspan="14" class="purchases-empty">Zgjidhni periudhën dhe klikoni Apliko</td></tr>
+              <tr><td colspan="16" class="purchases-empty">Zgjidhni periudhën dhe klikoni Apliko</td></tr>
             </tbody>
           </table>
         </div>
@@ -8211,19 +8227,28 @@
       const shops = d.shops;
       const rest = shops && shops.restaurant;
       const recep = shops && shops.reception;
+      const shitja = Number(d.totalGross != null ? d.totalGross : d.shitja) || ((Number(d.totalSales) || 0) + (Number(d.totalDiscount) || 0));
+      const zbritja = Number(d.totalDiscount != null ? d.totalDiscount : d.zbritja) || 0;
+      const pagesa = Number(d.pagesa != null ? d.pagesa : (shops && shops.total != null ? shops.total : d.totalSales)) || 0;
+      const restDisc = Number(d.restaurantDiscount) || 0;
+      const recDisc = Number(d.receptionDiscount) || 0;
       if (!rest || !recep) {
         el.innerHTML = `
           <div class="stat-card"><div class="val">${d.today}</div><div class="lbl">${tt("Data e sotme")}</div></div>
-          <div class="stat-card"><div class="val">${formatEuro(d.totalSales)}</div><div class="lbl">${tt("Totali")} (${d.periodLabel})</div></div>
+          <div class="stat-card"><div class="val">${formatEuro(shitja)}</div><div class="lbl">${tt("Shitja")} (${d.periodLabel})</div></div>
+          <div class="stat-card"><div class="val">${formatEuro(zbritja)}</div><div class="lbl">${tt("Zbritja")}</div></div>
+          <div class="stat-card"><div class="val">${formatEuro(pagesa)}</div><div class="lbl">${tt("Pagesa")}</div></div>
           <div class="stat-card"><div class="val">${formatEuro(d.restaurantSales || 0)}</div><div class="lbl">${tt("Restorant")}</div></div>
           <div class="stat-card"><div class="val">${formatEuro(d.receptionSales || 0)}</div><div class="lbl">${tt("Recepsion")}</div></div>`;
         return;
       }
       el.innerHTML = `
         <div class="stat-card"><div class="val">${d.today || ""}</div><div class="lbl">${tt("Data e sotme")}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(shops.total)}</div><div class="lbl">TOTALI (${escHtml(d.periodLabel || "")})</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(rest.total)}</div><div class="lbl">RESTORANT · Total</div><div class="lbl">Cash ${formatEuro(rest.cash)} · Kartë ${formatEuro(rest.card)} · Shitur recepsionit: ${formatEuro(rest.sold_to_reception)}</div></div>
-        <div class="stat-card"><div class="val">${formatEuro(recep.total)}</div><div class="lbl">RECEPSION · Total</div><div class="lbl">Netë ${formatEuro(recep.nights)} · Shërbime ${formatEuro(recep.services)} · Walk-in ${formatEuro(recep.walkin)} · Cash ${formatEuro(recep.cash)} · Kartë ${formatEuro(recep.card)} · Paguar për restorantin: ${formatEuro(recep.paid_to_restaurant)}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(shitja)}</div><div class="lbl">SHITJA (${escHtml(d.periodLabel || "")})</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(zbritja)}</div><div class="lbl">ZBRITJA</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(pagesa)}</div><div class="lbl">PAGESA</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(rest.total)}</div><div class="lbl">RESTORANT · Pagesa</div><div class="lbl">Shitja ${formatEuro((Number(d.restaurantGross) || (rest.total + restDisc)))} · Zbritja ${formatEuro(restDisc)} · Cash ${formatEuro(rest.cash)} · Kartë ${formatEuro(rest.card)}</div></div>
+        <div class="stat-card"><div class="val">${formatEuro(recep.total)}</div><div class="lbl">RECEPSION · Pagesa</div><div class="lbl">Shitja ${formatEuro((Number(d.receptionGross) || (recep.total + recDisc)))} · Zbritja ${formatEuro(recDisc)} · Cash ${formatEuro(recep.cash)} · Kartë ${formatEuro(recep.card)}</div></div>
         <div class="stat-card"><div class="val">${d.orderCount}</div><div class="lbl">${tt("Porosi të përfunduara")}</div></div>`;
     }
 
@@ -8361,7 +8386,9 @@
             const cashSales = Number(sh.cash_sales_total) || 0;
             const cardSales = Number(sh.card_sales_total) || 0;
             const roomSales = Number(sh.room_total) || 0;
-            const activity = Math.round((cashSales + cardSales + roomSales) * 100) / 100;
+            const zbritja = Number(sh.zbritja != null ? sh.zbritja : sh.discount_total) || 0;
+            const pagesa = Number(sh.pagesa != null ? sh.pagesa : sh.total_sales) || Math.round((cashSales + cardSales + roomSales) * 100) / 100;
+            const shitja = Number(sh.shitja != null ? sh.shitja : sh.gross_sales) || Math.round((pagesa + zbritja) * 100) / 100;
             return `<tr>
               <td>${escHtml(sh.waiter_name || "—")}</td>
               <td>${escHtml(sh.staff_role === "recepsion" ? "Recepsion" : "Kamarier")}</td>
@@ -8370,12 +8397,14 @@
               <td>${formatEuro(cashSales)}</td>
               <td>${formatEuro(cardSales)}</td>
               <td>${formatEuro(roomSales)}</td>
-              <td>${formatEuro(activity)}</td>
+              <td>${formatEuro(shitja)}</td>
+              <td>${formatEuro(zbritja)}</td>
+              <td>${formatEuro(pagesa)}</td>
               <td>${open || sh.closing_cash_actual == null ? "—" : formatEuro(sh.closing_cash_actual)}</td>
               <td>${diffText}</td>
             </tr>`;
           }).join("")
-        : '<tr><td colspan="10" style="color:var(--ngjyr-muted)">Nuk ka ndërrime për këtë periudhë</td></tr>';
+        : '<tr><td colspan="12" style="color:var(--ngjyr-muted)">Nuk ka ndërrime për këtë periudhë</td></tr>';
     }
 
     function renderDitariUnpaid(d) {
@@ -8436,7 +8465,9 @@
             <td>${escHtml(e.waiter_name || "—")}</td>
             <td>${escHtml(e.payment_label || "Cash")}</td>
             <td style="max-width:220px;font-size:0.85rem">${escHtml(e.artikujt || "—")}</td>
-            <td>${formatEuro(e.total)}</td>
+            <td>${formatEuro(e.bruto != null ? e.bruto : e.shitja)}</td>
+            <td>${formatEuro(e.zbritje != null ? e.zbritje : e.discount_total)}</td>
+            <td>${formatEuro(e.pagesa != null ? e.pagesa : e.total)}</td>
             <td>${statusLabel}</td>
           </tr>`;
           });
@@ -8444,15 +8475,18 @@
         VirtWindow.renderTableRows(
           tbody,
           entryRows,
-          '<tr><td colspan="9" style="color:var(--ngjyr-muted)">Nuk ka transaksione për këtë periudhë</td></tr>',
+          '<tr><td colspan="11" style="color:var(--ngjyr-muted)">Nuk ka transaksione për këtë periudhë</td></tr>',
         );
       } else {
         tbody.innerHTML = entryRows.length
           ? entryRows.join("")
-          : '<tr><td colspan="9" style="color:var(--ngjyr-muted)">Nuk ka transaksione për këtë periudhë</td></tr>';
+          : '<tr><td colspan="11" style="color:var(--ngjyr-muted)">Nuk ka transaksione për këtë periudhë</td></tr>';
       }
+      const totShitja = Number(view.totalGross != null ? view.totalGross : view.shitja) || ((Number(view.totalSales) || 0) + (Number(view.totalDiscount) || 0));
+      const totZbritja = Number(view.totalDiscount != null ? view.totalDiscount : view.zbritja) || 0;
+      const totPagesa = Number(view.pagesa != null ? view.pagesa : view.totalSales) || 0;
       document.getElementById("ditari-totali").textContent =
-        "TOTALI (" + view.periodLabel + "): " + formatEuro(view.totalSales);
+        "SHITJA (" + view.periodLabel + "): " + formatEuro(totShitja) + " · Zbritja: " + formatEuro(totZbritja) + " · Pagesa: " + formatEuro(totPagesa);
 
       lastDitariPayload = d;
       if (ditariActivityVisible) renderDitariActivityRows(d.activity || []);
@@ -8490,14 +8524,16 @@
 
     function computeDitariTotalsFromEntries(entries) {
       let totalSales = 0;
+      let totalDiscount = 0;
       let totalCash = 0;
       let totalKarte = 0;
       let totalRoom = 0;
       let orderCount = 0;
       for (const e of entries) {
         if (e.status === "cancelled" || e.audit_trail || e.folio_settled || e._trace) continue;
-        const t = Number(e.total) || 0;
+        const t = Number(e.pagesa != null ? e.pagesa : e.total) || 0;
         totalSales += t;
+        totalDiscount += Number(e.zbritje != null ? e.zbritje : e.discount_total) || 0;
         orderCount += 1;
         let cash = Number(e.cash_amount);
         let card = Number(e.card_amount);
@@ -8524,11 +8560,13 @@
         totalKarte += card;
       }
       totalSales = Math.round(totalSales * 100) / 100;
+      totalDiscount = Math.round(totalDiscount * 100) / 100;
       totalCash = Math.round(totalCash * 100) / 100;
       totalKarte = Math.round(totalKarte * 100) / 100;
       const totalTjera = Math.round(Math.max(0, totalSales - totalCash - totalKarte - totalRoom) * 100) / 100;
       totalRoom = Math.round(totalRoom * 100) / 100;
-      return { totalSales, totalCash, totalKarte, totalTjera, totalRoom, orderCount };
+      const totalGross = Math.round((totalSales + totalDiscount) * 100) / 100;
+      return { totalSales, totalDiscount, totalGross, shitja: totalGross, zbritja: totalDiscount, pagesa: totalSales, totalCash, totalKarte, totalTjera, totalRoom, orderCount };
     }
 
     function ditariViewFromPayload(d) {
@@ -8543,6 +8581,11 @@
         ...d,
         entries: filtered,
         totalSales: totals.totalSales,
+        totalGross: totals.totalGross,
+        totalDiscount: totals.totalDiscount,
+        shitja: totals.shitja,
+        zbritja: totals.zbritja,
+        pagesa: totals.pagesa,
         totalCash: totals.totalCash,
         totalKarte: totals.totalKarte,
         totalTjera: totals.totalTjera,
@@ -8927,7 +8970,9 @@
         `${d.arrivals_count ?? 0} mbërritje · ${d.departures_count ?? 0} largime`,
       );
       setText("dash-occupancy", `${d.occupancy_pct ?? 0}%`);
-      setText("dash-revenue", formatEuro(rev.total != null ? rev.total : d.totalSales));
+      setText("dash-revenue", formatEuro(rev.pagesa != null ? rev.pagesa : (rev.total != null ? rev.total : d.totalSales)));
+      setText("dash-revenue-shitja", formatEuro(rev.shitja != null ? rev.shitja : ((Number(rev.total) || 0) + (Number(rev.zbritja) || 0))));
+      setText("dash-revenue-zbritja", formatEuro(rev.zbritja || 0));
       const nightsSvc =
         rev.nights_services != null
           ? rev.nights_services
@@ -8935,8 +8980,8 @@
       const revSub = document.getElementById("dash-revenue-sub");
       if (revSub) {
         revSub.innerHTML =
-          `Restoranti ${formatEuro(rev.restaurant ?? 0)}<br>` +
-          `Recepsioni ${formatEuro(rev.reception ?? 0)}<br>` +
+          `Restoranti Shitja ${formatEuro(rev.restaurant_gross ?? rev.restaurant ?? 0)} · Zbritja ${formatEuro(rev.restaurant_discount || 0)} · Pagesa ${formatEuro(rev.restaurant ?? 0)}<br>` +
+          `Recepsioni Shitja ${formatEuro(rev.reception_gross ?? rev.reception ?? 0)} · Zbritja ${formatEuro(rev.reception_discount || 0)} · Pagesa ${formatEuro(rev.reception ?? 0)}<br>` +
           `Netët + Shërbimet ${formatEuro(nightsSvc)}`;
       }
 
@@ -16421,9 +16466,11 @@
 
     function dashTodayShiftRowHtml(s) {
       const sid = s.id != null ? s.id : s.shift_id;
-      const total =
-        Number(s.total_sales) ||
+      const zbritja = Number(s.zbritja != null ? s.zbritja : s.discount_total) || 0;
+      const pagesa =
+        Number(s.pagesa != null ? s.pagesa : s.total_sales) ||
         Math.round(((Number(s.cash_sales_total) || 0) + (Number(s.card_sales_total) || 0)) * 100) / 100;
+      const shitja = Number(s.shitja != null ? s.shitja : s.gross_sales) || Math.round((pagesa + zbritja) * 100) / 100;
       const orders = Number(s.order_count_total ?? s.order_count) || 0;
       return `<tr data-shift-id="${escHtml(String(sid ?? ""))}">
             <td>${escHtml(adminShiftRoleLabel(s.staff_role))}</td>
@@ -16432,7 +16479,9 @@
             <td>${fmtShiftReportDt(s.closed_at || s.shift_end)}</td>
             <td>${formatEuro(s.cash_sales_total ?? s.cash_amount ?? 0)}</td>
             <td>${formatEuro(s.card_sales_total ?? s.card_amount ?? 0)}</td>
-            <td>${formatEuro(total)}</td>
+            <td>${formatEuro(shitja)}</td>
+            <td>${formatEuro(zbritja)}</td>
+            <td>${formatEuro(pagesa)}</td>
             <td>${orders}</td>
           </tr>`;
     }
@@ -16442,7 +16491,7 @@
       if (!body) return;
       if (!rows.length) {
         body.innerHTML =
-          '<tr><td colspan="8" style="color:var(--ngjyr-muted)">Asnjë ndërrim i mbyllur sot.</td></tr>';
+          '<tr><td colspan="10" style="color:var(--ngjyr-muted)">Asnjë ndërrim i mbyllur sot.</td></tr>';
         return;
       }
       body.innerHTML = rows.map((s) => dashTodayShiftRowHtml(s)).join("");
@@ -16458,7 +16507,7 @@
         );
         renderDashTodayShiftsTable(data.shifts || []);
       } catch (err) {
-        body.innerHTML = `<tr><td colspan="8" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="10" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
       }
     }
 
@@ -16564,6 +16613,11 @@
                 <td>${formatEuro(side?.subtotal_card || 0)}</td>
                 <td>${formatEuro(side?.subtotal || 0)}</td>
               </tr>
+              <tr class="daily-balance-subtotal">
+                <td colspan="2">Shitja ${formatEuro(side?.shitja != null ? side.shitja : ((Number(side?.subtotal) || 0) + (Number(side?.zbritja) || 0)))}</td>
+                <td colspan="2">Zbritja ${formatEuro(side?.zbritja || 0)}</td>
+                <td colspan="2">Pagesa ${formatEuro(side?.pagesa != null ? side.pagesa : side?.subtotal || 0)}</td>
+              </tr>
             </tfoot>
           </table>
         </div>`;
@@ -16573,7 +16627,10 @@
       const head = document.getElementById("daily-balance-head");
       const body = document.getElementById("daily-balance-body");
       if (!body) return;
-      if (head) head.textContent = `BARAZIMI DITOR — ${data.date || ""}`;
+      if (head) {
+        head.textContent =
+          `BARAZIMI DITOR — ${data.date || ""} · Shitja ${formatEuro(data.shitja ?? data.grand_gross ?? 0)} · Zbritja ${formatEuro(data.zbritja ?? data.grand_discount ?? 0)} · Pagesa ${formatEuro(data.pagesa ?? data.grand_total ?? 0)}`;
+      }
       let fiscalHtml = "";
       if (data.fiscal_z_total == null) {
         fiscalHtml =
@@ -16595,10 +16652,18 @@
           <table class="dashboard-top-table">
             <tbody>
               <tr class="daily-balance-footer">
-                <td colspan="3">GRAND TOTAL</td>
+                <td colspan="3">SHITJA</td>
+                <td colspan="3">${formatEuro(data.shitja ?? data.grand_gross ?? 0)}</td>
+              </tr>
+              <tr class="daily-balance-footer">
+                <td colspan="3">ZBRITJA</td>
+                <td colspan="3">${formatEuro(data.zbritja ?? data.grand_discount ?? 0)}</td>
+              </tr>
+              <tr class="daily-balance-footer">
+                <td colspan="3">PAGESA / GRAND TOTAL</td>
                 <td>${formatEuro(data.grand_total_cash || 0)}</td>
                 <td>${formatEuro(data.grand_total_card || 0)}</td>
-                <td>${formatEuro(data.grand_total || 0)}</td>
+                <td>${formatEuro(data.pagesa ?? data.grand_total ?? 0)}</td>
               </tr>
               <tr class="daily-balance-footer">
                 <td colspan="5">Total Z fiskale</td>
@@ -16650,7 +16715,7 @@
         const data = await api(`/api/admin/shift-reports?${shiftQs}`);
         const rows = data.shifts || [];
           if (!rows.length) {
-          body.innerHTML = '<tr><td colspan="14" class="purchases-empty">Nuk ka ndërrime për këtë periudhë</td></tr>';
+          body.innerHTML = '<tr><td colspan="16" class="purchases-empty">Nuk ka ndërrime për këtë periudhë</td></tr>';
           return;
         }
         const shiftRoleLabel = (role) => (role === "recepsion" ? "Recepsion" : "Kamarier");
@@ -16675,7 +16740,9 @@
           const cashSales = Number(s.cash_sales_total) || 0;
           const cardSales = Number(s.card_sales_total) || 0;
           const roomSales = Number(s.room_total) || 0;
-          const activity = Math.round((cashSales + cardSales + roomSales) * 100) / 100;
+          const zbritja = Number(s.zbritja != null ? s.zbritja : s.discount_total) || 0;
+          const pagesa = Number(s.pagesa != null ? s.pagesa : s.total_sales) || Math.round((cashSales + cardSales + roomSales) * 100) / 100;
+          const shitja = Number(s.shitja != null ? s.shitja : s.gross_sales) || Math.round((pagesa + zbritja) * 100) / 100;
           return `<tr>
             <td>${escHtml(s.waiter_name)}</td>
             <td>${escHtml(shiftRoleLabel(s.staff_role))}</td>
@@ -16685,7 +16752,9 @@
             <td>${formatEuro(cashSales)}</td>
             <td>${formatEuro(cardSales)}</td>
             <td>${formatEuro(roomSales)}</td>
-            <td>${formatEuro(activity)}</td>
+            <td>${formatEuro(shitja)}</td>
+            <td>${formatEuro(zbritja)}</td>
+            <td>${formatEuro(pagesa)}</td>
             <td>${formatEuro(s.expected_closing_cash || 0)}</td>
             <td>${s.closing_cash_actual != null ? formatEuro(s.closing_cash_actual) : "—"}</td>
             <td>${diffHtml}</td>
@@ -16694,7 +16763,7 @@
           </tr>`;
         }).join("");
       } catch (err) {
-        body.innerHTML = `<tr><td colspan="14" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="16" class="purchases-empty">${escHtml(err.message)}</td></tr>`;
       }
     }
 
@@ -16932,20 +17001,22 @@
       const shops = r.shops || {};
       const restShop = shops.restaurant || {};
       const recShop = shops.reception || {};
-      document.getElementById("raport-revenue").textContent = formatEuro(shops.total != null ? shops.total : r.totalSales);
+      document.getElementById("raport-revenue").textContent = formatEuro(r.totalGross ?? r.shitja ?? ((Number(r.totalSales) || 0) + (Number(r.totalDiscount) || 0)));
+      const pagesaEl = document.getElementById("raport-pagesa");
+      if (pagesaEl) pagesaEl.textContent = formatEuro(r.pagesa ?? shops.total ?? r.totalSales);
       const restEl = document.getElementById("raport-restaurant");
       const nightsEl = document.getElementById("raport-hotel-nights");
       const svcEl = document.getElementById("raport-hotel-services");
       if (restEl) restEl.textContent = formatEuro(restShop.total != null ? restShop.total : (src.restaurant ?? r.restaurantSales ?? 0));
       const restSplit = document.getElementById("raport-restaurant-split");
       if (restSplit) {
-        restSplit.textContent = `Cash ${formatEuro(restShop.cash || 0)} · Kartë ${formatEuro(restShop.card || 0)} · Shitur recepsionit: ${formatEuro(restShop.sold_to_reception || 0)} · TOTAL ${formatEuro(restShop.total || 0)}`;
+        restSplit.textContent = `Shitja ${formatEuro(r.restaurantGross ?? ((Number(restShop.total) || 0) + (Number(r.restaurantDiscount) || 0)))} · Zbritja ${formatEuro(r.restaurantDiscount || 0)} · Pagesa ${formatEuro(restShop.total || 0)}`;
       }
       const recepEl = document.getElementById("raport-reception");
       if (recepEl) recepEl.textContent = formatEuro(recShop.total || 0);
       const recepFrom = document.getElementById("raport-reception-from");
       if (recepFrom) {
-        recepFrom.textContent = `Netë ${formatEuro(recShop.nights || 0)} · Shërbime ${formatEuro(recShop.services || 0)} · Walk-in ${formatEuro(recShop.walkin || 0)} · Cash ${formatEuro(recShop.cash || 0)} · Kartë ${formatEuro(recShop.card || 0)} · Paguar për restorantin: ${formatEuro(recShop.paid_to_restaurant || 0)}`;
+        recepFrom.textContent = `Shitja ${formatEuro(r.receptionGross ?? ((Number(recShop.total) || 0) + (Number(r.receptionDiscount) || 0)))} · Zbritja ${formatEuro(r.receptionDiscount || 0)} · Pagesa ${formatEuro(recShop.total || 0)}`;
       }
       if (nightsEl) nightsEl.textContent = formatEuro(src.nights ?? r.hotelNights ?? 0);
       if (svcEl) svcEl.textContent = formatEuro(src.services ?? r.hotelServices ?? 0);

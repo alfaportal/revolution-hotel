@@ -1,3 +1,99 @@
+## 2026-11-15 — Zbritja 3 numra (Shitja / Zbritja / Pagesa) si MARKET
+
+Shitja origjinale, zbritja dhe pagesa neto dalin në Ditari, Pasqyra, Raportet, Ndërrimi, Arka (Pasqyra), Barazimi. Recepsioni (check-out) e shkruan `discount_total` te `daily_log`. TVSH mbetet mbi neto (20€, jo 23€) — `computeItemsVat` / `prepareItemsForVatLedger` nuk u prek.
+
+Test real `tests/discount-three-numbers.test.js`: 10+5+8, zbritje 3. Restorant dhe recepsion: Shitja=23, Zbritja=3, Pagesa=20. Pa TVSH 16.95 + TVSH 3.05 = 20.00.
+
+Kontabilisti-atk* LOCKED — 3 kolona nuk u shtuan aty pa 2× po. Librat tashmë përdorin neto.
+
+Kuponi fiskal tashmë ka Nëntotali / Zbritje / Totali (`receipt-text.js`) — fiskali nuk u prek.
+
+Pa git. Pa build. Te PC del pas Setup të ri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | `saleMoneyTriple`; Ditari/Raportet/Barazimi/Pasqyra/ndërrimi 23/3/20; check-out me zbritje |
+| `desktop/server.js` | `discount_total` te check-out |
+| `desktop/public/admin.html` | 3 kolona/KPI në Ditari, Raportet, Pasqyra, Ndërrime, Barazim |
+| `desktop/ditari-report.js` | Nëntotali / Zbritja / Pagesa |
+| `desktop/shift-report-html.js` | Shitja / Zbritja / Pagesa |
+| `desktop/tests/discount-three-numbers.test.js` | prova 23/3/20 restorant + recepsion |
+
+## 2026-11-15 — Stok reconcile: 75 mismatch → 0 (formula + opening)
+
+Live `GET /api/admin/stock/reconcile` në 3001: mismatch_count=75. Shkaku real (3 produkte):
+
+- Espresso 40ml: blerje +5, storno u numërua si shitje, fletë RS edhe te ditari edhe te room_charges, stoku fillestar 0 në vend të mbetjes. expected 0 / actual 6.
+- Frappuccino: 69 shitje nga stok 0; `MAX(0)` e mban actual 0, formula shkonte −69.
+- Coca-Cola minibar: seed 24 i pa-regjistruar + blerje 96 − 2 shitje = 118; formula pa opening.
+
+Fix: kthimet (storno/return/cancel) +returned jo shitje; fletë `(RS|POS|RS-QR)` nuk dyfishohen nga ditari; expected min 0; baseline v2 shkruan `stock_opening_*`. Kopje e dekriptuar e `hotel.db` live me kodin e ri: **0 mismatch**.
+
+Pa git. Pa build. Te PC del pas Setup të ri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/database.js` | formula stoku, kthime, RS skip, opening baseline v2 |
+| `desktop/tests/stock-reconcile.test.js` | storno, seed opening, oversell, RS ditar |
+
+## 2026-11-15 — Kod emergjence i njëjtë te KAFENE + MARKET + DYQANET/BUTIKA/BARNATORE/ARGJENDARI
+
+U aplikua i njëjti fix si HOTEL (email për pronarin, `sent` real, pa `_0x`, timeout 25s). FURRA/SECURITY/FISKALIZIM: s’kanë hyrje emergjence POS në këtë workspace.
+
+Pa git. Pa build.
+
+## 2026-11-15 — Kod emergjence: cloud + login HOTEL
+
+Cloud HOTEL (`revolution-pos.com/hotel/api/v1/license/emergency-code-request`) kthen 503 `NOT_CONFIGURED` — mungon `MASTER_EMERGENCY_PIN` në Railway të hotelit. KAFENE cloud e ka, HOTEL jo. Modal-i i pronarit nuk kërkonte email. `api()` i obfuskuar e prishte Hyr.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/login.html` | Pronari + kamarieri kërkojnë email cloud; gabimi `_0x` nuk shfaqet |
+| `server.js` | `emergency-request` kthen `sent` + `gabim` real |
+| `license.js` | timeout 25s për email |
+| `cloud-health.js` | timeout i kërkuar nuk pritet në 3s |
+| `revolution-hotel-server/src/routes/license.js` | unlock: së pari `NOT_CONFIGURED` |
+
+Pa git. Pa build. Pa deploy Railway. Te PC: Setup i ri. Te cloud HOTEL: vendos `MASTER_EMERGENCY_PIN` (i njëjti si KAFENE).
+
+## 2026-11-15 — Modal emergjence: `_0x4bc313[...] is not a function`
+
+I njëjti crash: `api()` i obfuskuar. Modal-i e shfaq `err.message` të papunuar. Hyrja e login.html tani përdor `loginFetch` (fetch i drejtpërdrejtë), jo `api()`.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/login.html` | `loginFetch` për setup/status, online-orders, waiters, emergency, bootstrap |
+
+Pa git. Pa build. Te PC del pas Setup të ri.
+
+## 2026-11-15 — Hyrja e pronarit: «Fjalëkalimi i gabuar!» i rremë
+
+Fjalëkalimi `ferizaji` është i saktë: `POST /api/login` në 3001 kthen 200 + token. Butoni «Hyr si Pronari» thërriste `api()` nga `public/js/app.js` i obfuskuar; `clearTimeout` i prishur nga obfuscatori hidhte TypeError. `login.html` e fshihte me «Fjalëkalimi i gabuar!».
+
+Programi që xhiron tani: `Revolution HOTEL.exe` në port 3001 (asar i obfuskuar). Ndryshimi në burim del te PC vetëm pas Setup të ri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `public/login.html` | Hyrja e pronarit me `fetch` si PIN, jo `api()` |
+| `public/js/i18n-client.js` | wrapper `api` pa `.apply` |
+| `scripts/obfuscate-build.mjs` | `app.js` mbetet i pastër (si `main.js`) |
+
+Pa git. Pa build.
+
+## 2026-11-15 — Setup 1.0.602
+
+`node scripts/pre-build-check.js` + `node build-packages.js` — një Setup (Pako 3). Auto-bump 1.0.601 → **1.0.602**. Kod 0. FileVersion/ProductVersion 1.0.602. Arkiva 1.0.601 mbetet. asar: database.js, server.js, main.js, preload.js, cloud-sync.js. Nuk u bë git. Nuk u prek tag ngrirje.
+
+PC: instalo **Revolution HOTEL Setup.exe** 1.0.602 → mbyll programin plotësisht → hape përsëri.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `desktop/package.json` | version 1.0.602 |
+| `dist/Revolution HOTEL Setup.exe` | Setup i ri (~122 MB) |
+| `Desktop\Revolution HOTEL Setup.exe` | kopja e dorëzimit |
+
+Folio QR, barazimi = Ditari, nested close, Sot lokale janë brenda këtij Setup.
+
 ## 2026-11-15 — QR dhomë / minibar nuk hynte te folio
 
 Porosia `POST /api/guest/room-order` (jo minibar) shkonte te kamarieri pa `room_charges`. PRANO e importonte si tavolinë, jo te fatura e dhomës. Checkout-preview tregonte vetëm natën.

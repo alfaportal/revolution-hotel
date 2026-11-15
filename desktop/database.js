@@ -171,6 +171,11 @@ whenReady = async () => {
   } catch (e) {
     console.warn("[ingredients-seed] startup:", e.message);
   }
+  try {
+    baselineStockOpeningOnce();
+  } catch (e) {
+    console.warn("[stock] opening baseline:", e.message);
+  }
   setTimeout(() => {
     try { ensureHotelServiceStockPhotos(); } catch { /* ignore */ }
     try { ensureHotelServiceCategoryPhotos(); } catch { /* ignore */ }
@@ -546,6 +551,7 @@ function replaceStockFromMaster(items) {
         ? Math.max(0, m.low_stock_threshold)
         : Number(r.low_stock_threshold) || 0;
       if (Number(r.stock_qty) === qty && Number(r.low_stock_threshold) === thr) continue;
+      logManualStockSetDelta(r.id, r.stock_qty, qty, "Stok nga Kryesorja", "system");
       upd.run(qty, thr, r.id);
       updated += 1;
     }
@@ -5293,6 +5299,7 @@ function checkOutGuest(roomId, {
   payment_splits = null,
   waiter_name = "Recepcion",
   checkout_token = null,
+  discount_total = null,
 } = {}) {
   const roomBefore = getRoomById(roomId);
   const autoRs = roomBefore
@@ -5312,6 +5319,8 @@ function checkOutGuest(roomId, {
   const method = normalizePaymentMethod(payment_method, payment_splits);
   const logMeta = shiftMetaForWaiter(waiter_name);
   const logItems = buildCheckoutLogItems(bill, room);
+  const disc = Math.max(0, Number(discount_total != null ? discount_total : bill.discount_total) || 0);
+  const netPaid = Math.max(0, Math.round((paidTotal - disc) * 100) / 100);
   const run = sqlite.transaction(() => {
     /* Extra checkout → room_charge që të hyjë menjëherë te Kontabilisti me TVSH */
     const extra = Number(bill.extra_services) || 0;
@@ -5333,7 +5342,7 @@ function checkOutGuest(roomId, {
         UPDATE guests
         SET status = 'checked_out', check_out_date = ?, total_paid = ?
         WHERE id = ?
-      `).run(bill.check_out_date, paidTotal, Number(guest.id));
+      `).run(bill.check_out_date, netPaid, Number(guest.id));
     } catch {
       sqlite.prepare(`
         UPDATE guests
@@ -5347,7 +5356,9 @@ function checkOutGuest(roomId, {
       table_number: String(room.room_number || guest.id),
       waiter_name: waiter_name || "Recepcion",
       items_json: JSON.stringify(logItems),
-      total: paidTotal,
+      total: netPaid,
+      subtotal: paidTotal,
+      discount_total: disc,
       receipt_number: `CO-${guest.id}`,
       payment_method: method,
       payment_splits,
@@ -5367,7 +5378,7 @@ function checkOutGuest(roomId, {
     event_type: "check_out",
     room_number: result?.room?.room_number,
     guest_name: result?.guest?.guest_name,
-    amount: paidTotal,
+    amount: netPaid,
     performed_by: waiter_name || "Recepsion",
     detail: result?.guest?.id ? `CO-${result.guest.id}` : "",
   });
@@ -5375,7 +5386,7 @@ function checkOutGuest(roomId, {
     event_type: "payment",
     room_number: result?.room?.room_number,
     guest_name: result?.guest?.guest_name,
-    amount: paidTotal,
+    amount: netPaid,
     performed_by: waiter_name || "Recepsion",
     detail: method,
   });
@@ -12917,7 +12928,15 @@ function getReports(dateFrom, dateTo) {
   const receptionCollected = aggregateReceptionCollected(receptionEntries);
   const receptionSales = receptionCollected.gross;
   const receptionSalesNet = receptionCollected.net;
-  const totalDiscount = entries.reduce((s, e) => s + Number(e.discount_total || 0), 0);
+  const restaurantDiscount = restaurantEntries.reduce(
+    (s, e) => s + shownSaleDiscount(e.discount_total, parseOrderItems(e.items_json)),
+    0,
+  );
+  const receptionDiscount = receptionEntries.reduce(
+    (s, e) => s + shownSaleDiscount(e.discount_total, parseOrderItems(e.items_json)),
+    0,
+  );
+  const totalDiscount = restaurantDiscount + receptionDiscount;
   const orderCount = restaurantEntries.length;
   const hotelRev = collectHotelReportRevenue({ from, to });
   const restaurantSales = roundReportMoney(
@@ -13200,6 +13219,14 @@ function getReports(dateFrom, dateTo) {
       total: totalSales,
     },
     totalDiscount: Number(totalDiscount.toFixed(2)),
+    totalGross: roundReportMoney((Number(totalSales) || 0) + (Number(totalDiscount) || 0)),
+    restaurantDiscount: roundReportMoney(restaurantDiscount),
+    receptionDiscount: roundReportMoney(receptionDiscount),
+    restaurantGross: roundReportMoney(restaurantRounded + restaurantDiscount),
+    receptionGross: roundReportMoney(receptionRounded + receptionDiscount),
+    shitja: roundReportMoney((Number(totalSales) || 0) + (Number(totalDiscount) || 0)),
+    zbritja: Number(totalDiscount.toFixed(2)),
+    pagesa: roundReportMoney(totalSales),
     promotionStats,
     orderCount,
     average,
@@ -13440,6 +13467,9 @@ function computeShiftTotals(shiftId, staffId = null, waiterName = null, sessionR
     cash_total: Number(row?.cash_total) || 0,
     room_total: (Number(row?.room_total) || 0) + settledRoom.room_total,
     discount_total: Number(row?.discount_total) || 0,
+    gross_sales: roundReportMoney(
+      (Number(row?.total_sales) || 0) + (Number(row?.discount_total) || 0),
+    ),
   };
 }
 
@@ -13484,6 +13514,9 @@ function computeOrphanDailyLogTotals(staffId, waiterName = null, sessionRole = "
     cash_total: Number(row?.cash_total) || 0,
     room_total: Number(row?.room_total) || 0,
     discount_total: Number(row?.discount_total) || 0,
+    gross_sales: roundReportMoney(
+      (Number(row?.total_sales) || 0) + (Number(row?.discount_total) || 0),
+    ),
   };
 }
 
@@ -14261,6 +14294,14 @@ function enrichShiftSummary(shift, totals, staff, extra = {}) {
     cash_total: cashSales,
     room_total: Number(totals?.room_total) || 0,
     discount_total: Number(totals?.discount_total) || 0,
+    gross_sales: roundReportMoney(
+      (Number(totals?.total_sales) || 0) + (Number(totals?.discount_total) || 0),
+    ),
+    shitja: roundReportMoney(
+      (Number(totals?.total_sales) || 0) + (Number(totals?.discount_total) || 0),
+    ),
+    zbritja: roundReportMoney(Number(totals?.discount_total) || 0),
+    pagesa: roundReportMoney(Number(totals?.total_sales) || 0),
     services,
     service_count: services.length,
     service_total: serviceTotal,
@@ -14876,13 +14917,21 @@ function getDailyBalanceReport(dateYmd) {
   restaurant.subtotal_cash = Number(ditari.restaurantCash) || 0;
   restaurant.subtotal_card = Number(ditari.restaurantKarte) || 0;
   restaurant.subtotal = Number(ditari.restaurantSales) || 0;
+  restaurant.zbritja = Number(ditari.restaurantDiscount) || 0;
+  restaurant.shitja = roundReportMoney(restaurant.subtotal + restaurant.zbritja);
+  restaurant.pagesa = restaurant.subtotal;
   reception.subtotal_cash = Number(ditari.receptionCash) || 0;
   reception.subtotal_card = Number(ditari.receptionKarte) || 0;
   reception.subtotal = Number(ditari.receptionSales) || 0;
+  reception.zbritja = Number(ditari.receptionDiscount) || 0;
+  reception.shitja = roundReportMoney(reception.subtotal + reception.zbritja);
+  reception.pagesa = reception.subtotal;
 
   const grand_total_cash = Number(ditari.totalCash) || 0;
   const grand_total_card = Number(ditari.totalKarte) || 0;
   const grand_total = Number(ditari.totalSales) || 0;
+  const grand_discount = Number(ditari.totalDiscount) || 0;
+  const grand_gross = Number(ditari.totalGross) || roundReportMoney(grand_total + grand_discount);
 
   const fiscal_z_total = readFiscalZTotalForDay(date);
   const difference =
@@ -14897,6 +14946,11 @@ function getDailyBalanceReport(dateYmd) {
     grand_total_cash,
     grand_total_card,
     grand_total,
+    grand_discount,
+    grand_gross,
+    shitja: grand_gross,
+    zbritja: grand_discount,
+    pagesa: grand_total,
     fiscal_z_total,
     difference,
   };
@@ -14985,6 +15039,10 @@ function listShiftReports({ from, to, staff_id, staff_role, include_open } = {})
       order_count_total: orders,
       total_sales: total,
       discount_total: discount,
+      gross_sales: roundReportMoney(total + discount),
+      shitja: roundReportMoney(total + discount),
+      zbritja: roundReportMoney(discount),
+      pagesa: roundReportMoney(total),
       services: listShiftServiceWork(row.id),
       handed_over_to_name: row.handed_over_to_name || null,
       handover_cash: row.handover_cash != null ? Number(row.handover_cash) : null,
@@ -15965,11 +16023,18 @@ function applyPurchaseStockDelta(menuItemId, qty) {
   return { id, name: row.name, stock_qty: stockAfter, stockBefore };
 }
 
-/** Stoku fillestar për reconciliacion (settings `stock_opening_{menuItemId}`, default 0). */
 function getMenuItemOpeningStock(menuItemId) {
   const raw = getSetting(`stock_opening_${Number(menuItemId)}`, "0");
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+function setMenuItemOpeningStock(menuItemId, qty) {
+  const id = Number(menuItemId);
+  if (!id) return;
+  const n = Number(qty);
+  const val = Number.isFinite(n) ? n : 0;
+  setSetting(`stock_opening_${id}`, String(val));
 }
 
 /** Sasi blerje (goods) të grupuara sipas menu_item_id — përfshin rregullimet ±. */
@@ -16045,8 +16110,16 @@ function aggregateManualStockQtyByMenuItem({ from, to } = {}) {
 function isRoomChargeStockDecrement(description) {
   const desc = String(description || "").trim();
   if (!desc) return false;
-  if (/\(\s*T\d+\s*\)\s*$/i.test(desc)) return false;
-  return /\(\s*(RS|POS|RS-QR)\s*\)\s*$/i.test(desc);
+  if (/\(\s*(RS|POS|RS-QR)\s*\)/i.test(desc)) return true;
+  return false;
+}
+
+function isDailyLogStockReturn(entry) {
+  const kind = String(entry?.correction_type || "").toLowerCase();
+  if (kind === "return" || kind === "cancel" || kind === "storno") return true;
+  if (kind === "exchange") return false;
+  const total = Number(entry?.total);
+  return Number.isFinite(total) && total < 0;
 }
 
 function parseRoomChargeLineQty(description) {
@@ -16091,35 +16164,65 @@ function mergeQtyMaps(...maps) {
   return out;
 }
 
-/** Shitje totale për stok: daily_log (tavolinë) + room service / POS në dhomë. */
 function aggregateSalesQtyForStock({ from, to } = {}) {
-  return mergeQtyMaps(
-    aggregateSalesQtyFromDailyLog({ from, to }),
-    aggregateSalesQtyFromRoomCharges({ from, to }),
-  );
+  const daily = aggregateDailyLogStockQtyMaps({ from, to });
+  const netDaily = new Map(daily.sold);
+  for (const [id, qty] of daily.returned) {
+    netDaily.set(id, (netDaily.get(id) || 0) - (Number(qty) || 0));
+  }
+  return mergeQtyMaps(netDaily, aggregateSalesQtyFromRoomCharges({ from, to }));
 }
 
-/** Sasi shitje të grupuara nga daily_log (completed) — njësoj si decrementMenuItemStock. */
-function aggregateSalesQtyFromDailyLog({ from, to } = {}) {
+function loadCompletedDailyLogStockRows({ from, to } = {}) {
+  const ranged = !!(from && to);
+  try {
+    return ranged
+      ? sqlite.prepare(`
+        SELECT items_json, total, COALESCE(correction_type, '') AS correction_type
+        FROM daily_log
+        WHERE status = 'completed' AND date >= ? AND date <= ?
+      `).all(from, to)
+      : sqlite.prepare(`
+        SELECT items_json, total, COALESCE(correction_type, '') AS correction_type
+        FROM daily_log WHERE status = 'completed'
+      `).all();
+  } catch {
+    return ranged
+      ? sqlite.prepare(`
+        SELECT items_json, total FROM daily_log
+        WHERE status = 'completed' AND date >= ? AND date <= ?
+      `).all(from, to)
+      : sqlite.prepare(`
+        SELECT items_json, total FROM daily_log WHERE status = 'completed'
+      `).all();
+  }
+}
+
+function aggregateDailyLogStockQtyMaps({ from, to } = {}) {
   const menu = getMenuItems(false);
   const byId = new Map(menu.map((m) => [Number(m.id), m]));
   const byName = new Map(menu.map((m) => [String(m.name || "").trim().toLowerCase(), m]));
-  const entries = from && to
-    ? sqlite.prepare(`
-      SELECT items_json FROM daily_log
-      WHERE status = 'completed' AND date >= ? AND date <= ?
-    `).all(from, to)
-    : sqlite.prepare(`
-      SELECT items_json FROM daily_log WHERE status = 'completed'
-    `).all();
-  const map = new Map();
-  for (const e of entries) {
+  const sold = new Map();
+  const returned = new Map();
+  for (const e of loadCompletedDailyLogStockRows({ from, to })) {
+    if (String(e.correction_type || "").toLowerCase() === "exchange") continue;
+    const dest = isDailyLogStockReturn(e) ? returned : sold;
     for (const it of parseOrderItems(e.items_json)) {
+      if (isRoomChargeStockDecrement(it?.name || it?.emri || it?.item_name || "")) continue;
       const menuItemId = resolveMenuItemIdForStock(it, byId, byName);
-      const qty = Number(it?.quantity ?? it?.qty ?? it?.sasia) || 0;
+      const qty = Math.abs(Number(it?.quantity ?? it?.qty ?? it?.sasia) || 0);
       if (!menuItemId || qty <= 0) continue;
-      map.set(menuItemId, (map.get(menuItemId) || 0) + qty);
+      dest.set(menuItemId, (dest.get(menuItemId) || 0) + qty);
     }
+  }
+  return { sold, returned };
+}
+
+function aggregateSalesQtyFromDailyLog({ from, to } = {}) {
+  const { sold, returned } = aggregateDailyLogStockQtyMaps({ from, to });
+  const map = new Map(sold);
+  for (const [id, qty] of returned) {
+    map.set(id, (map.get(id) || 0) - (Number(qty) || 0));
   }
   return map;
 }
@@ -16225,15 +16328,21 @@ function getIngredientStockValue() {
  * Reconciliacion stoku:
  * fillestar + blerjet (goods) + ndryshime manuale (±) − shitjet (daily_log + room service) vs stock_qty.
  */
-function buildMenuItemReconcileRow(m, purchases, salesDaily, salesRoom, manualAdds) {
+function buildMenuItemReconcileRow(m, purchases, salesDaily, salesRoom, manualAdds, salesReturned) {
   const id = Number(m.id);
   const opening = getMenuItemOpeningStock(id);
   const purchased = purchases.get(id) || 0;
   const soldDaily = salesDaily.get(id) || 0;
   const soldRoom = salesRoom.get(id) || 0;
   const soldMerged = soldDaily + soldRoom;
+  const returned = salesReturned instanceof Map ? (salesReturned.get(id) || 0) : 0;
   const manualAdded = manualAdds.get(id) || 0;
-  const expected = opening + purchased + manualAdded - soldMerged;
+  const recipeMovesIngredients = !!( _irApi && typeof _irApi.menuItemHasRecipe === "function"
+    && _irApi.menuItemHasRecipe(id));
+  const soldForStock = recipeMovesIngredients ? 0 : soldMerged;
+  const returnedForStock = recipeMovesIngredients ? 0 : returned;
+  const rawExpected = opening + purchased + manualAdded - soldForStock + returnedForStock;
+  const expected = Math.max(0, rawExpected);
   const actual = Number(m.stock_qty) || 0;
   const difference = actual - expected;
   const absDiff = Math.abs(difference);
@@ -16250,6 +16359,7 @@ function buildMenuItemReconcileRow(m, purchases, salesDaily, salesRoom, manualAd
     sold: roundReportMoney(soldMerged),
     sold_daily_log: roundReportMoney(soldDaily),
     sold_room_service: roundReportMoney(soldRoom),
+    returned: roundReportMoney(returned),
     expected_stock: roundReportMoney(expected),
     actual_stock: roundReportMoney(actual),
     difference: roundReportMoney(difference),
@@ -16273,10 +16383,12 @@ function computeMenuItemReconcileState(menuItemId, maps) {
     ).get(id);
   if (!m) return null;
   const purchases = maps?.purchases ?? aggregateGoodsPurchaseQtyByMenuItem();
-  const salesDaily = maps?.salesDaily ?? aggregateSalesQtyFromDailyLog();
+  const dailyMaps = maps?.dailyMaps ?? aggregateDailyLogStockQtyMaps();
+  const salesDaily = maps?.salesDaily ?? dailyMaps.sold;
+  const salesReturned = maps?.salesReturned ?? dailyMaps.returned;
   const salesRoom = maps?.salesRoom ?? aggregateSalesQtyFromRoomCharges();
   const manualAdds = maps?.manualAdds ?? aggregateManualStockQtyByMenuItem();
-  return buildMenuItemReconcileRow(m, purchases, salesDaily, salesRoom, manualAdds);
+  return buildMenuItemReconcileRow(m, purchases, salesDaily, salesRoom, manualAdds, salesReturned);
 }
 
 function assertMenuItemStockBalanced(menuItemId) {
@@ -16364,17 +16476,52 @@ function baselineStockReconcileDriftsOnce() {
   return { healed, mismatch_count: after.mismatch_count };
 }
 
+function baselineStockOpeningOnce() {
+  if (getSetting("stock_reconcile_baseline_v2")) {
+    return { skipped: true, healed: 0, mismatch_count: reconcileStock().mismatch_count };
+  }
+  const purchases = aggregateGoodsPurchaseQtyByMenuItem();
+  const dailyMaps = aggregateDailyLogStockQtyMaps();
+  const salesRoom = aggregateSalesQtyFromRoomCharges();
+  const manualAdds = aggregateManualStockQtyByMenuItem();
+  let healed = 0;
+  sqlite.transaction(() => {
+    for (const m of getMenuItems(false)) {
+      const row = buildMenuItemReconcileRow(
+        m, purchases, dailyMaps.sold, salesRoom, manualAdds, dailyMaps.returned,
+      );
+      if (!row.has_deviation) continue;
+      const implied = row.actual_stock - row.purchased - row.manual_added + row.sold - row.returned;
+      if (Math.abs(implied - row.opening_stock) < 0.0001) continue;
+      setMenuItemOpeningStock(row.menu_item_id, implied);
+      healed += 1;
+    }
+    setSetting("stock_reconcile_baseline_v2", new Date().toISOString());
+  })();
+  const after = reconcileStock();
+  if (after.mismatch_count > 0) {
+    console.warn(`[stock] opening baseline: ${healed} healed, ${after.mismatch_count} mismatch mbeten`);
+  } else if (healed > 0) {
+    console.log(`[stock] opening baseline OK — ${healed} artikuj`);
+  }
+  return { healed, mismatch_count: after.mismatch_count };
+}
+
 function reconcileStock() {
   const menu = getMenuItems(false);
   const purchases = aggregateGoodsPurchaseQtyByMenuItem();
-  const salesDaily = aggregateSalesQtyFromDailyLog();
+  const dailyMaps = aggregateDailyLogStockQtyMaps();
+  const salesDaily = dailyMaps.sold;
+  const salesReturned = dailyMaps.returned;
   const salesRoom = aggregateSalesQtyFromRoomCharges();
   const manualAdds = aggregateManualStockQtyByMenuItem();
   const items = [];
   let mismatchCount = 0;
 
   for (const m of menu) {
-    const row = buildMenuItemReconcileRow(m, purchases, salesDaily, salesRoom, manualAdds);
+    const row = buildMenuItemReconcileRow(
+      m, purchases, salesDaily, salesRoom, manualAdds, salesReturned,
+    );
     if (row.has_deviation) mismatchCount += 1;
     items.push(row);
   }
@@ -16387,7 +16534,7 @@ function reconcileStock() {
   return {
     checked_at: new Date().toISOString(),
     formula:
-      "stoku fillestar + blerjet (goods) + ndryshime manuale (±) − shitjet (ditari + room service)",
+      "stoku fillestar + blerjet − shitjet + kthimet (storno/return/cancel) + ndryshime manuale, min 0",
     item_count: items.length,
     mismatch_count: mismatchCount,
     items,
@@ -19912,6 +20059,30 @@ function splitReceivedDitari(entries) {
   };
 }
 
+function shownLineDiscount(it) {
+  return Math.abs(Number(it?.discount_amount ?? it?.line_discount ?? 0) || 0);
+}
+
+function shownSaleDiscount(discountTotal, items) {
+  let extra = 0;
+  const list = Array.isArray(items) ? items : [];
+  for (const it of list) extra += shownLineDiscount(it);
+  return roundReportMoney((Number(discountTotal) || 0) + extra);
+}
+
+function saleMoneyTriple(entry) {
+  const items = Array.isArray(entry?.items)
+    ? entry.items
+    : (typeof parseOrderItems === "function" ? parseOrderItems(entry?.items_json) : []);
+  const pagesa = roundReportMoney(Number(entry?.total) || 0);
+  const zbritja = shownSaleDiscount(entry?.discount_total, items);
+  return {
+    bruto: roundReportMoney(pagesa + zbritja),
+    zbritje: zbritja,
+    neto: pagesa,
+  };
+}
+
 function ditariVatFromDeclaration(items, entry, fallbackPercent) {
   const buckets = computeItemsVat(items, fallbackPercent, {
     subtotal: entry.subtotal,
@@ -19969,6 +20140,10 @@ function ditariLedgerRow({ date, time, type, pala, number, net, vat, total }) {
     vat: vatN,
     pa_tvsh: netN,
     tvsh: vatN,
+    zbritje: 0,
+    bruto: totN,
+    shitja: totN,
+    pagesa: totN,
     entry_kind: type,
   };
 }
@@ -20083,6 +20258,7 @@ function getDitari(opts = {}) {
     const split = cancelled
       ? { net: 0, vat: 0, vat18: 0, vat8: 0 }
       : ditariVatFromDeclaration(items, e, fiscalPct);
+    const money = cancelled ? { bruto: 0, zbritje: 0, neto: 0 } : saleMoneyTriple({ ...e, items });
     return {
       ...e,
       entry_type: "restaurant",
@@ -20095,6 +20271,10 @@ function getDitari(opts = {}) {
       total: cancelled ? 0 : e.total,
       cash_amount: cancelled ? 0 : e.cash_amount,
       card_amount: cancelled ? 0 : e.card_amount,
+      zbritje: money.zbritje,
+      bruto: money.bruto,
+      shitja: money.bruto,
+      pagesa: money.neto,
       net: split.net,
       vat: split.vat,
       pa_tvsh: split.net,
@@ -20149,6 +20329,10 @@ function getDitari(opts = {}) {
   const activeUnpaid = listActiveUnpaidStays(range.dateFrom, range.dateTo);
 
   const totalSales = receivedSplit.total;
+  const restDiscount = completedRestOnly.reduce((s, e) => s + (Number(e.zbritje) || 0), 0);
+  const recDiscount = completedReception.reduce((s, e) => s + (Number(e.zbritje) || 0), 0);
+  const totalDiscount = roundReportMoney(restDiscount + recDiscount);
+  const totalGross = roundReportMoney(totalSales + totalDiscount);
   const paymentEntries = completedRestaurant;
   const totalCash = roundReportMoney(
     paymentEntries.reduce((s, e) => s + dailyLogEntryCashAmount(e), 0),
@@ -20183,6 +20367,15 @@ function getDitari(opts = {}) {
     toDatetime: range.toDatetime,
     today: new Date().toLocaleDateString("sq-AL"),
     totalSales,
+    totalGross,
+    totalDiscount,
+    shitja: totalGross,
+    zbritja: totalDiscount,
+    pagesa: totalSales,
+    restaurantGross: roundReportMoney(receivedSplit.restaurant + restDiscount),
+    restaurantDiscount: roundReportMoney(restDiscount),
+    receptionGross: roundReportMoney(receivedSplit.reception + recDiscount),
+    receptionDiscount: roundReportMoney(recDiscount),
     restaurantSales: receivedSplit.restaurant,
     receptionSales: receivedSplit.reception,
     receptionSalesNet: roundReportMoney(receptionSalesNet),
@@ -20377,6 +20570,22 @@ function getDashboardOverview() {
       )
   `).get(today)?.t) || 0;
 
+  let restaurantDiscount = 0;
+  let receptionDiscount = 0;
+  for (const e of sqlite.prepare(`
+    SELECT receipt_number, discount_total, items_json FROM daily_log
+    WHERE date = ? AND status = 'completed'
+      AND ${folioSettledRoomDailyLogExcludeSql()}
+  `).all(today)) {
+    const disc = shownSaleDiscount(e.discount_total, parseOrderItems(e.items_json));
+    if (!disc) continue;
+    if (isRecepsionDailyLogReceipt(e.receipt_number)) receptionDiscount += disc;
+    else restaurantDiscount += disc;
+  }
+  restaurantDiscount = Math.round(restaurantDiscount * 100) / 100;
+  receptionDiscount = Math.round(receptionDiscount * 100) / 100;
+  const dailyDiscount = Math.round((restaurantDiscount + receptionDiscount) * 100) / 100;
+
   const nightsServicesRevenue =
     Math.round((nightsRevenue + servicesRevenue) * 100) / 100;
 
@@ -20502,6 +20711,13 @@ function getDashboardOverview() {
       services: Math.round(servicesRevenue * 100) / 100,
       nights_services: nightsServicesRevenue,
       total: dailyRevenueTotal,
+      zbritja: dailyDiscount,
+      pagesa: dailyRevenueTotal,
+      shitja: Math.round((dailyRevenueTotal + dailyDiscount) * 100) / 100,
+      restaurant_discount: restaurantDiscount,
+      reception_discount: receptionDiscount,
+      restaurant_gross: Math.round((restaurantRevenue + restaurantDiscount) * 100) / 100,
+      reception_gross: Math.round((receptionRevenue + receptionDiscount) * 100) / 100,
     },
     arrivals,
     departures,
@@ -20544,6 +20760,9 @@ function exportDitariText(opts = {}) {
   txt += `Kartë: ${Number(recShop.card || 0).toFixed(2)} €\n`;
   txt += `Paguar për restorantin: ${Number(recShop.paid_to_restaurant || 0).toFixed(2)} €\n`;
   txt += `Total recepsion: ${Number(recShop.total || src.reception || d.receptionSales || 0).toFixed(2)} €\n`;
+  txt += `Shitja: ${Number(d.totalGross != null ? d.totalGross : d.totalSales).toFixed(2)} €\n`;
+  txt += `Zbritja: ${Number(d.totalDiscount || 0).toFixed(2)} €\n`;
+  txt += `Pagesa: ${Number(shops.total != null ? shops.total : d.totalSales).toFixed(2)} €\n`;
   txt += `TOTALI: ${Number(shops.total != null ? shops.total : d.totalSales).toFixed(2)} €\n`;
   const unpaidRows = d.active_unpaid || [];
   if (unpaidRows.length) {
@@ -21181,6 +21400,7 @@ function getVersionInfo() {
     setMenuItemStockAbsolute,
     assertMenuItemStockBalanced,
     baselineStockReconcileDriftsOnce,
+    baselineStockOpeningOnce,
     logManualStockAdjustment,
     logManualStockSetDelta,
     decrementMenuItemStock,

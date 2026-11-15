@@ -80,9 +80,7 @@ function onReconnect(fn) {
 function requestJsonOnce(method, baseUrl, path, payload, timeoutMs = REQUEST_TIMEOUT_MS, extraHeaders = {}) {
   const asked = Number(timeoutMs);
   const n = Number.isFinite(asked) && asked > 0 ? asked : REQUEST_TIMEOUT_MS;
-  const host = String(baseUrl || "");
-  const external = /revolution-pos\.com|railway\.app/i.test(host);
-  const waitMs = external ? Math.min(n, REQUEST_TIMEOUT_MS) : n;
+  const waitMs = n;
   return new Promise((resolve, reject) => {
     let url;
     try {
@@ -280,6 +278,7 @@ function startHealthMonitor(db) {
 async function requestJsonWithFallback(method, path, payload, options = {}) {
   const apiPath = resolveCloudRequestPath(path);
   const licenseOnly = isLicenseApiPath(path);
+  const emergencyEmail = /emergency-code-request/.test(String(path || ""));
   if (
     !licenseOnly &&
     (HOTEL_CLOUD_DISABLED || !CLOUD_SERVER_URLS.length || !activeServerUrl)
@@ -287,10 +286,8 @@ async function requestJsonWithFallback(method, path, payload, options = {}) {
     throw new Error("Cloud i hotelit nuk është konfiguruar — punon vetëm SQLite lokal.");
   }
   const asked = Number(options.timeoutMs);
-  const timeoutMs = Math.min(
-    Number.isFinite(asked) && asked > 0 ? asked : REQUEST_TIMEOUT_MS,
-    REQUEST_TIMEOUT_MS,
-  );
+  const fallbackMs = emergencyEmail ? 25000 : REQUEST_TIMEOUT_MS;
+  const timeoutMs = Number.isFinite(asked) && asked > 0 ? asked : fallbackMs;
   const extraHeaders = options.headers || {};
   let order = [activeServerUrl, ...CLOUD_SERVER_URLS.filter(u => u !== activeServerUrl)].filter(
     Boolean,

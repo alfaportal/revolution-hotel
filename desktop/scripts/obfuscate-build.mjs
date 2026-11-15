@@ -144,6 +144,7 @@ const NEVER_OBFUSCATE = new Set([
   "license-boot.js",
   "menu-stock-photos.js",
   "service-stock-photos.js",
+  "app.js",
 ]);
 
 const OBFUSCATE_OPTIONS = {

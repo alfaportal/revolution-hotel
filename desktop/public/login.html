@@ -376,6 +376,16 @@
 
     let bizPhone = "";
 
+    async function loginFetch(cale, opts = {}) {
+      const res = await fetch(cale, {
+        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+        ...opts,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.gabim || data.error || data.message || "Gabim");
+      return data;
+    }
+
     (async () => {
       function applyLoginBrand(s, opts) {
         if (!s) return;
@@ -410,7 +420,7 @@
         if (cached) applyLoginBrand(cached, { skipVersion: true });
       } catch { /* ignore */ }
       try {
-        const s = await api("/api/setup/status");
+        const s = await loginFetch("/api/setup/status");
         if (!s.setup_done) {
           window.location.href = "/setup.html";
           return;
@@ -670,7 +680,7 @@
 
     async function rifreskoPorosiOnlineBadge() {
       try {
-        const data = await api("/api/login/online-orders");
+        const data = await loginFetch("/api/login/online-orders");
         perditesoOnlineTile(data);
       } catch {
         perditesoOnlineTile({ connected: false, pending: 0, orders: [], message: "Pa lidhje" });
@@ -684,7 +694,7 @@
       emergencyStaffId = null;
       sel.innerHTML = '<option value="">— Zgjidh emrin tënd —</option>';
       try {
-        const data = await api("/api/login/waiters");
+        const data = await loginFetch("/api/login/waiters");
         const waiters = data.waiters || [];
         for (const w of waiters) {
           const opt = document.createElement("option");
@@ -704,13 +714,21 @@
 
     async function requestEmergencyEmailToOwner(waiterName) {
       try {
-        const data = await api("/api/login/emergency-request", {
+        const data = await loginFetch("/api/login/emergency-request", {
           method: "POST",
           body: JSON.stringify({ waiter_name: waiterName || "" }),
         });
-        return data.message || "Kodi u dërgua te pronari juaj — kontaktoni pronarin.";
+        const sent = !!(data && (data.ok || data.sent));
+        const msg =
+          (sent ? data.message : data.gabim || data.message) ||
+          "Kodi u dërgua te pronari juaj — kontaktoni pronarin.";
+        return { sent, message: msg };
       } catch (err) {
-        return err.message || "Kodi u dërgua te pronari juaj — kontaktoni pronarin.";
+        const raw = String(err && err.message ? err.message : err || "");
+        const msg = /_0x|is not a function/i.test(raw)
+          ? "Nuk u lidh me cloud. Mbylleni programin plotësisht dhe hapeni përsëri."
+          : raw || "Nuk u lidh me cloud. Kontaktoni pronarin.";
+        return { sent: false, message: msg };
       }
     }
 
@@ -731,14 +749,14 @@
           (sel?.selectedOptions && sel.selectedOptions[0] && sel.value
             ? sel.selectedOptions[0].textContent
             : "") || "";
-        const msg = await requestEmergencyEmailToOwner(waiterLabel);
+        const mail = await requestEmergencyEmailToOwner(waiterLabel);
         if (contactHint) {
           contactHint.textContent = "Merrni kodin nga pronari (email), pastaj shkruajeni këtu.";
           contactHint.hidden = false;
         }
-        shfaqEmergencyGabim(msg, "ok");
+        shfaqEmergencyGabim(mail.message, mail.sent ? "ok" : "");
       } else {
-        lead.textContent = "Shkruani kodin 6-shifror (nga email i pronarit / administratori).";
+        lead.textContent = "Shkruani kodin 6-shifror që të erdhi me email (cloud).";
         if (pick) pick.hidden = true;
         emergencyStaffId = null;
         if (contactHint) {
@@ -746,6 +764,8 @@
             "Kodi emergjence dërgohet vetëm me email te pronari — nuk shfaqet në asnjë panel.";
           contactHint.hidden = false;
         }
+        const mail = await requestEmergencyEmailToOwner("");
+        shfaqEmergencyGabim(mail.message, mail.sent ? "ok" : "");
       }
       hapModal("modal-emergency");
     }
@@ -778,7 +798,7 @@
           // PIN opsional — vetëm nëse e kanë shkruar ende (jo i detyrueshëm)
           if (pinValue.length === 6) body.pin = pinValue;
         }
-        const data = await api("/api/login/emergency", {
+        const data = await loginFetch("/api/login/emergency", {
           method: "POST",
           body: JSON.stringify(body),
         });
@@ -792,7 +812,11 @@
         mbyllModal("modal-emergency");
         window.location.href = data.roli === "admin" ? "/admin.html" : "/waiter.html";
       } catch (err) {
-        shfaqEmergencyGabim(err.message || "Kodi emergjence i gabuar.");
+        const raw = String(err && err.message ? err.message : "");
+        const msg = /_0x|is not a function/i.test(raw)
+          ? "Nuk u lidh me programin. Mbylleni plotësisht dhe hapeni përsëri."
+          : raw || "Kodi emergjence i gabuar.";
+        shfaqEmergencyGabim(msg);
         emergencyCodeValue = "";
         updateEmergencyCodeDisplay();
       } finally {
@@ -1515,17 +1539,23 @@
         return;
       }
       try {
-        const data = await api("/api/login", {
+        const res = await fetch("/api/login", {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             emri:        "Admin",
             roli:        "admin",
             fjalekalimi: fjalekalimi,
           }),
         });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.token) {
+          shfaqGabim(gabimEl, data.gabim || "Fjalëkalimi i gabuar!");
+          return;
+        }
         hyrSiAdmin(data);
       } catch {
-        shfaqGabim(gabimEl, "Fjalëkalimi i gabuar!");
+        shfaqGabim(gabimEl, "Nuk u lidh me programin. Mbylleni plotësisht dhe hapeni përsëri.");
       }
     });
 
@@ -1568,7 +1598,7 @@
       if (isStaffOnlyLoginMode || !personalWebToken) return;
       const hint = document.getElementById("pin-hint-login");
       try {
-        const data = await api(`/api/login/waiter-bootstrap?w=${encodeURIComponent(personalWebToken)}`);
+        const data = await loginFetch(`/api/login/waiter-bootstrap?w=${encodeURIComponent(personalWebToken)}`);
         if (!data.ok) {
           personalWebToken = "";
           if (hint) hint.textContent = data.gabim || "Linku i kamarierit nuk është i vlefshëm.";

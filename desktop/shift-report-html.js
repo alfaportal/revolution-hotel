@@ -46,16 +46,19 @@ function commonHeader({ f, bizName, title }) {
 }
 
 function totalsBlock(data) {
+  const pagesa = Number(data.total_sales) || 0;
+  const zbritja = Number(data.discount_total) || 0;
+  const shitja = Number(data.gross_sales != null ? data.gross_sales : data.shitja) ||
+    Math.round((pagesa + zbritja) * 100) / 100;
   return `
     <div class="receipt-item"><span>Porosi:</span><span>${Number(data.order_count) || 0}</span></div>
     <div class="receipt-item"><span>Shitje cash:</span><span>${formatEuro(data.cash_total)}</span></div>
     <div class="receipt-item"><span>Shitje kartë:</span><span>${formatEuro(data.card_total)}</span></div>
     <div class="receipt-item"><span>Në dhomë:</span><span>${formatEuro(data.room_total)}</span></div>
-    <div class="receipt-item"><span>Shitje totale:</span><span>${formatEuro(Math.round(((Number(data.cash_total) || 0) + (Number(data.card_total) || 0) + (Number(data.room_total) || 0)) * 100) / 100)}</span></div>
-    ${Number(data.discount_total) > 0
-      ? `<div class="receipt-item receipt-discount"><span>Zbritje totale:</span><span>−${formatEuro(data.discount_total)}</span></div>`
-      : ""}
-    <div class="receipt-total"><span>TOTALI:</span><span>${formatEuro(data.total_sales)}</span></div>`;
+    <div class="receipt-item"><span>Shitja:</span><span>${formatEuro(shitja)}</span></div>
+    <div class="receipt-item"><span>Zbritja:</span><span>${formatEuro(zbritja)}</span></div>
+    <div class="receipt-item"><span>Pagesa:</span><span>${formatEuro(pagesa)}</span></div>
+    <div class="receipt-total"><span>TOTALI:</span><span>${formatEuro(pagesa)}</span></div>`;
 }
 
 /** Raporti X — gjendja e tashme e nderrimeve hapur, pa mbyllur asgjë (i printueshëm në çdo kohë). */
@@ -184,11 +187,14 @@ function totalsLines(data, w) {
     labelValueLine("Shitje kartë:", money(data.card_total), w),
     labelValueLine("Në dhomë:", money(data.room_total), w),
   ];
-  lines.push(labelValueLine("Shitje totale:", money(Math.round(((Number(data.cash_total) || 0) + (Number(data.card_total) || 0) + (Number(data.room_total) || 0)) * 100) / 100), w));
-  if (Number(data.discount_total) > 0) {
-    lines.push(labelValueLine("Zbritje totale:", `-${formatMoney(data.discount_total)} EUR`, w));
-  }
-  lines.push(`^R^B${labelValueLine("TOTALI:", money(data.total_sales), w)}`);
+  const pagesa = Number(data.total_sales) || 0;
+  const zbritja = Number(data.discount_total) || 0;
+  const shitja = Number(data.gross_sales != null ? data.gross_sales : data.shitja) ||
+    Math.round((pagesa + zbritja) * 100) / 100;
+  lines.push(labelValueLine("Shitja:", money(shitja), w));
+  lines.push(labelValueLine("Zbritja:", money(zbritja), w));
+  lines.push(labelValueLine("Pagesa:", money(pagesa), w));
+  lines.push(`^R^B${labelValueLine("TOTALI:", money(pagesa), w)}`);
   return lines;
 }
 
