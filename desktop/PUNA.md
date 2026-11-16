@@ -1,3 +1,17 @@
+## 2026-11-15 — Faqe publike telefon: meny pije, MAPA, orari
+
+Menuja e pijeve/ushqimit ishte e padukshme (`opacity: 0` te kartat). MAPA pretet në MAP nga letter-spacing. Orari nuk hapet (overflow + opacity). Tani: hapet Restoranti si QR (grid 2 foto, kategoria Pije), shkruan **MAPA**, Orari hapet me tap. Dhomat/Shërbimet nuk u prekën. Pa build. Pa GIT. Te telefoni: pas deploy cloud.
+
+| Skedar | Ndryshimi |
+|--------|-----------|
+| `revolution-hotel-server/public/css/r.css` | kartat/orari/MAPA të dukshme |
+| `revolution-hotel-server/public/css/r-public-menu.css` | MAPA e plotë, orari në telefon |
+| `revolution-hotel-server/public/css/hotel-public.css` | meny si QR (2 kolona foto) |
+| `revolution-hotel-server/public/js/hotel-public-page.js` | hap Restorantin, kategoria Pije |
+| `revolution-hotel-server/public/js/hotel-public-order.js` | kategoria Pije e parë |
+| `revolution-hotel-server/public/js/r.js` | MAPA, orari tap |
+| `revolution-hotel-server/public/r.html` | etiketë MAPA |
+
 ## 2026-11-15 — Setup 1.0.603
 
 `node scripts/pre-build-check.js` + `node build-packages.js` — një Setup (Pako 3). Auto-bump 1.0.602 → **1.0.603**. Kod 0. FileVersion/ProductVersion 1.0.603. Arkiva 1.0.602 mbetet. Nuk u bë git. Nuk u prek tag ngrirje.

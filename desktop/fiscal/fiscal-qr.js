@@ -583,7 +583,7 @@ async function generateFiscalReportQR(reportDetails, opts = {}) {
     .slice(0, 10);
   const fiscal_date =
     ymdToFiscalDate(dateRaw) ||
-    ymdToFiscalDate(new Date().toISOString().slice(0, 10));
+    ymdToFiscalDate(require("../lib/hotel-business-date").businessYmd());
   const now = new Date();
   const fiscal_time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 

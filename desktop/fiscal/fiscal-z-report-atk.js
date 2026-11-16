@@ -42,7 +42,7 @@ function saveZReportPdfLocally(text, details) {
   if (!isFiscalEnabled()) return null;
   const dir = getZReportsDir();
   fs.mkdirSync(dir, { recursive: true });
-  const datePart = sanitizeFilePart(details?.date || new Date().toISOString().slice(0, 10));
+  const datePart = sanitizeFilePart(details?.date || require("../lib/hotel-business-date").businessYmd());
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const baseName = `Z-raport-${datePart}-${ts}`;
   const pdfPath = path.join(dir, `${baseName}.pdf`);
