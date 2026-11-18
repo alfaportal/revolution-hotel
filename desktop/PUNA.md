@@ -1,3 +1,7 @@
+## 2026-11-17 — Setup 1.0.604
+
+Version `1.0.603` → `1.0.604`. Komanda `node build-packages.js`. Doli `dist\Revolution HOTEL Setup.exe`. 1.0.603 mbetet si kopje.
+
 ## 2026-11-15 — Faqe publike telefon: meny pije, MAPA, orari
 
 Menuja e pijeve/ushqimit ishte e padukshme (`opacity: 0` te kartat). MAPA pretet në MAP nga letter-spacing. Orari nuk hapet (overflow + opacity). Tani: hapet Restoranti si QR (grid 2 foto, kategoria Pije), shkruan **MAPA**, Orari hapet me tap. Dhomat/Shërbimet nuk u prekën. Pa build. Pa GIT. Te telefoni: pas deploy cloud.
@@ -3550,3 +3554,10 @@ Kur kamarieri (POS ose telefon) mbyll tavolinë me `payment_method = "room"`, re
 - `sendStaffRoleManifest` — start_url dinamik p.sh. `/hotel/demo-hotel/kamarier`
 - `serveStaffLoginPage` injekton PWA; pas PIN: `waiter.html` / `kasa-recepcion.html` me manifest rol
 
+
+## 2026-11-18 � Pakot 1 brenda 2, 1+2 brenda 3
+
+- public/admin.html: Pako 1 mban sherbimet dhe dhomat. Stoku, blerjet, faturat dhe QR hapen te Pako 2. Kontabilisti dhe AI vetem te Pako 3.
+- package-features.js, package-tier-map.js: emrat Pako 1, Pako 2, Pako 3.
+- Prove me node: Pako 2 ka stok dhe QR, pa AI. Pako 3 ka AI.
+- Ne kompjuter: vetem pas Setup te ri. Nuk u be build.

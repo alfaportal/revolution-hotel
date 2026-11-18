@@ -1936,16 +1936,15 @@
     Rifreskohet nga /api/license (heartbeat) + license:package-updated.
   -->
   <style id="tier-gating">
-    /* Pako 1 — Bazik: fsheh Shërbimet, Promocione, QR, Kontabilisti, AI */
-    body.tier-rank-1 [data-panel="sherbimet"], body.tier-rank-1 #panel-sherbimet,
+    body.tier-rank-1 [data-panel="stoku"], body.tier-rank-1 #panel-stoku,
+    body.tier-rank-1 [data-panel="blerjet"], body.tier-rank-1 #panel-blerjet,
+    body.tier-rank-1 [data-panel="faturat"], body.tier-rank-1 #panel-faturat,
+    body.tier-rank-1 [data-panel="furnitoret"], body.tier-rank-1 #panel-furnitoret,
+    body.tier-rank-1 [data-panel="receta-perberesit"], body.tier-rank-1 #panel-receta-perberesit,
     body.tier-rank-1 [data-panel="promocione"], body.tier-rank-1 #panel-promocione,
     body.tier-rank-1 [data-panel="qr-tavolinat"], body.tier-rank-1 #panel-qr-tavolinat,
     body.tier-rank-1 [data-panel="kontabilisti"], body.tier-rank-1 #panel-kontabilisti,
-    body.tier-rank-1 [data-panel="ai"], body.tier-rank-1 #panel-ai {
-      display: none !important;
-    }
-    /* Pako 2 — Standard: fsheh QR, Kontabilisti, AI */
-    body.tier-rank-2 [data-panel="qr-tavolinat"], body.tier-rank-2 #panel-qr-tavolinat,
+    body.tier-rank-1 [data-panel="ai"], body.tier-rank-1 #panel-ai,
     body.tier-rank-2 [data-panel="kontabilisti"], body.tier-rank-2 #panel-kontabilisti,
     body.tier-rank-2 [data-panel="ai"], body.tier-rank-2 #panel-ai {
       display: none !important;
@@ -7184,13 +7183,12 @@
       const t =
         tRaw === "pako_4" || tRaw === "pako_5" || tRaw === "pako_premium" ? "pako_3" : tRaw;
       let rank = PACKAGE_TIER_RANK[t] || LEGACY_TIER_TO_RANK[tRaw] || LEGACY_TIER_TO_RANK[t] || 1;
-      if (t === "pako_3" || (features && features.accountant === true)) rank = Math.max(rank, 3);
       document.body.classList.remove("tier-rank-1", "tier-rank-2", "tier-rank-3");
       document.body.classList.add("tier-rank-" + rank);
       const hasQrTier =
         typeof features?.qrTables === "boolean"
           ? features.qrTables
-          : rank >= 3;
+          : rank >= 2;
       document.body.classList.toggle("qr-package-tier", !!hasQrTier);
       const hasAiTier = t === "pako_3" || (features && features.ai === true);
       document.body.classList.toggle("ai-package-tier", !!hasAiTier);

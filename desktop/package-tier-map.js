@@ -5,9 +5,9 @@
 const PACKAGE_TIERS = Object.freeze(["pako_1", "pako_2", "pako_3"]);
 
 const TIER_LABELS = Object.freeze({
-  pako_1: "Pako 1 — Bazik",
-  pako_2: "Pako 2 — Standard",
-  pako_3: "Pako 3 — Premium",
+  pako_1: "Pako 1",
+  pako_2: "Pako 2",
+  pako_3: "Pako 3",
 });
 
 /** Lexim i vjetër DB — vetëm derisa të migrohet. */
