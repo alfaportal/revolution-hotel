@@ -997,7 +997,7 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=6">
+  <link rel="stylesheet" href="/css/pos-tables-truffle.css?v=7">
 </head>
 <body class="waiter-screen">
   <div id="waiter-fiscal-alerts">
@@ -5232,13 +5232,10 @@
     function waiterTableXY(t, i) {
       const x = Number(t.layout_x);
       const y = Number(t.layout_y);
-      if (x >= 0 && y >= 0) return { x, y };
-      const col = Number(t.layout_col);
-      const row = Number(t.layout_row);
-      if (col >= 0 && row >= 0) {
-        return { x: (col / 8) * 86 + 3, y: (row / 3) * 68 + 5 };
+      if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0) {
+        return { x: Math.min(78, x), y: Math.min(78, y) };
       }
-      return { x: 5 + (i % 7) * 12, y: 8 + Math.floor(i / 7) * 16 };
+      return { x: 4 + (i % 6) * 15, y: 6 + Math.floor(i / 6) * 22 };
     }
 
     function ndarjaZonaveTavolinave(zones) {
@@ -5489,7 +5486,8 @@
           for (const zone of terrace) appendZone(zone, { kind: "terrace" });
         }
       } else {
-        for (const zone of diningAll) appendZone(zone, { kind: "dining" });
+        const hall = diningAll.some((z) => (z.tables || []).length) ? diningAll : [...diningAll, ...terrace];
+        for (const zone of hall) appendZone(zone, { kind: "dining" });
         if (!wrap.childElementCount) {
           wrap.innerHTML =
             '<p style="color:#94a3b8;padding:1.25rem 0.5rem;font-weight:600">' +

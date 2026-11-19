@@ -51,20 +51,13 @@
     list.forEach((t, i) => {
       let x = Number(t.layout_x);
       let y = Number(t.layout_y);
-      if (x >= 0 && y >= 0) {
-        t.layout_x = clampPct(x, 92);
-        t.layout_y = clampPct(y, 90);
+      if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0) {
+        t.layout_x = clampPct(x, 78);
+        t.layout_y = clampPct(y, 78);
         return;
       }
-      const col = Number(t.layout_col);
-      const row = Number(t.layout_row);
-      if (col >= 0 && row >= 0) {
-        t.layout_x = Math.round((col / 8) * 86 + 3);
-        t.layout_y = Math.round((row / 3) * 68 + 5);
-        return;
-      }
-      t.layout_x = 5 + (i % 7) * 12;
-      t.layout_y = 8 + Math.floor(i / 7) * 16;
+      t.layout_x = 4 + (i % 6) * 15;
+      t.layout_y = 6 + Math.floor(i / 6) * 22;
     });
     return list;
   }

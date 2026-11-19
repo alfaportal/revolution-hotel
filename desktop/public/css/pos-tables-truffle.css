@@ -680,7 +680,7 @@ body.waiter-screen:has(#ekrani-tavolina:not(.hidden)) {
 
 #ekrani-tavolina .table-floor-map {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 440px;
   height: min(68vh, 740px);
   width: 100%;

@@ -8211,8 +8211,8 @@ function saveTableFloorPlan(payload) {
         else lx = Math.max(0, Math.min(92, lx));
         if (!Number.isFinite(ly) || ly < 0) ly = -1;
         else ly = Math.max(0, Math.min(90, ly));
-        const col = lx >= 0 ? Math.min(7, Math.max(0, Math.round(lx / 12.5))) : Math.max(0, Math.min(7, Number(t.layout_col) || 0));
-        const r = ly >= 0 ? Math.min(rows - 1, Math.max(0, Math.round(ly / 40))) : Math.max(0, Math.min(rows - 1, Number(t.layout_row) || 0));
+        const col = lx >= 0 ? Math.min(7, Math.max(0, Math.round(lx / 12.5))) : -1;
+        const r = ly >= 0 ? Math.min(rows - 1, Math.max(0, Math.round(ly / 40))) : -1;
         sqlite.prepare("UPDATE tables SET layout_col = ?, layout_row = ?, layout_x = ?, layout_y = ?, sort_order = ? WHERE id = ?")
           .run(col, r, lx, ly, r * 8 + col, tid);
       }
